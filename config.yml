@@ -1,0 +1,12 @@
+paths:
+  c_output: "output/main.c"
+  asm_output: "output/main.asm"
+  binary_output: "output/program.tap"
+
+compiler:
+  c_compiler: "zcc"
+  asm_compiler: "z80asm"
+
+emulator:
+  name: "fuse"
+  params: "--machine 48 --no-sound"

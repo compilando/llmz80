@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.swp
+.Python
+env/
+venv/
+.venv/
+pip-wheel-metadata/
+*.egg-info/
+*.egg
+*.pyd
+*.pyc
+*.pyo
+*.tap
+*.bin
+
+# Mac / Linux system files
+.DS_Store
+*.log
+*.tmp
+
+# Virtual environments
+.env/
+.venv/
+venv/
+ENV/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# Logs
+logs/
+*.log
+
+# dotenv files (keys, secrets)
+.env
+.env.*
+
+# VSCode
+.vscode/
