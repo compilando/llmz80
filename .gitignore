@@ -35,7 +35,7 @@ logs/
 
 # dotenv files (keys, secrets)
 .env
-.env.*
+
 
 # VSCode
 .vscode/
