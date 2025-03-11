@@ -45,9 +45,219 @@ handle_error() {
     exit 1
 }
 
+# Función para mostrar soluciones a errores comunes
+show_error_solutions() {
+    local error_doc="examples/amstrad_cpc/error_solutions.md"
+    
+    if [ -f "$error_doc" ]; then
+        echo -e "${BLUE}${BOLD}📚 Soluciones a Errores Comunes en el Desarrollo para Amstrad CPC${NC}\n"
+        
+        # Si tenemos bat o mdcat, usarlos para mostrar el markdown con formato
+        if command -v bat &> /dev/null; then
+            bat --style=plain --paging=never "$error_doc"
+        elif command -v mdcat &> /dev/null; then
+            mdcat "$error_doc"
+        else
+            # Si no tenemos herramientas de formato, mostrar el contenido plano
+            cat "$error_doc"
+        fi
+        
+        echo -e "\n${BLUE}${BOLD}📝 Ejemplo de código con soluciones:${NC} examples/amstrad_cpc/error_solutions.c"
+        echo -e "${YELLOW}Puedes compilar este ejemplo con:${NC} ./build_amstrad.sh --example=error_solutions"
+    else
+        echo -e "${RED}❌ Documentación de errores no encontrada: ${error_doc}${NC}"
+        echo -e "${YELLOW}Creando archivo de documentación básico...${NC}"
+        
+        # Crear directorio si no existe
+        mkdir -p "examples/amstrad_cpc"
+        
+        # Crear archivo de documentación básico
+        cat > "$error_doc" << EOF
+# Soluciones a Errores Comunes en el Desarrollo para Amstrad CPC
+
+## Errores de Sintaxis
+
+### Error: \`syntax error: token -> 'u8'\`
+
+**Problema**: El compilador no reconoce el tipo de dato \`u8\`.
+
+**Solución**: 
+- Asegúrate de incluir \`<cpctelera.h>\` al principio de tu archivo.
+- Este header define los tipos \`u8\`, \`u16\`, \`u32\`, etc.
+
+### Error: \`syntax error: token -> '0x0400'\`
+
+**Problema**: SDCC puede tener problemas con algunas constantes hexadecimales.
+
+**Solución**:
+- Usa paréntesis alrededor de las expresiones con constantes hexadecimales.
+- Define constantes con nombres significativos.
+
+## Errores de Variables
+
+### Error: \`Undefined identifier 'palette'\`
+
+**Problema**: Estás usando una variable que no ha sido definida.
+
+**Solución**:
+- Define todas las variables antes de usarlas.
+- Para paletas, usa arrays de tamaño fijo.
+
+## Errores de Tipos
+
+### Error: \`converting integral to pointer without a cast\`
+
+**Problema**: Estás intentando usar un número como si fuera un puntero sin hacer un casting explícito.
+
+**Solución**:
+- Usa casting explícito cuando conviertas entre tipos, especialmente con punteros.
+EOF
+        
+        echo -e "${GREEN}✓ Archivo de documentación básico creado: ${error_doc}${NC}"
+        
+        # Mostrar el contenido recién creado
+        if command -v bat &> /dev/null; then
+            bat --style=plain --paging=never "$error_doc"
+        elif command -v mdcat &> /dev/null; then
+            mdcat "$error_doc"
+        else
+            cat "$error_doc"
+        fi
+    fi
+}
+
 # Función para compilar un ejemplo de CPCtelera
 compile_example() {
     local example_path="$1"
+    
+    # Si el ejemplo no tiene un directorio propio, pero existe un archivo .c con ese nombre
+    if [ ! -d "examples/amstrad_cpc/${example_path}" ] && [ -f "examples/amstrad_cpc/${example_path}.c" ]; then
+        echo -e "${YELLOW}El ejemplo no tiene un directorio propio, pero existe un archivo .c${NC}"
+        echo -e "${BLUE}Creando directorio para el ejemplo...${NC}"
+        
+        # Crear directorio para el ejemplo
+        mkdir -p "examples/amstrad_cpc/${example_path}"
+        
+        # Copiar el archivo .c al directorio
+        cp "examples/amstrad_cpc/${example_path}.c" "examples/amstrad_cpc/${example_path}/"
+        
+        # Crear un Makefile básico
+        cat > "examples/amstrad_cpc/${example_path}/Makefile" << EOF
+##-----------------------------LICENSE NOTICE------------------------------------
+##  This file is part of CPCtelera: An Amstrad CPC Game Engine 
+##  Copyright (C) 2018 ronaldo / Fremos / Cheesetea / ByteRealms (@FranGallegoBR)
+##
+##  This program is free software: you can redistribute it and/or modify
+##  it under the terms of the GNU Lesser General Public License as published by
+##  the Free Software Foundation, either version 3 of the License, or
+##  (at your option) any later version.
+##
+##  This program is distributed in the hope that it will be useful,
+##  but WITHOUT ANY WARRANTY; without even the implied warranty of
+##  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+##  GNU Lesser General Public License for more details.
+##
+##  You should have received a copy of the GNU Lesser General Public License
+##  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+##------------------------------------------------------------------------------
+##
+## PROJECT CONFIGURATION
+##
+
+# Name of the project (without spaces, as it will be used as filename)
+PROJNAME   := ${example_path}
+
+# Source files (.c, .s)
+SRCFILES   := ${example_path}.c
+
+# Location of the source files
+SRCDIR     := .
+
+# Output directory for compiled binaries and assets
+OBJDIR     := obj
+
+# Compilation platform (linux, macos, win)
+PLATFORM   := linux
+
+# Compiler flags
+Z80CCFLAGS := -mz80 --opt-code-size --std-c99
+
+# Linker flags
+Z80LDFLAGS := -mz80 --no-std-crt0 --code-loc 0x4000
+
+# Executable file extension
+EXTEXT     := bin
+
+# Binary file extension
+BINEXT     := bin
+
+# Disk file extension
+DSKEXT     := dsk
+
+# Commands
+MKDIR      := mkdir -p
+RM         := rm -f
+CP         := cp
+ECHO       := echo
+
+# Find CPCtelera directory
+CPCT_PATH  := \$(shell if [ -d "/home/oscar/cpctelera/cpctelera" ]; then echo "/home/oscar/cpctelera/cpctelera"; elif [ -d "\$(CPCT_PATH)" ]; then echo "\$(CPCT_PATH)"; else echo "CPCT_PATH not found"; fi)
+
+# Memory location for Z80 code
+Z80CODELOC := 0x4000
+
+# Target binary file
+TARGET     := \$(PROJNAME).\$(BINEXT)
+
+# Target disk file
+TARGETDSK  := \$(PROJNAME).\$(DSKEXT)
+
+# Compilation flags
+CCFLAGS    := \$(Z80CCFLAGS) -I\$(CPCT_PATH)/src
+LDFLAGS    := \$(Z80LDFLAGS) -L\$(CPCT_PATH)/cpctelera.lib
+
+# Object files
+OBJFILES   := \$(patsubst %.c,\$(OBJDIR)/%.rel,\$(notdir \$(SRCFILES)))
+
+# Default target
+.PHONY: all clean
+
+all: \$(TARGETDSK)
+
+# Create required directories
+\$(OBJDIR):
+	\$(MKDIR) \$(OBJDIR)
+
+# Compile .c files
+\$(OBJDIR)/%.rel: \$(SRCDIR)/%.c | \$(OBJDIR)
+	\$(CPCT_PATH)/tools/sdcc-3.6.8-r9946/bin/sdcc \$(CCFLAGS) -c \$< -o \$@
+
+# Link object files into a binary
+\$(TARGET): \$(OBJFILES)
+	\$(CPCT_PATH)/tools/sdcc-3.6.8-r9946/bin/sdcc \$(LDFLAGS) \$(OBJFILES) -o \$(TARGET)
+
+# Create a DSK file
+\$(TARGETDSK): \$(TARGET)
+	\$(CPCT_PATH)/tools/iDSK-0.13/bin/iDSK \$(TARGETDSK) -n
+	\$(CPCT_PATH)/tools/iDSK-0.13/bin/iDSK \$(TARGETDSK) -i \$(TARGET) -t 1 -e 0x4000 -c 0x4000 -o 0
+
+# Clean up generated files
+clean:
+	\$(RM) -r \$(OBJDIR)
+	\$(RM) \$(TARGET)
+	\$(RM) \$(TARGETDSK)
+EOF
+        
+        echo -e "${GREEN}✓ Makefile creado para el ejemplo: examples/amstrad_cpc/${example_path}/Makefile${NC}"
+        
+        # Actualizar la ruta del ejemplo
+        example_path="examples/amstrad_cpc/${example_path}"
+    else
+        # Si se proporciona una ruta relativa, añadir el prefijo
+        if [[ ! "$example_path" == examples/* ]]; then
+            example_path="examples/amstrad_cpc/${example_path}"
+        fi
+    fi
     
     if [ ! -d "$example_path" ]; then
         handle_error "El directorio del ejemplo no existe: ${example_path}"
@@ -97,8 +307,19 @@ list_examples() {
     # Buscar ejemplos en el directorio examples/amstrad_cpc
     if [ -d "examples/amstrad_cpc" ]; then
         echo -e "${YELLOW}Ejemplos básicos:${NC}"
-        find "examples/amstrad_cpc" -maxdepth 1 -type d -not -path "examples/amstrad_cpc" | sort | while read -r dir; do
+        
+        # Listar directorios de ejemplos
+        find "examples/amstrad_cpc" -maxdepth 1 -type d -not -path "examples/amstrad_cpc" -not -path "examples/amstrad_cpc/easy" | sort | while read -r dir; do
             echo -e "  - ${BLUE}$(basename "$dir")${NC}"
+        done
+        
+        # Listar archivos .c que podrían ser ejemplos
+        find "examples/amstrad_cpc" -maxdepth 1 -name "*.c" | sort | while read -r file; do
+            filename=$(basename "$file" .c)
+            # Evitar duplicados (si ya existe un directorio con el mismo nombre)
+            if [ ! -d "examples/amstrad_cpc/$filename" ]; then
+                echo -e "  - ${BLUE}${filename}${NC} (archivo único)"
+            fi
         done
         
         # Buscar ejemplos en el directorio examples/amstrad_cpc/easy
@@ -106,6 +327,12 @@ list_examples() {
             echo -e "${YELLOW}Ejemplos de CPCtelera (easy):${NC}"
             find "examples/amstrad_cpc/easy" -maxdepth 1 -type d -not -path "examples/amstrad_cpc/easy" | sort | while read -r dir; do
                 echo -e "  - ${BLUE}easy/$(basename "$dir")${NC}"
+            done
+            
+            # Listar archivos .c en el directorio easy
+            find "examples/amstrad_cpc/easy" -maxdepth 1 -name "*.c" | sort | while read -r file; do
+                filename=$(basename "$file" .c)
+                echo -e "  - ${BLUE}easy/${filename}${NC} (archivo único)"
             done
         fi
     else
@@ -121,6 +348,7 @@ CPCTELERA_PATH=""
 EXAMPLE_MODE=0
 EXAMPLE_PATH=""
 LIST_EXAMPLES=0
+SHOW_ERRORS=0
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -153,25 +381,35 @@ while [[ $# -gt 0 ]]; do
             LIST_EXAMPLES=1
             shift
             ;;
+        --show-errors)
+            SHOW_ERRORS=1
+            shift
+            ;;
         --help)
             echo -e "${BLUE}${BOLD}Uso:${NC}"
             echo -e "  ${YELLOW}./build_amstrad.sh${NC} - Genera y compila código usando el LLM"
             echo -e "  ${YELLOW}./build_amstrad.sh --source=ruta/al/archivo.c${NC} - Compila un archivo fuente específico"
             echo -e "  ${YELLOW}./build_amstrad.sh --example=ruta/al/ejemplo${NC} - Compila un ejemplo específico"
             echo -e "  ${YELLOW}./build_amstrad.sh --list-examples${NC} - Lista los ejemplos disponibles"
+            echo -e "  ${YELLOW}./build_amstrad.sh --show-errors${NC} - Muestra soluciones a errores comunes"
             echo -e "  ${YELLOW}./build_amstrad.sh --no-emulator${NC} - No ejecuta el emulador después de compilar"
             echo -e "  ${YELLOW}./build_amstrad.sh --cpctelera=/ruta/a/cpctelera${NC} - Especifica la ruta a CPCtelera"
             echo -e "  ${YELLOW}./build_amstrad.sh --help${NC} - Muestra esta ayuda"
             exit 0
             ;;
         *)
-            echo "Unknown parameter: $1"
-            exit 1
+            handle_error "Unknown option: $1"
             ;;
     esac
 done
 
 echo -e "${BLUE}${BOLD}🔧 Amstrad CPC Program Builder${NC}\n"
+
+# Si se solicita mostrar soluciones a errores, mostrarlas y salir
+if [ $SHOW_ERRORS -eq 1 ]; then
+    show_error_solutions
+    exit 0
+fi
 
 # Si se solicita listar ejemplos, mostrarlos y salir
 if [ $LIST_EXAMPLES -eq 1 ]; then
@@ -181,21 +419,21 @@ fi
 
 # Si se solicita compilar un ejemplo, hacerlo y salir
 if [ $EXAMPLE_MODE -eq 1 ]; then
-    # Verificar si el ejemplo existe
-    if [[ "$EXAMPLE_PATH" == easy/* ]]; then
-        # Es un ejemplo de CPCtelera
-        EXAMPLE_FULL_PATH="examples/amstrad_cpc/${EXAMPLE_PATH}"
-    else
-        # Es un ejemplo básico
-        EXAMPLE_FULL_PATH="examples/amstrad_cpc/${EXAMPLE_PATH}"
-    fi
+    compile_example "$EXAMPLE_PATH"
     
-    compile_example "$EXAMPLE_FULL_PATH"
-    
-    # Si se solicita ejecutar el emulador, hacerlo
-    if [ $LAUNCH_EMULATOR -eq 1 ]; then
-        # Lanzar el emulador con el DSK generado
-        launch_emulator
+    # Si se solicita lanzar el emulador, hacerlo
+    if [ $LAUNCH_EMULATOR -eq 1 ] && [ -n "$DSK_FULL_PATH" ]; then
+        echo -e "${BLUE}Lanzando emulador...${NC}"
+        
+        case $EMULATOR in
+            retrovirtualmachine)
+                echo -e "${YELLOW}Ejecutando RetroVirtualMachine...${NC}"
+                retrovirtualmachine "$DSK_FULL_PATH" &
+                ;;
+            *)
+                handle_error "Invalid emulator. Use 'retrovirtualmachine'"
+                ;;
+        esac
     fi
     
     exit 0

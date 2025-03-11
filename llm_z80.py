@@ -174,23 +174,65 @@ class LLMZ80Generator:
 
     def read_system_prompt_extra(self):
         """Lee el archivo de recomendaciones adicionales para el system prompt"""
+        content = ""
+        
         # Intentar leer archivo específico de la plataforma primero
         platform_file = f'system_prompt_extra_{self.platform}.txt'
         try:
             if os.path.exists(platform_file):
                 with open(platform_file, 'r', encoding='utf-8') as f:
-                    return "\n" + f.read()
+                    content = "\n" + f.read()
+                logging.info(f"✅ Archivo de prompt específico cargado: {platform_file}")
             else:
                 # Caer en el archivo genérico
                 with open('system_prompt_extra.txt', 'r', encoding='utf-8') as f:
-                    return "\n" + f.read()
+                    content = "\n" + f.read()
+                logging.info(f"✅ Archivo de prompt genérico cargado: system_prompt_extra.txt")
         except FileNotFoundError:
             logging.warning(f"⚠️ No se encontró {platform_file} ni system_prompt_extra.txt")
-            return ""
         except Exception as e:
             logging.error(f"❌ Error leyendo archivo de prompt: {e}")
-            return ""
         
+        # Cargar documentación de errores desde archivos .md
+        error_docs = self._load_error_documentation()
+        if error_docs:
+            content += "\n\n" + error_docs
+            
+        return content
+        
+    def _load_error_documentation(self):
+        """Carga la documentación de errores desde archivos .md"""
+        logging.info(f"📚 Cargando documentación de errores para {self.platform.upper().replace('_', ' ')}...")
+        
+        docs_content = ""
+        examples_dir = Path(f'examples/{self.platform}')
+        
+        if not examples_dir.exists():
+            logging.warning(f"Directorio de ejemplos para {self.platform} no encontrado")
+            return docs_content
+            
+        # Buscar archivos .md en el directorio de ejemplos
+        md_files = list(examples_dir.glob('**/*.md'))
+        
+        if not md_files:
+            logging.info("No se encontraron archivos de documentación .md")
+            return docs_content
+            
+        logging.info(f"Encontrados {len(md_files)} archivos de documentación")
+        
+        # Leer y concatenar el contenido de los archivos .md
+        for md_file in md_files:
+            try:
+                with open(md_file, 'r', encoding='utf-8') as f:
+                    file_content = f.read()
+                    docs_content += f"\n\n--- DOCUMENTACIÓN DE ERRORES: {md_file.name} ---\n\n"
+                    docs_content += file_content
+                logging.info(f"✅ Documentación cargada: {md_file.relative_to(examples_dir)}")
+            except Exception as e:
+                logging.error(f"❌ Error al cargar documentación {md_file}: {e}")
+                
+        return docs_content
+
     def generate_c_code(self, prompt):
         logging.info(f"🤖 Generando código Z80 para {self.platform.upper().replace('_', ' ')} basado en ejemplos existentes...")
         
