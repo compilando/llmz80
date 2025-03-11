@@ -20,10 +20,10 @@
 ##
 
 # Name of the project (without spaces, as it will be used as filename)
-PROJNAME   := anivemin
+PROJNAME   := 02_print
 
 # Source files (.c, .s)
-SRCFILES   := anivemin_example.c
+SRCFILES   := 02_print.c
 
 # Location of the source files
 SRCDIR     := .
@@ -71,9 +71,6 @@ TARGETDSK  := $(PROJNAME).$(DSKEXT)
 CCFLAGS    := $(Z80CCFLAGS) -I$(CPCT_PATH)/src
 LDFLAGS    := $(Z80LDFLAGS) -L$(CPCT_PATH)/cpctelera.lib
 
-# CPCtelera libraries
-CPCT_LIB   := $(CPCT_PATH)/cpctelera.lib
-
 # Object files
 OBJFILES   := $(patsubst %.c,$(OBJDIR)/%.rel,$(notdir $(SRCFILES)))
 
@@ -92,15 +89,15 @@ $(OBJDIR)/%.rel: $(SRCDIR)/%.c | $(OBJDIR)
 
 # Link object files into a binary
 $(TARGET): $(OBJFILES)
-	$(CPCT_PATH)/tools/sdcc-3.6.8-r9946/bin/sdcc $(LDFLAGS) $(OBJFILES) -o $(TARGET) $(CPCT_PATH)/cpctelera.lib
+	$(CPCT_PATH)/tools/sdcc-3.6.8-r9946/bin/sdcc $(LDFLAGS) $(OBJFILES) -o $(TARGET)
 
 # Create a DSK file
 $(TARGETDSK): $(TARGET)
 	$(CPCT_PATH)/tools/iDSK-0.13/bin/iDSK $(TARGETDSK) -n
-	$(CPCT_PATH)/tools/iDSK-0.13/bin/iDSK $(TARGETDSK) -i $(TARGET) -t 1 -e 4000 -c 4000
+	$(CPCT_PATH)/tools/iDSK-0.13/bin/iDSK $(TARGETDSK) -i $(TARGET) -t 1 -e 0x4000 -c 0x4000 -o 0
 
 # Clean up generated files
 clean:
 	$(RM) -r $(OBJDIR)
 	$(RM) $(TARGET)
-	$(RM) $(TARGETDSK) 
+	$(RM) $(TARGETDSK)

@@ -40,27 +40,14 @@ cpct_drawSolidBox((void*)(0xC000 + 0x0400), 1, 40, 40);
 cpct_drawSolidBox((void*)(SCREEN_START + OFFSET_LINE_50), 1, 40, 40);
 ```
 
-### Error: `syntax error: token -> 'Node'` o `syntax error: token -> 'char'`
+### Error: `syntax error: token -> 'Node'`
 
-**Problema**: El compilador no reconoce un tipo de dato personalizado o hay un error en la declaración de estructuras.
+**Problema**: El compilador no reconoce el tipo de estructura `Node`.
 
 **Solución**:
-- Asegúrate de definir las estructuras antes de usarlas.
-- En SDCC para Z80, las declaraciones de estructuras deben seguir un formato específico.
-- Usa `typedef` para simplificar el uso de estructuras.
-
-```c
-// Definición correcta de una estructura
-typedef struct {
-    u8 x;
-    u8 y;
-    u8 color;
-} Sprite;
-
-// Ahora puedes usar el tipo Sprite
-Sprite player;
-player.x = 10;
-```
+- Asegúrate de definir la estructura antes de usarla.
+- Verifica que la definición de la estructura sea correcta.
+- Declara las variables del tipo de la estructura después de su definición.
 
 ## Errores de Variables
 
@@ -80,53 +67,22 @@ const u8 g_palette[16] = {0, 3, 6, 9, 12, 15, 18, 21, 24, 26, 28, 30, 31, 22, 14
 cpct_setPalette(g_palette, 16);
 ```
 
-### Error: `Undefined identifier 'response'` o `Undefined identifier 'root'`
+### Error: `Undefined identifier 'root'`
 
-**Problema**: Estás usando variables que no han sido definidas en el ámbito actual.
-
-**Solución**:
-- Declara todas las variables antes de usarlas.
-- Verifica el ámbito (scope) de las variables.
-- Asegúrate de que los nombres de variables sean consistentes (mayúsculas/minúsculas).
-
-```c
-// Declaración correcta de variables
-char response[20];
-Node* root = NULL;
-
-// Ahora puedes usar estas variables
-strcpy(response, "OK");
-if (root == NULL) {
-    // ...
-}
-```
-
-### Error: `Undefined identifier 'animal'`, `Undefined identifier 'vegetal'`, `Undefined identifier 'mineral'`
-
-**Problema**: Estás usando variables que no han sido definidas en el ámbito actual.
+**Problema**: Estás usando una variable que no ha sido definida.
 
 **Solución**:
-- Declara todas las variables antes de usarlas.
-- Si son punteros a estructuras, asegúrate de que las estructuras estén definidas.
-- Inicializa los punteros antes de usarlos.
+- Declara la variable `root` antes de usarla.
+- Si es una variable global, declárala al principio del archivo.
+- Si es una variable local, declárala al principio de la función.
 
-```c
-// Definición de la estructura
-typedef struct Node {
-    u8 value;
-    struct Node* next;
-} Node;
+### Error: `Undefined identifier 'new_node'`
 
-// Declaración correcta de variables
-Node* animal = NULL;
-Node* vegetal = NULL;
-Node* mineral = NULL;
+**Problema**: Estás usando una variable que no ha sido definida.
 
-// Inicialización usando un pool de nodos
-animal = &nodes_pool[0];
-vegetal = &nodes_pool[1];
-mineral = &nodes_pool[2];
-```
+**Solución**:
+- Declara la variable `new_node` antes de usarla.
+- En funciones, declara todas las variables al principio de la función.
 
 ## Errores de Tipos
 
@@ -165,11 +121,11 @@ u8* ptr = (u8*)0xC000;
 
 ### Error: `incompatible types from type 'void' to type 'signed-char generic* fixed'`
 
-**Problema**: Estás intentando asignar un valor de tipo `void` a un puntero a `char`.
+**Problema**: Estás intentando asignar un valor de un tipo a una variable de otro tipo incompatible.
 
 **Solución**:
-- Usa casting explícito para convertir entre tipos de punteros.
-- Asegúrate de que la asignación tenga sentido semánticamente.
+- Asegúrate de que los tipos sean compatibles.
+- Usa casting explícito cuando sea necesario.
 
 ```c
 // Mal
@@ -205,25 +161,12 @@ MyStruct* specific_ptr = (MyStruct*)generic_ptr;
 
 ### Error: `Pointer required`
 
-**Problema**: Estás intentando acceder a un miembro de una estructura usando una variable que no es un puntero.
+**Problema**: Estás intentando usar el operador `->` con algo que no es un puntero.
 
 **Solución**:
-- Asegúrate de que la variable sea un puntero válido antes de usar el operador `->`.
-- Inicializa los punteros antes de usarlos.
-
-```c
-// Mal
-Node root;
-root->value = 10; // Error: Pointer required
-
-// Bien
-Node* root = &nodes_pool[0];
-root->value = 10; // Correcto
-
-// Alternativa usando notación de punto para variables no puntero
-Node root;
-root.value = 10; // Correcto
-```
+- Asegúrate de que la variable sea un puntero antes de usar `->`.
+- Si la variable no es un puntero, usa el operador `.` en su lugar.
+- Verifica que la variable esté correctamente inicializada.
 
 ## Errores de Arrays
 
@@ -588,6 +531,85 @@ void main(void) {
         }
     }
 }
+```
+
+## Errores de Enlazado
+
+### Error: `Undefined Global '_cpct_setPalette' referenced by module`
+
+**Problema**: El enlazador no puede encontrar la función `cpct_setPalette` en las librerías.
+
+**Solución**:
+- Asegúrate de incluir la librería de CPCtelera correctamente en el Makefile.
+- Añade `$(CPCT_PATH)/cpctelera.lib` al comando de enlazado.
+- Verifica que la ruta a CPCtelera sea correcta.
+
+## Errores de Herramientas
+
+### Error: `Trop d'options !` (iDSK)
+
+**Problema**: La herramienta iDSK está recibiendo demasiadas opciones o opciones incorrectas.
+
+**Solución**:
+- Simplifica el comando iDSK.
+- Elimina la opción `-o 0` si no es necesaria.
+- Usa `4000` en lugar de `0x4000` para las direcciones.
+
+## Ejemplos de Soluciones
+
+### Declaración de Variables Globales
+
+```c
+// Definición de la estructura
+typedef struct Node {
+    char question[40];
+    struct Node *yes;
+    struct Node *no;
+    u8 is_answer;
+    u8 category;
+} Node;
+
+// Variables globales
+Node *root = NULL;
+Node *current_node = NULL;
+```
+
+### Declaración de Variables Locales
+
+```c
+void process_input() {
+    // Declarar variables al inicio de la función
+    Node *new_node;
+    
+    // Resto de la función
+    // ...
+    
+    // Usar la variable
+    new_node = allocate_node();
+}
+```
+
+### Makefile Correcto para CPCtelera
+
+```makefile
+# Link object files into a binary
+$(TARGET): $(OBJFILES)
+	$(CPCT_PATH)/tools/sdcc-3.6.8-r9946/bin/sdcc $(LDFLAGS) $(OBJFILES) -o $(TARGET) $(CPCT_PATH)/cpctelera.lib
+
+# Create a DSK file
+$(TARGETDSK): $(TARGET)
+	$(CPCT_PATH)/tools/iDSK-0.13/bin/iDSK $(TARGETDSK) -n
+	$(CPCT_PATH)/tools/iDSK-0.13/bin/iDSK $(TARGETDSK) -i $(TARGET) -t 1 -e 4000 -c 4000
+```
+
+## Ejemplo Completo: Anivemin
+
+Para ver un ejemplo completo de un juego que implementa un árbol de decisión sin usar memoria dinámica, consulta el ejemplo `anivemin_example` en la carpeta `examples/amstrad_cpc/anivemin_example`.
+
+Puedes compilarlo con:
+
+```bash
+./build_amstrad.sh --example=anivemin_example
 ```
 
 ## Recursos Adicionales

@@ -1,0 +1,12 @@
+-mjwx
+-i anivemin.bin
+-b _CODE = 0x4000
+-b _DATA = 0x8000
+-k /home/oscar/cpctelera/cpctelera/cpctelera.lib
+-k /home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80
+-k /home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/share/sdcc/lib/z80
+-l /home/oscar/cpctelera/cpctelera/cpctelera.lib
+-l z80
+obj/anivemin_example.rel
+
+-e

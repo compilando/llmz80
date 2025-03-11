@@ -1,0 +1,26 @@
+DEF .__.ABS. 0x0
+DEF _cpct_disableFirmware 0x0
+DEF _cpct_drawStringM1 0x0
+DEF _cpct_setDrawCharM1 0x0
+DEF _cpct_setPALColour 0x0
+DEF _cpct_setVideoMode 0x0
+DEF l__CABS 0x0
+DEF l__DABS 0x0
+DEF l__DATA 0x0
+DEF l__GSFINAL 0x0
+DEF l__GSINIT 0x0
+DEF l__HOME 0x0
+DEF l__INITIALIZED 0x0
+DEF l__INITIALIZER 0x0
+DEF s__CABS 0x0
+DEF s__DABS 0x0
+DEF l__CODE 0x76
+DEF s__CODE 0x4000
+DEF s__DATA 0x8000
+DEF s__GSFINAL 0x8000
+DEF s__GSINIT 0x8000
+DEF s__HOME 0x8000
+DEF s__INITIALIZED 0x8000
+DEF s__INITIALIZER 0x8000
+DEF _main 0x4000
+LOAD 02_print.ihx
