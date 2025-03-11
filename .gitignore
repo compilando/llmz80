@@ -26,6 +26,8 @@ pip-wheel-metadata/
 venv/
 ENV/
 
+local/
+
 # Jupyter notebooks checkpoints
 .ipynb_checkpoints/
 

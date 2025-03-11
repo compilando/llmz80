@@ -1,0 +1,14 @@
+-mjwx
+-i obj/tilemap.ihx
+-b _CODE = 0x4000
+-b _DATA = 0x0000
+-u
+-k /home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80
+-k /home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/share/sdcc/lib/z80
+-l /home/oscar/cpctelera/cpctelera/cpctelera.lib
+-l z80
+obj/map/court.rel
+obj/map/tiles.rel
+obj/main.rel
+
+-e

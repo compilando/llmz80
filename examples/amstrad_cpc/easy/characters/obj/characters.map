@@ -1,0 +1,112 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__DATA                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     000004DD  l__CODE                         
+     00004000  s__CODE                         
+     000044DD  s__DATA                         
+     000044DD  s__GSFINAL                      
+     000044DD  s__GSINIT                       
+     000044DD  s__HOME                         
+     000044DD  s__INITIALIZED                  
+     000044DD  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    000004DD =        1245. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00004000  _incrementedVideoPos               main
+     00004036  _print256Chars                     main
+     00004145  _drawCharacters                    main
+     000041F1  _main                              main
+     000042C8  _cpct_drawCharM0                   cpct_strings
+     000042EB  _cpct_drawCharM1                   cpct_strings
+     0000430E  _cpct_drawCharM2                   cpct_strings
+     00004329  _cpct_setVideoMode                 cpct_video
+     00004337  _cpct_memset                       cpct_memutils
+     00004345  _cpct_disableFirmware              cpct_firmware
+     00004345  _cpct_removeInterruptHandler       cpct_firmware
+     00004345  cpct_disableFirmware_asm           cpct_firmware
+     00004345  cpct_removeInterruptHandler_asm    cpct_firmware
+     00004355  _cpct_mode_rom_status              cpct_firmware
+     00004356  _cpct_setDrawCharM0                cpct_strings
+     0000437B  _cpct_setDrawCharM1                cpct_strings
+     000043CF  cpct_drawCharM1_inner_asm          cpct_strings
+     0000440F  cpct_char2pxM1                     cpct_strings
+     0000441F  _cpct_setDrawCharM2                cpct_strings
+     0000443F  cpct_drawCharM0_inner_asm          cpct_strings
+     0000449F  dc_2pxtableM0                      cpct_strings
+     000044A3  cpct_drawCharM2_inner_asm          cpct_strings
+     000044B2  cpct_charm2imc                     cpct_strings
+     000044C9  dc_mode0_ct                        cpct_strings
+     000044D9  dc_mode1_ct                        
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+
+Files Linked                              [ module(s) ]
+
+obj/main.rel                              [ main ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawCharM0_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawCharM1_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawCharM2_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMode_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_memset_cbinding.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setDrawCharM0_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setDrawCharM1_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawCharM1_inner.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setDrawCharM2_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawCharM0_inner.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawCharM2_inner.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_dc_mode0_ct.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_dc_mode1_ct.rel ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+
+User Base Address Definitions
+
+_CODE = 0x4000
+_DATA = 0x0000
+
+

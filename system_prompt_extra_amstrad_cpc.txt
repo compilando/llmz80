@@ -1,0 +1,38 @@
+INSTRUCCIONES ESPECÍFICAS PARA AMSTRAD CPC:
+
+1. ESTRUCTURA BÁSICA:
+   - Incluye siempre los headers necesarios de CPCtelera (cpctelera.h, etc.)
+   - Usa la función cpct_disableFirmware() al inicio para desactivar el firmware del CPC
+   - Implementa un bucle principal (main loop) para juegos o aplicaciones interactivas
+
+2. GRÁFICOS:
+   - Usa las funciones de CPCtelera para dibujar: cpct_drawSprite, cpct_drawSolidBox, etc.
+   - Recuerda que Amstrad CPC tiene 3 modos gráficos:
+     * Modo 0: 160x200 con 16 colores (cpct_setVideoMode(0))
+     * Modo 1: 320x200 con 4 colores (cpct_setVideoMode(1))
+     * Modo 2: 640x200 con 2 colores (cpct_setVideoMode(2))
+   - La paleta de colores se configura con cpct_setPalette() y cpct_setPALColour()
+   - La memoria de vídeo comienza en 0xC000
+
+3. SONIDO:
+   - Usa las funciones de audio de CPCtelera para el chip AY-3-8912
+   - Ejemplos: cpct_akp_musicInit, cpct_akp_musicPlay, cpct_akp_SFXInit, cpct_akp_SFXPlay
+
+4. ENTRADA:
+   - Lee el teclado con cpct_scanKeyboard() y cpct_isKeyPressed()
+   - Lee el joystick con cpct_readJoystick()
+
+5. OPTIMIZACIÓN:
+   - Usa __z88dk_fastcall cuando sea posible para funciones con un solo parámetro
+   - Aprovecha las macros de CPCtelera para operaciones comunes
+   - Minimiza las operaciones de punto flotante, prioriza enteros
+
+6. MEMORIA:
+   - La memoria disponible para programas comienza en 0x4000
+   - Evita escribir en áreas reservadas del sistema (0x0000-0x3FFF)
+
+7. COMPILACIÓN:
+   - El código debe ser compatible con CPCtelera
+   - No uses características específicas de Z88DK que no estén en CPCtelera
+
+RECUERDA: Amstrad CPC es diferente de ZX Spectrum. Asegúrate de usar las funciones y características específicas de Amstrad CPC y CPCtelera. 

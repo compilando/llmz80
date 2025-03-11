@@ -1,0 +1,272 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module main
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _main
+                             12 	.globl _printRandomNumbers
+                             13 	.globl _initialize
+                             14 	.globl _wait4UserKeypress
+                             15 	.globl _printf
+                             16 	.globl _cpct_restoreState_mxor_u8
+                             17 	.globl _cpct_setSeed_mxor
+                             18 	.globl _cpct_getRandom_mxor_u8
+                             19 	.globl _cpct_isAnyKeyPressed_f
+                             20 	.globl _cpct_scanKeyboard_f
+                             21 ;--------------------------------------------------------
+                             22 ; special function registers
+                             23 ;--------------------------------------------------------
+                             24 ;--------------------------------------------------------
+                             25 ; ram data
+                             26 ;--------------------------------------------------------
+                             27 	.area _DATA
+                             28 ;--------------------------------------------------------
+                             29 ; ram data
+                             30 ;--------------------------------------------------------
+                             31 	.area _INITIALIZED
+                             32 ;--------------------------------------------------------
+                             33 ; absolute external ram data
+                             34 ;--------------------------------------------------------
+                             35 	.area _DABS (ABS)
+                             36 ;--------------------------------------------------------
+                             37 ; global & static initialisations
+                             38 ;--------------------------------------------------------
+                             39 	.area _HOME
+                             40 	.area _GSINIT
+                             41 	.area _GSFINAL
+                             42 	.area _GSINIT
+                             43 ;--------------------------------------------------------
+                             44 ; Home
+                             45 ;--------------------------------------------------------
+                             46 	.area _HOME
+                             47 	.area _HOME
+                             48 ;--------------------------------------------------------
+                             49 ; code
+                             50 ;--------------------------------------------------------
+                             51 	.area _CODE
+                             52 ;src/main.c:33: u32 wait4UserKeypress() {
+                             53 ;	---------------------------------
+                             54 ; Function wait4UserKeypress
+                             55 ; ---------------------------------
+   0000                      56 _wait4UserKeypress::
+                             57 ;src/main.c:37: do {
+   0000 21 00 00      [10]   58 	ld	hl,#0x0000
+   0003 5D            [ 4]   59 	ld	e,l
+   0004 54            [ 4]   60 	ld	d,h
+   0005                      61 00101$:
+                             62 ;src/main.c:38: c++;                       // One more cycle
+   0005 2C            [ 4]   63 	inc	l
+   0006 20 07         [12]   64 	jr	NZ,00115$
+   0008 24            [ 4]   65 	inc	h
+   0009 20 04         [12]   66 	jr	NZ,00115$
+   000B 1C            [ 4]   67 	inc	e
+   000C 20 01         [12]   68 	jr	NZ,00115$
+   000E 14            [ 4]   69 	inc	d
+   000F                      70 00115$:
+                             71 ;src/main.c:39: cpct_scanKeyboard_f();     // Scan the scan the keyboard
+   000F E5            [11]   72 	push	hl
+   0010 D5            [11]   73 	push	de
+   0011 CDr00r00      [17]   74 	call	_cpct_scanKeyboard_f
+   0014 CDr00r00      [17]   75 	call	_cpct_isAnyKeyPressed_f
+   0017 7D            [ 4]   76 	ld	a, l
+   0018 D1            [10]   77 	pop	de
+   0019 E1            [10]   78 	pop	hl
+   001A B7            [ 4]   79 	or	a, a
+   001B 28 E8         [12]   80 	jr	Z,00101$
+                             81 ;src/main.c:42: return c;
+   001D C9            [10]   82 	ret
+                             83 ;src/main.c:50: void initialize() {
+                             84 ;	---------------------------------
+                             85 ; Function initialize
+                             86 ; ---------------------------------
+   001E                      87 _initialize::
+                             88 ;src/main.c:54: printf("\017\003========= BASIC RANDOM NUMBERS =========\n\n\r");
+   001E 21r5Ar00      [10]   89 	ld	hl, #___str_0
+   0021 E5            [11]   90 	push	hl
+   0022 CDr00r00      [17]   91 	call	_printf
+                             92 ;src/main.c:55: printf("\017\002Press any key to generate random numbers\n\n\r");
+   0025 21r88r00      [10]   93 	ld	hl, #___str_1
+   0028 E3            [19]   94 	ex	(sp),hl
+   0029 CDr00r00      [17]   95 	call	_printf
+   002C F1            [10]   96 	pop	af
+                             97 ;src/main.c:59: seed = wait4UserKeypress();
+   002D CDr00r00      [17]   98 	call	_wait4UserKeypress
+   0030 EB            [ 4]   99 	ex	de, hl
+                            100 ;src/main.c:62: if (!seed)
+   0031 7C            [ 4]  101 	ld	a, h
+   0032 B5            [ 4]  102 	or	a, l
+   0033 B2            [ 4]  103 	or	a, d
+   0034 B3            [ 4]  104 	or	a,e
+   0035 20 0A         [12]  105 	jr	NZ,00102$
+                            106 ;src/main.c:63: seed++;
+   0037 1C            [ 4]  107 	inc	e
+   0038 20 07         [12]  108 	jr	NZ,00109$
+   003A 14            [ 4]  109 	inc	d
+   003B 20 04         [12]  110 	jr	NZ,00109$
+   003D 2C            [ 4]  111 	inc	l
+   003E 20 01         [12]  112 	jr	NZ,00109$
+   0040 24            [ 4]  113 	inc	h
+   0041                     114 00109$:
+   0041                     115 00102$:
+                            116 ;src/main.c:66: printf("\017\003Selected seed: \017\002%d\n\r", seed);
+   0041 01rB6r00      [10]  117 	ld	bc, #___str_2+0
+   0044 E5            [11]  118 	push	hl
+   0045 D5            [11]  119 	push	de
+   0046 E5            [11]  120 	push	hl
+   0047 D5            [11]  121 	push	de
+   0048 C5            [11]  122 	push	bc
+   0049 CDr00r00      [17]  123 	call	_printf
+   004C 21 06 00      [10]  124 	ld	hl, #6
+   004F 39            [11]  125 	add	hl, sp
+   0050 F9            [ 6]  126 	ld	sp, hl
+   0051 D1            [10]  127 	pop	de
+   0052 E1            [10]  128 	pop	hl
+                            129 ;src/main.c:67: cpct_srand(seed);
+   0053 EB            [ 4]  130 	ex	de, hl
+   0054 CDr00r00      [17]  131 	call	_cpct_setSeed_mxor
+   0057 C3r00r00      [10]  132 	jp  _cpct_restoreState_mxor_u8
+   005A                     133 ___str_0:
+   005A 0F                  134 	.db 0x0f
+   005B 03                  135 	.db 0x03
+   005C 3D 3D 3D 3D 3D 3D   136 	.ascii "========= BASIC RANDOM NUMBERS ========="
+        3D 3D 3D 20 42 41
+        53 49 43 20 52 41
+        4E 44 4F 4D 20 4E
+        55 4D 42 45 52 53
+        20 3D 3D 3D 3D 3D
+        3D 3D 3D 3D
+   0084 0A                  137 	.db 0x0a
+   0085 0A                  138 	.db 0x0a
+   0086 0D                  139 	.db 0x0d
+   0087 00                  140 	.db 0x00
+   0088                     141 ___str_1:
+   0088 0F                  142 	.db 0x0f
+   0089 02                  143 	.db 0x02
+   008A 50 72 65 73 73 20   144 	.ascii "Press any key to generate random numbers"
+        61 6E 79 20 6B 65
+        79 20 74 6F 20 67
+        65 6E 65 72 61 74
+        65 20 72 61 6E 64
+        6F 6D 20 6E 75 6D
+        62 65 72 73
+   00B2 0A                  145 	.db 0x0a
+   00B3 0A                  146 	.db 0x0a
+   00B4 0D                  147 	.db 0x0d
+   00B5 00                  148 	.db 0x00
+   00B6                     149 ___str_2:
+   00B6 0F                  150 	.db 0x0f
+   00B7 03                  151 	.db 0x03
+   00B8 53 65 6C 65 63 74   152 	.ascii "Selected seed: "
+        65 64 20 73 65 65
+        64 3A 20
+   00C7 0F                  153 	.db 0x0f
+   00C8 02                  154 	.db 0x02
+   00C9 25 64               155 	.ascii "%d"
+   00CB 0A                  156 	.db 0x0a
+   00CC 0D                  157 	.db 0x0d
+   00CD 00                  158 	.db 0x00
+                            159 ;src/main.c:76: void printRandomNumbers(u8 nNumbers) {
+                            160 ;	---------------------------------
+                            161 ; Function printRandomNumbers
+                            162 ; ---------------------------------
+   00CE                     163 _printRandomNumbers::
+   00CE DD E5         [15]  164 	push	ix
+   00D0 DD 21 00 00   [14]  165 	ld	ix,#0
+   00D4 DD 39         [15]  166 	add	ix,sp
+                            167 ;src/main.c:78: printf("\017\003Generating \017\002%d\017\003 random numbers\n\n\r\017\001", N_RND_NUMBERS);
+   00D6 21 32 00      [10]  168 	ld	hl, #0x0032
+   00D9 E5            [11]  169 	push	hl
+   00DA 21r0Cr01      [10]  170 	ld	hl, #___str_3
+   00DD E5            [11]  171 	push	hl
+   00DE CDr00r00      [17]  172 	call	_printf
+   00E1 F1            [10]  173 	pop	af
+   00E2 F1            [10]  174 	pop	af
+                            175 ;src/main.c:81: while (nNumbers--) {
+   00E3 DD 4E 04      [19]  176 	ld	c, 4 (ix)
+   00E6                     177 00101$:
+   00E6 41            [ 4]  178 	ld	b, c
+   00E7 0D            [ 4]  179 	dec	c
+   00E8 78            [ 4]  180 	ld	a, b
+   00E9 B7            [ 4]  181 	or	a, a
+   00EA 28 15         [12]  182 	jr	Z,00103$
+                            183 ;src/main.c:82: u8 random_number = cpct_rand();  // Get next random number
+   00EC C5            [11]  184 	push	bc
+   00ED CDr00r00      [17]  185 	call	_cpct_getRandom_mxor_u8
+   00F0 C1            [10]  186 	pop	bc
+                            187 ;src/main.c:83: printf("%d ", random_number);    // Print it 
+   00F1 26 00         [ 7]  188 	ld	h, #0x00
+   00F3 C5            [11]  189 	push	bc
+   00F4 E5            [11]  190 	push	hl
+   00F5 21r34r01      [10]  191 	ld	hl, #___str_4
+   00F8 E5            [11]  192 	push	hl
+   00F9 CDr00r00      [17]  193 	call	_printf
+   00FC F1            [10]  194 	pop	af
+   00FD F1            [10]  195 	pop	af
+   00FE C1            [10]  196 	pop	bc
+   00FF 18 E5         [12]  197 	jr	00101$
+   0101                     198 00103$:
+                            199 ;src/main.c:87: printf("\n\n\r");
+   0101 21r38r01      [10]  200 	ld	hl, #___str_5
+   0104 E5            [11]  201 	push	hl
+   0105 CDr00r00      [17]  202 	call	_printf
+   0108 F1            [10]  203 	pop	af
+   0109 DD E1         [14]  204 	pop	ix
+   010B C9            [10]  205 	ret
+   010C                     206 ___str_3:
+   010C 0F                  207 	.db 0x0f
+   010D 03                  208 	.db 0x03
+   010E 47 65 6E 65 72 61   209 	.ascii "Generating "
+        74 69 6E 67 20
+   0119 0F                  210 	.db 0x0f
+   011A 02                  211 	.db 0x02
+   011B 25 64               212 	.ascii "%d"
+   011D 0F                  213 	.db 0x0f
+   011E 03                  214 	.db 0x03
+   011F 20 72 61 6E 64 6F   215 	.ascii " random numbers"
+        6D 20 6E 75 6D 62
+        65 72 73
+   012E 0A                  216 	.db 0x0a
+   012F 0A                  217 	.db 0x0a
+   0130 0D                  218 	.db 0x0d
+   0131 0F                  219 	.db 0x0f
+   0132 01                  220 	.db 0x01
+   0133 00                  221 	.db 0x00
+   0134                     222 ___str_4:
+   0134 25 64 20            223 	.ascii "%d "
+   0137 00                  224 	.db 0x00
+   0138                     225 ___str_5:
+   0138 0A                  226 	.db 0x0a
+   0139 0A                  227 	.db 0x0a
+   013A 0D                  228 	.db 0x0d
+   013B 00                  229 	.db 0x00
+                            230 ;src/main.c:93: void main(void) {
+                            231 ;	---------------------------------
+                            232 ; Function main
+                            233 ; ---------------------------------
+   013C                     234 _main::
+                            235 ;src/main.c:95: while (1) {
+   013C                     236 00105$:
+                            237 ;src/main.c:97: initialize();  
+   013C CDr1Er00      [17]  238 	call	_initialize
+                            239 ;src/main.c:98: printRandomNumbers(N_RND_NUMBERS);
+   013F 3E 32         [ 7]  240 	ld	a, #0x32
+   0141 F5            [11]  241 	push	af
+   0142 33            [ 6]  242 	inc	sp
+   0143 CDrCEr00      [17]  243 	call	_printRandomNumbers
+   0146 33            [ 6]  244 	inc	sp
+                            245 ;src/main.c:101: do { cpct_scanKeyboard_f(); } while ( cpct_isAnyKeyPressed_f() );
+   0147                     246 00101$:
+   0147 CDr00r00      [17]  247 	call	_cpct_scanKeyboard_f
+   014A CDr00r00      [17]  248 	call	_cpct_isAnyKeyPressed_f
+   014D 7D            [ 4]  249 	ld	a, l
+   014E B7            [ 4]  250 	or	a, a
+   014F 20 F6         [12]  251 	jr	NZ,00101$
+   0151 18 E9         [12]  252 	jr	00105$
+                            253 	.area _CODE
+                            254 	.area _INITIALIZER
+                            255 	.area _CABS (ABS)

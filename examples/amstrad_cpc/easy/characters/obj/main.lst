@@ -1,0 +1,504 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module main
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _main
+                             12 	.globl _drawCharacters
+                             13 	.globl _print256Chars
+                             14 	.globl _incrementedVideoPos
+                             15 	.globl _cpct_setVideoMode
+                             16 	.globl _cpct_drawCharM2
+                             17 	.globl _cpct_drawCharM1
+                             18 	.globl _cpct_drawCharM0
+                             19 	.globl _cpct_setDrawCharM2
+                             20 	.globl _cpct_setDrawCharM1
+                             21 	.globl _cpct_setDrawCharM0
+                             22 	.globl _cpct_memset
+                             23 	.globl _cpct_disableFirmware
+                             24 ;--------------------------------------------------------
+                             25 ; special function registers
+                             26 ;--------------------------------------------------------
+                             27 ;--------------------------------------------------------
+                             28 ; ram data
+                             29 ;--------------------------------------------------------
+                             30 	.area _DATA
+                             31 ;--------------------------------------------------------
+                             32 ; ram data
+                             33 ;--------------------------------------------------------
+                             34 	.area _INITIALIZED
+                             35 ;--------------------------------------------------------
+                             36 ; absolute external ram data
+                             37 ;--------------------------------------------------------
+                             38 	.area _DABS (ABS)
+                             39 ;--------------------------------------------------------
+                             40 ; global & static initialisations
+                             41 ;--------------------------------------------------------
+                             42 	.area _HOME
+                             43 	.area _GSINIT
+                             44 	.area _GSFINAL
+                             45 	.area _GSINIT
+                             46 ;--------------------------------------------------------
+                             47 ; Home
+                             48 ;--------------------------------------------------------
+                             49 	.area _HOME
+                             50 	.area _HOME
+                             51 ;--------------------------------------------------------
+                             52 ; code
+                             53 ;--------------------------------------------------------
+                             54 	.area _CODE
+                             55 ;src/main.c:25: u8* incrementedVideoPos(u8* pvideomem, u8 inc) {
+                             56 ;	---------------------------------
+                             57 ; Function incrementedVideoPos
+                             58 ; ---------------------------------
+   0000                      59 _incrementedVideoPos::
+   0000 DD E5         [15]   60 	push	ix
+   0002 DD 21 00 00   [14]   61 	ld	ix,#0
+   0006 DD 39         [15]   62 	add	ix,sp
+                             63 ;src/main.c:27: pvideomem += inc;
+   0008 DD 7E 04      [19]   64 	ld	a, 4 (ix)
+   000B DD 86 06      [19]   65 	add	a, 6 (ix)
+   000E DD 77 04      [19]   66 	ld	4 (ix), a
+   0011 DD 7E 05      [19]   67 	ld	a, 5 (ix)
+   0014 CE 00         [ 7]   68 	adc	a, #0x00
+   0016 DD 77 05      [19]   69 	ld	5 (ix), a
+                             70 ;src/main.c:32: if (pvideomem > (u8*)0xC7D0)
+   0019 3E D0         [ 7]   71 	ld	a, #0xd0
+   001B DD BE 04      [19]   72 	cp	a, 4 (ix)
+   001E 3E C7         [ 7]   73 	ld	a, #0xc7
+   0020 DD 9E 05      [19]   74 	sbc	a, 5 (ix)
+   0023 30 08         [12]   75 	jr	NC,00102$
+                             76 ;src/main.c:33: pvideomem = (u8*)CPCT_VMEM_START;
+   0025 DD 36 04 00   [19]   77 	ld	4 (ix), #0x00
+   0029 DD 36 05 C0   [19]   78 	ld	5 (ix), #0xc0
+   002D                      79 00102$:
+                             80 ;src/main.c:36: return pvideomem;
+   002D DD 6E 04      [19]   81 	ld	l,4 (ix)
+   0030 DD 66 05      [19]   82 	ld	h,5 (ix)
+   0033 DD E1         [14]   83 	pop	ix
+   0035 C9            [10]   84 	ret
+                             85 ;src/main.c:42: void print256Chars(u8 **pvideomem, u8 mode, u8 fg_colour, u8 bg_colour) {
+                             86 ;	---------------------------------
+                             87 ; Function print256Chars
+                             88 ; ---------------------------------
+   0036                      89 _print256Chars::
+   0036 DD E5         [15]   90 	push	ix
+   0038 DD 21 00 00   [14]   91 	ld	ix,#0
+   003C DD 39         [15]   92 	add	ix,sp
+   003E 21 F4 FF      [10]   93 	ld	hl, #-12
+   0041 39            [11]   94 	add	hl, sp
+                             95 ;src/main.c:43: const u8 increments[3] = { 4, 2, 1 };
+   0042 F9            [ 6]   96 	ld	sp, hl
+   0043 23            [ 6]   97 	inc	hl
+   0044 23            [ 6]   98 	inc	hl
+   0045 4D            [ 4]   99 	ld	c,l
+   0046 44            [ 4]  100 	ld	b,h
+   0047 36 04         [10]  101 	ld	(hl),#0x04
+   0049 69            [ 4]  102 	ld	l, c
+   004A 60            [ 4]  103 	ld	h, b
+   004B 23            [ 6]  104 	inc	hl
+   004C 36 02         [10]  105 	ld	(hl), #0x02
+   004E 69            [ 4]  106 	ld	l, c
+   004F 60            [ 4]  107 	ld	h, b
+   0050 23            [ 6]  108 	inc	hl
+   0051 23            [ 6]  109 	inc	hl
+   0052 36 01         [10]  110 	ld	(hl), #0x01
+                            111 ;src/main.c:48: increment = increments[mode];
+   0054 DD 6E 06      [19]  112 	ld	l,6 (ix)
+   0057 26 00         [ 7]  113 	ld	h,#0x00
+   0059 09            [11]  114 	add	hl, bc
+   005A 7E            [ 7]  115 	ld	a, (hl)
+   005B DD 77 F4      [19]  116 	ld	-12 (ix), a
+                            117 ;src/main.c:51: switch (mode) {
+   005E DD 7E 06      [19]  118 	ld	a, 6 (ix)
+   0061 B7            [ 4]  119 	or	a, a
+   0062 20 04         [12]  120 	jr	NZ,00143$
+   0064 3E 01         [ 7]  121 	ld	a,#0x01
+   0066 18 01         [12]  122 	jr	00144$
+   0068                     123 00143$:
+   0068 AF            [ 4]  124 	xor	a,a
+   0069                     125 00144$:
+   0069 DD 77 FF      [19]  126 	ld	-1 (ix), a
+   006C DD 7E 06      [19]  127 	ld	a, 6 (ix)
+   006F 3D            [ 4]  128 	dec	a
+   0070 20 04         [12]  129 	jr	NZ,00145$
+   0072 3E 01         [ 7]  130 	ld	a,#0x01
+   0074 18 01         [12]  131 	jr	00146$
+   0076                     132 00145$:
+   0076 AF            [ 4]  133 	xor	a,a
+   0077                     134 00146$:
+   0077 57            [ 4]  135 	ld	d, a
+   0078 DD 7E 06      [19]  136 	ld	a, 6 (ix)
+   007B D6 02         [ 7]  137 	sub	a, #0x02
+   007D 20 04         [12]  138 	jr	NZ,00147$
+   007F 3E 01         [ 7]  139 	ld	a,#0x01
+   0081 18 01         [12]  140 	jr	00148$
+   0083                     141 00147$:
+   0083 AF            [ 4]  142 	xor	a,a
+   0084                     143 00148$:
+   0084 5F            [ 4]  144 	ld	e, a
+   0085 DD 7E FF      [19]  145 	ld	a, -1 (ix)
+   0088 B7            [ 4]  146 	or	a,a
+   0089 20 22         [12]  147 	jr	NZ,00103$
+   008B B2            [ 4]  148 	or	a,d
+   008C 20 11         [12]  149 	jr	NZ,00102$
+   008E B3            [ 4]  150 	or	a,e
+   008F 28 28         [12]  151 	jr	Z,00120$
+                            152 ;src/main.c:52: case 2: cpct_setDrawCharM2(fg_colour, bg_colour);  break;
+   0091 D5            [11]  153 	push	de
+   0092 DD 66 08      [19]  154 	ld	h, 8 (ix)
+   0095 DD 6E 07      [19]  155 	ld	l, 7 (ix)
+   0098 E5            [11]  156 	push	hl
+   0099 CDr00r00      [17]  157 	call	_cpct_setDrawCharM2
+   009C D1            [10]  158 	pop	de
+   009D 18 1A         [12]  159 	jr	00120$
+                            160 ;src/main.c:53: case 1: cpct_setDrawCharM1(fg_colour, bg_colour);  break;
+   009F                     161 00102$:
+   009F D5            [11]  162 	push	de
+   00A0 DD 66 08      [19]  163 	ld	h, 8 (ix)
+   00A3 DD 6E 07      [19]  164 	ld	l, 7 (ix)
+   00A6 E5            [11]  165 	push	hl
+   00A7 CDr00r00      [17]  166 	call	_cpct_setDrawCharM1
+   00AA D1            [10]  167 	pop	de
+   00AB 18 0C         [12]  168 	jr	00120$
+                            169 ;src/main.c:54: case 0: cpct_setDrawCharM0(fg_colour, bg_colour);  break;
+   00AD                     170 00103$:
+   00AD D5            [11]  171 	push	de
+   00AE DD 66 08      [19]  172 	ld	h, 8 (ix)
+   00B1 DD 6E 07      [19]  173 	ld	l, 7 (ix)
+   00B4 E5            [11]  174 	push	hl
+   00B5 CDr00r00      [17]  175 	call	_cpct_setDrawCharM0
+   00B8 D1            [10]  176 	pop	de
+                            177 ;src/main.c:58: for(charnum=1; charnum != 0; charnum++) {
+   00B9                     178 00120$:
+   00B9 DD 72 F9      [19]  179 	ld	-7 (ix), d
+   00BC DD 4E 04      [19]  180 	ld	c,4 (ix)
+   00BF DD 46 05      [19]  181 	ld	b,5 (ix)
+   00C2 DD 71 FD      [19]  182 	ld	-3 (ix), c
+   00C5 DD 70 FE      [19]  183 	ld	-2 (ix), b
+   00C8 DD 71 FB      [19]  184 	ld	-5 (ix), c
+   00CB DD 70 FC      [19]  185 	ld	-4 (ix), b
+   00CE DD 73 FA      [19]  186 	ld	-6 (ix), e
+   00D1 DD 36 F5 01   [19]  187 	ld	-11 (ix), #0x01
+   00D5                     188 00110$:
+                            189 ;src/main.c:60: case 2: cpct_drawCharM2  (*pvideomem, charnum); break;
+   00D5 DD 5E F5      [19]  190 	ld	e, -11 (ix)
+   00D8 16 00         [ 7]  191 	ld	d, #0x00
+                            192 ;src/main.c:59: switch (mode) {
+   00DA DD 7E FF      [19]  193 	ld	a, -1 (ix)
+   00DD B7            [ 4]  194 	or	a, a
+   00DE 20 32         [12]  195 	jr	NZ,00107$
+   00E0 DD 7E F9      [19]  196 	ld	a, -7 (ix)
+   00E3 B7            [ 4]  197 	or	a, a
+   00E4 20 19         [12]  198 	jr	NZ,00106$
+   00E6 DD 7E FA      [19]  199 	ld	a, -6 (ix)
+   00E9 B7            [ 4]  200 	or	a, a
+   00EA 28 33         [12]  201 	jr	Z,00108$
+                            202 ;src/main.c:60: case 2: cpct_drawCharM2  (*pvideomem, charnum); break;
+   00EC DD 6E FB      [19]  203 	ld	l,-5 (ix)
+   00EF DD 66 FC      [19]  204 	ld	h,-4 (ix)
+   00F2 7E            [ 7]  205 	ld	a, (hl)
+   00F3 23            [ 6]  206 	inc	hl
+   00F4 66            [ 7]  207 	ld	h, (hl)
+   00F5 6F            [ 4]  208 	ld	l, a
+   00F6 C5            [11]  209 	push	bc
+   00F7 D5            [11]  210 	push	de
+   00F8 E5            [11]  211 	push	hl
+   00F9 CDr00r00      [17]  212 	call	_cpct_drawCharM2
+   00FC C1            [10]  213 	pop	bc
+   00FD 18 20         [12]  214 	jr	00108$
+                            215 ;src/main.c:61: case 1: cpct_drawCharM1  (*pvideomem, charnum); break;
+   00FF                     216 00106$:
+   00FF DD 6E FD      [19]  217 	ld	l,-3 (ix)
+   0102 DD 66 FE      [19]  218 	ld	h,-2 (ix)
+   0105 7E            [ 7]  219 	ld	a, (hl)
+   0106 23            [ 6]  220 	inc	hl
+   0107 66            [ 7]  221 	ld	h, (hl)
+   0108 6F            [ 4]  222 	ld	l, a
+   0109 C5            [11]  223 	push	bc
+   010A D5            [11]  224 	push	de
+   010B E5            [11]  225 	push	hl
+   010C CDr00r00      [17]  226 	call	_cpct_drawCharM1
+   010F C1            [10]  227 	pop	bc
+   0110 18 0D         [12]  228 	jr	00108$
+                            229 ;src/main.c:62: case 0: cpct_drawCharM0  (*pvideomem, charnum); break;
+   0112                     230 00107$:
+   0112 69            [ 4]  231 	ld	l, c
+   0113 60            [ 4]  232 	ld	h, b
+   0114 7E            [ 7]  233 	ld	a, (hl)
+   0115 23            [ 6]  234 	inc	hl
+   0116 66            [ 7]  235 	ld	h, (hl)
+   0117 6F            [ 4]  236 	ld	l, a
+   0118 C5            [11]  237 	push	bc
+   0119 D5            [11]  238 	push	de
+   011A E5            [11]  239 	push	hl
+   011B CDr00r00      [17]  240 	call	_cpct_drawCharM0
+   011E C1            [10]  241 	pop	bc
+                            242 ;src/main.c:63: }
+   011F                     243 00108$:
+                            244 ;src/main.c:65: *pvideomem = incrementedVideoPos(*pvideomem, increment);
+   011F 69            [ 4]  245 	ld	l, c
+   0120 60            [ 4]  246 	ld	h, b
+   0121 5E            [ 7]  247 	ld	e, (hl)
+   0122 23            [ 6]  248 	inc	hl
+   0123 56            [ 7]  249 	ld	d, (hl)
+   0124 C5            [11]  250 	push	bc
+   0125 DD 7E F4      [19]  251 	ld	a, -12 (ix)
+   0128 F5            [11]  252 	push	af
+   0129 33            [ 6]  253 	inc	sp
+   012A D5            [11]  254 	push	de
+   012B CDr00r00      [17]  255 	call	_incrementedVideoPos
+   012E F1            [10]  256 	pop	af
+   012F 33            [ 6]  257 	inc	sp
+   0130 EB            [ 4]  258 	ex	de,hl
+   0131 C1            [10]  259 	pop	bc
+   0132 69            [ 4]  260 	ld	l, c
+   0133 60            [ 4]  261 	ld	h, b
+   0134 73            [ 7]  262 	ld	(hl), e
+   0135 23            [ 6]  263 	inc	hl
+   0136 72            [ 7]  264 	ld	(hl), d
+                            265 ;src/main.c:58: for(charnum=1; charnum != 0; charnum++) {
+   0137 DD 34 F5      [23]  266 	inc	-11 (ix)
+   013A DD 7E F5      [19]  267 	ld	a, -11 (ix)
+   013D B7            [ 4]  268 	or	a, a
+   013E 20 95         [12]  269 	jr	NZ,00110$
+   0140 DD F9         [10]  270 	ld	sp, ix
+   0142 DD E1         [14]  271 	pop	ix
+   0144 C9            [10]  272 	ret
+                            273 ;src/main.c:73: void drawCharacters(u8** pvideomem, u8 maxtimes, u8 mode, u8* fg_colour, u8* bg_colour) {
+                            274 ;	---------------------------------
+                            275 ; Function drawCharacters
+                            276 ; ---------------------------------
+   0145                     277 _drawCharacters::
+   0145 DD E5         [15]  278 	push	ix
+   0147 DD 21 00 00   [14]  279 	ld	ix,#0
+   014B DD 39         [15]  280 	add	ix,sp
+   014D 21 FA FF      [10]  281 	ld	hl, #-6
+   0150 39            [11]  282 	add	hl, sp
+   0151 F9            [ 6]  283 	ld	sp, hl
+                            284 ;src/main.c:75: const u8 colours[3] = { 16, 4, 2 };  // Number of colour each mode has (0 = 16, 1 = 4, 2 = 2)
+   0152 21 00 00      [10]  285 	ld	hl, #0x0000
+   0155 39            [11]  286 	add	hl, sp
+   0156 4D            [ 4]  287 	ld	c,l
+   0157 44            [ 4]  288 	ld	b,h
+   0158 36 10         [10]  289 	ld	(hl),#0x10
+   015A 69            [ 4]  290 	ld	l, c
+   015B 60            [ 4]  291 	ld	h, b
+   015C 23            [ 6]  292 	inc	hl
+   015D 36 04         [10]  293 	ld	(hl), #0x04
+   015F 69            [ 4]  294 	ld	l, c
+   0160 60            [ 4]  295 	ld	h, b
+   0161 23            [ 6]  296 	inc	hl
+   0162 23            [ 6]  297 	inc	hl
+   0163 36 02         [10]  298 	ld	(hl), #0x02
+                            299 ;src/main.c:77: cpct_clearScreen(0);     // Clear Screen filling up with 0's
+   0165 C5            [11]  300 	push	bc
+   0166 21 00 40      [10]  301 	ld	hl, #0x4000
+   0169 E5            [11]  302 	push	hl
+   016A AF            [ 4]  303 	xor	a, a
+   016B F5            [11]  304 	push	af
+   016C 33            [ 6]  305 	inc	sp
+   016D 26 C0         [ 7]  306 	ld	h, #0xc0
+   016F E5            [11]  307 	push	hl
+   0170 CDr00r00      [17]  308 	call	_cpct_memset
+   0173 DD 6E 07      [19]  309 	ld	l, 7 (ix)
+   0176 CDr00r00      [17]  310 	call	_cpct_setVideoMode
+   0179 C1            [10]  311 	pop	bc
+                            312 ;src/main.c:81: for(times=0; times < maxtimes; times++) {
+   017A DD 7E 07      [19]  313 	ld	a, 7 (ix)
+   017D 81            [ 4]  314 	add	a, c
+   017E DD 77 FE      [19]  315 	ld	-2 (ix), a
+   0181 3E 00         [ 7]  316 	ld	a, #0x00
+   0183 88            [ 4]  317 	adc	a, b
+   0184 DD 77 FF      [19]  318 	ld	-1 (ix), a
+   0187 DD 5E 0A      [19]  319 	ld	e,10 (ix)
+   018A DD 56 0B      [19]  320 	ld	d,11 (ix)
+   018D 0E 00         [ 7]  321 	ld	c, #0x00
+   018F                     322 00107$:
+   018F 79            [ 4]  323 	ld	a, c
+   0190 DD 96 06      [19]  324 	sub	a, 6 (ix)
+   0193 30 57         [12]  325 	jr	NC,00109$
+                            326 ;src/main.c:84: if (++(*fg_colour) == colours[mode]) {
+   0195 E5            [11]  327 	push	hl
+   0196 DD 6E 08      [19]  328 	ld	l, 8 (ix)
+   0199 DD 66 09      [19]  329 	ld	h, 9 (ix)
+   019C E5            [11]  330 	push	hl
+   019D FD E1         [14]  331 	pop	iy
+   019F E1            [10]  332 	pop	hl
+   01A0 FD 34 00      [23]  333 	inc	0 (iy)
+   01A3 FD 46 00      [19]  334 	ld	b, 0 (iy)
+   01A6 DD 6E FE      [19]  335 	ld	l,-2 (ix)
+   01A9 DD 66 FF      [19]  336 	ld	h,-1 (ix)
+   01AC 7E            [ 7]  337 	ld	a, (hl)
+   01AD 90            [ 4]  338 	sub	a, b
+   01AE 20 1B         [12]  339 	jr	NZ,00104$
+                            340 ;src/main.c:85: *fg_colour = 0;
+   01B0 FD 36 00 00   [19]  341 	ld	0 (iy), #0x00
+                            342 ;src/main.c:86: if (++(*bg_colour) == colours[mode])
+   01B4 1A            [ 7]  343 	ld	a, (de)
+   01B5 47            [ 4]  344 	ld	b, a
+   01B6 04            [ 4]  345 	inc	b
+   01B7 78            [ 4]  346 	ld	a, b
+   01B8 12            [ 7]  347 	ld	(de), a
+   01B9 DD 6E FE      [19]  348 	ld	l,-2 (ix)
+   01BC DD 66 FF      [19]  349 	ld	h,-1 (ix)
+   01BF 7E            [ 7]  350 	ld	a, (hl)
+   01C0 DD 77 FD      [19]  351 	ld	-3 (ix), a
+   01C3 78            [ 4]  352 	ld	a, b
+   01C4 DD 96 FD      [19]  353 	sub	a, -3 (ix)
+   01C7 20 02         [12]  354 	jr	NZ,00104$
+                            355 ;src/main.c:87: *bg_colour = 0;
+   01C9 AF            [ 4]  356 	xor	a, a
+   01CA 12            [ 7]  357 	ld	(de), a
+   01CB                     358 00104$:
+                            359 ;src/main.c:91: print256Chars(pvideomem, mode, *fg_colour, *bg_colour);
+   01CB 1A            [ 7]  360 	ld	a, (de)
+   01CC FD 46 00      [19]  361 	ld	b, 0 (iy)
+   01CF C5            [11]  362 	push	bc
+   01D0 D5            [11]  363 	push	de
+   01D1 F5            [11]  364 	push	af
+   01D2 33            [ 6]  365 	inc	sp
+   01D3 C5            [11]  366 	push	bc
+   01D4 33            [ 6]  367 	inc	sp
+   01D5 DD 7E 07      [19]  368 	ld	a, 7 (ix)
+   01D8 F5            [11]  369 	push	af
+   01D9 33            [ 6]  370 	inc	sp
+   01DA DD 6E 04      [19]  371 	ld	l,4 (ix)
+   01DD DD 66 05      [19]  372 	ld	h,5 (ix)
+   01E0 E5            [11]  373 	push	hl
+   01E1 CDr36r00      [17]  374 	call	_print256Chars
+   01E4 F1            [10]  375 	pop	af
+   01E5 F1            [10]  376 	pop	af
+   01E6 33            [ 6]  377 	inc	sp
+   01E7 D1            [10]  378 	pop	de
+   01E8 C1            [10]  379 	pop	bc
+                            380 ;src/main.c:81: for(times=0; times < maxtimes; times++) {
+   01E9 0C            [ 4]  381 	inc	c
+   01EA 18 A3         [12]  382 	jr	00107$
+   01EC                     383 00109$:
+   01EC DD F9         [10]  384 	ld	sp, ix
+   01EE DD E1         [14]  385 	pop	ix
+   01F0 C9            [10]  386 	ret
+                            387 ;src/main.c:98: void main(void) {
+                            388 ;	---------------------------------
+                            389 ; Function main
+                            390 ; ---------------------------------
+   01F1                     391 _main::
+   01F1 DD E5         [15]  392 	push	ix
+   01F3 DD 21 00 00   [14]  393 	ld	ix,#0
+   01F7 DD 39         [15]  394 	add	ix,sp
+   01F9 21 EA FF      [10]  395 	ld	hl, #-22
+   01FC 39            [11]  396 	add	hl, sp
+   01FD F9            [ 6]  397 	ld	sp, hl
+                            398 ;src/main.c:99: u8* pvideomem  = CPCT_VMEM_START; // Pointer to video memory
+   01FE 21 00 C0      [10]  399 	ld	hl, #0xc000
+   0201 E3            [19]  400 	ex	(sp), hl
+                            401 ;src/main.c:100: u8  colours[6] = {0};             // 6 variables for 3 pairs of foreground / background colour
+   0202 21 02 00      [10]  402 	ld	hl, #0x0002
+   0205 39            [11]  403 	add	hl, sp
+   0206 4D            [ 4]  404 	ld	c, l
+   0207 44            [ 4]  405 	ld	b, h
+   0208 AF            [ 4]  406 	xor	a, a
+   0209 02            [ 7]  407 	ld	(bc), a
+   020A 21 01 00      [10]  408 	ld	hl, #0x0001
+   020D 09            [11]  409 	add	hl,bc
+   020E DD 75 FE      [19]  410 	ld	-2 (ix), l
+   0211 DD 74 FF      [19]  411 	ld	-1 (ix), h
+   0214 36 00         [10]  412 	ld	(hl), #0x00
+   0216 21 02 00      [10]  413 	ld	hl, #0x0002
+   0219 09            [11]  414 	add	hl,bc
+   021A DD 75 F4      [19]  415 	ld	-12 (ix), l
+   021D DD 74 F5      [19]  416 	ld	-11 (ix), h
+   0220 36 00         [10]  417 	ld	(hl), #0x00
+   0222 21 03 00      [10]  418 	ld	hl, #0x0003
+   0225 09            [11]  419 	add	hl,bc
+   0226 DD 75 FA      [19]  420 	ld	-6 (ix), l
+   0229 DD 74 FB      [19]  421 	ld	-5 (ix), h
+   022C 36 00         [10]  422 	ld	(hl), #0x00
+   022E 21 04 00      [10]  423 	ld	hl, #0x0004
+   0231 09            [11]  424 	add	hl,bc
+   0232 DD 75 F2      [19]  425 	ld	-14 (ix), l
+   0235 DD 74 F3      [19]  426 	ld	-13 (ix), h
+   0238 36 00         [10]  427 	ld	(hl), #0x00
+   023A 21 05 00      [10]  428 	ld	hl, #0x0005
+   023D 09            [11]  429 	add	hl,bc
+   023E DD 75 FC      [19]  430 	ld	-4 (ix), l
+   0241 DD 74 FD      [19]  431 	ld	-3 (ix), h
+   0244 36 00         [10]  432 	ld	(hl), #0x00
+                            433 ;src/main.c:104: cpct_disableFirmware();
+   0246 C5            [11]  434 	push	bc
+   0247 CDr00r00      [17]  435 	call	_cpct_disableFirmware
+   024A C1            [10]  436 	pop	bc
+                            437 ;src/main.c:108: while(1) {
+   024B                     438 00102$:
+                            439 ;src/main.c:109: drawCharacters(&pvideomem, 14, 2, (colours+0), (colours+1)); // Drawing on mode 2, 14 times
+   024B DD 5E FE      [19]  440 	ld	e,-2 (ix)
+   024E DD 56 FF      [19]  441 	ld	d,-1 (ix)
+   0251 DD 71 F6      [19]  442 	ld	-10 (ix), c
+   0254 DD 70 F7      [19]  443 	ld	-9 (ix), b
+   0257 21 00 00      [10]  444 	ld	hl, #0x0000
+   025A 39            [11]  445 	add	hl, sp
+   025B DD 75 F8      [19]  446 	ld	-8 (ix), l
+   025E DD 74 F9      [19]  447 	ld	-7 (ix), h
+   0261 C5            [11]  448 	push	bc
+   0262 D5            [11]  449 	push	de
+   0263 DD 5E F6      [19]  450 	ld	e,-10 (ix)
+   0266 DD 56 F7      [19]  451 	ld	d,-9 (ix)
+   0269 D5            [11]  452 	push	de
+   026A 11 0E 02      [10]  453 	ld	de, #0x020e
+   026D D5            [11]  454 	push	de
+   026E E5            [11]  455 	push	hl
+   026F CDr45r01      [17]  456 	call	_drawCharacters
+   0272 21 08 00      [10]  457 	ld	hl, #8
+   0275 39            [11]  458 	add	hl, sp
+   0276 F9            [ 6]  459 	ld	sp, hl
+   0277 C1            [10]  460 	pop	bc
+                            461 ;src/main.c:110: drawCharacters(&pvideomem, 17, 1, (colours+2), (colours+3)); // Drawing on mode 1, 17 times
+   0278 DD 5E FA      [19]  462 	ld	e,-6 (ix)
+   027B DD 56 FB      [19]  463 	ld	d,-5 (ix)
+   027E D5            [11]  464 	push	de
+   027F FD E1         [14]  465 	pop	iy
+   0281 DD 6E F4      [19]  466 	ld	l,-12 (ix)
+   0284 DD 66 F5      [19]  467 	ld	h,-11 (ix)
+   0287 DD 5E F8      [19]  468 	ld	e,-8 (ix)
+   028A DD 56 F9      [19]  469 	ld	d,-7 (ix)
+   028D C5            [11]  470 	push	bc
+   028E FD E5         [15]  471 	push	iy
+   0290 E5            [11]  472 	push	hl
+   0291 21 11 01      [10]  473 	ld	hl, #0x0111
+   0294 E5            [11]  474 	push	hl
+   0295 D5            [11]  475 	push	de
+   0296 CDr45r01      [17]  476 	call	_drawCharacters
+   0299 21 08 00      [10]  477 	ld	hl, #8
+   029C 39            [11]  478 	add	hl, sp
+   029D F9            [ 6]  479 	ld	sp, hl
+   029E C1            [10]  480 	pop	bc
+                            481 ;src/main.c:111: drawCharacters(&pvideomem, 21, 0, (colours+4), (colours+5)); // Drawing on mode 0, 21 times
+   029F DD 5E FC      [19]  482 	ld	e,-4 (ix)
+   02A2 DD 56 FD      [19]  483 	ld	d,-3 (ix)
+   02A5 D5            [11]  484 	push	de
+   02A6 FD E1         [14]  485 	pop	iy
+   02A8 DD 6E F2      [19]  486 	ld	l,-14 (ix)
+   02AB DD 66 F3      [19]  487 	ld	h,-13 (ix)
+   02AE DD 5E F8      [19]  488 	ld	e,-8 (ix)
+   02B1 DD 56 F9      [19]  489 	ld	d,-7 (ix)
+   02B4 C5            [11]  490 	push	bc
+   02B5 FD E5         [15]  491 	push	iy
+   02B7 E5            [11]  492 	push	hl
+   02B8 21 15 00      [10]  493 	ld	hl, #0x0015
+   02BB E5            [11]  494 	push	hl
+   02BC D5            [11]  495 	push	de
+   02BD CDr45r01      [17]  496 	call	_drawCharacters
+   02C0 21 08 00      [10]  497 	ld	hl, #8
+   02C3 39            [11]  498 	add	hl, sp
+   02C4 F9            [ 6]  499 	ld	sp, hl
+   02C5 C1            [10]  500 	pop	bc
+   02C6 18 83         [12]  501 	jr	00102$
+                            502 	.area _CODE
+                            503 	.area _INITIALIZER
+                            504 	.area _CABS (ABS)

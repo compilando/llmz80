@@ -1,0 +1,198 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           cpct_easytilemaps
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__DATA                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     00000DEC  l__CODE                         
+     00004000  s__CODE                         
+     00004DEC  s__DATA                         
+     00004DEC  s__GSFINAL                      
+     00004DEC  s__GSINIT                       
+     00004DEC  s__HOME                         
+     00004DEC  s__INITIALIZED                  
+     00004DEC  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    00000DEC =        3564. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00004000  _g_courtMap                        court
+     0000418C  _g_palette                         tiles
+     0000419C  _g_tiles_00                        tiles
+     000041BC  _g_tiles_01                        tiles
+     000041DC  _g_tiles_02                        tiles
+     000041FC  _g_tiles_03                        tiles
+     0000421C  _g_tiles_04                        tiles
+     0000423C  _g_tiles_05                        tiles
+     0000425C  _g_tiles_06                        tiles
+     0000427C  _g_tiles_07                        tiles
+     0000429C  _g_tiles_08                        tiles
+     000042BC  _g_tiles_09                        tiles
+     000042DC  _g_tiles_10                        tiles
+     000042FC  _g_tiles_11                        tiles
+     0000431C  _g_tiles_12                        tiles
+     0000433C  _g_tiles_13                        tiles
+     0000435C  _g_tiles_14                        tiles
+     0000437C  _g_tiles_15                        tiles
+     0000439C  _g_tiles_16                        tiles
+     000043BC  _g_tiles_17                        tiles
+     000043DC  _g_tiles_18                        tiles
+     000043FC  _g_tiles_19                        tiles
+     0000441C  _g_tiles_20                        tiles
+     0000443C  _g_tiles_21                        tiles
+     0000445C  _g_tiles_22                        tiles
+     0000447C  _g_tiles_23                        tiles
+     0000449C  _g_tiles_24                        tiles
+     000044BC  _g_tiles_25                        tiles
+     000044DC  _g_tiles_26                        tiles
+     000044FC  _g_tiles_27                        tiles
+     0000451C  _g_tiles_28                        tiles
+     0000453C  _g_tiles_29                        tiles
+     0000455C  _g_tiles_30                        tiles
+     0000457C  _g_tiles_31                        tiles
+     0000459C  _g_tiles_32                        tiles
+     000045BC  _g_tiles_33                        tiles
+     000045DC  _g_tiles_34                        tiles
+     000045FC  _g_tiles_35                        tiles
+     0000461C  _g_tiles_36                        tiles
+     0000463C  _g_tiles_37                        tiles
+     0000465C  _g_tiles_38                        tiles
+     0000467C  _g_tiles_39                        tiles
+     0000469C  _g_tiles_40                        tiles
+     000046BC  _g_tiles_41                        tiles
+     000046DC  _g_tiles_42                        tiles
+     000046FC  _g_tiles_43                        tiles
+     0000471C  _g_tiles_44                        tiles
+     0000473C  _g_tiles_45                        tiles
+     0000475C  _g_tiles_46                        tiles
+     0000477C  _g_tiles_47                        tiles
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    00000DEC =        3564. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     0000479C  _g_tiles_48                        tiles
+     000047BC  _g_tiles_49                        tiles
+     000047DC  _g_tiles_50                        tiles
+     000047FC  _g_tiles_51                        tiles
+     0000481C  _g_tiles_52                        tiles
+     0000483C  _g_tiles_53                        tiles
+     0000485C  _g_tiles_54                        tiles
+     0000487C  _g_tiles_55                        tiles
+     0000489C  _g_tiles_56                        tiles
+     000048BC  _g_tiles_57                        tiles
+     000048DC  _g_tiles_58                        tiles
+     000048FC  _g_tiles_59                        tiles
+     0000491C  _g_tiles_60                        tiles
+     0000493C  _g_tiles_61                        tiles
+     0000495C  _g_tiles_62                        tiles
+     0000497C  _g_tiles_63                        tiles
+     0000499C  _g_tiles_64                        tiles
+     000049BC  _g_tiles_65                        tiles
+     000049DC  _g_tiles_66                        tiles
+     000049FC  _g_tiles_67                        tiles
+     00004A1C  _g_tiles_68                        tiles
+     00004A3C  _g_tiles_69                        tiles
+     00004A5C  _g_tiles_70                        tiles
+     00004A7C  _g_tiles_71                        tiles
+     00004A9C  _g_tiles_72                        tiles
+     00004ABC  _g_tiles_73                        tiles
+     00004ADC  _g_tiles_74                        tiles
+     00004AFC  _g_tiles_75                        tiles
+     00004B1C  _g_tiles_76                        tiles
+     00004B3C  _g_tiles_77                        tiles
+     00004B5C  _g_tiles_78                        tiles
+     00004B7C  _g_tiles_79                        tiles
+     00004B9C  _g_tiles_80                        tiles
+     00004BBC  _g_tiles_81                        tiles
+     00004BDC  _g_tiles_82                        tiles
+     00004BFC  _g_tiles_83                        tiles
+     00004C1C  _g_tiles_84                        tiles
+     00004C3C  _g_tiles_85                        tiles
+     00004C5C  _g_tiles_86                        tiles
+     00004C7C  _g_tiles_87                        tiles
+     00004C9C  _initialize                        main
+     00004CB7  _main                              main
+     00004CD5  _cpct_setPalette                   cpct_video
+     00004CEC  _cpct_setPALColour                 cpct_video
+     00004CF8  _cpct_etm_drawTilemap4x8_ag        cpct_easytilemaps
+     00004D02  cpct_etm_dtm4x8_ag_c_widthHeight   cpct_easytilemaps
+     00004D18  cpct_etm_dtm4x8_ag_c_tilesetPtr    cpct_easytilemaps
+     00004D83  cpct_etm_dtm4x8_ag_c_restoreI      cpct_easytilemaps
+     00004D89  cpct_etm_dtm4x8_ag_c_incrementHL   cpct_easytilemaps
+     00004D8E  cpct_etm_dtm4x8_ag_c_restoreWidt   cpct_easytilemaps
+     00004D91  cpct_etm_dtm4x8_ag_c_updateWidth   cpct_easytilemaps
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    00000DEC =        3564. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00004D9D  _cpct_setVideoMode                 cpct_video
+     00004DAB  _cpct_disableFirmware              cpct_firmware
+     00004DAB  _cpct_removeInterruptHandler       cpct_firmware
+     00004DAB  cpct_disableFirmware_asm           cpct_firmware
+     00004DAB  cpct_removeInterruptHandler_asm    cpct_firmware
+     00004DBB  _cpct_mode_rom_status              cpct_firmware
+     00004DBC  _cpct_etm_setDrawTilemap4x8_ag     cpct_easytilemaps
+ASxxxx Linker V03.00 + NoICE + sdld,  page 5.
+
+Files Linked                              [ module(s) ]
+
+obj/map/court.rel                         [ court ]
+obj/map/tiles.rel                         [ tiles ]
+obj/main.rel                              [ main ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPalette_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPALColour_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_etm_drawTilemap4x8_ag_cbind ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMode_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_etm_setDrawTilemap4x8_ag_cb ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 6.
+
+User Base Address Definitions
+
+_CODE = 0x4000
+_DATA = 0x0000
+
+
