@@ -1,0 +1,66 @@
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180), page 1.
+Hexadecimal [16-Bits]
+
+Symbol Table
+
+    .__.$$$.                                                    =  2710 L
+    .__.ABS.                                                    =  0000 G
+    .__.CPU.                                                    =  0000 L
+    .__.H$L.                                                    =  0000 L
+  0 _ClearBalloon                                                  008C GR
+  0 _ColorSprite                                                   0012 GR
+  0 _DeleteBalloons                                                00E7 GR
+  0 _DrawBackground                                                049F GR
+  0 _DrawBalloon                                                   0285 GR
+  0 _DrawCloud                                                     0415 GR
+  0 _DrawSceneBalloons                                             042A GR
+  0 _DrawStars                                                     033D GR
+  1 _DrawStars_sColorAnim_1_154                                    01B6 R
+  0 _DrawStars_sColorStar_1_154                                    040E R
+    _GetBackBufferPtr                                              **** GX
+  0 _GetRand                                                       0000 GR
+  0 _InitializeDrawing                                             04E6 GR
+  0 _UpdateBalloons                                                0126 GR
+    __modsint                                                      **** GX
+    __moduchar                                                     **** GX
+    _cpct_drawSolidBox                                             **** GX
+    _cpct_drawSprite                                               **** GX
+    _cpct_drawSpriteColorizeM0                                     **** GX
+    _cpct_drawSpriteMasked                                         **** GX
+    _cpct_drawSpriteMaskedAlignedColorizeM0                        **** GX
+    _cpct_drawSpriteMaskedColorizeM0                               **** GX
+    _cpct_getRandom_mxor_u8                                        **** GX
+    _cpct_memcpy                                                   **** GX
+    _cpct_memset                                                   **** GX
+    _cpct_pens2pixelPatternPairM0_real                             **** GX
+    _cpct_spriteColourizeM0                                        **** GX
+    _cpct_spriteMaskedColourizeM0                                  **** GX
+  1 _gBackGroundColor                                              0154 GR
+  1 _gBalloonColor                                                 0155 GR
+  1 _gBalloons                                                     0157 GR
+    _gMaskTable                                                    **** GX
+  1 _gPosCloud                                                     0156 GR
+  1 _gSpriteColorized                                              0000 GR
+  1 _gStars                                                        0198 GR
+    _g_balloon                                                     **** GX
+    _g_circle_trans                                                **** GX
+    _g_cloud                                                       **** GX
+    _g_roof                                                        **** GX
+    _g_square                                                      **** GX
+    _g_star_trans                                                  **** GX
+
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180), page 2.
+Hexadecimal [16-Bits]
+
+Area Table
+
+   0 _CODE                                      size  4F3   flags    0
+   1 _DATA                                      size  1B7   flags    0
+   2 _INITIALIZED                               size    0   flags    0
+   3 _DABS                                      size    0   flags    8
+   4 _HOME                                      size    0   flags    0
+   5 _GSINIT                                    size    8   flags    0
+   6 _GSFINAL                                   size    0   flags    0
+   7 _INITIALIZER                               size    0   flags    0
+   8 _CABS                                      size    0   flags    8
+

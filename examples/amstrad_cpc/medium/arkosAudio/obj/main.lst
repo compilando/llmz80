@@ -1,0 +1,315 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module main
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _main
+                             12 	.globl _checkKeyEvent
+                             13 	.globl _cpct_akp_SFXGetInstrument
+                             14 	.globl _cpct_akp_SFXPlay
+                             15 	.globl _cpct_akp_SFXInit
+                             16 	.globl _cpct_akp_stop
+                             17 	.globl _cpct_akp_musicPlay
+                             18 	.globl _cpct_akp_musicInit
+                             19 	.globl _cpct_waitVSYNC
+                             20 	.globl _cpct_setVideoMode
+                             21 	.globl _cpct_drawCharM2
+                             22 	.globl _cpct_setDrawCharM2
+                             23 	.globl _cpct_isKeyPressed
+                             24 	.globl _cpct_scanKeyboard_f
+                             25 	.globl _cpct_disableFirmware
+                             26 ;--------------------------------------------------------
+                             27 ; special function registers
+                             28 ;--------------------------------------------------------
+                             29 ;--------------------------------------------------------
+                             30 ; ram data
+                             31 ;--------------------------------------------------------
+                             32 	.area _DATA
+                             33 ;--------------------------------------------------------
+                             34 ; ram data
+                             35 ;--------------------------------------------------------
+                             36 	.area _INITIALIZED
+                             37 ;--------------------------------------------------------
+                             38 ; absolute external ram data
+                             39 ;--------------------------------------------------------
+                             40 	.area _DABS (ABS)
+                             41 ;--------------------------------------------------------
+                             42 ; global & static initialisations
+                             43 ;--------------------------------------------------------
+                             44 	.area _HOME
+                             45 	.area _GSINIT
+                             46 	.area _GSFINAL
+                             47 	.area _GSINIT
+                             48 ;--------------------------------------------------------
+                             49 ; Home
+                             50 ;--------------------------------------------------------
+                             51 	.area _HOME
+                             52 	.area _HOME
+                             53 ;--------------------------------------------------------
+                             54 ; code
+                             55 ;--------------------------------------------------------
+                             56 	.area _CODE
+                             57 ;src/main.c:36: TKeyStatus checkKeyEvent(cpct_keyID key, TKeyStatus *keystatus) {
+                             58 ;	---------------------------------
+                             59 ; Function checkKeyEvent
+                             60 ; ---------------------------------
+   0000                      61 _checkKeyEvent::
+                             62 ;src/main.c:40: if ( cpct_isKeyPressed(key) )
+   0000 C1            [10]   63 	pop	bc
+   0001 E1            [10]   64 	pop	hl
+   0002 E5            [11]   65 	push	hl
+   0003 C5            [11]   66 	push	bc
+   0004 CDr00r00      [17]   67 	call	_cpct_isKeyPressed
+   0007 7D            [ 4]   68 	ld	a, l
+   0008 B7            [ 4]   69 	or	a, a
+   0009 28 04         [12]   70 	jr	Z,00102$
+                             71 ;src/main.c:41: newstatus = K_PRESSED;   // Key is now pressed
+   000B 0E 02         [ 7]   72 	ld	c, #0x02
+   000D 18 02         [12]   73 	jr	00103$
+   000F                      74 00102$:
+                             75 ;src/main.c:43: newstatus = K_RELEASED;  // Key is now released
+   000F 0E 01         [ 7]   76 	ld	c, #0x01
+   0011                      77 00103$:
+                             78 ;src/main.c:47: if (newstatus == *keystatus)
+   0011 21 04 00      [10]   79 	ld	hl, #4
+   0014 39            [11]   80 	add	hl, sp
+   0015 5E            [ 7]   81 	ld	e, (hl)
+   0016 23            [ 6]   82 	inc	hl
+   0017 56            [ 7]   83 	ld	d, (hl)
+   0018 1A            [ 7]   84 	ld	a, (de)
+                             85 ;src/main.c:48: return K_NOEVENT;       // Same key status, report NO EVENT
+   0019 91            [ 4]   86 	sub	a,c
+   001A 20 02         [12]   87 	jr	NZ,00105$
+   001C 6F            [ 4]   88 	ld	l,a
+   001D C9            [10]   89 	ret
+   001E                      90 00105$:
+                             91 ;src/main.c:50: *keystatus = newstatus; // Status has changed, save it...
+   001E 79            [ 4]   92 	ld	a, c
+   001F 12            [ 7]   93 	ld	(de), a
+                             94 ;src/main.c:51: return newstatus;       // And return the new status
+   0020 69            [ 4]   95 	ld	l, c
+   0021 C9            [10]   96 	ret
+                             97 ;src/main.c:62: void main(void) {
+                             98 ;	---------------------------------
+                             99 ; Function main
+                            100 ; ---------------------------------
+   0022                     101 _main::
+   0022 DD E5         [15]  102 	push	ix
+   0024 DD 21 00 00   [14]  103 	ld	ix,#0
+   0028 DD 39         [15]  104 	add	ix,sp
+   002A 21 F9 FF      [10]  105 	ld	hl, #-7
+   002D 39            [11]  106 	add	hl, sp
+   002E F9            [ 6]  107 	ld	sp, hl
+                            108 ;src/main.c:64: u8  playing   = 1;               // Flag to know if music is playing or not
+   002F DD 36 FC 01   [19]  109 	ld	-4 (ix), #0x01
+                            110 ;src/main.c:65: u8  color     = 1;               // Color to draw charactes (normal / inverse)
+   0033 DD 36 FB 01   [19]  111 	ld	-5 (ix), #0x01
+                            112 ;src/main.c:66: u8* pvideomem = CPCT_VMEM_START; // Pointer to video memory where next character will be drawn
+   0037 21 00 C0      [10]  113 	ld	hl, #0xc000
+   003A E3            [19]  114 	ex	(sp), hl
+                            115 ;src/main.c:69: k_space = k_0 = k_1 = K_RELEASED;
+   003B DD 36 FD 01   [19]  116 	ld	-3 (ix), #0x01
+   003F DD 36 FE 01   [19]  117 	ld	-2 (ix), #0x01
+   0043 DD 36 FF 01   [19]  118 	ld	-1 (ix), #0x01
+                            119 ;src/main.c:72: cpct_disableFirmware();    // Disable firmware to prevent interaction
+   0047 CDr00r00      [17]  120 	call	_cpct_disableFirmware
+                            121 ;src/main.c:73: cpct_setVideoMode(2);      // Set Mode 2 (640x200, 2 colours)
+   004A 2E 02         [ 7]  122 	ld	l, #0x02
+   004C CDr00r00      [17]  123 	call	_cpct_setVideoMode
+                            124 ;src/main.c:74: cpct_setDrawCharM2(1, 0);  // Set Initial colours for drawCharM2 (Foreground/Background)
+   004F 21 01 00      [10]  125 	ld	hl, #0x0001
+   0052 E5            [11]  126 	push	hl
+   0053 CDr00r00      [17]  127 	call	_cpct_setDrawCharM2
+                            128 ;src/main.c:77: cpct_akp_musicInit(molusk_song);    // Initialize the music
+   0056 21r00r00      [10]  129 	ld	hl, #_molusk_song
+   0059 E5            [11]  130 	push	hl
+   005A CDr00r00      [17]  131 	call	_cpct_akp_musicInit
+                            132 ;src/main.c:78: cpct_akp_SFXInit(molusk_song);      // Initialize instruments to be used for SFX (Same as music song)
+   005D 21r00r00      [10]  133 	ld	hl, #_molusk_song
+   0060 E3            [19]  134 	ex	(sp),hl
+   0061 CDr00r00      [17]  135 	call	_cpct_akp_SFXInit
+   0064 F1            [10]  136 	pop	af
+                            137 ;src/main.c:80: while (1) {
+   0065                     138 00124$:
+                            139 ;src/main.c:84: cpct_waitVSYNC();
+   0065 CDr00r00      [17]  140 	call	_cpct_waitVSYNC
+                            141 ;src/main.c:88: if (playing) {
+   0068 DD 7E FC      [19]  142 	ld	a, -4 (ix)
+   006B B7            [ 4]  143 	or	a, a
+   006C CArEEr00      [10]  144 	jp	Z, 00112$
+                            145 ;src/main.c:89: cpct_akp_musicPlay();   // Play next music 1/50 step.
+   006F CDr00r00      [17]  146 	call	_cpct_akp_musicPlay
+                            147 ;src/main.c:96: if (cpct_akp_SFXGetInstrument(AY_CHANNEL_A))
+   0072 3E 01         [ 7]  148 	ld	a, #0x01
+   0074 F5            [11]  149 	push	af
+   0075 33            [ 6]  150 	inc	sp
+   0076 CDr00r00      [17]  151 	call	_cpct_akp_SFXGetInstrument
+   0079 33            [ 6]  152 	inc	sp
+                            153 ;src/main.c:97: cpct_drawCharM2(pvideomem, 'A'); // Write an 'A' because channel A is playing
+   007A C1            [10]  154 	pop	bc
+   007B C5            [11]  155 	push	bc
+                            156 ;src/main.c:96: if (cpct_akp_SFXGetInstrument(AY_CHANNEL_A))
+   007C 7C            [ 4]  157 	ld	a, h
+   007D B5            [ 4]  158 	or	a,l
+   007E 28 0A         [12]  159 	jr	Z,00105$
+                            160 ;src/main.c:97: cpct_drawCharM2(pvideomem, 'A'); // Write an 'A' because channel A is playing
+   0080 21 41 00      [10]  161 	ld	hl, #0x0041
+   0083 E5            [11]  162 	push	hl
+   0084 C5            [11]  163 	push	bc
+   0085 CDr00r00      [17]  164 	call	_cpct_drawCharM2
+   0088 18 29         [12]  165 	jr	00106$
+   008A                     166 00105$:
+                            167 ;src/main.c:100: else if (cpct_akp_SFXGetInstrument(AY_CHANNEL_C))
+   008A C5            [11]  168 	push	bc
+   008B 3E 04         [ 7]  169 	ld	a, #0x04
+   008D F5            [11]  170 	push	af
+   008E 33            [ 6]  171 	inc	sp
+   008F CDr00r00      [17]  172 	call	_cpct_akp_SFXGetInstrument
+   0092 33            [ 6]  173 	inc	sp
+   0093 C1            [10]  174 	pop	bc
+   0094 7C            [ 4]  175 	ld	a, h
+   0095 B5            [ 4]  176 	or	a,l
+   0096 28 0A         [12]  177 	jr	Z,00102$
+                            178 ;src/main.c:101: cpct_drawCharM2(pvideomem, 'C'); // Write an 'C' because channel A is playing 
+   0098 21 43 00      [10]  179 	ld	hl, #0x0043
+   009B E5            [11]  180 	push	hl
+   009C C5            [11]  181 	push	bc
+   009D CDr00r00      [17]  182 	call	_cpct_drawCharM2
+   00A0 18 11         [12]  183 	jr	00106$
+   00A2                     184 00102$:
+                            185 ;src/main.c:106: cpct_drawCharM2(pvideomem, '0' + cpct_akp_songLoopTimes);
+   00A2 21r00r00      [10]  186 	ld	hl,#_cpct_akp_songLoopTimes + 0
+   00A5 4E            [ 7]  187 	ld	c, (hl)
+   00A6 06 00         [ 7]  188 	ld	b, #0x00
+   00A8 21 30 00      [10]  189 	ld	hl, #0x0030
+   00AB 09            [11]  190 	add	hl, bc
+   00AC C1            [10]  191 	pop	bc
+   00AD C5            [11]  192 	push	bc
+   00AE E5            [11]  193 	push	hl
+   00AF C5            [11]  194 	push	bc
+   00B0 CDr00r00      [17]  195 	call	_cpct_drawCharM2
+   00B3                     196 00106$:
+                            197 ;src/main.c:109: if (++pvideomem >= (u8*)0xC7D0) {
+   00B3 DD 34 F9      [23]  198 	inc	-7 (ix)
+   00B6 20 03         [12]  199 	jr	NZ,00168$
+   00B8 DD 34 FA      [23]  200 	inc	-6 (ix)
+   00BB                     201 00168$:
+   00BB DD 7E F9      [19]  202 	ld	a, -7 (ix)
+   00BE D6 D0         [ 7]  203 	sub	a, #0xd0
+   00C0 DD 7E FA      [19]  204 	ld	a, -6 (ix)
+   00C3 DE C7         [ 7]  205 	sbc	a, #0xc7
+   00C5 38 19         [12]  206 	jr	C,00108$
+                            207 ;src/main.c:110: pvideomem = CPCT_VMEM_START; // When we reach the end of the screen, we return..
+   00C7 21 00 C0      [10]  208 	ld	hl, #0xc000
+   00CA E3            [19]  209 	ex	(sp), hl
+                            210 ;src/main.c:111: color ^= 1;                  // .. to the start, and change the colour
+   00CB DD 7E FB      [19]  211 	ld	a, -5 (ix)
+   00CE EE 01         [ 7]  212 	xor	a, #0x01
+                            213 ;src/main.c:112: cpct_setDrawCharM2(color, color^1); // Set new colour pair for drawCharM2 (inverted from previous one)
+   00D0 DD 77 FB      [19]  214 	ld	-5 (ix), a
+   00D3 EE 01         [ 7]  215 	xor	a, #0x01
+   00D5 47            [ 4]  216 	ld	b, a
+   00D6 C5            [11]  217 	push	bc
+   00D7 33            [ 6]  218 	inc	sp
+   00D8 DD 7E FB      [19]  219 	ld	a, -5 (ix)
+   00DB F5            [11]  220 	push	af
+   00DC 33            [ 6]  221 	inc	sp
+   00DD CDr00r00      [17]  222 	call	_cpct_setDrawCharM2
+   00E0                     223 00108$:
+                            224 ;src/main.c:116: if (cpct_akp_songLoopTimes > 0)
+   00E0 3Ar00r00      [13]  225 	ld	a,(#_cpct_akp_songLoopTimes + 0)
+   00E3 B7            [ 4]  226 	or	a, a
+   00E4 28 08         [12]  227 	jr	Z,00112$
+                            228 ;src/main.c:117: cpct_akp_musicInit(molusk_song); // Song has ended, start it again and set loop to 0
+   00E6 21r00r00      [10]  229 	ld	hl, #_molusk_song
+   00E9 E5            [11]  230 	push	hl
+   00EA CDr00r00      [17]  231 	call	_cpct_akp_musicInit
+   00ED F1            [10]  232 	pop	af
+   00EE                     233 00112$:
+                            234 ;src/main.c:122: cpct_scanKeyboard_f();
+   00EE CDr00r00      [17]  235 	call	_cpct_scanKeyboard_f
+                            236 ;src/main.c:125: if ( checkKeyEvent(Key_Space, &k_space) == K_RELEASED ) {
+   00F1 21 06 00      [10]  237 	ld	hl, #0x0006
+   00F4 39            [11]  238 	add	hl, sp
+   00F5 E5            [11]  239 	push	hl
+   00F6 21 05 80      [10]  240 	ld	hl, #0x8005
+   00F9 E5            [11]  241 	push	hl
+   00FA CDr00r00      [17]  242 	call	_checkKeyEvent
+   00FD F1            [10]  243 	pop	af
+   00FE F1            [10]  244 	pop	af
+   00FF 2D            [ 4]  245 	dec	l
+   0100 20 14         [12]  246 	jr	NZ,00121$
+                            247 ;src/main.c:130: if (playing)
+   0102 DD 7E FC      [19]  248 	ld	a, -4 (ix)
+   0105 B7            [ 4]  249 	or	a, a
+   0106 28 03         [12]  250 	jr	Z,00114$
+                            251 ;src/main.c:131: cpct_akp_stop();
+   0108 CDr00r00      [17]  252 	call	_cpct_akp_stop
+   010B                     253 00114$:
+                            254 ;src/main.c:134: playing ^= 1;
+   010B DD 7E FC      [19]  255 	ld	a, -4 (ix)
+   010E EE 01         [ 7]  256 	xor	a, #0x01
+   0110 DD 77 FC      [19]  257 	ld	-4 (ix), a
+   0113 C3r65r00      [10]  258 	jp	00124$
+   0116                     259 00121$:
+                            260 ;src/main.c:137: } else if ( checkKeyEvent(Key_0, &k_0) == K_RELEASED ) {
+   0116 21 05 00      [10]  261 	ld	hl, #0x0005
+   0119 39            [11]  262 	add	hl, sp
+   011A E5            [11]  263 	push	hl
+   011B 21 04 01      [10]  264 	ld	hl, #0x0104
+   011E E5            [11]  265 	push	hl
+   011F CDr00r00      [17]  266 	call	_checkKeyEvent
+   0122 F1            [10]  267 	pop	af
+   0123 F1            [10]  268 	pop	af
+   0124 2D            [ 4]  269 	dec	l
+   0125 20 1B         [12]  270 	jr	NZ,00118$
+                            271 ;src/main.c:138: cpct_akp_SFXPlay(13, 15, 36, 20, 0, AY_CHANNEL_A);
+   0127 3E 01         [ 7]  272 	ld	a, #0x01
+   0129 F5            [11]  273 	push	af
+   012A 33            [ 6]  274 	inc	sp
+   012B 21 00 00      [10]  275 	ld	hl, #0x0000
+   012E E5            [11]  276 	push	hl
+   012F 21 24 14      [10]  277 	ld	hl, #0x1424
+   0132 E5            [11]  278 	push	hl
+   0133 21 0D 0F      [10]  279 	ld	hl, #0x0f0d
+   0136 E5            [11]  280 	push	hl
+   0137 CDr00r00      [17]  281 	call	_cpct_akp_SFXPlay
+   013A 21 07 00      [10]  282 	ld	hl, #7
+   013D 39            [11]  283 	add	hl, sp
+   013E F9            [ 6]  284 	ld	sp, hl
+   013F C3r65r00      [10]  285 	jp	00124$
+   0142                     286 00118$:
+                            287 ;src/main.c:141: } else if ( checkKeyEvent(Key_1, &k_1) == K_RELEASED ) 
+   0142 21 04 00      [10]  288 	ld	hl, #0x0004
+   0145 39            [11]  289 	add	hl, sp
+   0146 E5            [11]  290 	push	hl
+   0147 21 08 01      [10]  291 	ld	hl, #0x0108
+   014A E5            [11]  292 	push	hl
+   014B CDr00r00      [17]  293 	call	_checkKeyEvent
+   014E F1            [10]  294 	pop	af
+   014F F1            [10]  295 	pop	af
+   0150 2D            [ 4]  296 	dec	l
+   0151 C2r65r00      [10]  297 	jp	NZ,00124$
+                            298 ;src/main.c:142: cpct_akp_SFXPlay(3, 15, 60, 0, 40, AY_CHANNEL_C);
+   0154 3E 04         [ 7]  299 	ld	a, #0x04
+   0156 F5            [11]  300 	push	af
+   0157 33            [ 6]  301 	inc	sp
+   0158 21 28 00      [10]  302 	ld	hl, #0x0028
+   015B E5            [11]  303 	push	hl
+   015C 2E 3C         [ 7]  304 	ld	l, #0x3c
+   015E E5            [11]  305 	push	hl
+   015F 21 03 0F      [10]  306 	ld	hl, #0x0f03
+   0162 E5            [11]  307 	push	hl
+   0163 CDr00r00      [17]  308 	call	_cpct_akp_SFXPlay
+   0166 21 07 00      [10]  309 	ld	hl, #7
+   0169 39            [11]  310 	add	hl, sp
+   016A F9            [ 6]  311 	ld	sp, hl
+   016B C3r65r00      [10]  312 	jp	00124$
+                            313 	.area _CODE
+                            314 	.area _INITIALIZER
+                            315 	.area _CABS (ABS)

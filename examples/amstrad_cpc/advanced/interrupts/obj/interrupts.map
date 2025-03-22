@@ -1,0 +1,99 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     00000001  l__DATA                         
+     0000027E  l__CODE                         
+     00004000  s__CODE                         
+     0000427E  s__DATA                         
+     0000427F  s__GSFINAL                      
+     0000427F  s__GSINIT                       
+     0000427F  s__HOME                         
+     0000427F  s__INITIALIZED                  
+     0000427F  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    0000027E =         638. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00004000  _myInterruptHandler                main
+     00004020  _printMessages                     main
+     00004154  _main                              main
+     00004162  _cpct_setPALColour                 cpct_video
+     0000416E  _cpct_drawStringM1                 cpct_strings
+     0000419E  cpct_drawCharM1_inner_asm          cpct_strings
+     000041DE  cpct_char2pxM1                     cpct_strings
+     000041EE  _cpct_disableFirmware              cpct_firmware
+     000041EE  _cpct_removeInterruptHandler       cpct_firmware
+     000041EE  cpct_disableFirmware_asm           cpct_firmware
+     000041EE  cpct_removeInterruptHandler_asm    cpct_firmware
+     000041FE  _cpct_mode_rom_status              cpct_firmware
+     000041FF  _cpct_setDrawCharM1                cpct_strings
+     00004253  _cpct_setInterruptHandler          cpct_firmware
+     00004253  cpct_setInterruptHandler_asm       cpct_firmware
+     00004264  cpct_safeInterruptHandlerHook      cpct_firmware
+     0000427A  dc_mode1_ct                        
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_DATA                               0000427E    00000001 =           1. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+
+Files Linked                              [ module(s) ]
+
+obj/main.rel                              [ main ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPALColour_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawStringM1_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawCharM1_inner.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setDrawCharM1_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_dc_mode1_ct.rel ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 5.
+
+User Base Address Definitions
+
+_CODE = 0x4000
+_DATA = 0x0000
+
+

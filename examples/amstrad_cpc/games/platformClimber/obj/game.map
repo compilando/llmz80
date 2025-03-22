@@ -1,0 +1,288 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     000001FE  l__DATA                         
+     0000339B  l__CODE                         
+     00004000  s__CODE                         
+     0000739B  s__DATA                         
+     00007599  s__GSFINAL                      
+     00007599  s__GSINIT                       
+     00007599  s__HOME                         
+     00007599  s__INITIALIZED                  
+     00007599  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    0000339B =       13211. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00004000  _g_palette                         credits
+     00004010  _G_credits                         credits
+     0000422C  _initializeGameScreen              game
+     000042E8  _updateUser                        game
+     0000439B  _wait4Key                          game
+     000043B8  _game                              game
+     0000440B  _showGameEnd                       game
+     000044D2  _initializeCPC                     main
+     000044FE  _main                              main
+     00004520  _getRandomUniform                  random
+     0000453B  _g_randUnif                        random
+     0000463B  _initializeEntities                entities
+     00004731  _G_gy                              entities
+     00004733  _G_gx                              entities
+     00004735  _G_maxYVel                         entities
+     00004737  _G_maxXVel                         entities
+     00004739  _G_minVel                          entities
+     0000473B  _G_jumpVel                         entities
+     0000473D  _G_maxScrollVel                    entities
+     0000473F  _G_airFric                         entities
+     00004740  _G_floorFric                       entities
+     00004741  _G_minX                            entities
+     00004742  _G_maxX                            entities
+     00004743  _G_minY                            entities
+     00004744  _G_maxY                            entities
+     00004745  _g_SCR_WIDTH                       entities
+     00004746  _g_SCR_HEIGHT                      entities
+     00004747  _g_Character                       entities
+     00004768  _getScore                          entities
+     0000476C  _getCharacter                      entities
+     00004770  _performAction                     entities
+     00004908  _cropVelocity                      entities
+     0000498A  _moveBlock                         entities
+     00004B6C  _scrollWorld                       entities
+     00004CBA  _updateCharacterPhysics            entities
+     00004EF2  _getNearestBlockID                 entities
+     00004F7E  _applyCharacterBlockCollisions     entities
+     000052D8  _updateCharacter                   entities
+     0000557A  _checkCollisionEntBlock            entities
+     000056FC  _isOverFloor                       entities
+     00005786  _setEntityLocation                 entities
+     00005818  _drawAnimEntity                    entities
+     000058B1  _drawBlockEntity                   entities
+     00005A18  _drawAll                           entities
+     00005A44  _newSolidBlock                     entities
+     00005B2D  _destroyBlock                      entities
+     00005B9C  _randomCreateNewBlock              entities
+     00005C89  _updateAnimation                   animation
+     00005D9B  _g_allAnimFrames                   predefinedAnimations
+     00005DEB  _g_walkLeft                        predefinedAnimations
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    0000339B =       13211. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00005DF5  _g_walkRight                       predefinedAnimations
+     00005DFF  _g_jumpLeft                        predefinedAnimations
+     00005E0B  _g_jumpRight                       predefinedAnimations
+     00005E17  _g_hitLeft                         predefinedAnimations
+     00005E1B  _g_hitRight                        predefinedAnimations
+     00005E1F  _g_anim                            predefinedAnimations
+     00005E2F  _drawFrame                         frame
+     00005F6E  _G_frameUpLeftCorner               frametiles
+     00005F8E  _G_frameUpRightCorner              frametiles
+     00005FAE  _G_frameDownRightCorner            frametiles
+     00005FCE  _G_frameDownLeftCorner             frametiles
+     00005FEE  _G_frameLeft                       frametiles
+     0000600E  _G_frameRight                      frametiles
+     0000602E  _G_frameUp                         frametiles
+     0000604E  _G_frameDown                       frametiles
+     0000606E  _G_frameUpCenter                   frametiles
+     0000609E  _G_frameDownCenter                 frametiles
+     000060CE  _G_frameUpCenter2                  frametiles
+     000060DE  _G_frameDownCenter2                frametiles
+     000060EE  _G_palette                         sprites
+     000060FE  _G_EMRright                        sprites
+     0000613E  _G_EMRright2                       sprites
+     0000615E  _G_EMRright3                       sprites
+     0000619E  _G_EMRleft                         sprites
+     000061DE  _G_EMRleft2                        sprites
+     000061FE  _G_EMRleft3                        sprites
+     0000623E  _G_EMRjumpright1                   sprites
+     0000625E  _G_EMRjumpright2                   sprites
+     0000627E  _G_EMRjumpright3                   sprites
+     0000629E  _G_EMRjumpright4                   sprites
+     000062BE  _G_EMRjumpleft1                    sprites
+     000062DE  _G_EMRjumpleft2                    sprites
+     000062FE  _G_EMRjumpleft3                    sprites
+     0000631E  _G_EMRjumpleft4                    sprites
+     0000633E  _G_EMRhitright                     sprites
+     0000637E  _G_EMRhitleft                      sprites
+     000063BE  _cpct_setPalette                   cpct_video
+     000063D5  _cpct_isKeyPressed                 cpct_keyboard
+     000063D5  cpct_isKeyPressed_asm              cpct_keyboard
+     000063E1  _cpct_scanKeyboard_f               cpct_keyboard
+     000063E1  cpct_scanKeyboard_f_asm            cpct_keyboard
+     0000644B  _cpct_setPALColour                 cpct_video
+     00006457  _cpct_drawStringM0                 cpct_strings
+     00006491  cpct_drawCharM0_inner_asm          cpct_strings
+     000064F1  dc_2pxtableM0                      cpct_strings
+     000064F5  _cpct_drawSprite                   cpct_sprites
+     0000659A  _cpct_fw2hw                        cpct_video
+     000065AD  _cpct_keyboardStatusBuffer         cpct_keyboard
+     000065D7  _vsprintf                          sprintf
+     0000660C  _sprintf                           sprintf
+     00006641  cpct_firmware2hw_colour            
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    0000339B =       13211. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     0000665C  _cpct_setVideoMode                 cpct_video
+     0000666A  _cpct_waitVSYNC                    cpct_video
+     0000666A  cpct_waitVSYNC_asm                 cpct_video
+     00006672  _cpct_memcpy                       cpct_memutils
+     0000667A  _cpct_px2byteM0                    cpct_sprites
+     00006696  _cpct_memset                       cpct_memutils
+     000066A4  _cpct_disableFirmware              cpct_firmware
+     000066A4  _cpct_removeInterruptHandler       cpct_firmware
+     000066A4  cpct_disableFirmware_asm           cpct_firmware
+     000066A4  cpct_removeInterruptHandler_asm    cpct_firmware
+     000066B4  _cpct_drawSolidBox                 cpct_sprites
+     0000675B  _cpct_drawTileAligned4x8           cpct_sprites
+     00006775  _cpct_mode_rom_status              cpct_firmware
+     00006776  _cpct_setDrawCharM0                cpct_strings
+     0000679B  _cpct_getScreenPtr                 cpct_video
+     000067B1  __divsint                          
+     000067BA  __divschar                         
+     000067C1  __div8                             
+     000067C5  __div_signexte                     
+     000067C9  __div16                            
+     000067EF  __get_remainder                    
+     000068F8  __print_format                     printf_large
+     0000733A  __divuint                          
+     00007342  __divuchar                         
+     00007349  __divu8                            
+     0000734C  __divu16                           
+     0000737B  ___sdcc_call_hl                    
+     0000737C  dc_mode0_ct                        cpct_strings
+     0000738C  _strlen                            
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 5.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_DATA                               0000739B    000001FE =         510. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     0000739B  _g_nextRand                        random
+     0000739C  _G_scrollVel                       entities
+     0000739E  _G_platfColour                     entities
+     0000739F  _G_score                           entities
+     000073A1  _g_blocks                          entities
+     00007591  _g_lastBlock                       entities
+     00007592  _g_colMinBlock                     entities
+     00007593  _g_colMaxBlock                     entities
+     00007594  _g_movingBlocks                    entities
+ASxxxx Linker V03.00 + NoICE + sdld,  page 6.
+
+Files Linked                              [ module(s) ]
+
+obj/sprites/credits.rel                   [ credits ]
+obj/game.rel                              [ game ]
+obj/main.rel                              [ main ]
+obj/random/random.rel                     [ random ]
+obj/entities/entities.rel                 [ entities ]
+obj/anim/animation.rel                    [ animation ]
+obj/anim/predefinedAnimations.rel         [ predefinedAnimations ]
+obj/sprites/frame.rel                     [ frame ]
+obj/sprites/frametiles.rel                [ frametiles ]
+obj/sprites/sprites.rel                   [ sprites ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPalette_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_isKeyPressed.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_scanKeyboard_f.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPALColour_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawStringM0_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawCharM0_inner.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSprite_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_fw2hw_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ keyboard.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ sprintf.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_firmware2hw_colour_table.re ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMode_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_waitVSYNC.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_memcpy_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_px2byteM0_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_memset_cbinding.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSolidBox_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawTileAligned4x8_cbinding ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setDrawCharM0_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_getScreenPtr_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ divsigned.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ printf_large.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ divunsigned.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ __sdcc_call_hl.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_dc_mode0_ct.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ strlen.rel ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 7.
+
+User Base Address Definitions
+
+_CODE = 0x4000
+_DATA = 0x0000
+
+

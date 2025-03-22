@@ -1,0 +1,174 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module main
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _main
+                             12 	.globl _initialize
+                             13 	.globl _performUserActions
+                             14 	.globl _selectNextBlendMode
+                             15 	.globl _selectNextItem
+                             16 	.globl _updateKeyboardStatus
+                             17 	.globl _drawUserInterfaceMessages
+                             18 	.globl _drawUserInterfaceStatus
+                             19 	.globl _drawBackground
+                             20 	.globl _cpct_setPALColour
+                             21 	.globl _cpct_setPalette
+                             22 	.globl _cpct_setVideoMode
+                             23 	.globl _cpct_disableFirmware
+                             24 ;--------------------------------------------------------
+                             25 ; special function registers
+                             26 ;--------------------------------------------------------
+                             27 ;--------------------------------------------------------
+                             28 ; ram data
+                             29 ;--------------------------------------------------------
+                             30 	.area _DATA
+                             31 ;--------------------------------------------------------
+                             32 ; ram data
+                             33 ;--------------------------------------------------------
+                             34 	.area _INITIALIZED
+                             35 ;--------------------------------------------------------
+                             36 ; absolute external ram data
+                             37 ;--------------------------------------------------------
+                             38 	.area _DABS (ABS)
+                             39 ;--------------------------------------------------------
+                             40 ; global & static initialisations
+                             41 ;--------------------------------------------------------
+                             42 	.area _HOME
+                             43 	.area _GSINIT
+                             44 	.area _GSFINAL
+                             45 	.area _GSINIT
+                             46 ;--------------------------------------------------------
+                             47 ; Home
+                             48 ;--------------------------------------------------------
+                             49 	.area _HOME
+                             50 	.area _HOME
+                             51 ;--------------------------------------------------------
+                             52 ; code
+                             53 ;--------------------------------------------------------
+                             54 	.area _CODE
+                             55 ;src/main.c:28: void selectNextItem() {
+                             56 ;	---------------------------------
+                             57 ; Function selectNextItem
+                             58 ; ---------------------------------
+   0000                      59 _selectNextItem::
+                             60 ;src/main.c:31: if (++g_selectedItem >= G_NITEMS)
+   0000 FD 21r00r00   [14]   61 	ld	iy, #_g_selectedItem
+   0004 FD 34 00      [23]   62 	inc	0 (iy)
+   0007 FD 7E 00      [19]   63 	ld	a, 0 (iy)
+   000A D6 04         [ 7]   64 	sub	a, #0x04
+   000C DAr00r00      [10]   65 	jp	C,_drawUserInterfaceStatus
+                             66 ;src/main.c:32: g_selectedItem = 0;
+   000F FD 36 00 00   [19]   67 	ld	0 (iy), #0x00
+                             68 ;src/main.c:35: drawUserInterfaceStatus();
+   0013 C3r00r00      [10]   69 	jp  _drawUserInterfaceStatus
+                             70 ;src/main.c:42: void selectNextBlendMode() {
+                             71 ;	---------------------------------
+                             72 ; Function selectNextBlendMode
+                             73 ; ---------------------------------
+   0016                      74 _selectNextBlendMode::
+                             75 ;src/main.c:45: if (++g_selectedBlendMode >= G_NBLENDMODES) 
+   0016 FD 21r00r00   [14]   76 	ld	iy, #_g_selectedBlendMode
+   001A FD 34 00      [23]   77 	inc	0 (iy)
+   001D FD 7E 00      [19]   78 	ld	a, 0 (iy)
+   0020 D6 09         [ 7]   79 	sub	a, #0x09
+   0022 DAr00r00      [10]   80 	jp	C,_drawUserInterfaceStatus
+                             81 ;src/main.c:46: g_selectedBlendMode = 0;
+   0025 FD 36 00 00   [19]   82 	ld	0 (iy), #0x00
+                             83 ;src/main.c:49: drawUserInterfaceStatus();
+   0029 C3r00r00      [10]   84 	jp  _drawUserInterfaceStatus
+                             85 ;src/main.c:56: void performUserActions() {
+                             86 ;	---------------------------------
+                             87 ; Function performUserActions
+                             88 ; ---------------------------------
+   002C                      89 _performUserActions::
+                             90 ;src/main.c:63: for(i = 0; i < G_NKEYS; i++) {
+   002C 11r00r00      [10]   91 	ld	de, #_g_keys+0
+   002F 0E 00         [ 7]   92 	ld	c, #0x00
+   0031                      93 00104$:
+                             94 ;src/main.c:64: if (g_keys[i].status == KeySt_Pressed)
+   0031 06 00         [ 7]   95 	ld	b,#0x00
+   0033 69            [ 4]   96 	ld	l, c
+   0034 60            [ 4]   97 	ld	h, b
+   0035 29            [11]   98 	add	hl, hl
+   0036 29            [11]   99 	add	hl, hl
+   0037 09            [11]  100 	add	hl, bc
+   0038 19            [11]  101 	add	hl, de
+   0039 E5            [11]  102 	push	hl
+   003A FD E1         [14]  103 	pop	iy
+   003C FD E5         [15]  104 	push	iy
+   003E E1            [10]  105 	pop	hl
+   003F 23            [ 6]  106 	inc	hl
+   0040 23            [ 6]  107 	inc	hl
+   0041 46            [ 7]  108 	ld	b, (hl)
+   0042 10 0D         [13]  109 	djnz	00105$
+                            110 ;src/main.c:65: g_keys[i].action();
+   0044 FD 6E 03      [19]  111 	ld	l, 3 (iy)
+   0047 FD 66 04      [19]  112 	ld	h, 4 (iy)
+   004A C5            [11]  113 	push	bc
+   004B D5            [11]  114 	push	de
+   004C CDr00r00      [17]  115 	call	___sdcc_call_hl
+   004F D1            [10]  116 	pop	de
+   0050 C1            [10]  117 	pop	bc
+   0051                     118 00105$:
+                            119 ;src/main.c:63: for(i = 0; i < G_NKEYS; i++) {
+   0051 0C            [ 4]  120 	inc	c
+   0052 79            [ 4]  121 	ld	a, c
+   0053 D6 04         [ 7]  122 	sub	a, #0x04
+   0055 38 DA         [12]  123 	jr	C,00104$
+   0057 C9            [10]  124 	ret
+                            125 ;src/main.c:73: void initialize (){ 
+                            126 ;	---------------------------------
+                            127 ; Function initialize
+                            128 ; ---------------------------------
+   0058                     129 _initialize::
+                            130 ;src/main.c:75: cpct_disableFirmware();
+   0058 CDr00r00      [17]  131 	call	_cpct_disableFirmware
+                            132 ;src/main.c:80: cpct_setPalette  (g_palette, G_NCOLOURS);
+   005B 21 0B 00      [10]  133 	ld	hl, #0x000b
+   005E E5            [11]  134 	push	hl
+   005F 21r00r00      [10]  135 	ld	hl, #_g_palette
+   0062 E5            [11]  136 	push	hl
+   0063 CDr00r00      [17]  137 	call	_cpct_setPalette
+                            138 ;src/main.c:81: cpct_setBorder   (HW_BLACK);
+   0066 21 10 14      [10]  139 	ld	hl, #0x1410
+   0069 E5            [11]  140 	push	hl
+   006A CDr00r00      [17]  141 	call	_cpct_setPALColour
+                            142 ;src/main.c:82: cpct_setVideoMode(0);
+   006D 2E 00         [ 7]  143 	ld	l, #0x00
+   006F CDr00r00      [17]  144 	call	_cpct_setVideoMode
+                            145 ;src/main.c:85: drawUserInterfaceMessages();   
+   0072 CDr00r00      [17]  146 	call	_drawUserInterfaceMessages
+                            147 ;src/main.c:86: drawBackground();
+   0075 CDr00r00      [17]  148 	call	_drawBackground
+                            149 ;src/main.c:89: g_selectedItem      = 0;
+   0078 21r00r00      [10]  150 	ld	hl,#_g_selectedItem + 0
+   007B 36 00         [10]  151 	ld	(hl), #0x00
+                            152 ;src/main.c:90: g_selectedBlendMode = 0;
+   007D 21r00r00      [10]  153 	ld	hl,#_g_selectedBlendMode + 0
+   0080 36 00         [10]  154 	ld	(hl), #0x00
+                            155 ;src/main.c:91: drawUserInterfaceStatus();
+   0082 CDr00r00      [17]  156 	call	_drawUserInterfaceStatus
+   0085 C9            [10]  157 	ret
+                            158 ;src/main.c:97: void main(void) {
+                            159 ;	---------------------------------
+                            160 ; Function main
+                            161 ; ---------------------------------
+   0086                     162 _main::
+                            163 ;src/main.c:98: initialize();  // Initialize the Amstrad CPC, 
+   0086 CDr58r00      [17]  164 	call	_initialize
+                            165 ;src/main.c:102: while(1) {
+   0089                     166 00102$:
+                            167 ;src/main.c:103: updateKeyboardStatus();
+   0089 CDr00r00      [17]  168 	call	_updateKeyboardStatus
+                            169 ;src/main.c:104: performUserActions();
+   008C CDr2Cr00      [17]  170 	call	_performUserActions
+   008F 18 F8         [12]  171 	jr	00102$
+                            172 	.area _CODE
+                            173 	.area _INITIALIZER
+                            174 	.area _CABS (ABS)

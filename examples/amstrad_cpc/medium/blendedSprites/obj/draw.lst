@@ -1,0 +1,423 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module draw
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _drawSpriteMixed
+                             12 	.globl _cpct_getRandom_mxor_u8
+                             13 	.globl _cpct_getScreenPtr
+                             14 	.globl _cpct_drawStringM0
+                             15 	.globl _cpct_setDrawCharM0
+                             16 	.globl _cpct_drawSprite
+                             17 	.globl _cpct_setBlendMode
+                             18 	.globl _cpct_drawSpriteBlended
+                             19 	.globl _drawBackground
+                             20 	.globl _drawCurrentSpriteAtRandom
+                             21 	.globl _drawUserInterfaceStatus
+                             22 	.globl _drawUserInterfaceMessages
+                             23 ;--------------------------------------------------------
+                             24 ; special function registers
+                             25 ;--------------------------------------------------------
+                             26 ;--------------------------------------------------------
+                             27 ; ram data
+                             28 ;--------------------------------------------------------
+                             29 	.area _DATA
+                             30 ;--------------------------------------------------------
+                             31 ; ram data
+                             32 ;--------------------------------------------------------
+                             33 	.area _INITIALIZED
+                             34 ;--------------------------------------------------------
+                             35 ; absolute external ram data
+                             36 ;--------------------------------------------------------
+                             37 	.area _DABS (ABS)
+                             38 ;--------------------------------------------------------
+                             39 ; global & static initialisations
+                             40 ;--------------------------------------------------------
+                             41 	.area _HOME
+                             42 	.area _GSINIT
+                             43 	.area _GSFINAL
+                             44 	.area _GSINIT
+                             45 ;--------------------------------------------------------
+                             46 ; Home
+                             47 ;--------------------------------------------------------
+                             48 	.area _HOME
+                             49 	.area _HOME
+                             50 ;--------------------------------------------------------
+                             51 ; code
+                             52 ;--------------------------------------------------------
+                             53 	.area _CODE
+                             54 ;src/draw.c:28: void drawBackground() {
+                             55 ;	---------------------------------
+                             56 ; Function drawBackground
+                             57 ; ---------------------------------
+   0000                      58 _drawBackground::
+                             59 ;src/draw.c:31: u8* p = cpct_getScreenPtr(CPCT_VMEM_START, BG_X, BG_Y);
+   0000 21 00 48      [10]   60 	ld	hl, #0x4800
+   0003 E5            [11]   61 	push	hl
+   0004 26 C0         [ 7]   62 	ld	h, #0xc0
+   0006 E5            [11]   63 	push	hl
+   0007 CDr00r00      [17]   64 	call	_cpct_getScreenPtr
+   000A 4D            [ 4]   65 	ld	c, l
+   000B 44            [ 4]   66 	ld	b, h
+                             67 ;src/draw.c:37: cpct_drawSprite(g_scifi_bg_0, p             , BG_WIDTH/2, BG_HEIGHT);
+   000C 59            [ 4]   68 	ld	e, c
+   000D 50            [ 4]   69 	ld	d, b
+   000E C5            [11]   70 	push	bc
+   000F 21 28 80      [10]   71 	ld	hl, #0x8028
+   0012 E5            [11]   72 	push	hl
+   0013 D5            [11]   73 	push	de
+   0014 21r00r00      [10]   74 	ld	hl, #_g_scifi_bg_0
+   0017 E5            [11]   75 	push	hl
+   0018 CDr00r00      [17]   76 	call	_cpct_drawSprite
+   001B C1            [10]   77 	pop	bc
+                             78 ;src/draw.c:38: cpct_drawSprite(g_scifi_bg_1, p + BG_WIDTH/2, BG_WIDTH/2, BG_HEIGHT);
+   001C 21 28 00      [10]   79 	ld	hl, #0x0028
+   001F 09            [11]   80 	add	hl, bc
+   0020 01r00r00      [10]   81 	ld	bc, #_g_scifi_bg_1+0
+   0023 11 28 80      [10]   82 	ld	de, #0x8028
+   0026 D5            [11]   83 	push	de
+   0027 E5            [11]   84 	push	hl
+   0028 C5            [11]   85 	push	bc
+   0029 CDr00r00      [17]   86 	call	_cpct_drawSprite
+   002C C9            [10]   87 	ret
+                             88 ;src/draw.c:46: void drawSpriteMixed(  CPCT_BlendMode mode, u8* sprite
+                             89 ;	---------------------------------
+                             90 ; Function drawSpriteMixed
+                             91 ; ---------------------------------
+   002D                      92 _drawSpriteMixed::
+   002D DD E5         [15]   93 	push	ix
+   002F DD 21 00 00   [14]   94 	ld	ix,#0
+   0033 DD 39         [15]   95 	add	ix,sp
+                             96 ;src/draw.c:50: u8* p = cpct_getScreenPtr(CPCT_VMEM_START, x, y);
+   0035 DD 66 08      [19]   97 	ld	h, 8 (ix)
+   0038 DD 6E 07      [19]   98 	ld	l, 7 (ix)
+   003B E5            [11]   99 	push	hl
+   003C 21 00 C0      [10]  100 	ld	hl, #0xc000
+   003F E5            [11]  101 	push	hl
+   0040 CDr00r00      [17]  102 	call	_cpct_getScreenPtr
+                            103 ;src/draw.c:53: cpct_setBlendMode(mode);
+   0043 E5            [11]  104 	push	hl
+   0044 DD 6E 04      [19]  105 	ld	l, 4 (ix)
+   0047 CDr00r00      [17]  106 	call	_cpct_setBlendMode
+   004A C1            [10]  107 	pop	bc
+                            108 ;src/draw.c:56: cpct_drawSpriteBlended(p, height, width, sprite);
+   004B DD 5E 05      [19]  109 	ld	e,5 (ix)
+   004E DD 56 06      [19]  110 	ld	d,6 (ix)
+   0051 D5            [11]  111 	push	de
+   0052 DD 66 09      [19]  112 	ld	h, 9 (ix)
+   0055 DD 6E 0A      [19]  113 	ld	l, 10 (ix)
+   0058 E5            [11]  114 	push	hl
+   0059 C5            [11]  115 	push	bc
+   005A CDr00r00      [17]  116 	call	_cpct_drawSpriteBlended
+   005D DD E1         [14]  117 	pop	ix
+   005F C9            [10]  118 	ret
+                            119 ;src/draw.c:64: void drawCurrentSpriteAtRandom() {
+                            120 ;	---------------------------------
+                            121 ; Function drawCurrentSpriteAtRandom
+                            122 ; ---------------------------------
+   0060                     123 _drawCurrentSpriteAtRandom::
+   0060 DD E5         [15]  124 	push	ix
+   0062 DD 21 00 00   [14]  125 	ld	ix,#0
+   0066 DD 39         [15]  126 	add	ix,sp
+   0068 3B            [ 6]  127 	dec	sp
+                            128 ;src/draw.c:70: x = BG_X + ( cpct_rand() % (BG_WIDTH  - 4) );
+   0069 CDr00r00      [17]  129 	call	_cpct_getRandom_mxor_u8
+   006C 45            [ 4]  130 	ld	b, l
+   006D 3E 4C         [ 7]  131 	ld	a, #0x4c
+   006F F5            [11]  132 	push	af
+   0070 33            [ 6]  133 	inc	sp
+   0071 C5            [11]  134 	push	bc
+   0072 33            [ 6]  135 	inc	sp
+   0073 CDr00r00      [17]  136 	call	__moduchar
+   0076 F1            [10]  137 	pop	af
+   0077 DD 75 FF      [19]  138 	ld	-1 (ix), l
+                            139 ;src/draw.c:71: y = BG_Y + ( cpct_rand() % (BG_HEIGHT - 8) );
+   007A CDr00r00      [17]  140 	call	_cpct_getRandom_mxor_u8
+   007D 45            [ 4]  141 	ld	b, l
+   007E 3E 78         [ 7]  142 	ld	a, #0x78
+   0080 F5            [11]  143 	push	af
+   0081 33            [ 6]  144 	inc	sp
+   0082 C5            [11]  145 	push	bc
+   0083 33            [ 6]  146 	inc	sp
+   0084 CDr00r00      [17]  147 	call	__moduchar
+   0087 F1            [10]  148 	pop	af
+   0088 7D            [ 4]  149 	ld	a, l
+   0089 C6 48         [ 7]  150 	add	a, #0x48
+   008B 47            [ 4]  151 	ld	b, a
+                            152 ;src/draw.c:75: , g_items[g_selectedItem].sprite
+   008C ED 5Br00r00   [20]  153 	ld	de, (_g_selectedItem)
+   0090 16 00         [ 7]  154 	ld	d, #0x00
+   0092 6B            [ 4]  155 	ld	l, e
+   0093 62            [ 4]  156 	ld	h, d
+   0094 29            [11]  157 	add	hl, hl
+   0095 29            [11]  158 	add	hl, hl
+   0096 29            [11]  159 	add	hl, hl
+   0097 19            [11]  160 	add	hl, de
+   0098 11r00r00      [10]  161 	ld	de, #_g_items
+   009B 19            [11]  162 	add	hl, de
+   009C 5E            [ 7]  163 	ld	e, (hl)
+   009D 23            [ 6]  164 	inc	hl
+   009E 56            [ 7]  165 	ld	d, (hl)
+                            166 ;src/draw.c:74: drawSpriteMixed(  g_blendModes[g_selectedBlendMode].blendmode
+   009F D5            [11]  167 	push	de
+   00A0 ED 5Br00r00   [20]  168 	ld	de, (_g_selectedBlendMode)
+   00A4 16 00         [ 7]  169 	ld	d, #0x00
+   00A6 6B            [ 4]  170 	ld	l, e
+   00A7 62            [ 4]  171 	ld	h, d
+   00A8 29            [11]  172 	add	hl, hl
+   00A9 29            [11]  173 	add	hl, hl
+   00AA 19            [11]  174 	add	hl, de
+   00AB D1            [10]  175 	pop	de
+   00AC 3Er00         [ 7]  176 	ld	a, #<(_g_blendModes)
+   00AE 85            [ 4]  177 	add	a, l
+   00AF 6F            [ 4]  178 	ld	l, a
+   00B0 3Es00         [ 7]  179 	ld	a, #>(_g_blendModes)
+   00B2 8C            [ 4]  180 	adc	a, h
+   00B3 67            [ 4]  181 	ld	h, a
+   00B4 4E            [ 7]  182 	ld	c, (hl)
+   00B5 21 04 08      [10]  183 	ld	hl, #0x0804
+   00B8 E5            [11]  184 	push	hl
+   00B9 C5            [11]  185 	push	bc
+   00BA 33            [ 6]  186 	inc	sp
+   00BB DD 7E FF      [19]  187 	ld	a, -1 (ix)
+   00BE F5            [11]  188 	push	af
+   00BF 33            [ 6]  189 	inc	sp
+   00C0 D5            [11]  190 	push	de
+   00C1 79            [ 4]  191 	ld	a, c
+   00C2 F5            [11]  192 	push	af
+   00C3 33            [ 6]  193 	inc	sp
+   00C4 CDr2Dr00      [17]  194 	call	_drawSpriteMixed
+   00C7 21 07 00      [10]  195 	ld	hl, #7
+   00CA 39            [11]  196 	add	hl, sp
+   00CB F9            [ 6]  197 	ld	sp, hl
+   00CC 33            [ 6]  198 	inc	sp
+   00CD DD E1         [14]  199 	pop	ix
+   00CF C9            [10]  200 	ret
+                            201 ;src/draw.c:84: void drawUserInterfaceStatus() {
+                            202 ;	---------------------------------
+                            203 ; Function drawUserInterfaceStatus
+                            204 ; ---------------------------------
+   00D0                     205 _drawUserInterfaceStatus::
+                            206 ;src/draw.c:87: u8 *p = cpct_getScreenPtr(CPCT_VMEM_START, 4, 60);
+   00D0 21 04 3C      [10]  207 	ld	hl, #0x3c04
+   00D3 E5            [11]  208 	push	hl
+   00D4 21 00 C0      [10]  209 	ld	hl, #0xc000
+   00D7 E5            [11]  210 	push	hl
+   00D8 CDr00r00      [17]  211 	call	_cpct_getScreenPtr
+                            212 ;src/draw.c:90: cpct_setDrawCharM0(8, 0);
+   00DB E5            [11]  213 	push	hl
+   00DC 21 08 00      [10]  214 	ld	hl, #0x0008
+   00DF E5            [11]  215 	push	hl
+   00E0 CDr00r00      [17]  216 	call	_cpct_setDrawCharM0
+   00E3 C1            [10]  217 	pop	bc
+                            218 ;src/draw.c:94: cpct_drawStringM0(g_items[g_selectedItem].name   , p       );
+   00E4 59            [ 4]  219 	ld	e, c
+   00E5 50            [ 4]  220 	ld	d, b
+   00E6 D5            [11]  221 	push	de
+   00E7 ED 5Br00r00   [20]  222 	ld	de, (_g_selectedItem)
+   00EB 16 00         [ 7]  223 	ld	d, #0x00
+   00ED 6B            [ 4]  224 	ld	l, e
+   00EE 62            [ 4]  225 	ld	h, d
+   00EF 29            [11]  226 	add	hl, hl
+   00F0 29            [11]  227 	add	hl, hl
+   00F1 29            [11]  228 	add	hl, hl
+   00F2 19            [11]  229 	add	hl, de
+   00F3 D1            [10]  230 	pop	de
+   00F4 3Er00         [ 7]  231 	ld	a, #<(_g_items)
+   00F6 85            [ 4]  232 	add	a, l
+   00F7 6F            [ 4]  233 	ld	l, a
+   00F8 3Es00         [ 7]  234 	ld	a, #>(_g_items)
+   00FA 8C            [ 4]  235 	adc	a, h
+   00FB 67            [ 4]  236 	ld	h, a
+   00FC 23            [ 6]  237 	inc	hl
+   00FD 23            [ 6]  238 	inc	hl
+   00FE C5            [11]  239 	push	bc
+   00FF D5            [11]  240 	push	de
+   0100 E5            [11]  241 	push	hl
+   0101 CDr00r00      [17]  242 	call	_cpct_drawStringM0
+   0104 C1            [10]  243 	pop	bc
+                            244 ;src/draw.c:95: cpct_drawSprite  (g_items[g_selectedItem].sprite , p + 28 , 4, 8);
+   0105 21 1C 00      [10]  245 	ld	hl, #0x001c
+   0108 09            [11]  246 	add	hl,bc
+   0109 EB            [ 4]  247 	ex	de,hl
+   010A ED 4Br00r00   [20]  248 	ld	bc, (_g_selectedItem)
+   010E 06 00         [ 7]  249 	ld	b, #0x00
+   0110 69            [ 4]  250 	ld	l, c
+   0111 60            [ 4]  251 	ld	h, b
+   0112 29            [11]  252 	add	hl, hl
+   0113 29            [11]  253 	add	hl, hl
+   0114 29            [11]  254 	add	hl, hl
+   0115 09            [11]  255 	add	hl, bc
+   0116 01r00r00      [10]  256 	ld	bc, #_g_items
+   0119 09            [11]  257 	add	hl, bc
+   011A 4E            [ 7]  258 	ld	c, (hl)
+   011B 23            [ 6]  259 	inc	hl
+   011C 46            [ 7]  260 	ld	b, (hl)
+   011D 21 04 08      [10]  261 	ld	hl, #0x0804
+   0120 E5            [11]  262 	push	hl
+   0121 D5            [11]  263 	push	de
+   0122 C5            [11]  264 	push	bc
+   0123 CDr00r00      [17]  265 	call	_cpct_drawSprite
+                            266 ;src/draw.c:98: p = cpct_getScreenPtr(CPCT_VMEM_START, 52, 60);
+   0126 21 34 3C      [10]  267 	ld	hl, #0x3c34
+   0129 E5            [11]  268 	push	hl
+   012A 21 00 C0      [10]  269 	ld	hl, #0xc000
+   012D E5            [11]  270 	push	hl
+   012E CDr00r00      [17]  271 	call	_cpct_getScreenPtr
+   0131 4D            [ 4]  272 	ld	c, l
+   0132 44            [ 4]  273 	ld	b, h
+                            274 ;src/draw.c:99: cpct_drawStringM0(g_blendModes[g_selectedBlendMode].name, p);
+   0133 ED 5Br00r00   [20]  275 	ld	de, (_g_selectedBlendMode)
+   0137 16 00         [ 7]  276 	ld	d, #0x00
+   0139 6B            [ 4]  277 	ld	l, e
+   013A 62            [ 4]  278 	ld	h, d
+   013B 29            [11]  279 	add	hl, hl
+   013C 29            [11]  280 	add	hl, hl
+   013D 19            [11]  281 	add	hl, de
+   013E 11r00r00      [10]  282 	ld	de, #_g_blendModes
+   0141 19            [11]  283 	add	hl, de
+   0142 23            [ 6]  284 	inc	hl
+   0143 C5            [11]  285 	push	bc
+   0144 E5            [11]  286 	push	hl
+   0145 CDr00r00      [17]  287 	call	_cpct_drawStringM0
+   0148 C9            [10]  288 	ret
+                            289 ;src/draw.c:106: void drawUserInterfaceMessages() {
+                            290 ;	---------------------------------
+                            291 ; Function drawUserInterfaceMessages
+                            292 ; ---------------------------------
+   0149                     293 _drawUserInterfaceMessages::
+                            294 ;src/draw.c:111: cpct_setDrawCharM0(3, 0);
+   0149 21 03 00      [10]  295 	ld	hl, #0x0003
+   014C E5            [11]  296 	push	hl
+   014D CDr00r00      [17]  297 	call	_cpct_setDrawCharM0
+                            298 ;src/draw.c:112: cpct_drawStringM0("[Space]"   , CPCT_VMEM_START    );
+   0150 21 00 C0      [10]  299 	ld	hl, #0xc000
+   0153 E5            [11]  300 	push	hl
+   0154 21rEDr01      [10]  301 	ld	hl, #___str_0
+   0157 E5            [11]  302 	push	hl
+   0158 CDr00r00      [17]  303 	call	_cpct_drawStringM0
+                            304 ;src/draw.c:113: cpct_setDrawCharM0(9, 0);
+   015B 21 09 00      [10]  305 	ld	hl, #0x0009
+   015E E5            [11]  306 	push	hl
+   015F CDr00r00      [17]  307 	call	_cpct_setDrawCharM0
+                            308 ;src/draw.c:114: cpct_drawStringM0("Draw Item" , CPCT_VMEM_START+32 );
+   0162 21 20 C0      [10]  309 	ld	hl, #0xc020
+   0165 E5            [11]  310 	push	hl
+   0166 21rF5r01      [10]  311 	ld	hl, #___str_1
+   0169 E5            [11]  312 	push	hl
+   016A CDr00r00      [17]  313 	call	_cpct_drawStringM0
+                            314 ;src/draw.c:118: p = cpct_getScreenPtr(CPCT_VMEM_START, 0, 15);
+   016D 21 00 0F      [10]  315 	ld	hl, #0x0f00
+   0170 E5            [11]  316 	push	hl
+   0171 26 C0         [ 7]  317 	ld	h, #0xc0
+   0173 E5            [11]  318 	push	hl
+   0174 CDr00r00      [17]  319 	call	_cpct_getScreenPtr
+                            320 ;src/draw.c:119: cpct_setDrawCharM0(3, 0);
+   0177 E5            [11]  321 	push	hl
+   0178 01 03 00      [10]  322 	ld	bc, #0x0003
+   017B C5            [11]  323 	push	bc
+   017C CDr00r00      [17]  324 	call	_cpct_setDrawCharM0
+   017F E1            [10]  325 	pop	hl
+                            326 ;src/draw.c:120: cpct_drawStringM0("[1] [2]"   , p    );
+   0180 5D            [ 4]  327 	ld	e, l
+   0181 54            [ 4]  328 	ld	d, h
+   0182 01rFFr01      [10]  329 	ld	bc, #___str_2+0
+   0185 E5            [11]  330 	push	hl
+   0186 D5            [11]  331 	push	de
+   0187 C5            [11]  332 	push	bc
+   0188 CDr00r00      [17]  333 	call	_cpct_drawStringM0
+   018B 01 09 00      [10]  334 	ld	bc, #0x0009
+   018E C5            [11]  335 	push	bc
+   018F CDr00r00      [17]  336 	call	_cpct_setDrawCharM0
+   0192 E1            [10]  337 	pop	hl
+                            338 ;src/draw.c:122: cpct_drawStringM0("Select"    , p+32 );
+   0193 01 20 00      [10]  339 	ld	bc, #0x0020
+   0196 09            [11]  340 	add	hl, bc
+   0197 01r07r02      [10]  341 	ld	bc, #___str_3+0
+   019A E5            [11]  342 	push	hl
+   019B C5            [11]  343 	push	bc
+   019C CDr00r00      [17]  344 	call	_cpct_drawStringM0
+                            345 ;src/draw.c:125: p = cpct_getScreenPtr(CPCT_VMEM_START, 0, 30);
+   019F 21 00 1E      [10]  346 	ld	hl, #0x1e00
+   01A2 E5            [11]  347 	push	hl
+   01A3 26 C0         [ 7]  348 	ld	h, #0xc0
+   01A5 E5            [11]  349 	push	hl
+   01A6 CDr00r00      [17]  350 	call	_cpct_getScreenPtr
+                            351 ;src/draw.c:126: cpct_setDrawCharM0(3, 0);
+   01A9 E5            [11]  352 	push	hl
+   01AA 01 03 00      [10]  353 	ld	bc, #0x0003
+   01AD C5            [11]  354 	push	bc
+   01AE CDr00r00      [17]  355 	call	_cpct_setDrawCharM0
+   01B1 E1            [10]  356 	pop	hl
+                            357 ;src/draw.c:127: cpct_drawStringM0("[Esc]"     , p    );
+   01B2 5D            [ 4]  358 	ld	e, l
+   01B3 54            [ 4]  359 	ld	d, h
+   01B4 01r0Er02      [10]  360 	ld	bc, #___str_4+0
+   01B7 E5            [11]  361 	push	hl
+   01B8 D5            [11]  362 	push	de
+   01B9 C5            [11]  363 	push	bc
+   01BA CDr00r00      [17]  364 	call	_cpct_drawStringM0
+   01BD 01 09 00      [10]  365 	ld	bc, #0x0009
+   01C0 C5            [11]  366 	push	bc
+   01C1 CDr00r00      [17]  367 	call	_cpct_setDrawCharM0
+   01C4 E1            [10]  368 	pop	hl
+                            369 ;src/draw.c:129: cpct_drawStringM0("Clear"     , p+32 );
+   01C5 01 20 00      [10]  370 	ld	bc, #0x0020
+   01C8 09            [11]  371 	add	hl, bc
+   01C9 01r14r02      [10]  372 	ld	bc, #___str_5+0
+   01CC E5            [11]  373 	push	hl
+   01CD C5            [11]  374 	push	bc
+   01CE CDr00r00      [17]  375 	call	_cpct_drawStringM0
+                            376 ;src/draw.c:133: p = cpct_getScreenPtr(CPCT_VMEM_START, 0, 50);
+   01D1 21 00 32      [10]  377 	ld	hl, #0x3200
+   01D4 E5            [11]  378 	push	hl
+   01D5 26 C0         [ 7]  379 	ld	h, #0xc0
+   01D7 E5            [11]  380 	push	hl
+   01D8 CDr00r00      [17]  381 	call	_cpct_getScreenPtr
+                            382 ;src/draw.c:134: cpct_setDrawCharM0(1, 6);
+   01DB E5            [11]  383 	push	hl
+   01DC 01 01 06      [10]  384 	ld	bc, #0x0601
+   01DF C5            [11]  385 	push	bc
+   01E0 CDr00r00      [17]  386 	call	_cpct_setDrawCharM0
+   01E3 E1            [10]  387 	pop	hl
+                            388 ;src/draw.c:135: cpct_drawStringM0("   Item     Blend   ", p);
+   01E4 01r1Ar02      [10]  389 	ld	bc, #___str_6+0
+   01E7 E5            [11]  390 	push	hl
+   01E8 C5            [11]  391 	push	bc
+   01E9 CDr00r00      [17]  392 	call	_cpct_drawStringM0
+   01EC C9            [10]  393 	ret
+   01ED                     394 ___str_0:
+   01ED 5B 53 70 61 63 65   395 	.ascii "[Space]"
+        5D
+   01F4 00                  396 	.db 0x00
+   01F5                     397 ___str_1:
+   01F5 44 72 61 77 20 49   398 	.ascii "Draw Item"
+        74 65 6D
+   01FE 00                  399 	.db 0x00
+   01FF                     400 ___str_2:
+   01FF 5B 31 5D 20 5B 32   401 	.ascii "[1] [2]"
+        5D
+   0206 00                  402 	.db 0x00
+   0207                     403 ___str_3:
+   0207 53 65 6C 65 63 74   404 	.ascii "Select"
+   020D 00                  405 	.db 0x00
+   020E                     406 ___str_4:
+   020E 5B 45 73 63 5D      407 	.ascii "[Esc]"
+   0213 00                  408 	.db 0x00
+   0214                     409 ___str_5:
+   0214 43 6C 65 61 72      410 	.ascii "Clear"
+   0219 00                  411 	.db 0x00
+   021A                     412 ___str_6:
+   021A 20 20 20 49 74 65   413 	.ascii "   Item     Blend   "
+        6D 20 20 20 20 20
+        42 6C 65 6E 64 20
+        20 20
+   022E 00                  414 	.db 0x00
+                            415 	.area _CODE
+                            416 	.area _INITIALIZER
+                            417 	.area _CABS (ABS)

@@ -1,0 +1,145 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__DATA                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     00000040  s__CODE                         
+     000015CC  l__CODE                         
+     0000160C  s__DATA                         
+     0000160C  s__GSFINAL                      
+     0000160C  s__GSINIT                       
+     0000160C  s__HOME                         
+     0000160C  s__INITIALIZED                  
+     0000160C  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00000040    000015CC =        5580. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000040  _swapBuffers                       main
+     0000008E  _g_scrbuffers                      main
+     00000092  _wait4Key                          main
+     000000AF  _showMessages                      main
+     00000365  _readKeyboardInput                 main
+     0000062C  _drawScreenTilemap                 main
+     000006A9  _application                       main
+     0000070A  _main                              main
+     00000713  _g_tile_background                 tilemap
+     0000071B  _g_tile_yellow                     tilemap
+     00000723  _g_tile_blue                       tilemap
+     0000072B  _g_tile_red                        tilemap
+     00000733  _g_tileset                         tilemap
+     0000073B  _g_tilemap                         tilemap
+     0000087B  _cpct_isKeyPressed                 cpct_keyboard
+     0000087B  cpct_isKeyPressed_asm              cpct_keyboard
+     00000887  _cpct_scanKeyboard_f               cpct_keyboard
+     00000887  cpct_scanKeyboard_f_asm            cpct_keyboard
+     000008F1  _cpct_setPALColour                 cpct_video
+     000008FD  _cpct_etm_drawTileBox2x4           cpct_easytilemaps
+     0000098C  _cpct_etm_setTileset2x4            cpct_easytilemaps
+     0000098C  cpct_etm_setTileset2x4_asm         cpct_easytilemaps
+     00000990  _cpct_keyboardStatusBuffer         cpct_keyboard
+     0000099A  _cpct_etm_drawTileRow2x4           cpct_easytilemaps
+     000009A1  cpct_etm_drawTileRow2x4_asm        cpct_easytilemaps
+     000009A3  dtr_restore_ptileset               cpct_easytilemaps
+     000009BB  _cpct_setVideoMemoryPage           cpct_video
+     000009BB  cpct_setVideoMemoryPage_asm        cpct_video
+     000009C4  _cpct_memset_f64                   cpct_memutils
+     00000A0F  _cpct_setStackLocation             cpct_memutils
+     00000A0F  cpct_setStackLocation_asm          cpct_memutils
+     00000A13  _cpct_waitVSYNC                    cpct_video
+     00000A13  cpct_waitVSYNC_asm                 cpct_video
+     00000A28  _vprintf                           vprintf
+     00000A48  _printf                            vprintf
+     00000A65  _cpct_disableFirmware              cpct_firmware
+     00000A65  _cpct_removeInterruptHandler       cpct_firmware
+     00000A65  cpct_disableFirmware_asm           cpct_firmware
+     00000A65  cpct_removeInterruptHandler_asm    cpct_firmware
+     00000A75  cpct_drawTileAligned2x4_f_asm      cpct_sprites
+     00000A96  _cpct_mode_rom_status              cpct_firmware
+     00000A97  _cpct_getScreenPtr                 cpct_video
+     00000BAC  __print_format                     printf_large
+     000015EE  _putchar                           cpct_strings
+     000015EE  _putchar_rr_s                      cpct_strings
+     000015F7  _putchar_rr_dbs                    cpct_strings
+     000015FC  ___sdcc_call_hl                    
+     000015FD  _strlen                            
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+
+Files Linked                              [ module(s) ]
+
+obj/main.rel                              [ main ]
+obj/tilemap.rel                           [ tilemap ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_isKeyPressed.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_scanKeyboard_f.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPALColour_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_etm_drawTileBox2x4_cbinding ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_etm_setTileset2x4.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ keyboard.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_etm_drawTileRow2x4.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMemoryPage.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_memset_f64_cbinding.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setStackLocation.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_waitVSYNC.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ vprintf.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawTileAligned2x4_f_asmbin ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_getScreenPtr_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ printf_large.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_putChar.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ __sdcc_call_hl.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ strlen.rel ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+
+User Base Address Definitions
+
+_CODE = 0x0040
+_DATA = 0x0000
+
+

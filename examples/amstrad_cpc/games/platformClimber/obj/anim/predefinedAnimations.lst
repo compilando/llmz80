@@ -1,0 +1,158 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module predefinedAnimations
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _g_anim
+                             12 	.globl _g_hitRight
+                             13 	.globl _g_hitLeft
+                             14 	.globl _g_jumpRight
+                             15 	.globl _g_jumpLeft
+                             16 	.globl _g_walkRight
+                             17 	.globl _g_walkLeft
+                             18 	.globl _g_allAnimFrames
+                             19 ;--------------------------------------------------------
+                             20 ; special function registers
+                             21 ;--------------------------------------------------------
+                             22 ;--------------------------------------------------------
+                             23 ; ram data
+                             24 ;--------------------------------------------------------
+                             25 	.area _DATA
+                             26 ;--------------------------------------------------------
+                             27 ; ram data
+                             28 ;--------------------------------------------------------
+                             29 	.area _INITIALIZED
+                             30 ;--------------------------------------------------------
+                             31 ; absolute external ram data
+                             32 ;--------------------------------------------------------
+                             33 	.area _DABS (ABS)
+                             34 ;--------------------------------------------------------
+                             35 ; global & static initialisations
+                             36 ;--------------------------------------------------------
+                             37 	.area _HOME
+                             38 	.area _GSINIT
+                             39 	.area _GSFINAL
+                             40 	.area _GSINIT
+                             41 ;--------------------------------------------------------
+                             42 ; Home
+                             43 ;--------------------------------------------------------
+                             44 	.area _HOME
+                             45 	.area _HOME
+                             46 ;--------------------------------------------------------
+                             47 ; code
+                             48 ;--------------------------------------------------------
+                             49 	.area _CODE
+                             50 	.area _CODE
+   0000                      51 _g_allAnimFrames:
+   0000r00r00                52 	.dw _G_EMRright
+   0002 04                   53 	.db #0x04	; 4
+   0003 10                   54 	.db #0x10	; 16
+   0004 04                   55 	.db #0x04	; 4
+   0005r00r00                56 	.dw _G_EMRright2
+   0007 02                   57 	.db #0x02	; 2
+   0008 10                   58 	.db #0x10	; 16
+   0009 04                   59 	.db #0x04	; 4
+   000Ar00r00                60 	.dw _G_EMRleft
+   000C 04                   61 	.db #0x04	; 4
+   000D 10                   62 	.db #0x10	; 16
+   000E 04                   63 	.db #0x04	; 4
+   000Fr00r00                64 	.dw _G_EMRleft2
+   0011 02                   65 	.db #0x02	; 2
+   0012 10                   66 	.db #0x10	; 16
+   0013 04                   67 	.db #0x04	; 4
+   0014r00r00                68 	.dw _G_EMRjumpright1
+   0016 04                   69 	.db #0x04	; 4
+   0017 08                   70 	.db #0x08	; 8
+   0018 03                   71 	.db #0x03	; 3
+   0019r00r00                72 	.dw _G_EMRjumpright2
+   001B 04                   73 	.db #0x04	; 4
+   001C 08                   74 	.db #0x08	; 8
+   001D 04                   75 	.db #0x04	; 4
+   001Er00r00                76 	.dw _G_EMRjumpright3
+   0020 04                   77 	.db #0x04	; 4
+   0021 08                   78 	.db #0x08	; 8
+   0022 04                   79 	.db #0x04	; 4
+   0023r00r00                80 	.dw _G_EMRjumpright4
+   0025 04                   81 	.db #0x04	; 4
+   0026 08                   82 	.db #0x08	; 8
+   0027 03                   83 	.db #0x03	; 3
+   0028r00r00                84 	.dw _G_EMRjumpleft1
+   002A 04                   85 	.db #0x04	; 4
+   002B 08                   86 	.db #0x08	; 8
+   002C 03                   87 	.db #0x03	; 3
+   002Dr00r00                88 	.dw _G_EMRjumpleft2
+   002F 04                   89 	.db #0x04	; 4
+   0030 08                   90 	.db #0x08	; 8
+   0031 04                   91 	.db #0x04	; 4
+   0032r00r00                92 	.dw _G_EMRjumpleft3
+   0034 04                   93 	.db #0x04	; 4
+   0035 08                   94 	.db #0x08	; 8
+   0036 04                   95 	.db #0x04	; 4
+   0037r00r00                96 	.dw _G_EMRjumpleft4
+   0039 04                   97 	.db #0x04	; 4
+   003A 08                   98 	.db #0x08	; 8
+   003B 03                   99 	.db #0x03	; 3
+   003Cr00r00               100 	.dw _G_EMRhitright
+   003E 04                  101 	.db #0x04	; 4
+   003F 10                  102 	.db #0x10	; 16
+   0040 06                  103 	.db #0x06	; 6
+   0041r00r00               104 	.dw _G_EMRhitleft
+   0043 04                  105 	.db #0x04	; 4
+   0044 10                  106 	.db #0x10	; 16
+   0045 06                  107 	.db #0x06	; 6
+   0046r00r00               108 	.dw _G_EMRright3
+   0048 04                  109 	.db #0x04	; 4
+   0049 10                  110 	.db #0x10	; 16
+   004A 04                  111 	.db #0x04	; 4
+   004Br00r00               112 	.dw _G_EMRleft3
+   004D 04                  113 	.db #0x04	; 4
+   004E 10                  114 	.db #0x10	; 16
+   004F 04                  115 	.db #0x04	; 4
+   0050                     116 _g_walkLeft:
+   0050r0Ar00               117 	.dw (_g_allAnimFrames + 10)
+   0052r0Fr00               118 	.dw (_g_allAnimFrames + 15)
+   0054r4Br00               119 	.dw (_g_allAnimFrames + 75)
+   0056r0Fr00               120 	.dw (_g_allAnimFrames + 15)
+   0058 00 00               121 	.dw #0x0000
+   005A                     122 _g_walkRight:
+   005Ar00r00               123 	.dw (_g_allAnimFrames + 0)
+   005Cr05r00               124 	.dw (_g_allAnimFrames + 5)
+   005Er46r00               125 	.dw (_g_allAnimFrames + 70)
+   0060r05r00               126 	.dw (_g_allAnimFrames + 5)
+   0062 00 00               127 	.dw #0x0000
+   0064                     128 _g_jumpLeft:
+   0064r28r00               129 	.dw (_g_allAnimFrames + 40)
+   0066r2Dr00               130 	.dw (_g_allAnimFrames + 45)
+   0068r32r00               131 	.dw (_g_allAnimFrames + 50)
+   006Ar37r00               132 	.dw (_g_allAnimFrames + 55)
+   006Cr0Fr00               133 	.dw (_g_allAnimFrames + 15)
+   006E 00 00               134 	.dw #0x0000
+   0070                     135 _g_jumpRight:
+   0070r14r00               136 	.dw (_g_allAnimFrames + 20)
+   0072r19r00               137 	.dw (_g_allAnimFrames + 25)
+   0074r1Er00               138 	.dw (_g_allAnimFrames + 30)
+   0076r23r00               139 	.dw (_g_allAnimFrames + 35)
+   0078r05r00               140 	.dw (_g_allAnimFrames + 5)
+   007A 00 00               141 	.dw #0x0000
+   007C                     142 _g_hitLeft:
+   007Cr41r00               143 	.dw (_g_allAnimFrames + 65)
+   007E 00 00               144 	.dw #0x0000
+   0080                     145 _g_hitRight:
+   0080r3Cr00               146 	.dw (_g_allAnimFrames + 60)
+   0082 00 00               147 	.dw #0x0000
+   0084                     148 _g_anim:
+   0084 00 00               149 	.dw #0x0000
+   0086 00 00               150 	.dw #0x0000
+   0088r50r00               151 	.dw _g_walkLeft
+   008Ar5Ar00               152 	.dw _g_walkRight
+   008Cr64r00               153 	.dw _g_jumpLeft
+   008Er70r00               154 	.dw _g_jumpRight
+   0090r7Cr00               155 	.dw _g_hitLeft
+   0092r80r00               156 	.dw _g_hitRight
+                            157 	.area _INITIALIZER
+                            158 	.area _CABS (ABS)

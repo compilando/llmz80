@@ -1,0 +1,290 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module main
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _main
+                             12 	.globl _initialize
+                             13 	.globl _getUserInput
+                             14 	.globl _clearRockets
+                             15 	.globl _drawRockets
+                             16 	.globl _cpct_getScreenPtr
+                             17 	.globl _cpct_setPALColour
+                             18 	.globl _cpct_setPalette
+                             19 	.globl _cpct_waitVSYNC
+                             20 	.globl _cpct_setVideoMode
+                             21 	.globl _cpct_drawSprite
+                             22 	.globl _cpct_drawSolidBox
+                             23 	.globl _cpct_drawSpriteVFlip
+                             24 	.globl _cpct_getBottomLeftPtr
+                             25 	.globl _cpct_isKeyPressed
+                             26 	.globl _cpct_scanKeyboard_f
+                             27 	.globl _cpct_disableFirmware
+                             28 ;--------------------------------------------------------
+                             29 ; special function registers
+                             30 ;--------------------------------------------------------
+                             31 ;--------------------------------------------------------
+                             32 ; ram data
+                             33 ;--------------------------------------------------------
+                             34 	.area _DATA
+                             35 ;--------------------------------------------------------
+                             36 ; ram data
+                             37 ;--------------------------------------------------------
+                             38 	.area _INITIALIZED
+                             39 ;--------------------------------------------------------
+                             40 ; absolute external ram data
+                             41 ;--------------------------------------------------------
+                             42 	.area _DABS (ABS)
+                             43 ;--------------------------------------------------------
+                             44 ; global & static initialisations
+                             45 ;--------------------------------------------------------
+                             46 	.area _HOME
+                             47 	.area _GSINIT
+                             48 	.area _GSFINAL
+                             49 	.area _GSINIT
+                             50 ;--------------------------------------------------------
+                             51 ; Home
+                             52 ;--------------------------------------------------------
+                             53 	.area _HOME
+                             54 	.area _HOME
+                             55 ;--------------------------------------------------------
+                             56 ; code
+                             57 ;--------------------------------------------------------
+                             58 	.area _CODE
+                             59 ;src/main.c:37: void drawRockets(u8 x, u8 y) {
+                             60 ;	---------------------------------
+                             61 ; Function drawRockets
+                             62 ; ---------------------------------
+   0000                      63 _drawRockets::
+   0000 DD E5         [15]   64 	push	ix
+   0002 DD 21 00 00   [14]   65 	ld	ix,#0
+   0006 DD 39         [15]   66 	add	ix,sp
+                             67 ;src/main.c:43: pvmem = cpct_getScreenPtr(CPCT_VMEM_START, x, y);
+   0008 DD 66 05      [19]   68 	ld	h, 5 (ix)
+   000B DD 6E 04      [19]   69 	ld	l, 4 (ix)
+   000E E5            [11]   70 	push	hl
+   000F 21 00 C0      [10]   71 	ld	hl, #0xc000
+   0012 E5            [11]   72 	push	hl
+   0013 CDr00r00      [17]   73 	call	_cpct_getScreenPtr
+   0016 4D            [ 4]   74 	ld	c, l
+   0017 44            [ 4]   75 	ld	b, h
+                             76 ;src/main.c:45: cpct_drawSprite(g_rocket, pvmem, G_ROCKET_W, G_ROCKET_H);
+   0018 C5            [11]   77 	push	bc
+   0019 21 04 0E      [10]   78 	ld	hl, #0x0e04
+   001C E5            [11]   79 	push	hl
+   001D C5            [11]   80 	push	bc
+   001E 21r00r00      [10]   81 	ld	hl, #_g_rocket
+   0021 E5            [11]   82 	push	hl
+   0022 CDr00r00      [17]   83 	call	_cpct_drawSprite
+   0025 C1            [10]   84 	pop	bc
+                             85 ;src/main.c:52: pvmem = cpct_getBottomLeftPtr(pvmem, G_ROCKET_H);
+   0026 21 0E 00      [10]   86 	ld	hl, #0x000e
+   0029 E5            [11]   87 	push	hl
+   002A C5            [11]   88 	push	bc
+   002B CDr00r00      [17]   89 	call	_cpct_getBottomLeftPtr
+                             90 ;src/main.c:56: pvmem += G_ROCKET_W + 1;
+   002E 01 05 00      [10]   91 	ld	bc, #0x0005
+   0031 09            [11]   92 	add	hl, bc
+                             93 ;src/main.c:60: cpct_drawSpriteVFlip(g_rocket, pvmem, G_ROCKET_W, G_ROCKET_H);  
+   0032 01 04 0E      [10]   94 	ld	bc, #0x0e04
+   0035 C5            [11]   95 	push	bc
+   0036 E5            [11]   96 	push	hl
+   0037 21r00r00      [10]   97 	ld	hl, #_g_rocket
+   003A E5            [11]   98 	push	hl
+   003B CDr00r00      [17]   99 	call	_cpct_drawSpriteVFlip
+   003E DD E1         [14]  100 	pop	ix
+   0040 C9            [10]  101 	ret
+                            102 ;src/main.c:70: void clearRockets(u8 x, u8 y) {
+                            103 ;	---------------------------------
+                            104 ; Function clearRockets
+                            105 ; ---------------------------------
+   0041                     106 _clearRockets::
+                            107 ;src/main.c:76: pvmem = cpct_getScreenPtr(CPCT_VMEM_START, x, y);
+   0041 21 03 00      [10]  108 	ld	hl, #3+0
+   0044 39            [11]  109 	add	hl, sp
+   0045 7E            [ 7]  110 	ld	a, (hl)
+   0046 F5            [11]  111 	push	af
+   0047 33            [ 6]  112 	inc	sp
+   0048 21 03 00      [10]  113 	ld	hl, #3+0
+   004B 39            [11]  114 	add	hl, sp
+   004C 7E            [ 7]  115 	ld	a, (hl)
+   004D F5            [11]  116 	push	af
+   004E 33            [ 6]  117 	inc	sp
+   004F 21 00 C0      [10]  118 	ld	hl, #0xc000
+   0052 E5            [11]  119 	push	hl
+   0053 CDr00r00      [17]  120 	call	_cpct_getScreenPtr
+                            121 ;src/main.c:80: cpct_drawSolidBox(pvmem, cpctm_px2byteM0(0, 0), 2*G_ROCKET_W+1, G_ROCKET_H);
+   0056 01 09 0E      [10]  122 	ld	bc, #0x0e09
+   0059 C5            [11]  123 	push	bc
+   005A 01 00 00      [10]  124 	ld	bc, #0x0000
+   005D C5            [11]  125 	push	bc
+   005E E5            [11]  126 	push	hl
+   005F CDr00r00      [17]  127 	call	_cpct_drawSolidBox
+   0062 C9            [10]  128 	ret
+                            129 ;src/main.c:88: void getUserInput(i8* vx, i8* vy) {
+                            130 ;	---------------------------------
+                            131 ; Function getUserInput
+                            132 ; ---------------------------------
+   0063                     133 _getUserInput::
+   0063 DD E5         [15]  134 	push	ix
+   0065 DD 21 00 00   [14]  135 	ld	ix,#0
+   0069 DD 39         [15]  136 	add	ix,sp
+                            137 ;src/main.c:90: *vx = *vy = 0;
+   006B DD 5E 04      [19]  138 	ld	e,4 (ix)
+   006E DD 56 05      [19]  139 	ld	d,5 (ix)
+   0071 DD 4E 06      [19]  140 	ld	c,6 (ix)
+   0074 DD 46 07      [19]  141 	ld	b,7 (ix)
+   0077 AF            [ 4]  142 	xor	a, a
+   0078 02            [ 7]  143 	ld	(bc), a
+   0079 AF            [ 4]  144 	xor	a, a
+   007A 12            [ 7]  145 	ld	(de), a
+                            146 ;src/main.c:93: cpct_scanKeyboard_f();
+   007B C5            [11]  147 	push	bc
+   007C D5            [11]  148 	push	de
+   007D CDr00r00      [17]  149 	call	_cpct_scanKeyboard_f
+   0080 21 04 04      [10]  150 	ld	hl, #0x0404
+   0083 CDr00r00      [17]  151 	call	_cpct_isKeyPressed
+   0086 D1            [10]  152 	pop	de
+   0087 C1            [10]  153 	pop	bc
+   0088 7D            [ 4]  154 	ld	a, l
+   0089 B7            [ 4]  155 	or	a, a
+   008A 28 04         [12]  156 	jr	Z,00102$
+   008C 1A            [ 7]  157 	ld	a, (de)
+   008D C6 FF         [ 7]  158 	add	a, #0xff
+   008F 12            [ 7]  159 	ld	(de), a
+   0090                     160 00102$:
+                            161 ;src/main.c:98: if ( cpct_isKeyPressed(Key_P) ) (*vx)++;  // P: Right
+   0090 C5            [11]  162 	push	bc
+   0091 D5            [11]  163 	push	de
+   0092 21 03 08      [10]  164 	ld	hl, #0x0803
+   0095 CDr00r00      [17]  165 	call	_cpct_isKeyPressed
+   0098 D1            [10]  166 	pop	de
+   0099 C1            [10]  167 	pop	bc
+   009A 7D            [ 4]  168 	ld	a, l
+   009B B7            [ 4]  169 	or	a, a
+   009C 28 03         [12]  170 	jr	Z,00104$
+   009E 1A            [ 7]  171 	ld	a, (de)
+   009F 3C            [ 4]  172 	inc	a
+   00A0 12            [ 7]  173 	ld	(de), a
+   00A1                     174 00104$:
+                            175 ;src/main.c:99: if ( cpct_isKeyPressed(Key_Q) ) (*vy)--;  // Q: Up
+   00A1 C5            [11]  176 	push	bc
+   00A2 21 08 08      [10]  177 	ld	hl, #0x0808
+   00A5 CDr00r00      [17]  178 	call	_cpct_isKeyPressed
+   00A8 C1            [10]  179 	pop	bc
+   00A9 7D            [ 4]  180 	ld	a, l
+   00AA B7            [ 4]  181 	or	a, a
+   00AB 28 04         [12]  182 	jr	Z,00106$
+   00AD 0A            [ 7]  183 	ld	a, (bc)
+   00AE C6 FF         [ 7]  184 	add	a, #0xff
+   00B0 02            [ 7]  185 	ld	(bc), a
+   00B1                     186 00106$:
+                            187 ;src/main.c:100: if ( cpct_isKeyPressed(Key_A) ) (*vy)++;  // A: Down
+   00B1 C5            [11]  188 	push	bc
+   00B2 21 08 20      [10]  189 	ld	hl, #0x2008
+   00B5 CDr00r00      [17]  190 	call	_cpct_isKeyPressed
+   00B8 C1            [10]  191 	pop	bc
+   00B9 7D            [ 4]  192 	ld	a, l
+   00BA B7            [ 4]  193 	or	a, a
+   00BB 28 03         [12]  194 	jr	Z,00109$
+   00BD 0A            [ 7]  195 	ld	a, (bc)
+   00BE 3C            [ 4]  196 	inc	a
+   00BF 02            [ 7]  197 	ld	(bc), a
+   00C0                     198 00109$:
+   00C0 DD E1         [14]  199 	pop	ix
+   00C2 C9            [10]  200 	ret
+                            201 ;src/main.c:107: void initialize() {
+                            202 ;	---------------------------------
+                            203 ; Function initialize
+                            204 ; ---------------------------------
+   00C3                     205 _initialize::
+                            206 ;src/main.c:108: cpct_disableFirmware();          // Disable firmware to prevent it from restoring mode and palette
+   00C3 CDr00r00      [17]  207 	call	_cpct_disableFirmware
+                            208 ;src/main.c:109: cpct_setVideoMode(0);            // Set video mode to 0 (160x200, 16 colours)
+   00C6 2E 00         [ 7]  209 	ld	l, #0x00
+   00C8 CDr00r00      [17]  210 	call	_cpct_setVideoMode
+                            211 ;src/main.c:110: cpct_setPalette(g_palette, 16);  // Set the palette using hardware values generated at rocket.h
+   00CB 21 10 00      [10]  212 	ld	hl, #0x0010
+   00CE E5            [11]  213 	push	hl
+   00CF 21r00r00      [10]  214 	ld	hl, #_g_palette
+   00D2 E5            [11]  215 	push	hl
+   00D3 CDr00r00      [17]  216 	call	_cpct_setPalette
+                            217 ;src/main.c:111: cpct_setBorder(HW_BLACK);        // Set border colour to Black 
+   00D6 21 10 14      [10]  218 	ld	hl, #0x1410
+   00D9 E5            [11]  219 	push	hl
+   00DA CDr00r00      [17]  220 	call	_cpct_setPALColour
+   00DD C9            [10]  221 	ret
+                            222 ;src/main.c:117: void main(void) {
+                            223 ;	---------------------------------
+                            224 ; Function main
+                            225 ; ---------------------------------
+   00DE                     226 _main::
+   00DE DD E5         [15]  227 	push	ix
+   00E0 DD 21 00 00   [14]  228 	ld	ix,#0
+   00E4 DD 39         [15]  229 	add	ix,sp
+   00E6 F5            [11]  230 	push	af
+                            231 ;src/main.c:118: u8 x = INIT_X, y = INIT_Y;    // x, y coordinates
+   00E7 01 14 64      [10]  232 	ld	bc,#0x6414
+                            233 ;src/main.c:119: i8 vx = 1, vy = 0;            // vx, vy velocity (vx not 0 to force initial drawing)
+   00EA DD 36 FE 01   [19]  234 	ld	-2 (ix), #0x01
+   00EE DD 36 FF 00   [19]  235 	ld	-1 (ix), #0x00
+                            236 ;src/main.c:122: initialize();
+   00F2 C5            [11]  237 	push	bc
+   00F3 CDrC3r00      [17]  238 	call	_initialize
+   00F6 C1            [10]  239 	pop	bc
+                            240 ;src/main.c:125: while (1) {
+   00F7                     241 00105$:
+                            242 ;src/main.c:129: cpct_waitVSYNC();
+   00F7 C5            [11]  243 	push	bc
+   00F8 CDr00r00      [17]  244 	call	_cpct_waitVSYNC
+   00FB C1            [10]  245 	pop	bc
+                            246 ;src/main.c:135: if (vx || vy) {
+   00FC DD 7E FE      [19]  247 	ld	a, -2 (ix)
+   00FF B7            [ 4]  248 	or	a, a
+   0100 20 06         [12]  249 	jr	NZ,00101$
+   0102 DD 7E FF      [19]  250 	ld	a, -1 (ix)
+   0105 B7            [ 4]  251 	or	a, a
+   0106 28 18         [12]  252 	jr	Z,00102$
+   0108                     253 00101$:
+                            254 ;src/main.c:136: clearRockets(x, y);  // Clear Rockets
+   0108 C5            [11]  255 	push	bc
+   0109 C5            [11]  256 	push	bc
+   010A CDr41r00      [17]  257 	call	_clearRockets
+   010D F1            [10]  258 	pop	af
+   010E C1            [10]  259 	pop	bc
+                            260 ;src/main.c:137: x += vx; y += vy;    // Update x,y coordinates according to velocity
+   010F 79            [ 4]  261 	ld	a, c
+   0110 DD 86 FE      [19]  262 	add	a, -2 (ix)
+   0113 4F            [ 4]  263 	ld	c, a
+   0114 78            [ 4]  264 	ld	a, b
+   0115 DD 86 FF      [19]  265 	add	a, -1 (ix)
+   0118 47            [ 4]  266 	ld	b, a
+                            267 ;src/main.c:138: drawRockets(x, y);   // Draw Rockets at their new location
+   0119 C5            [11]  268 	push	bc
+   011A C5            [11]  269 	push	bc
+   011B CDr00r00      [17]  270 	call	_drawRockets
+   011E F1            [10]  271 	pop	af
+   011F C1            [10]  272 	pop	bc
+   0120                     273 00102$:
+                            274 ;src/main.c:142: getUserInput(&vx, &vy);
+   0120 21 01 00      [10]  275 	ld	hl, #0x0001
+   0123 39            [11]  276 	add	hl, sp
+   0124 EB            [ 4]  277 	ex	de,hl
+   0125 21 00 00      [10]  278 	ld	hl, #0x0000
+   0128 39            [11]  279 	add	hl, sp
+   0129 C5            [11]  280 	push	bc
+   012A D5            [11]  281 	push	de
+   012B E5            [11]  282 	push	hl
+   012C CDr63r00      [17]  283 	call	_getUserInput
+   012F F1            [10]  284 	pop	af
+   0130 F1            [10]  285 	pop	af
+   0131 C1            [10]  286 	pop	bc
+   0132 18 C3         [12]  287 	jr	00105$
+                            288 	.area _CODE
+                            289 	.area _INITIALIZER
+                            290 	.area _CABS (ABS)

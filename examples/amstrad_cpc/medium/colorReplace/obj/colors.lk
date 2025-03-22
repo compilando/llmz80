@@ -1,0 +1,21 @@
+-mjwx
+-i obj/colors.ihx
+-b _CODE = 0x0040
+-b _DATA = 0x0000
+-u
+-k /home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80
+-k /home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/share/sdcc/lib/z80
+-l /home/oscar/cpctelera/cpctelera/cpctelera.lib
+-l z80
+obj/sprites/cloud.rel
+obj/sprites/roof.rel
+obj/sprites/circle_trans.rel
+obj/sprites/star_trans.rel
+obj/sprites/square.rel
+obj/sprites/balloon.rel
+obj/sprites/g_palette.rel
+obj/drawing.rel
+obj/main.rel
+obj/manageVideoMem.rel
+
+-e

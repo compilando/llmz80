@@ -1,0 +1,3756 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module entities
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _cropVelocity
+                             12 	.globl _getRandomUniform
+                             13 	.globl _updateAnimation
+                             14 	.globl _cpct_getScreenPtr
+                             15 	.globl _cpct_drawSprite
+                             16 	.globl _cpct_drawSolidBox
+                             17 	.globl _cpct_px2byteM0
+                             18 	.globl _cpct_memcpy
+                             19 	.globl _g_movingBlocks
+                             20 	.globl _g_colMaxBlock
+                             21 	.globl _g_colMinBlock
+                             22 	.globl _g_lastBlock
+                             23 	.globl _g_blocks
+                             24 	.globl _G_score
+                             25 	.globl _G_platfColour
+                             26 	.globl _G_scrollVel
+                             27 	.globl _g_Character
+                             28 	.globl _g_SCR_HEIGHT
+                             29 	.globl _g_SCR_WIDTH
+                             30 	.globl _G_maxY
+                             31 	.globl _G_minY
+                             32 	.globl _G_maxX
+                             33 	.globl _G_minX
+                             34 	.globl _G_floorFric
+                             35 	.globl _G_airFric
+                             36 	.globl _G_maxScrollVel
+                             37 	.globl _G_jumpVel
+                             38 	.globl _G_minVel
+                             39 	.globl _G_maxXVel
+                             40 	.globl _G_maxYVel
+                             41 	.globl _G_gx
+                             42 	.globl _G_gy
+                             43 	.globl _initializeEntities
+                             44 	.globl _getScore
+                             45 	.globl _getCharacter
+                             46 	.globl _performAction
+                             47 	.globl _moveBlock
+                             48 	.globl _scrollWorld
+                             49 	.globl _updateCharacterPhysics
+                             50 	.globl _getNearestBlockID
+                             51 	.globl _applyCharacterBlockCollisions
+                             52 	.globl _updateCharacter
+                             53 	.globl _checkCollisionEntBlock
+                             54 	.globl _isOverFloor
+                             55 	.globl _setEntityLocation
+                             56 	.globl _drawAnimEntity
+                             57 	.globl _drawBlockEntity
+                             58 	.globl _drawAll
+                             59 	.globl _newSolidBlock
+                             60 	.globl _destroyBlock
+                             61 	.globl _randomCreateNewBlock
+                             62 ;--------------------------------------------------------
+                             63 ; special function registers
+                             64 ;--------------------------------------------------------
+                             65 ;--------------------------------------------------------
+                             66 ; ram data
+                             67 ;--------------------------------------------------------
+                             68 	.area _DATA
+   0000                      69 _G_scrollVel::
+   0000                      70 	.ds 2
+   0002                      71 _G_platfColour::
+   0002                      72 	.ds 1
+   0003                      73 _G_score::
+   0003                      74 	.ds 2
+   0005                      75 _g_blocks::
+   0005                      76 	.ds 496
+   01F5                      77 _g_lastBlock::
+   01F5                      78 	.ds 1
+   01F6                      79 _g_colMinBlock::
+   01F6                      80 	.ds 1
+   01F7                      81 _g_colMaxBlock::
+   01F7                      82 	.ds 1
+   01F8                      83 _g_movingBlocks::
+   01F8                      84 	.ds 1
+   01F9                      85 _checkCollisionEntBlock_c_1_213:
+   01F9                      86 	.ds 4
+                             87 ;--------------------------------------------------------
+                             88 ; ram data
+                             89 ;--------------------------------------------------------
+                             90 	.area _INITIALIZED
+                             91 ;--------------------------------------------------------
+                             92 ; absolute external ram data
+                             93 ;--------------------------------------------------------
+                             94 	.area _DABS (ABS)
+                             95 ;--------------------------------------------------------
+                             96 ; global & static initialisations
+                             97 ;--------------------------------------------------------
+                             98 	.area _HOME
+                             99 	.area _GSINIT
+                            100 	.area _GSFINAL
+                            101 	.area _GSINIT
+                            102 ;--------------------------------------------------------
+                            103 ; Home
+                            104 ;--------------------------------------------------------
+                            105 	.area _HOME
+                            106 	.area _HOME
+                            107 ;--------------------------------------------------------
+                            108 ; code
+                            109 ;--------------------------------------------------------
+                            110 	.area _CODE
+                            111 ;src/entities/entities.c:119: void initializeEntities() {
+                            112 ;	---------------------------------
+                            113 ; Function initializeEntities
+                            114 ; ---------------------------------
+   0000                     115 _initializeEntities::
+                            116 ;src/entities/entities.c:120: G_platfColour = cpct_px2byteM0(8, 8);
+   0000 21 08 08      [10]  117 	ld	hl, #0x0808
+   0003 E5            [11]  118 	push	hl
+   0004 CDr00r00      [17]  119 	call	_cpct_px2byteM0
+   0007 FD 21r02r00   [14]  120 	ld	iy, #_G_platfColour
+   000B FD 75 00      [19]  121 	ld	0 (iy), l
+                            122 ;src/entities/entities.c:121: G_scrollVel = 3 * SCALE / FPS;  // Scroll down velocity, 3 px/sec
+   000E 21 0F 00      [10]  123 	ld	hl, #0x000f
+   0011 22r00r00      [16]  124 	ld	(_G_scrollVel), hl
+                            125 ;src/entities/entities.c:122: g_movingBlocks = 0;
+   0014 21rF8r01      [10]  126 	ld	hl,#_g_movingBlocks + 0
+   0017 36 00         [10]  127 	ld	(hl), #0x00
+                            128 ;src/entities/entities.c:125: g_lastBlock = 0;                                // Block ID 
+   0019 21rF5r01      [10]  129 	ld	hl,#_g_lastBlock + 0
+   001C 36 00         [10]  130 	ld	(hl), #0x00
+                            131 ;src/entities/entities.c:126: newSolidBlock( 4, 120, 50, 5, G_platfColour);   // 0 /
+   001E 3Ar02r00      [13]  132 	ld	a, (_G_platfColour)
+   0021 F5            [11]  133 	push	af
+   0022 33            [ 6]  134 	inc	sp
+   0023 21 32 05      [10]  135 	ld	hl, #0x0532
+   0026 E5            [11]  136 	push	hl
+   0027 21 04 78      [10]  137 	ld	hl, #0x7804
+   002A E5            [11]  138 	push	hl
+   002B CDr09r14      [17]  139 	call	_newSolidBlock
+   002E F1            [10]  140 	pop	af
+   002F F1            [10]  141 	pop	af
+   0030 33            [ 6]  142 	inc	sp
+                            143 ;src/entities/entities.c:127: newSolidBlock(14, 100, 10, 3, G_platfColour);   // 1 /
+   0031 3Ar02r00      [13]  144 	ld	a, (_G_platfColour)
+   0034 F5            [11]  145 	push	af
+   0035 33            [ 6]  146 	inc	sp
+   0036 21 0A 03      [10]  147 	ld	hl, #0x030a
+   0039 E5            [11]  148 	push	hl
+   003A 21 0E 64      [10]  149 	ld	hl, #0x640e
+   003D E5            [11]  150 	push	hl
+   003E CDr09r14      [17]  151 	call	_newSolidBlock
+   0041 F1            [10]  152 	pop	af
+   0042 F1            [10]  153 	pop	af
+   0043 33            [ 6]  154 	inc	sp
+                            155 ;src/entities/entities.c:128: newSolidBlock(34, 100, 10, 3, G_platfColour);   // 2 /
+   0044 3Ar02r00      [13]  156 	ld	a, (_G_platfColour)
+   0047 F5            [11]  157 	push	af
+   0048 33            [ 6]  158 	inc	sp
+   0049 21 0A 03      [10]  159 	ld	hl, #0x030a
+   004C E5            [11]  160 	push	hl
+   004D 21 22 64      [10]  161 	ld	hl, #0x6422
+   0050 E5            [11]  162 	push	hl
+   0051 CDr09r14      [17]  163 	call	_newSolidBlock
+   0054 F1            [10]  164 	pop	af
+   0055 F1            [10]  165 	pop	af
+   0056 33            [ 6]  166 	inc	sp
+                            167 ;src/entities/entities.c:129: newSolidBlock(26,  80,  6, 3, G_platfColour);   // 3 /
+   0057 3Ar02r00      [13]  168 	ld	a, (_G_platfColour)
+   005A F5            [11]  169 	push	af
+   005B 33            [ 6]  170 	inc	sp
+   005C 21 06 03      [10]  171 	ld	hl, #0x0306
+   005F E5            [11]  172 	push	hl
+   0060 21 1A 50      [10]  173 	ld	hl, #0x501a
+   0063 E5            [11]  174 	push	hl
+   0064 CDr09r14      [17]  175 	call	_newSolidBlock
+   0067 F1            [10]  176 	pop	af
+   0068 F1            [10]  177 	pop	af
+   0069 33            [ 6]  178 	inc	sp
+                            179 ;src/entities/entities.c:130: newSolidBlock( 8,  60, 10, 3, G_platfColour);   // 4 /
+   006A 3Ar02r00      [13]  180 	ld	a, (_G_platfColour)
+   006D F5            [11]  181 	push	af
+   006E 33            [ 6]  182 	inc	sp
+   006F 21 0A 03      [10]  183 	ld	hl, #0x030a
+   0072 E5            [11]  184 	push	hl
+   0073 21 08 3C      [10]  185 	ld	hl, #0x3c08
+   0076 E5            [11]  186 	push	hl
+   0077 CDr09r14      [17]  187 	call	_newSolidBlock
+   007A F1            [10]  188 	pop	af
+   007B F1            [10]  189 	pop	af
+   007C 33            [ 6]  190 	inc	sp
+                            191 ;src/entities/entities.c:131: newSolidBlock(36,  55, 10, 3, G_platfColour);   // 5 /
+   007D 3Ar02r00      [13]  192 	ld	a, (_G_platfColour)
+   0080 F5            [11]  193 	push	af
+   0081 33            [ 6]  194 	inc	sp
+   0082 21 0A 03      [10]  195 	ld	hl, #0x030a
+   0085 E5            [11]  196 	push	hl
+   0086 21 24 37      [10]  197 	ld	hl, #0x3724
+   0089 E5            [11]  198 	push	hl
+   008A CDr09r14      [17]  199 	call	_newSolidBlock
+   008D F1            [10]  200 	pop	af
+   008E F1            [10]  201 	pop	af
+   008F 33            [ 6]  202 	inc	sp
+                            203 ;src/entities/entities.c:132: newSolidBlock(20,  30, 20, 3, G_platfColour);   // 6 /
+   0090 3Ar02r00      [13]  204 	ld	a, (_G_platfColour)
+   0093 F5            [11]  205 	push	af
+   0094 33            [ 6]  206 	inc	sp
+   0095 21 14 03      [10]  207 	ld	hl, #0x0314
+   0098 E5            [11]  208 	push	hl
+   0099 26 1E         [ 7]  209 	ld	h, #0x1e
+   009B E5            [11]  210 	push	hl
+   009C CDr09r14      [17]  211 	call	_newSolidBlock
+   009F F1            [10]  212 	pop	af
+   00A0 F1            [10]  213 	pop	af
+   00A1 33            [ 6]  214 	inc	sp
+                            215 ;src/entities/entities.c:133: newSolidBlock( 9,  10, 10, 3, G_platfColour);   // 7 /
+   00A2 3Ar02r00      [13]  216 	ld	a, (_G_platfColour)
+   00A5 F5            [11]  217 	push	af
+   00A6 33            [ 6]  218 	inc	sp
+   00A7 21 0A 03      [10]  219 	ld	hl, #0x030a
+   00AA E5            [11]  220 	push	hl
+   00AB 21 09 0A      [10]  221 	ld	hl, #0x0a09
+   00AE E5            [11]  222 	push	hl
+   00AF CDr09r14      [17]  223 	call	_newSolidBlock
+   00B2 F1            [10]  224 	pop	af
+   00B3 F1            [10]  225 	pop	af
+   00B4 33            [ 6]  226 	inc	sp
+                            227 ;src/entities/entities.c:134: newSolidBlock(44,   9,  4, 3, G_platfColour);   // 8 /
+   00B5 3Ar02r00      [13]  228 	ld	a, (_G_platfColour)
+   00B8 F5            [11]  229 	push	af
+   00B9 33            [ 6]  230 	inc	sp
+   00BA 21 04 03      [10]  231 	ld	hl, #0x0304
+   00BD E5            [11]  232 	push	hl
+   00BE 21 2C 09      [10]  233 	ld	hl, #0x092c
+   00C1 E5            [11]  234 	push	hl
+   00C2 CDr09r14      [17]  235 	call	_newSolidBlock
+   00C5 F1            [10]  236 	pop	af
+   00C6 F1            [10]  237 	pop	af
+   00C7 33            [ 6]  238 	inc	sp
+                            239 ;src/entities/entities.c:135: G_score = 9; // 9 points for the 9 starting blocks
+   00C8 21 09 00      [10]  240 	ld	hl, #0x0009
+   00CB 22r03r00      [16]  241 	ld	(_G_score), hl
+                            242 ;src/entities/entities.c:137: G_platfColour = 8;
+   00CE 21r02r00      [10]  243 	ld	hl,#_G_platfColour + 0
+   00D1 36 08         [10]  244 	ld	(hl), #0x08
+                            245 ;src/entities/entities.c:140: setEntityLocation(&g_Character.entity, 28, 120-20, 0, 0, 1);
+   00D3 21 00 01      [10]  246 	ld	hl, #0x0100
+   00D6 E5            [11]  247 	push	hl
+   00D7 21 64 00      [10]  248 	ld	hl, #0x0064
+   00DA E5            [11]  249 	push	hl
+   00DB 3E 1C         [ 7]  250 	ld	a, #0x1c
+   00DD F5            [11]  251 	push	af
+   00DE 33            [ 6]  252 	inc	sp
+   00DF 21r0Cr01      [10]  253 	ld	hl, #_g_Character
+   00E2 E5            [11]  254 	push	hl
+   00E3 CDr4Br11      [17]  255 	call	_setEntityLocation
+   00E6 21 07 00      [10]  256 	ld	hl, #7
+   00E9 39            [11]  257 	add	hl, sp
+   00EA F9            [ 6]  258 	ld	sp, hl
+                            259 ;src/entities/entities.c:143: g_colMinBlock = 0;
+   00EB 21rF6r01      [10]  260 	ld	hl,#_g_colMinBlock + 0
+   00EE 36 00         [10]  261 	ld	(hl), #0x00
+                            262 ;src/entities/entities.c:144: g_colMaxBlock = 2;
+   00F0 21rF7r01      [10]  263 	ld	hl,#_g_colMaxBlock + 0
+   00F3 36 02         [10]  264 	ld	(hl), #0x02
+   00F5 C9            [10]  265 	ret
+   00F6                     266 _G_gy:
+   00F6 32 00               267 	.dw #0x0032
+   00F8                     268 _G_gx:
+   00F8 00 00               269 	.dw #0x0000
+   00FA                     270 _G_maxYVel:
+   00FA 00 03               271 	.dw #0x0300
+   00FC                     272 _G_maxXVel:
+   00FC 00 01               273 	.dw #0x0100
+   00FE                     274 _G_minVel:
+   00FE 20 00               275 	.dw #0x0020
+   0100                     276 _G_jumpVel:
+   0100 00 FD               277 	.dw #0xfd00
+   0102                     278 _G_maxScrollVel:
+   0102 80 00               279 	.dw #0x0080
+   0104                     280 _G_airFric:
+   0104 02                  281 	.db #0x02	; 2
+   0105                     282 _G_floorFric:
+   0105 04                  283 	.db #0x04	; 4
+   0106                     284 _G_minX:
+   0106 04                  285 	.db #0x04	; 4
+   0107                     286 _G_maxX:
+   0107 36                  287 	.db #0x36	; 54	'6'
+   0108                     288 _G_minY:
+   0108 08                  289 	.db #0x08	; 8
+   0109                     290 _G_maxY:
+   0109 C0                  291 	.db #0xc0	; 192
+   010A                     292 _g_SCR_WIDTH:
+   010A 50                  293 	.db #0x50	; 80	'P'
+   010B                     294 _g_SCR_HEIGHT:
+   010B C8                  295 	.db #0xc8	; 200
+   010C                     296 _g_Character:
+   010Cr00r00               297 	.dw _g_walkRight
+   010E 00                  298 	.db #0x00	; 0
+   010F 02                  299 	.db #0x02	; 2
+   0110 03                  300 	.db #0x03	; 3
+   0111 00 C0               301 	.dw #0xc000
+   0113 00 C0               302 	.dw #0xc000
+   0115 00                  303 	.db #0x00	; 0
+   0116 00                  304 	.db #0x00	; 0
+   0117 00                  305 	.db #0x00	; 0
+   0118 00                  306 	.db #0x00	; 0
+   0119 00                  307 	.db #0x00	; 0
+   011A 00                  308 	.db #0x00	; 0
+   011B 00 00               309 	.dw #0x0000
+   011D 00 00               310 	.dw #0x0000
+   011F 00 00               311 	.dw #0x0000
+   0121 00 00               312 	.dw #0x0000
+   0123 00 00               313 	.dw #0x0000
+   0125 00 00               314 	.dw #0x0000
+   0127 00                  315 	.db #0x00	; 0
+   0128 00 00               316 	.dw #0x0000
+   012A 00                  317 	.db #0x00	; 0
+   012B 01                  318 	.db #0x01	; 1
+   012C 01                  319 	.db #0x01	; 1
+                            320 ;src/entities/entities.c:150: u16 getScore() { return G_score; }
+                            321 ;	---------------------------------
+                            322 ; Function getScore
+                            323 ; ---------------------------------
+   012D                     324 _getScore::
+   012D 2Ar03r00      [16]  325 	ld	hl, (_G_score)
+   0130 C9            [10]  326 	ret
+                            327 ;src/entities/entities.c:151: TCharacter* getCharacter() { return &g_Character; }
+                            328 ;	---------------------------------
+                            329 ; Function getCharacter
+                            330 ; ---------------------------------
+   0131                     331 _getCharacter::
+   0131 21r0Cr01      [10]  332 	ld	hl, #_g_Character
+   0134 C9            [10]  333 	ret
+                            334 ;src/entities/entities.c:158: void performAction(TCharacter *c, TCharacterStatus move, TCharacterSide side) {
+                            335 ;	---------------------------------
+                            336 ; Function performAction
+                            337 ; ---------------------------------
+   0135                     338 _performAction::
+   0135 DD E5         [15]  339 	push	ix
+   0137 DD 21 00 00   [14]  340 	ld	ix,#0
+   013B DD 39         [15]  341 	add	ix,sp
+   013D 21 F4 FF      [10]  342 	ld	hl, #-12
+   0140 39            [11]  343 	add	hl, sp
+   0141 F9            [ 6]  344 	ld	sp, hl
+                            345 ;src/entities/entities.c:159: TEntity *e = &c->entity;   // Get entity associated to the character
+   0142 DD 6E 04      [19]  346 	ld	l,4 (ix)
+   0145 DD 66 05      [19]  347 	ld	h,5 (ix)
+   0148 5D            [ 4]  348 	ld	e, l
+   0149 54            [ 4]  349 	ld	d, h
+                            350 ;src/entities/entities.c:160: TPhysics *p = &e->phys;    // Get Physics information associated to the entity
+   014A 7B            [ 4]  351 	ld	a, e
+   014B C6 0F         [ 7]  352 	add	a, #0x0f
+   014D 4F            [ 4]  353 	ld	c, a
+   014E 7A            [ 4]  354 	ld	a, d
+   014F CE 00         [ 7]  355 	adc	a, #0x00
+   0151 47            [ 4]  356 	ld	b, a
+                            357 ;src/entities/entities.c:170: switch(c->status) {
+   0152 7D            [ 4]  358 	ld	a, l
+   0153 C6 1F         [ 7]  359 	add	a, #0x1f
+   0155 DD 77 FE      [19]  360 	ld	-2 (ix), a
+   0158 7C            [ 4]  361 	ld	a, h
+   0159 CE 00         [ 7]  362 	adc	a, #0x00
+   015B DD 77 FF      [19]  363 	ld	-1 (ix), a
+                            364 ;src/entities/entities.c:174: if ( side != c->side ) {
+   015E 7D            [ 4]  365 	ld	a, l
+   015F C6 20         [ 7]  366 	add	a, #0x20
+   0161 DD 77 F5      [19]  367 	ld	-11 (ix), a
+   0164 7C            [ 4]  368 	ld	a, h
+   0165 CE 00         [ 7]  369 	adc	a, #0x00
+   0167 DD 77 F6      [19]  370 	ld	-10 (ix), a
+                            371 ;src/entities/entities.c:175: e->nAnim   = g_anim[es_walk][side]; // Next animation changes
+   016A 21 1C 00      [10]  372 	ld	hl, #0x001c
+   016D 19            [11]  373 	add	hl,de
+   016E DD 75 F7      [19]  374 	ld	-9 (ix), l
+   0171 DD 74 F8      [19]  375 	ld	-8 (ix), h
+   0174 DD 7E 07      [19]  376 	ld	a, 7 (ix)
+   0177 87            [ 4]  377 	add	a, a
+   0178 DD 77 F9      [19]  378 	ld	-7 (ix), a
+                            379 ;src/entities/entities.c:178: e->nStatus = as_cycle;  // Make character cycle animation
+   017B 21 1E 00      [10]  380 	ld	hl, #0x001e
+   017E 19            [11]  381 	add	hl,de
+   017F EB            [ 4]  382 	ex	de,hl
+                            383 ;src/entities/entities.c:163: switch(move) {
+   0180 DD 7E 06      [19]  384 	ld	a, 6 (ix)
+   0183 3D            [ 4]  385 	dec	a
+   0184 28 1D         [12]  386 	jr	Z,00101$
+                            387 ;src/entities/entities.c:209: p->floor   = 0;         // When jumping, we left the floor
+   0186 21 0A 00      [10]  388 	ld	hl, #0x000a
+   0189 09            [11]  389 	add	hl,bc
+   018A DD 75 FA      [19]  390 	ld	-6 (ix), l
+   018D DD 74 FB      [19]  391 	ld	-5 (ix), h
+                            392 ;src/entities/entities.c:163: switch(move) {
+   0190 DD 7E 06      [19]  393 	ld	a, 6 (ix)
+   0193 D6 02         [ 7]  394 	sub	a, #0x02
+   0195 CAr1Ar02      [10]  395 	jp	Z,00111$
+   0198 DD 7E 06      [19]  396 	ld	a, 6 (ix)
+   019B D6 03         [ 7]  397 	sub	a, #0x03
+   019D CAr7Cr02      [10]  398 	jp	Z,00114$
+   01A0 C3rBBr02      [10]  399 	jp	00122$
+                            400 ;src/entities/entities.c:167: case es_walk:
+   01A3                     401 00101$:
+                            402 ;src/entities/entities.c:170: switch(c->status) {
+   01A3 DD 6E FE      [19]  403 	ld	l,-2 (ix)
+   01A6 DD 66 FF      [19]  404 	ld	h,-1 (ix)
+   01A9 7E            [ 7]  405 	ld	a, (hl)
+   01AA FE 01         [ 7]  406 	cp	a, #0x01
+   01AC 28 07         [12]  407 	jr	Z,00102$
+   01AE D6 02         [ 7]  408 	sub	a, #0x02
+   01B0 28 45         [12]  409 	jr	Z,00105$
+   01B2 C3rC8r02      [10]  410 	jp	00126$
+                            411 ;src/entities/entities.c:172: case es_walk:
+   01B5                     412 00102$:
+                            413 ;src/entities/entities.c:174: if ( side != c->side ) {
+   01B5 DD 6E F5      [19]  414 	ld	l,-11 (ix)
+   01B8 DD 66 F6      [19]  415 	ld	h,-10 (ix)
+   01BB 7E            [ 7]  416 	ld	a, (hl)
+   01BC DD 77 F4      [19]  417 	ld	-12 (ix), a
+   01BF DD 7E 07      [19]  418 	ld	a, 7 (ix)
+   01C2 DD 96 F4      [19]  419 	sub	a, -12 (ix)
+   01C5 28 2D         [12]  420 	jr	Z,00104$
+                            421 ;src/entities/entities.c:175: e->nAnim   = g_anim[es_walk][side]; // Next animation changes
+   01C7 3Er04         [ 7]  422 	ld	a, #<((_g_anim + 0x0004))
+   01C9 DD 86 F9      [19]  423 	add	a, -7 (ix)
+   01CC 6F            [ 4]  424 	ld	l, a
+   01CD 3Es00         [ 7]  425 	ld	a, #>((_g_anim + 0x0004))
+   01CF CE 00         [ 7]  426 	adc	a, #0x00
+   01D1 67            [ 4]  427 	ld	h, a
+   01D2 7E            [ 7]  428 	ld	a, (hl)
+   01D3 DD 77 FC      [19]  429 	ld	-4 (ix), a
+   01D6 23            [ 6]  430 	inc	hl
+   01D7 7E            [ 7]  431 	ld	a, (hl)
+   01D8 DD 77 FD      [19]  432 	ld	-3 (ix), a
+   01DB DD 6E F7      [19]  433 	ld	l,-9 (ix)
+   01DE DD 66 F8      [19]  434 	ld	h,-8 (ix)
+   01E1 DD 7E FC      [19]  435 	ld	a, -4 (ix)
+   01E4 77            [ 7]  436 	ld	(hl), a
+   01E5 23            [ 6]  437 	inc	hl
+   01E6 DD 7E FD      [19]  438 	ld	a, -3 (ix)
+   01E9 77            [ 7]  439 	ld	(hl), a
+                            440 ;src/entities/entities.c:176: c->side    = side;
+   01EA DD 6E F5      [19]  441 	ld	l,-11 (ix)
+   01ED DD 66 F6      [19]  442 	ld	h,-10 (ix)
+   01F0 DD 7E 07      [19]  443 	ld	a, 7 (ix)
+   01F3 77            [ 7]  444 	ld	(hl), a
+   01F4                     445 00104$:
+                            446 ;src/entities/entities.c:178: e->nStatus = as_cycle;  // Make character cycle animation
+   01F4 3E 02         [ 7]  447 	ld	a, #0x02
+   01F6 12            [ 7]  448 	ld	(de), a
+                            449 ;src/entities/entities.c:184: case es_jump:
+   01F7                     450 00105$:
+                            451 ;src/entities/entities.c:188: p->vx -= SCALE;
+   01F7 21 04 00      [10]  452 	ld	hl, #0x0004
+   01FA 09            [11]  453 	add	hl, bc
+   01FB E5            [11]  454 	push	hl
+   01FC 4E            [ 7]  455 	ld	c, (hl)
+   01FD 23            [ 6]  456 	inc	hl
+   01FE 46            [ 7]  457 	ld	b, (hl)
+   01FF E1            [10]  458 	pop	hl
+                            459 ;src/entities/entities.c:187: if ( side == s_left )
+   0200 DD 7E 07      [19]  460 	ld	a, 7 (ix)
+   0203 B7            [ 4]  461 	or	a, a
+   0204 20 0A         [12]  462 	jr	NZ,00107$
+                            463 ;src/entities/entities.c:188: p->vx -= SCALE;
+   0206 78            [ 4]  464 	ld	a,b
+   0207 C6 FF         [ 7]  465 	add	a,#0xff
+   0209 47            [ 4]  466 	ld	b, a
+   020A 71            [ 7]  467 	ld	(hl), c
+   020B 23            [ 6]  468 	inc	hl
+   020C 70            [ 7]  469 	ld	(hl), b
+   020D C3rC8r02      [10]  470 	jp	00126$
+   0210                     471 00107$:
+                            472 ;src/entities/entities.c:190: p->vx += SCALE;
+   0210 78            [ 4]  473 	ld	a,b
+   0211 C6 01         [ 7]  474 	add	a,#0x01
+   0213 47            [ 4]  475 	ld	b, a
+   0214 71            [ 7]  476 	ld	(hl), c
+   0215 23            [ 6]  477 	inc	hl
+   0216 70            [ 7]  478 	ld	(hl), b
+                            479 ;src/entities/entities.c:191: break;
+   0217 C3rC8r02      [10]  480 	jp	00126$
+                            481 ;src/entities/entities.c:202: case es_jump:
+   021A                     482 00111$:
+                            483 ;src/entities/entities.c:204: if (c->status == es_walk) {
+   021A DD 6E FE      [19]  484 	ld	l,-2 (ix)
+   021D DD 66 FF      [19]  485 	ld	h,-1 (ix)
+   0220 6E            [ 7]  486 	ld	l, (hl)
+   0221 2D            [ 4]  487 	dec	l
+   0222 C2rC8r02      [10]  488 	jp	NZ,00126$
+                            489 ;src/entities/entities.c:205: e->nAnim   = g_anim[es_jump][side]; // Next animation changes
+   0225 3Er08         [ 7]  490 	ld	a, #<((_g_anim + 0x0008))
+   0227 DD 86 F9      [19]  491 	add	a, -7 (ix)
+   022A 6F            [ 4]  492 	ld	l, a
+   022B 3Es00         [ 7]  493 	ld	a, #>((_g_anim + 0x0008))
+   022D CE 00         [ 7]  494 	adc	a, #0x00
+   022F 67            [ 4]  495 	ld	h, a
+   0230 7E            [ 7]  496 	ld	a, (hl)
+   0231 DD 77 FC      [19]  497 	ld	-4 (ix), a
+   0234 23            [ 6]  498 	inc	hl
+   0235 7E            [ 7]  499 	ld	a, (hl)
+   0236 DD 77 FD      [19]  500 	ld	-3 (ix), a
+   0239 DD 6E F7      [19]  501 	ld	l,-9 (ix)
+   023C DD 66 F8      [19]  502 	ld	h,-8 (ix)
+   023F DD 7E FC      [19]  503 	ld	a, -4 (ix)
+   0242 77            [ 7]  504 	ld	(hl), a
+   0243 23            [ 6]  505 	inc	hl
+   0244 DD 7E FD      [19]  506 	ld	a, -3 (ix)
+   0247 77            [ 7]  507 	ld	(hl), a
+                            508 ;src/entities/entities.c:206: e->nStatus = as_play;   // Jump animation only plays once
+   0248 3E 01         [ 7]  509 	ld	a, #0x01
+   024A 12            [ 7]  510 	ld	(de), a
+                            511 ;src/entities/entities.c:207: c->side    = side;      // New side
+   024B DD 6E F5      [19]  512 	ld	l,-11 (ix)
+   024E DD 66 F6      [19]  513 	ld	h,-10 (ix)
+   0251 DD 7E 07      [19]  514 	ld	a, 7 (ix)
+   0254 77            [ 7]  515 	ld	(hl), a
+                            516 ;src/entities/entities.c:208: c->status  = es_jump;   // New status
+   0255 DD 6E FE      [19]  517 	ld	l,-2 (ix)
+   0258 DD 66 FF      [19]  518 	ld	h,-1 (ix)
+   025B 36 02         [10]  519 	ld	(hl), #0x02
+                            520 ;src/entities/entities.c:209: p->floor   = 0;         // When jumping, we left the floor
+   025D DD 6E FA      [19]  521 	ld	l,-6 (ix)
+   0260 DD 66 FB      [19]  522 	ld	h,-5 (ix)
+   0263 AF            [ 4]  523 	xor	a, a
+   0264 77            [ 7]  524 	ld	(hl), a
+   0265 23            [ 6]  525 	inc	hl
+   0266 77            [ 7]  526 	ld	(hl), a
+                            527 ;src/entities/entities.c:210: p->vy     += G_jumpVel; // Add jump velocity to the character
+   0267 21 06 00      [10]  528 	ld	hl, #0x0006
+   026A 09            [11]  529 	add	hl,bc
+   026B 4D            [ 4]  530 	ld	c,l
+   026C 44            [ 4]  531 	ld	b,h
+   026D 5E            [ 7]  532 	ld	e, (hl)
+   026E 23            [ 6]  533 	inc	hl
+   026F 56            [ 7]  534 	ld	d, (hl)
+   0270 2Ar00r01      [16]  535 	ld	hl, (_G_jumpVel)
+   0273 19            [11]  536 	add	hl,de
+   0274 EB            [ 4]  537 	ex	de,hl
+   0275 7B            [ 4]  538 	ld	a, e
+   0276 02            [ 7]  539 	ld	(bc), a
+   0277 03            [ 6]  540 	inc	bc
+   0278 7A            [ 4]  541 	ld	a, d
+   0279 02            [ 7]  542 	ld	(bc), a
+                            543 ;src/entities/entities.c:212: break;
+   027A 18 4C         [12]  544 	jr	00126$
+                            545 ;src/entities/entities.c:217: case es_moveFloor:
+   027C                     546 00114$:
+                            547 ;src/entities/entities.c:219: if (p->floor && !p->floor->phys.vx && g_movingBlocks < g_MaxMovingBlocks) {
+   027C DD 6E FA      [19]  548 	ld	l,-6 (ix)
+   027F DD 66 FB      [19]  549 	ld	h,-5 (ix)
+   0282 4E            [ 7]  550 	ld	c, (hl)
+   0283 23            [ 6]  551 	inc	hl
+   0284 46            [ 7]  552 	ld	b, (hl)
+   0285 78            [ 4]  553 	ld	a, b
+   0286 B1            [ 4]  554 	or	a,c
+   0287 28 3F         [12]  555 	jr	Z,00126$
+   0289 21 13 00      [10]  556 	ld	hl, #0x0013
+   028C 09            [11]  557 	add	hl,bc
+   028D 4D            [ 4]  558 	ld	c,l
+   028E 44            [ 4]  559 	ld	b,h
+   028F 5E            [ 7]  560 	ld	e, (hl)
+   0290 23            [ 6]  561 	inc	hl
+   0291 7E            [ 7]  562 	ld	a, (hl)
+   0292 B3            [ 4]  563 	or	a,e
+   0293 20 33         [12]  564 	jr	NZ,00126$
+   0295 FD 21rF8r01   [14]  565 	ld	iy, #_g_movingBlocks
+   0299 FD 7E 00      [19]  566 	ld	a, 0 (iy)
+   029C D6 02         [ 7]  567 	sub	a, #0x02
+   029E 30 28         [12]  568 	jr	NC,00126$
+                            569 ;src/entities/entities.c:220: ++g_movingBlocks;
+   02A0 FD 34 00      [23]  570 	inc	0 (iy)
+                            571 ;src/entities/entities.c:221: if (side == s_left)
+   02A3 DD 7E 07      [19]  572 	ld	a, 7 (ix)
+   02A6 B7            [ 4]  573 	or	a, a
+   02A7 20 09         [12]  574 	jr	NZ,00116$
+                            575 ;src/entities/entities.c:222: p->floor->phys.vx = -SCALE / 2;
+   02A9 3E 80         [ 7]  576 	ld	a, #0x80
+   02AB 02            [ 7]  577 	ld	(bc), a
+   02AC 03            [ 6]  578 	inc	bc
+   02AD 3E FF         [ 7]  579 	ld	a, #0xff
+   02AF 02            [ 7]  580 	ld	(bc), a
+   02B0 18 16         [12]  581 	jr	00126$
+   02B2                     582 00116$:
+                            583 ;src/entities/entities.c:224: p->floor->phys.vx = SCALE / 2;
+   02B2 3E 80         [ 7]  584 	ld	a, #0x80
+   02B4 02            [ 7]  585 	ld	(bc), a
+   02B5 03            [ 6]  586 	inc	bc
+   02B6 3E 00         [ 7]  587 	ld	a, #0x00
+   02B8 02            [ 7]  588 	ld	(bc), a
+                            589 ;src/entities/entities.c:226: break;
+   02B9 18 0D         [12]  590 	jr	00126$
+                            591 ;src/entities/entities.c:229: default:
+   02BB                     592 00122$:
+                            593 ;src/entities/entities.c:231: if ( c->status == es_walk )
+   02BB DD 6E FE      [19]  594 	ld	l,-2 (ix)
+   02BE DD 66 FF      [19]  595 	ld	h,-1 (ix)
+   02C1 4E            [ 7]  596 	ld	c, (hl)
+   02C2 0D            [ 4]  597 	dec	c
+   02C3 20 03         [12]  598 	jr	NZ,00126$
+                            599 ;src/entities/entities.c:232: e->nStatus = as_pause;     // Pause animation on next timestep
+   02C5 3E 03         [ 7]  600 	ld	a, #0x03
+   02C7 12            [ 7]  601 	ld	(de), a
+                            602 ;src/entities/entities.c:233: }
+   02C8                     603 00126$:
+   02C8 DD F9         [10]  604 	ld	sp, ix
+   02CA DD E1         [14]  605 	pop	ix
+   02CC C9            [10]  606 	ret
+                            607 ;src/entities/entities.c:239: void cropVelocity(i16 *v, i16 maxvel, i16 minvel) {
+                            608 ;	---------------------------------
+                            609 ; Function cropVelocity
+                            610 ; ---------------------------------
+   02CD                     611 _cropVelocity::
+   02CD DD E5         [15]  612 	push	ix
+   02CF DD 21 00 00   [14]  613 	ld	ix,#0
+   02D3 DD 39         [15]  614 	add	ix,sp
+                            615 ;src/entities/entities.c:242: if ( *v >= 0 ) {
+   02D5 DD 6E 04      [19]  616 	ld	l,4 (ix)
+   02D8 DD 66 05      [19]  617 	ld	h,5 (ix)
+   02DB E5            [11]  618 	push	hl
+   02DC 5E            [ 7]  619 	ld	e, (hl)
+   02DD 23            [ 6]  620 	inc	hl
+   02DE 56            [ 7]  621 	ld	d, (hl)
+   02DF E1            [10]  622 	pop	hl
+   02E0 CB 7A         [ 8]  623 	bit	7, d
+   02E2 20 31         [12]  624 	jr	NZ,00112$
+                            625 ;src/entities/entities.c:244: if      ( *v > maxvel ) *v = maxvel; // Crop to max. positive velocity
+   02E4 DD 7E 06      [19]  626 	ld	a, 6 (ix)
+   02E7 93            [ 4]  627 	sub	a, e
+   02E8 DD 7E 07      [19]  628 	ld	a, 7 (ix)
+   02EB 9A            [ 4]  629 	sbc	a, d
+   02EC E2rF1r02      [10]  630 	jp	PO, 00136$
+   02EF EE 80         [ 7]  631 	xor	a, #0x80
+   02F1                     632 00136$:
+   02F1 F2rFFr02      [10]  633 	jp	P, 00104$
+   02F4 DD 7E 06      [19]  634 	ld	a, 6 (ix)
+   02F7 77            [ 7]  635 	ld	(hl), a
+   02F8 23            [ 6]  636 	inc	hl
+   02F9 DD 7E 07      [19]  637 	ld	a, 7 (ix)
+   02FC 77            [ 7]  638 	ld	(hl), a
+   02FD 18 4D         [12]  639 	jr	00114$
+   02FF                     640 00104$:
+                            641 ;src/entities/entities.c:245: else if ( *v < minvel ) *v = 0;      // Round to min positive velocity
+   02FF 7B            [ 4]  642 	ld	a, e
+   0300 DD 96 08      [19]  643 	sub	a, 8 (ix)
+   0303 7A            [ 4]  644 	ld	a, d
+   0304 DD 9E 09      [19]  645 	sbc	a, 9 (ix)
+   0307 E2r0Cr03      [10]  646 	jp	PO, 00137$
+   030A EE 80         [ 7]  647 	xor	a, #0x80
+   030C                     648 00137$:
+   030C F2r4Cr03      [10]  649 	jp	P, 00114$
+   030F AF            [ 4]  650 	xor	a, a
+   0310 77            [ 7]  651 	ld	(hl), a
+   0311 23            [ 6]  652 	inc	hl
+   0312 77            [ 7]  653 	ld	(hl), a
+   0313 18 37         [12]  654 	jr	00114$
+   0315                     655 00112$:
+                            656 ;src/entities/entities.c:248: if      ( *v < -maxvel ) *v = -maxvel;  // Crop to max negative velocity
+   0315 AF            [ 4]  657 	xor	a, a
+   0316 DD 96 06      [19]  658 	sub	a, 6 (ix)
+   0319 4F            [ 4]  659 	ld	c, a
+   031A 3E 00         [ 7]  660 	ld	a, #0x00
+   031C DD 9E 07      [19]  661 	sbc	a, 7 (ix)
+   031F 47            [ 4]  662 	ld	b, a
+   0320 7B            [ 4]  663 	ld	a, e
+   0321 91            [ 4]  664 	sub	a, c
+   0322 7A            [ 4]  665 	ld	a, d
+   0323 98            [ 4]  666 	sbc	a, b
+   0324 E2r29r03      [10]  667 	jp	PO, 00138$
+   0327 EE 80         [ 7]  668 	xor	a, #0x80
+   0329                     669 00138$:
+   0329 F2r31r03      [10]  670 	jp	P, 00109$
+   032C 71            [ 7]  671 	ld	(hl), c
+   032D 23            [ 6]  672 	inc	hl
+   032E 70            [ 7]  673 	ld	(hl), b
+   032F 18 1B         [12]  674 	jr	00114$
+   0331                     675 00109$:
+                            676 ;src/entities/entities.c:249: else if ( *v > -minvel ) *v = 0;        // Round to mix negative velocity
+   0331 AF            [ 4]  677 	xor	a, a
+   0332 DD 96 08      [19]  678 	sub	a, 8 (ix)
+   0335 4F            [ 4]  679 	ld	c, a
+   0336 3E 00         [ 7]  680 	ld	a, #0x00
+   0338 DD 9E 09      [19]  681 	sbc	a, 9 (ix)
+   033B 47            [ 4]  682 	ld	b, a
+   033C 79            [ 4]  683 	ld	a, c
+   033D 93            [ 4]  684 	sub	a, e
+   033E 78            [ 4]  685 	ld	a, b
+   033F 9A            [ 4]  686 	sbc	a, d
+   0340 E2r45r03      [10]  687 	jp	PO, 00139$
+   0343 EE 80         [ 7]  688 	xor	a, #0x80
+   0345                     689 00139$:
+   0345 F2r4Cr03      [10]  690 	jp	P, 00114$
+   0348 AF            [ 4]  691 	xor	a, a
+   0349 77            [ 7]  692 	ld	(hl), a
+   034A 23            [ 6]  693 	inc	hl
+   034B 77            [ 7]  694 	ld	(hl), a
+   034C                     695 00114$:
+   034C DD E1         [14]  696 	pop	ix
+   034E C9            [10]  697 	ret
+                            698 ;src/entities/entities.c:261: u8 moveBlock(u8 b_idx) {
+                            699 ;	---------------------------------
+                            700 ; Function moveBlock
+                            701 ; ---------------------------------
+   034F                     702 _moveBlock::
+   034F DD E5         [15]  703 	push	ix
+   0351 DD 21 00 00   [14]  704 	ld	ix,#0
+   0355 DD 39         [15]  705 	add	ix,sp
+   0357 21 F4 FF      [10]  706 	ld	hl, #-12
+   035A 39            [11]  707 	add	hl, sp
+   035B F9            [ 6]  708 	ld	sp, hl
+                            709 ;src/entities/entities.c:262: TEntity *e = &g_blocks[b_idx]; // Get next block entity
+   035C 01r05r00      [10]  710 	ld	bc, #_g_blocks+0
+   035F DD 5E 04      [19]  711 	ld	e,4 (ix)
+   0362 16 00         [ 7]  712 	ld	d,#0x00
+   0364 6B            [ 4]  713 	ld	l, e
+   0365 62            [ 4]  714 	ld	h, d
+   0366 29            [11]  715 	add	hl, hl
+   0367 19            [11]  716 	add	hl, de
+   0368 29            [11]  717 	add	hl, hl
+   0369 19            [11]  718 	add	hl, de
+   036A 29            [11]  719 	add	hl, hl
+   036B 19            [11]  720 	add	hl, de
+   036C 29            [11]  721 	add	hl, hl
+   036D 19            [11]  722 	add	hl, de
+   036E 09            [11]  723 	add	hl,bc
+   036F 4D            [ 4]  724 	ld	c, l
+   0370 44            [ 4]  725 	ld	b, h
+                            726 ;src/entities/entities.c:266: e->phys.y += G_scrollVel;      // All blocks use this same velocity for Y axis
+   0371 21 0F 00      [10]  727 	ld	hl, #0x000f
+   0374 09            [11]  728 	add	hl,bc
+   0375 DD 75 FE      [19]  729 	ld	-2 (ix), l
+   0378 DD 74 FF      [19]  730 	ld	-1 (ix), h
+   037B 21 11 00      [10]  731 	ld	hl, #0x0011
+   037E 09            [11]  732 	add	hl,bc
+   037F DD 75 FC      [19]  733 	ld	-4 (ix), l
+   0382 DD 74 FD      [19]  734 	ld	-3 (ix), h
+   0385 5E            [ 7]  735 	ld	e, (hl)
+   0386 23            [ 6]  736 	inc	hl
+   0387 56            [ 7]  737 	ld	d, (hl)
+   0388 2Ar00r00      [16]  738 	ld	hl, (_G_scrollVel)
+   038B 19            [11]  739 	add	hl,de
+   038C EB            [ 4]  740 	ex	de,hl
+   038D DD 6E FC      [19]  741 	ld	l,-4 (ix)
+   0390 DD 66 FD      [19]  742 	ld	h,-3 (ix)
+   0393 73            [ 7]  743 	ld	(hl), e
+   0394 23            [ 6]  744 	inc	hl
+   0395 72            [ 7]  745 	ld	(hl), d
+                            746 ;src/entities/entities.c:267: e->y       = e->ny;
+   0396 FD 21 0A 00   [14]  747 	ld	iy, #0x000a
+   039A FD 09         [15]  748 	add	iy, bc
+   039C 21 0C 00      [10]  749 	ld	hl, #0x000c
+   039F 09            [11]  750 	add	hl,bc
+   03A0 DD 75 FC      [19]  751 	ld	-4 (ix), l
+   03A3 DD 74 FD      [19]  752 	ld	-3 (ix), h
+   03A6 7E            [ 7]  753 	ld	a, (hl)
+   03A7 DD 77 F4      [19]  754 	ld	-12 (ix), a
+   03AA FD 77 00      [19]  755 	ld	0 (iy), a
+                            756 ;src/entities/entities.c:268: e->ny      = e->phys.y / SCALE;
+   03AD DD 6E FC      [19]  757 	ld	l,-4 (ix)
+   03B0 DD 66 FD      [19]  758 	ld	h,-3 (ix)
+   03B3 72            [ 7]  759 	ld	(hl), d
+                            760 ;src/entities/entities.c:271: if (e->ny != e->y) {    
+   03B4 DD 6E FC      [19]  761 	ld	l,-4 (ix)
+   03B7 DD 66 FD      [19]  762 	ld	h,-3 (ix)
+   03BA 5E            [ 7]  763 	ld	e, (hl)
+                            764 ;src/entities/entities.c:279: e->draw = 1;
+   03BB 21 1B 00      [10]  765 	ld	hl, #0x001b
+   03BE 09            [11]  766 	add	hl,bc
+   03BF DD 75 F9      [19]  767 	ld	-7 (ix), l
+   03C2 DD 74 FA      [19]  768 	ld	-6 (ix), h
+                            769 ;src/entities/entities.c:271: if (e->ny != e->y) {    
+   03C5 DD 7E F4      [19]  770 	ld	a, -12 (ix)
+   03C8 92            [ 4]  771 	sub	a, d
+   03C9 28 1C         [12]  772 	jr	Z,00104$
+                            773 ;src/entities/entities.c:274: if (e->ny > G_maxY) {
+   03CB 3Ar09r01      [13]  774 	ld	a,(#_G_maxY + 0)
+   03CE 93            [ 4]  775 	sub	a, e
+   03CF 30 0E         [12]  776 	jr	NC,00102$
+                            777 ;src/entities/entities.c:275: destroyBlock(b_idx);
+   03D1 DD 7E 04      [19]  778 	ld	a, 4 (ix)
+   03D4 F5            [11]  779 	push	af
+   03D5 33            [ 6]  780 	inc	sp
+   03D6 CDrF2r14      [17]  781 	call	_destroyBlock
+   03D9 33            [ 6]  782 	inc	sp
+                            783 ;src/entities/entities.c:276: return 1;         // Return informing that the block has been destroyed!
+   03DA 2E 01         [ 7]  784 	ld	l, #0x01
+   03DC C3r2Cr05      [10]  785 	jp	00116$
+   03DF                     786 00102$:
+                            787 ;src/entities/entities.c:279: e->draw = 1;
+   03DF DD 6E F9      [19]  788 	ld	l,-7 (ix)
+   03E2 DD 66 FA      [19]  789 	ld	h,-6 (ix)
+   03E5 36 01         [10]  790 	ld	(hl), #0x01
+   03E7                     791 00104$:
+                            792 ;src/entities/entities.c:283: if (e->phys.vx) {
+   03E7 DD 7E FE      [19]  793 	ld	a, -2 (ix)
+   03EA C6 04         [ 7]  794 	add	a, #0x04
+   03EC DD 77 F5      [19]  795 	ld	-11 (ix), a
+   03EF DD 7E FF      [19]  796 	ld	a, -1 (ix)
+   03F2 CE 00         [ 7]  797 	adc	a, #0x00
+   03F4 DD 77 F6      [19]  798 	ld	-10 (ix), a
+   03F7 DD 6E F5      [19]  799 	ld	l,-11 (ix)
+   03FA DD 66 F6      [19]  800 	ld	h,-10 (ix)
+   03FD 5E            [ 7]  801 	ld	e, (hl)
+   03FE 23            [ 6]  802 	inc	hl
+   03FF 56            [ 7]  803 	ld	d, (hl)
+                            804 ;src/entities/entities.c:284: e->x       = e->nx;
+   0400 21 0B 00      [10]  805 	ld	hl, #0x000b
+   0403 09            [11]  806 	add	hl,bc
+   0404 DD 75 F7      [19]  807 	ld	-9 (ix), l
+   0407 DD 74 F8      [19]  808 	ld	-8 (ix), h
+                            809 ;src/entities/entities.c:283: if (e->phys.vx) {
+   040A 7A            [ 4]  810 	ld	a, d
+   040B B3            [ 4]  811 	or	a,e
+   040C CArE1r04      [10]  812 	jp	Z, 00113$
+                            813 ;src/entities/entities.c:284: e->x       = e->nx;
+   040F 21 09 00      [10]  814 	ld	hl, #0x0009
+   0412 09            [11]  815 	add	hl,bc
+   0413 EB            [ 4]  816 	ex	de,hl
+   0414 DD 6E F7      [19]  817 	ld	l,-9 (ix)
+   0417 DD 66 F8      [19]  818 	ld	h,-8 (ix)
+   041A 7E            [ 7]  819 	ld	a, (hl)
+   041B DD 77 F4      [19]  820 	ld	-12 (ix), a
+   041E 12            [ 7]  821 	ld	(de),a
+                            822 ;src/entities/entities.c:285: e->phys.x += e->phys.vx;
+   041F DD 6E FE      [19]  823 	ld	l,-2 (ix)
+   0422 DD 66 FF      [19]  824 	ld	h,-1 (ix)
+   0425 5E            [ 7]  825 	ld	e, (hl)
+   0426 23            [ 6]  826 	inc	hl
+   0427 56            [ 7]  827 	ld	d, (hl)
+   0428 DD 6E F5      [19]  828 	ld	l,-11 (ix)
+   042B DD 66 F6      [19]  829 	ld	h,-10 (ix)
+   042E 7E            [ 7]  830 	ld	a, (hl)
+   042F 23            [ 6]  831 	inc	hl
+   0430 66            [ 7]  832 	ld	h, (hl)
+   0431 6F            [ 4]  833 	ld	l, a
+   0432 19            [11]  834 	add	hl,de
+   0433 EB            [ 4]  835 	ex	de,hl
+   0434 DD 6E FE      [19]  836 	ld	l,-2 (ix)
+   0437 DD 66 FF      [19]  837 	ld	h,-1 (ix)
+   043A 73            [ 7]  838 	ld	(hl), e
+   043B 23            [ 6]  839 	inc	hl
+   043C 72            [ 7]  840 	ld	(hl), d
+                            841 ;src/entities/entities.c:286: e->nx      = e->phys.x / SCALE;
+   043D DD 6E F7      [19]  842 	ld	l,-9 (ix)
+   0440 DD 66 F8      [19]  843 	ld	h,-8 (ix)
+   0443 72            [ 7]  844 	ld	(hl), d
+                            845 ;src/entities/entities.c:289: if (e->x != e->nx) {
+   0444 DD 6E F7      [19]  846 	ld	l,-9 (ix)
+   0447 DD 66 F8      [19]  847 	ld	h,-8 (ix)
+   044A 5E            [ 7]  848 	ld	e, (hl)
+   044B DD 7E F4      [19]  849 	ld	a, -12 (ix)
+   044E 92            [ 4]  850 	sub	a, d
+   044F CArE1r04      [10]  851 	jp	Z,00113$
+                            852 ;src/entities/entities.c:291: if (e->nx < G_minX) {
+   0452 21r06r01      [10]  853 	ld	hl,#_G_minX + 0
+   0455 56            [ 7]  854 	ld	d, (hl)
+   0456 7B            [ 4]  855 	ld	a, e
+   0457 92            [ 4]  856 	sub	a, d
+   0458 30 2E         [12]  857 	jr	NC,00108$
+                            858 ;src/entities/entities.c:293: e->nx      = G_minX + 1; 
+   045A 14            [ 4]  859 	inc	d
+   045B DD 6E F7      [19]  860 	ld	l,-9 (ix)
+   045E DD 66 F8      [19]  861 	ld	h,-8 (ix)
+   0461 72            [ 7]  862 	ld	(hl), d
+                            863 ;src/entities/entities.c:294: e->phys.x  = e->nx * SCALE; 
+   0462 1E 00         [ 7]  864 	ld	e, #0x00
+   0464 DD 6E FE      [19]  865 	ld	l,-2 (ix)
+   0467 DD 66 FF      [19]  866 	ld	h,-1 (ix)
+   046A 73            [ 7]  867 	ld	(hl), e
+   046B 23            [ 6]  868 	inc	hl
+   046C 72            [ 7]  869 	ld	(hl), d
+                            870 ;src/entities/entities.c:295: e->phys.vx = -e->phys.vx;
+   046D DD 6E F5      [19]  871 	ld	l,-11 (ix)
+   0470 DD 66 F6      [19]  872 	ld	h,-10 (ix)
+   0473 5E            [ 7]  873 	ld	e, (hl)
+   0474 23            [ 6]  874 	inc	hl
+   0475 56            [ 7]  875 	ld	d, (hl)
+   0476 AF            [ 4]  876 	xor	a, a
+   0477 93            [ 4]  877 	sub	a, e
+   0478 5F            [ 4]  878 	ld	e, a
+   0479 3E 00         [ 7]  879 	ld	a, #0x00
+   047B 9A            [ 4]  880 	sbc	a, d
+   047C 57            [ 4]  881 	ld	d, a
+   047D DD 6E F5      [19]  882 	ld	l,-11 (ix)
+   0480 DD 66 F6      [19]  883 	ld	h,-10 (ix)
+   0483 73            [ 7]  884 	ld	(hl), e
+   0484 23            [ 6]  885 	inc	hl
+   0485 72            [ 7]  886 	ld	(hl), d
+   0486 18 51         [12]  887 	jr	00109$
+   0488                     888 00108$:
+                            889 ;src/entities/entities.c:296: } else if ( e->nx + e->graph.block.w >= G_maxX ) {
+   0488 16 00         [ 7]  890 	ld	d, #0x00
+   048A 0A            [ 7]  891 	ld	a, (bc)
+   048B DD 77 F4      [19]  892 	ld	-12 (ix), a
+   048E 6F            [ 4]  893 	ld	l, a
+   048F 26 00         [ 7]  894 	ld	h, #0x00
+   0491 19            [11]  895 	add	hl, de
+   0492 3Ar07r01      [13]  896 	ld	a,(#_G_maxX + 0)
+   0495 DD 77 FB      [19]  897 	ld	-5 (ix), a
+   0498 5F            [ 4]  898 	ld	e, a
+   0499 16 00         [ 7]  899 	ld	d, #0x00
+   049B 7D            [ 4]  900 	ld	a, l
+   049C 93            [ 4]  901 	sub	a, e
+   049D 7C            [ 4]  902 	ld	a, h
+   049E 9A            [ 4]  903 	sbc	a, d
+   049F E2rA4r04      [10]  904 	jp	PO, 00148$
+   04A2 EE 80         [ 7]  905 	xor	a, #0x80
+   04A4                     906 00148$:
+   04A4 FArD9r04      [10]  907 	jp	M, 00109$
+                            908 ;src/entities/entities.c:298: e->nx      = G_maxX - e->graph.block.w;
+   04A7 DD 7E FB      [19]  909 	ld	a, -5 (ix)
+   04AA DD 96 F4      [19]  910 	sub	a, -12 (ix)
+   04AD 5F            [ 4]  911 	ld	e, a
+   04AE DD 6E F7      [19]  912 	ld	l,-9 (ix)
+   04B1 DD 66 F8      [19]  913 	ld	h,-8 (ix)
+   04B4 73            [ 7]  914 	ld	(hl), e
+                            915 ;src/entities/entities.c:299: e->phys.x  = e->nx * SCALE;  
+   04B5 16 00         [ 7]  916 	ld	d, #0x00
+   04B7 DD 6E FE      [19]  917 	ld	l,-2 (ix)
+   04BA DD 66 FF      [19]  918 	ld	h,-1 (ix)
+   04BD 72            [ 7]  919 	ld	(hl), d
+   04BE 23            [ 6]  920 	inc	hl
+   04BF 73            [ 7]  921 	ld	(hl), e
+                            922 ;src/entities/entities.c:300: e->phys.vx = -e->phys.vx;
+   04C0 DD 6E F5      [19]  923 	ld	l,-11 (ix)
+   04C3 DD 66 F6      [19]  924 	ld	h,-10 (ix)
+   04C6 5E            [ 7]  925 	ld	e, (hl)
+   04C7 23            [ 6]  926 	inc	hl
+   04C8 56            [ 7]  927 	ld	d, (hl)
+   04C9 AF            [ 4]  928 	xor	a, a
+   04CA 93            [ 4]  929 	sub	a, e
+   04CB 5F            [ 4]  930 	ld	e, a
+   04CC 3E 00         [ 7]  931 	ld	a, #0x00
+   04CE 9A            [ 4]  932 	sbc	a, d
+   04CF 57            [ 4]  933 	ld	d, a
+   04D0 DD 6E F5      [19]  934 	ld	l,-11 (ix)
+   04D3 DD 66 F6      [19]  935 	ld	h,-10 (ix)
+   04D6 73            [ 7]  936 	ld	(hl), e
+   04D7 23            [ 6]  937 	inc	hl
+   04D8 72            [ 7]  938 	ld	(hl), d
+   04D9                     939 00109$:
+                            940 ;src/entities/entities.c:302: e->draw = 1; // Set for redraw
+   04D9 DD 6E F9      [19]  941 	ld	l,-7 (ix)
+   04DC DD 66 FA      [19]  942 	ld	h,-6 (ix)
+   04DF 36 01         [10]  943 	ld	(hl), #0x01
+   04E1                     944 00113$:
+                            945 ;src/entities/entities.c:307: if (e->draw) {
+   04E1 DD 6E F9      [19]  946 	ld	l,-7 (ix)
+   04E4 DD 66 FA      [19]  947 	ld	h,-6 (ix)
+   04E7 7E            [ 7]  948 	ld	a, (hl)
+   04E8 B7            [ 4]  949 	or	a, a
+   04E9 28 3F         [12]  950 	jr	Z,00115$
+                            951 ;src/entities/entities.c:308: e->pscreen  = e->npscreen;
+   04EB 21 05 00      [10]  952 	ld	hl, #0x0005
+   04EE 09            [11]  953 	add	hl,bc
+   04EF EB            [ 4]  954 	ex	de,hl
+   04F0 21 07 00      [10]  955 	ld	hl, #0x0007
+   04F3 09            [11]  956 	add	hl,bc
+   04F4 4D            [ 4]  957 	ld	c, l
+   04F5 44            [ 4]  958 	ld	b, h
+   04F6 0A            [ 7]  959 	ld	a, (bc)
+   04F7 DD 77 F5      [19]  960 	ld	-11 (ix), a
+   04FA 03            [ 6]  961 	inc	bc
+   04FB 0A            [ 7]  962 	ld	a, (bc)
+   04FC DD 77 F6      [19]  963 	ld	-10 (ix), a
+   04FF 0B            [ 6]  964 	dec	bc
+   0500 DD 7E F5      [19]  965 	ld	a, -11 (ix)
+   0503 12            [ 7]  966 	ld	(de), a
+   0504 13            [ 6]  967 	inc	de
+   0505 DD 7E F6      [19]  968 	ld	a, -10 (ix)
+   0508 12            [ 7]  969 	ld	(de), a
+                            970 ;src/entities/entities.c:309: e->npscreen = cpct_getScreenPtr(CPCT_VMEM_START, e->nx, e->ny);
+   0509 DD 6E FC      [19]  971 	ld	l,-4 (ix)
+   050C DD 66 FD      [19]  972 	ld	h,-3 (ix)
+   050F 7E            [ 7]  973 	ld	a, (hl)
+   0510 DD 6E F7      [19]  974 	ld	l,-9 (ix)
+   0513 DD 66 F8      [19]  975 	ld	h,-8 (ix)
+   0516 56            [ 7]  976 	ld	d, (hl)
+   0517 C5            [11]  977 	push	bc
+   0518 F5            [11]  978 	push	af
+   0519 33            [ 6]  979 	inc	sp
+   051A D5            [11]  980 	push	de
+   051B 33            [ 6]  981 	inc	sp
+   051C 21 00 C0      [10]  982 	ld	hl, #0xc000
+   051F E5            [11]  983 	push	hl
+   0520 CDr00r00      [17]  984 	call	_cpct_getScreenPtr
+   0523 EB            [ 4]  985 	ex	de,hl
+   0524 C1            [10]  986 	pop	bc
+   0525 7B            [ 4]  987 	ld	a, e
+   0526 02            [ 7]  988 	ld	(bc), a
+   0527 03            [ 6]  989 	inc	bc
+   0528 7A            [ 4]  990 	ld	a, d
+   0529 02            [ 7]  991 	ld	(bc), a
+   052A                     992 00115$:
+                            993 ;src/entities/entities.c:313: return 0;
+   052A 2E 00         [ 7]  994 	ld	l, #0x00
+   052C                     995 00116$:
+   052C DD F9         [10]  996 	ld	sp, ix
+   052E DD E1         [14]  997 	pop	ix
+   0530 C9            [10]  998 	ret
+                            999 ;src/entities/entities.c:320: void scrollWorld() {
+                           1000 ;	---------------------------------
+                           1001 ; Function scrollWorld
+                           1002 ; ---------------------------------
+   0531                    1003 _scrollWorld::
+   0531 DD E5         [15] 1004 	push	ix
+   0533 DD 21 00 00   [14] 1005 	ld	ix,#0
+   0537 DD 39         [15] 1006 	add	ix,sp
+   0539 21 F9 FF      [10] 1007 	ld	hl, #-7
+   053C 39            [11] 1008 	add	hl, sp
+   053D F9            [ 6] 1009 	ld	sp, hl
+                           1010 ;src/entities/entities.c:321: TEntity *ce = &(getCharacter()->entity);
+   053E CDr31r01      [17] 1011 	call	_getCharacter
+   0541 EB            [ 4] 1012 	ex	de,hl
+                           1013 ;src/entities/entities.c:322: TPhysics *p = &ce->phys;
+   0542 21 0F 00      [10] 1014 	ld	hl, #0x000f
+   0545 19            [11] 1015 	add	hl,de
+   0546 DD 75 FE      [19] 1016 	ld	-2 (ix), l
+   0549 DD 74 FF      [19] 1017 	ld	-1 (ix), h
+   054C DD 7E FE      [19] 1018 	ld	a, -2 (ix)
+   054F DD 77 FA      [19] 1019 	ld	-6 (ix), a
+   0552 DD 7E FF      [19] 1020 	ld	a, -1 (ix)
+   0555 DD 77 FB      [19] 1021 	ld	-5 (ix), a
+                           1022 ;src/entities/entities.c:326: for(i=0; i < g_lastBlock; ++i) {
+   0558 06 00         [ 7] 1023 	ld	b, #0x00
+   055A                    1024 00117$:
+                           1025 ;src/entities/entities.c:333: p->floor = 0;  
+   055A DD 7E FA      [19] 1026 	ld	a, -6 (ix)
+   055D C6 0A         [ 7] 1027 	add	a, #0x0a
+   055F DD 77 FC      [19] 1028 	ld	-4 (ix), a
+   0562 DD 7E FB      [19] 1029 	ld	a, -5 (ix)
+   0565 CE 00         [ 7] 1030 	adc	a, #0x00
+   0567 DD 77 FD      [19] 1031 	ld	-3 (ix), a
+                           1032 ;src/entities/entities.c:326: for(i=0; i < g_lastBlock; ++i) {
+   056A 21rF5r01      [10] 1033 	ld	hl, #_g_lastBlock
+   056D 78            [ 4] 1034 	ld	a, b
+   056E 96            [ 7] 1035 	sub	a, (hl)
+   056F 30 1C         [12] 1036 	jr	NC,00103$
+                           1037 ;src/entities/entities.c:328: if ( moveBlock(i) ) {
+   0571 C5            [11] 1038 	push	bc
+   0572 D5            [11] 1039 	push	de
+   0573 C5            [11] 1040 	push	bc
+   0574 33            [ 6] 1041 	inc	sp
+   0575 CDr4Fr03      [17] 1042 	call	_moveBlock
+   0578 33            [ 6] 1043 	inc	sp
+   0579 D1            [10] 1044 	pop	de
+   057A C1            [10] 1045 	pop	bc
+   057B 7D            [ 4] 1046 	ld	a, l
+   057C B7            [ 4] 1047 	or	a, a
+   057D 28 0B         [12] 1048 	jr	Z,00118$
+                           1049 ;src/entities/entities.c:333: p->floor = 0;  
+   057F DD 6E FC      [19] 1050 	ld	l,-4 (ix)
+   0582 DD 66 FD      [19] 1051 	ld	h,-3 (ix)
+   0585 AF            [ 4] 1052 	xor	a, a
+   0586 77            [ 7] 1053 	ld	(hl), a
+   0587 23            [ 6] 1054 	inc	hl
+   0588 77            [ 7] 1055 	ld	(hl), a
+                           1056 ;src/entities/entities.c:334: i--;
+   0589 05            [ 4] 1057 	dec	b
+   058A                    1058 00118$:
+                           1059 ;src/entities/entities.c:326: for(i=0; i < g_lastBlock; ++i) {
+   058A 04            [ 4] 1060 	inc	b
+   058B 18 CD         [12] 1061 	jr	00117$
+   058D                    1062 00103$:
+                           1063 ;src/entities/entities.c:340: if (p->floor && p->floor->draw) {
+   058D DD 6E FC      [19] 1064 	ld	l,-4 (ix)
+   0590 DD 66 FD      [19] 1065 	ld	h,-3 (ix)
+   0593 4E            [ 7] 1066 	ld	c, (hl)
+   0594 23            [ 6] 1067 	inc	hl
+   0595 46            [ 7] 1068 	ld	b, (hl)
+   0596 78            [ 4] 1069 	ld	a, b
+   0597 B1            [ 4] 1070 	or	a,c
+   0598 28 76         [12] 1071 	jr	Z,00105$
+   059A C5            [11] 1072 	push	bc
+   059B FD E1         [14] 1073 	pop	iy
+   059D FD 7E 1B      [19] 1074 	ld	a, 27 (iy)
+   05A0 B7            [ 4] 1075 	or	a, a
+   05A1 28 6D         [12] 1076 	jr	Z,00105$
+                           1077 ;src/entities/entities.c:343: u8 height = anim->frames[anim->frame_id]->height;
+   05A3 1A            [ 7] 1078 	ld	a, (de)
+   05A4 DD 77 FC      [19] 1079 	ld	-4 (ix), a
+   05A7 13            [ 6] 1080 	inc	de
+   05A8 1A            [ 7] 1081 	ld	a, (de)
+   05A9 DD 77 FD      [19] 1082 	ld	-3 (ix), a
+   05AC 1B            [ 6] 1083 	dec	de
+   05AD 6B            [ 4] 1084 	ld	l, e
+   05AE 62            [ 4] 1085 	ld	h, d
+   05AF 23            [ 6] 1086 	inc	hl
+   05B0 23            [ 6] 1087 	inc	hl
+   05B1 6E            [ 7] 1088 	ld	l, (hl)
+   05B2 26 00         [ 7] 1089 	ld	h, #0x00
+   05B4 29            [11] 1090 	add	hl, hl
+   05B5 7D            [ 4] 1091 	ld	a, l
+   05B6 DD 86 FC      [19] 1092 	add	a, -4 (ix)
+   05B9 6F            [ 4] 1093 	ld	l, a
+   05BA 7C            [ 4] 1094 	ld	a, h
+   05BB DD 8E FD      [19] 1095 	adc	a, -3 (ix)
+   05BE 67            [ 4] 1096 	ld	h, a
+   05BF 7E            [ 7] 1097 	ld	a, (hl)
+   05C0 23            [ 6] 1098 	inc	hl
+   05C1 66            [ 7] 1099 	ld	h, (hl)
+   05C2 6F            [ 4] 1100 	ld	l, a
+   05C3 23            [ 6] 1101 	inc	hl
+   05C4 23            [ 6] 1102 	inc	hl
+   05C5 23            [ 6] 1103 	inc	hl
+   05C6 7E            [ 7] 1104 	ld	a, (hl)
+   05C7 DD 77 F9      [19] 1105 	ld	-7 (ix), a
+                           1106 ;src/entities/entities.c:346: ce->phys.y  = (p->floor->ny - height) * SCALE;
+   05CA DD 7E FE      [19] 1107 	ld	a, -2 (ix)
+   05CD C6 02         [ 7] 1108 	add	a, #0x02
+   05CF DD 77 FC      [19] 1109 	ld	-4 (ix), a
+   05D2 DD 7E FF      [19] 1110 	ld	a, -1 (ix)
+   05D5 CE 00         [ 7] 1111 	adc	a, #0x00
+   05D7 DD 77 FD      [19] 1112 	ld	-3 (ix), a
+   05DA C5            [11] 1113 	push	bc
+   05DB FD E1         [14] 1114 	pop	iy
+   05DD FD 6E 0C      [19] 1115 	ld	l, 12 (iy)
+   05E0 26 00         [ 7] 1116 	ld	h, #0x00
+   05E2 DD 4E F9      [19] 1117 	ld	c, -7 (ix)
+   05E5 06 00         [ 7] 1118 	ld	b, #0x00
+   05E7 BF            [ 4] 1119 	cp	a, a
+   05E8 ED 42         [15] 1120 	sbc	hl, bc
+   05EA 45            [ 4] 1121 	ld	b, l
+   05EB 0E 00         [ 7] 1122 	ld	c, #0x00
+   05ED DD 6E FC      [19] 1123 	ld	l,-4 (ix)
+   05F0 DD 66 FD      [19] 1124 	ld	h,-3 (ix)
+   05F3 71            [ 7] 1125 	ld	(hl), c
+   05F4 23            [ 6] 1126 	inc	hl
+   05F5 70            [ 7] 1127 	ld	(hl), b
+                           1128 ;src/entities/entities.c:347: ce->phys.vy = G_minVel - 1;
+   05F6 DD 7E FE      [19] 1129 	ld	a, -2 (ix)
+   05F9 C6 06         [ 7] 1130 	add	a, #0x06
+   05FB 6F            [ 4] 1131 	ld	l, a
+   05FC DD 7E FF      [19] 1132 	ld	a, -1 (ix)
+   05FF CE 00         [ 7] 1133 	adc	a, #0x00
+   0601 67            [ 4] 1134 	ld	h, a
+   0602 ED 4BrFEr00   [20] 1135 	ld	bc, (_G_minVel)
+   0606 0B            [ 6] 1136 	dec	bc
+   0607 71            [ 7] 1137 	ld	(hl), c
+   0608 23            [ 6] 1138 	inc	hl
+   0609 70            [ 7] 1139 	ld	(hl), b
+                           1140 ;src/entities/entities.c:348: ce->draw    = 1;
+   060A 21 1B 00      [10] 1141 	ld	hl, #0x001b
+   060D 19            [11] 1142 	add	hl, de
+   060E 36 01         [10] 1143 	ld	(hl), #0x01
+   0610                    1144 00105$:
+                           1145 ;src/entities/entities.c:353: if ( g_blocks[0].draw && randomCreateNewBlock(G_minY-3, 3, ce->nx) ) {
+   0610 3Ar20r00      [13] 1146 	ld	a,(#(_g_blocks + 0x001b) + 0)
+   0613 B7            [ 4] 1147 	or	a, a
+   0614 28 64         [12] 1148 	jr	Z,00119$
+   0616 EB            [ 4] 1149 	ex	de,hl
+   0617 11 0B 00      [10] 1150 	ld	de, #0x000b
+   061A 19            [11] 1151 	add	hl, de
+   061B 4E            [ 7] 1152 	ld	c, (hl)
+   061C 3Ar08r01      [13] 1153 	ld	a,(#_G_minY + 0)
+   061F C6 FD         [ 7] 1154 	add	a, #0xfd
+   0621 57            [ 4] 1155 	ld	d, a
+   0622 41            [ 4] 1156 	ld	b, c
+   0623 0E 03         [ 7] 1157 	ld	c,#0x03
+   0625 C5            [11] 1158 	push	bc
+   0626 D5            [11] 1159 	push	de
+   0627 33            [ 6] 1160 	inc	sp
+   0628 CDr61r15      [17] 1161 	call	_randomCreateNewBlock
+   062B F1            [10] 1162 	pop	af
+   062C 33            [ 6] 1163 	inc	sp
+   062D 7D            [ 4] 1164 	ld	a, l
+   062E B7            [ 4] 1165 	or	a, a
+   062F 28 49         [12] 1166 	jr	Z,00119$
+                           1167 ;src/entities/entities.c:356: if ( !(++G_score & 0x0F) ) {
+   0631 FD 21r03r00   [14] 1168 	ld	iy, #_G_score
+   0635 FD 34 00      [23] 1169 	inc	0 (iy)
+   0638 20 03         [12] 1170 	jr	NZ,00161$
+   063A FD 34 01      [23] 1171 	inc	1 (iy)
+   063D                    1172 00161$:
+   063D FD 7E 00      [19] 1173 	ld	a, 0 (iy)
+   0640 E6 0F         [ 7] 1174 	and	a, #0x0f
+   0642 20 36         [12] 1175 	jr	NZ,00119$
+                           1176 ;src/entities/entities.c:358: if ( ++G_platfColour > 15) 
+   0644 FD 21r02r00   [14] 1177 	ld	iy, #_G_platfColour
+   0648 FD 34 00      [23] 1178 	inc	0 (iy)
+   064B 3E 0F         [ 7] 1179 	ld	a, #0x0f
+   064D FD 96 00      [19] 1180 	sub	a, 0 (iy)
+   0650 30 04         [12] 1181 	jr	NC,00108$
+                           1182 ;src/entities/entities.c:359: G_platfColour = 1;
+   0652 FD 36 00 01   [19] 1183 	ld	0 (iy), #0x01
+   0656                    1184 00108$:
+                           1185 ;src/entities/entities.c:362: if (G_scrollVel < G_maxScrollVel)
+   0656 ED 4Br02r01   [20] 1186 	ld	bc, (_G_maxScrollVel)
+   065A FD 21r00r00   [14] 1187 	ld	iy, #_G_scrollVel
+   065E FD 7E 00      [19] 1188 	ld	a, 0 (iy)
+   0661 91            [ 4] 1189 	sub	a, c
+   0662 FD 7E 01      [19] 1190 	ld	a, 1 (iy)
+   0665 98            [ 4] 1191 	sbc	a, b
+   0666 E2r6Br06      [10] 1192 	jp	PO, 00164$
+   0669 EE 80         [ 7] 1193 	xor	a, #0x80
+   066B                    1194 00164$:
+   066B F2r7Ar06      [10] 1195 	jp	P, 00119$
+                           1196 ;src/entities/entities.c:363: ++G_scrollVel;
+   066E FD 21r00r00   [14] 1197 	ld	iy, #_G_scrollVel
+   0672 FD 34 00      [23] 1198 	inc	0 (iy)
+   0675 20 03         [12] 1199 	jr	NZ,00165$
+   0677 FD 34 01      [23] 1200 	inc	1 (iy)
+   067A                    1201 00165$:
+   067A                    1202 00119$:
+   067A DD F9         [10] 1203 	ld	sp, ix
+   067C DD E1         [14] 1204 	pop	ix
+   067E C9            [10] 1205 	ret
+                           1206 ;src/entities/entities.c:373: void updateCharacterPhysics(TCharacter *c) {
+                           1207 ;	---------------------------------
+                           1208 ; Function updateCharacterPhysics
+                           1209 ; ---------------------------------
+   067F                    1210 _updateCharacterPhysics::
+   067F DD E5         [15] 1211 	push	ix
+   0681 DD 21 00 00   [14] 1212 	ld	ix,#0
+   0685 DD 39         [15] 1213 	add	ix,sp
+   0687 21 F5 FF      [10] 1214 	ld	hl, #-11
+   068A 39            [11] 1215 	add	hl, sp
+   068B F9            [ 6] 1216 	ld	sp, hl
+                           1217 ;src/entities/entities.c:374: TEntity  *e = &c->entity;
+   068C DD 5E 04      [19] 1218 	ld	e,4 (ix)
+   068F DD 56 05      [19] 1219 	ld	d,5 (ix)
+   0692 4B            [ 4] 1220 	ld	c, e
+   0693 42            [ 4] 1221 	ld	b, d
+                           1222 ;src/entities/entities.c:375: TPhysics *p = &e->phys;
+   0694 21 0F 00      [10] 1223 	ld	hl, #0x000f
+   0697 09            [11] 1224 	add	hl,bc
+   0698 E3            [19] 1225 	ex	(sp), hl
+                           1226 ;src/entities/entities.c:379: if ( !isOverFloor(e) ) {
+   0699 C5            [11] 1227 	push	bc
+   069A D5            [11] 1228 	push	de
+   069B C5            [11] 1229 	push	bc
+   069C CDrC1r10      [17] 1230 	call	_isOverFloor
+   069F F1            [10] 1231 	pop	af
+   06A0 DD 75 FF      [19] 1232 	ld	-1 (ix), l
+   06A3 D1            [10] 1233 	pop	de
+   06A4 C1            [10] 1234 	pop	bc
+                           1235 ;src/entities/entities.c:381: if ( p->floor ) {
+   06A5 DD 7E F5      [19] 1236 	ld	a, -11 (ix)
+   06A8 C6 0A         [ 7] 1237 	add	a, #0x0a
+   06AA 6F            [ 4] 1238 	ld	l, a
+   06AB DD 7E F6      [19] 1239 	ld	a, -10 (ix)
+   06AE CE 00         [ 7] 1240 	adc	a, #0x00
+   06B0 67            [ 4] 1241 	ld	h, a
+                           1242 ;src/entities/entities.c:383: c->status    = es_jump;
+   06B1 7B            [ 4] 1243 	ld	a, e
+   06B2 C6 1F         [ 7] 1244 	add	a, #0x1f
+   06B4 5F            [ 4] 1245 	ld	e, a
+   06B5 7A            [ 4] 1246 	ld	a, d
+   06B6 CE 00         [ 7] 1247 	adc	a, #0x00
+   06B8 57            [ 4] 1248 	ld	d, a
+                           1249 ;src/entities/entities.c:388: p->vy += G_gy;
+   06B9 DD 7E F5      [19] 1250 	ld	a, -11 (ix)
+   06BC C6 06         [ 7] 1251 	add	a, #0x06
+   06BE DD 77 FD      [19] 1252 	ld	-3 (ix), a
+   06C1 DD 7E F6      [19] 1253 	ld	a, -10 (ix)
+   06C4 CE 00         [ 7] 1254 	adc	a, #0x00
+   06C6 DD 77 FE      [19] 1255 	ld	-2 (ix), a
+                           1256 ;src/entities/entities.c:392: p->vx += 1;                   // p->vx must be != 0 to enable horizontal velocity processing
+   06C9 DD 7E F5      [19] 1257 	ld	a, -11 (ix)
+   06CC C6 04         [ 7] 1258 	add	a, #0x04
+   06CE DD 77 FB      [19] 1259 	ld	-5 (ix), a
+   06D1 DD 7E F6      [19] 1260 	ld	a, -10 (ix)
+   06D4 CE 00         [ 7] 1261 	adc	a, #0x00
+   06D6 DD 77 FC      [19] 1262 	ld	-4 (ix), a
+                           1263 ;src/entities/entities.c:381: if ( p->floor ) {
+   06D9 E5            [11] 1264 	push	hl
+   06DA 7E            [ 7] 1265 	ld	a, (hl)
+   06DB DD 77 F7      [19] 1266 	ld	-9 (ix), a
+   06DE 23            [ 6] 1267 	inc	hl
+   06DF 7E            [ 7] 1268 	ld	a, (hl)
+   06E0 DD 77 F8      [19] 1269 	ld	-8 (ix), a
+   06E3 E1            [10] 1270 	pop	hl
+                           1271 ;src/entities/entities.c:379: if ( !isOverFloor(e) ) {
+   06E4 DD 7E FF      [19] 1272 	ld	a, -1 (ix)
+   06E7 B7            [ 4] 1273 	or	a, a
+   06E8 20 46         [12] 1274 	jr	NZ,00104$
+                           1275 ;src/entities/entities.c:381: if ( p->floor ) {
+   06EA DD 7E F8      [19] 1276 	ld	a, -8 (ix)
+   06ED DD B6 F7      [19] 1277 	or	a,-9 (ix)
+   06F0 28 0D         [12] 1278 	jr	Z,00102$
+                           1279 ;src/entities/entities.c:382: p->floor     = 0; 
+   06F2 AF            [ 4] 1280 	xor	a, a
+   06F3 77            [ 7] 1281 	ld	(hl), a
+   06F4 23            [ 6] 1282 	inc	hl
+   06F5 77            [ 7] 1283 	ld	(hl), a
+                           1284 ;src/entities/entities.c:383: c->status    = es_jump;
+   06F6 3E 02         [ 7] 1285 	ld	a, #0x02
+   06F8 12            [ 7] 1286 	ld	(de), a
+                           1287 ;src/entities/entities.c:384: anim->status = as_pause;
+   06F9 21 04 00      [10] 1288 	ld	hl, #0x0004
+   06FC 09            [11] 1289 	add	hl, bc
+   06FD 36 03         [10] 1290 	ld	(hl), #0x03
+   06FF                    1291 00102$:
+                           1292 ;src/entities/entities.c:388: p->vy += G_gy;
+   06FF DD 6E FD      [19] 1293 	ld	l,-3 (ix)
+   0702 DD 66 FE      [19] 1294 	ld	h,-2 (ix)
+   0705 7E            [ 7] 1295 	ld	a, (hl)
+   0706 DD 77 F9      [19] 1296 	ld	-7 (ix), a
+   0709 23            [ 6] 1297 	inc	hl
+   070A 7E            [ 7] 1298 	ld	a, (hl)
+   070B DD 77 FA      [19] 1299 	ld	-6 (ix), a
+   070E 2ArF6r00      [16] 1300 	ld	hl, (_G_gy)
+   0711 DD 7E F9      [19] 1301 	ld	a, -7 (ix)
+   0714 85            [ 4] 1302 	add	a, l
+   0715 DD 77 F9      [19] 1303 	ld	-7 (ix), a
+   0718 DD 7E FA      [19] 1304 	ld	a, -6 (ix)
+   071B 8C            [ 4] 1305 	adc	a, h
+   071C DD 77 FA      [19] 1306 	ld	-6 (ix), a
+   071F DD 6E FD      [19] 1307 	ld	l,-3 (ix)
+   0722 DD 66 FE      [19] 1308 	ld	h,-2 (ix)
+   0725 DD 7E F9      [19] 1309 	ld	a, -7 (ix)
+   0728 77            [ 7] 1310 	ld	(hl), a
+   0729 23            [ 6] 1311 	inc	hl
+   072A DD 7E FA      [19] 1312 	ld	a, -6 (ix)
+   072D 77            [ 7] 1313 	ld	(hl), a
+   072E 18 54         [12] 1314 	jr	00105$
+   0730                    1315 00104$:
+                           1316 ;src/entities/entities.c:391: p->x  += p->floor->phys.vx;   // Add floor inertia
+   0730 E1            [10] 1317 	pop	hl
+   0731 E5            [11] 1318 	push	hl
+   0732 7E            [ 7] 1319 	ld	a, (hl)
+   0733 DD 77 F9      [19] 1320 	ld	-7 (ix), a
+   0736 23            [ 6] 1321 	inc	hl
+   0737 7E            [ 7] 1322 	ld	a, (hl)
+   0738 DD 77 FA      [19] 1323 	ld	-6 (ix), a
+   073B DD 6E F7      [19] 1324 	ld	l,-9 (ix)
+   073E DD 66 F8      [19] 1325 	ld	h,-8 (ix)
+   0741 C5            [11] 1326 	push	bc
+   0742 01 13 00      [10] 1327 	ld	bc, #0x0013
+   0745 09            [11] 1328 	add	hl, bc
+   0746 C1            [10] 1329 	pop	bc
+   0747 7E            [ 7] 1330 	ld	a, (hl)
+   0748 23            [ 6] 1331 	inc	hl
+   0749 66            [ 7] 1332 	ld	h, (hl)
+   074A 6F            [ 4] 1333 	ld	l, a
+   074B DD 7E F9      [19] 1334 	ld	a, -7 (ix)
+   074E 85            [ 4] 1335 	add	a, l
+   074F DD 77 F9      [19] 1336 	ld	-7 (ix), a
+   0752 DD 7E FA      [19] 1337 	ld	a, -6 (ix)
+   0755 8C            [ 4] 1338 	adc	a, h
+   0756 DD 77 FA      [19] 1339 	ld	-6 (ix), a
+   0759 E1            [10] 1340 	pop	hl
+   075A E5            [11] 1341 	push	hl
+   075B DD 7E F9      [19] 1342 	ld	a, -7 (ix)
+   075E 77            [ 7] 1343 	ld	(hl), a
+   075F 23            [ 6] 1344 	inc	hl
+   0760 DD 7E FA      [19] 1345 	ld	a, -6 (ix)
+   0763 77            [ 7] 1346 	ld	(hl), a
+                           1347 ;src/entities/entities.c:392: p->vx += 1;                   // p->vx must be != 0 to enable horizontal velocity processing
+   0764 DD 6E FB      [19] 1348 	ld	l,-5 (ix)
+   0767 DD 66 FC      [19] 1349 	ld	h,-4 (ix)
+   076A 7E            [ 7] 1350 	ld	a, (hl)
+   076B 23            [ 6] 1351 	inc	hl
+   076C 66            [ 7] 1352 	ld	h, (hl)
+   076D 6F            [ 4] 1353 	ld	l, a
+   076E 23            [ 6] 1354 	inc	hl
+   076F DD 75 F9      [19] 1355 	ld	-7 (ix), l
+   0772 DD 74 FA      [19] 1356 	ld	-6 (ix), h
+   0775 DD 6E FB      [19] 1357 	ld	l,-5 (ix)
+   0778 DD 66 FC      [19] 1358 	ld	h,-4 (ix)
+   077B DD 7E F9      [19] 1359 	ld	a, -7 (ix)
+   077E 77            [ 7] 1360 	ld	(hl), a
+   077F 23            [ 6] 1361 	inc	hl
+   0780 DD 7E FA      [19] 1362 	ld	a, -6 (ix)
+   0783 77            [ 7] 1363 	ld	(hl), a
+   0784                    1364 00105$:
+                           1365 ;src/entities/entities.c:396: p->vx += G_gx;
+   0784 DD 6E FB      [19] 1366 	ld	l,-5 (ix)
+   0787 DD 66 FC      [19] 1367 	ld	h,-4 (ix)
+   078A 7E            [ 7] 1368 	ld	a, (hl)
+   078B DD 77 F9      [19] 1369 	ld	-7 (ix), a
+   078E 23            [ 6] 1370 	inc	hl
+   078F 7E            [ 7] 1371 	ld	a, (hl)
+   0790 DD 77 FA      [19] 1372 	ld	-6 (ix), a
+   0793 2ArF8r00      [16] 1373 	ld	hl, (_G_gx)
+   0796 DD 7E F9      [19] 1374 	ld	a, -7 (ix)
+   0799 85            [ 4] 1375 	add	a, l
+   079A DD 77 F9      [19] 1376 	ld	-7 (ix), a
+   079D DD 7E FA      [19] 1377 	ld	a, -6 (ix)
+   07A0 8C            [ 4] 1378 	adc	a, h
+   07A1 DD 77 FA      [19] 1379 	ld	-6 (ix), a
+   07A4 DD 6E FB      [19] 1380 	ld	l,-5 (ix)
+   07A7 DD 66 FC      [19] 1381 	ld	h,-4 (ix)
+   07AA DD 7E F9      [19] 1382 	ld	a, -7 (ix)
+   07AD 77            [ 7] 1383 	ld	(hl), a
+   07AE 23            [ 6] 1384 	inc	hl
+   07AF DD 7E FA      [19] 1385 	ld	a, -6 (ix)
+   07B2 77            [ 7] 1386 	ld	(hl), a
+                           1387 ;src/entities/entities.c:399: if ( p->vy ) {
+   07B3 DD 6E FD      [19] 1388 	ld	l,-3 (ix)
+   07B6 DD 66 FE      [19] 1389 	ld	h,-2 (ix)
+   07B9 7E            [ 7] 1390 	ld	a, (hl)
+   07BA 23            [ 6] 1391 	inc	hl
+   07BB 66            [ 7] 1392 	ld	h, (hl)
+   07BC B4            [ 4] 1393 	or	a,h
+   07BD 28 54         [12] 1394 	jr	Z,00107$
+                           1395 ;src/entities/entities.c:401: cropVelocity(&p->vy, G_maxYVel, G_minVel);   
+   07BF 2ArFEr00      [16] 1396 	ld	hl, (_G_minVel)
+   07C2 FD 2ArFAr00   [20] 1397 	ld	iy, (_G_maxYVel)
+   07C6 C5            [11] 1398 	push	bc
+   07C7 D5            [11] 1399 	push	de
+   07C8 E5            [11] 1400 	push	hl
+   07C9 FD E5         [15] 1401 	push	iy
+   07CB DD 6E FD      [19] 1402 	ld	l,-3 (ix)
+   07CE DD 66 FE      [19] 1403 	ld	h,-2 (ix)
+   07D1 E5            [11] 1404 	push	hl
+   07D2 CDrCDr02      [17] 1405 	call	_cropVelocity
+   07D5 21 06 00      [10] 1406 	ld	hl, #6
+   07D8 39            [11] 1407 	add	hl, sp
+   07D9 F9            [ 6] 1408 	ld	sp, hl
+   07DA D1            [10] 1409 	pop	de
+   07DB C1            [10] 1410 	pop	bc
+                           1411 ;src/entities/entities.c:403: p->y  += p->vy;         // Then add it to position
+   07DC FD E1         [14] 1412 	pop	iy
+   07DE FD E5         [15] 1413 	push	iy
+   07E0 FD 23         [10] 1414 	inc	iy
+   07E2 FD 23         [10] 1415 	inc	iy
+   07E4 FD 7E 00      [19] 1416 	ld	a, 0 (iy)
+   07E7 DD 77 F9      [19] 1417 	ld	-7 (ix), a
+   07EA FD 7E 01      [19] 1418 	ld	a, 1 (iy)
+   07ED DD 77 FA      [19] 1419 	ld	-6 (ix), a
+   07F0 DD 6E FD      [19] 1420 	ld	l,-3 (ix)
+   07F3 DD 66 FE      [19] 1421 	ld	h,-2 (ix)
+   07F6 7E            [ 7] 1422 	ld	a, (hl)
+   07F7 23            [ 6] 1423 	inc	hl
+   07F8 66            [ 7] 1424 	ld	h, (hl)
+   07F9 6F            [ 4] 1425 	ld	l, a
+   07FA DD 7E F9      [19] 1426 	ld	a, -7 (ix)
+   07FD 85            [ 4] 1427 	add	a, l
+   07FE 6F            [ 4] 1428 	ld	l, a
+   07FF DD 7E FA      [19] 1429 	ld	a, -6 (ix)
+   0802 8C            [ 4] 1430 	adc	a, h
+   0803 67            [ 4] 1431 	ld	h, a
+   0804 FD 75 00      [19] 1432 	ld	0 (iy), l
+   0807 FD 74 01      [19] 1433 	ld	1 (iy), h
+                           1434 ;src/entities/entities.c:404: e->ny  = p->y / SCALE;  // Calculate new screen position
+   080A FD 21 0C 00   [14] 1435 	ld	iy, #0x000c
+   080E FD 09         [15] 1436 	add	iy, bc
+   0810 FD 74 00      [19] 1437 	ld	0 (iy), h
+   0813                    1438 00107$:
+                           1439 ;src/entities/entities.c:408: if ( p->vx ) {
+   0813 DD 6E FB      [19] 1440 	ld	l,-5 (ix)
+   0816 DD 66 FC      [19] 1441 	ld	h,-4 (ix)
+   0819 7E            [ 7] 1442 	ld	a, (hl)
+   081A 23            [ 6] 1443 	inc	hl
+   081B 66            [ 7] 1444 	ld	h, (hl)
+   081C B4            [ 4] 1445 	or	a,h
+   081D CArB2r08      [10] 1446 	jp	Z, 00113$
+                           1447 ;src/entities/entities.c:410: cropVelocity(&p->vx, G_maxXVel, G_minVel);
+   0820 2ArFEr00      [16] 1448 	ld	hl, (_G_minVel)
+   0823 FD 2ArFCr00   [20] 1449 	ld	iy, (_G_maxXVel)
+   0827 C5            [11] 1450 	push	bc
+   0828 D5            [11] 1451 	push	de
+   0829 E5            [11] 1452 	push	hl
+   082A FD E5         [15] 1453 	push	iy
+   082C DD 6E FB      [19] 1454 	ld	l,-5 (ix)
+   082F DD 66 FC      [19] 1455 	ld	h,-4 (ix)
+   0832 E5            [11] 1456 	push	hl
+   0833 CDrCDr02      [17] 1457 	call	_cropVelocity
+   0836 21 06 00      [10] 1458 	ld	hl, #6
+   0839 39            [11] 1459 	add	hl, sp
+   083A F9            [ 6] 1460 	ld	sp, hl
+   083B D1            [10] 1461 	pop	de
+   083C C1            [10] 1462 	pop	bc
+                           1463 ;src/entities/entities.c:412: p->x += p->vx;          // Then add it to position
+   083D E1            [10] 1464 	pop	hl
+   083E E5            [11] 1465 	push	hl
+   083F 7E            [ 7] 1466 	ld	a, (hl)
+   0840 DD 77 F9      [19] 1467 	ld	-7 (ix), a
+   0843 23            [ 6] 1468 	inc	hl
+   0844 7E            [ 7] 1469 	ld	a, (hl)
+   0845 DD 77 FA      [19] 1470 	ld	-6 (ix), a
+   0848 DD 6E FB      [19] 1471 	ld	l,-5 (ix)
+   084B DD 66 FC      [19] 1472 	ld	h,-4 (ix)
+   084E 7E            [ 7] 1473 	ld	a, (hl)
+   084F 23            [ 6] 1474 	inc	hl
+   0850 66            [ 7] 1475 	ld	h, (hl)
+   0851 6F            [ 4] 1476 	ld	l, a
+   0852 DD 7E F9      [19] 1477 	ld	a, -7 (ix)
+   0855 85            [ 4] 1478 	add	a, l
+   0856 DD 77 F9      [19] 1479 	ld	-7 (ix), a
+   0859 DD 7E FA      [19] 1480 	ld	a, -6 (ix)
+   085C 8C            [ 4] 1481 	adc	a, h
+   085D DD 77 FA      [19] 1482 	ld	-6 (ix), a
+   0860 E1            [10] 1483 	pop	hl
+   0861 E5            [11] 1484 	push	hl
+   0862 DD 7E F9      [19] 1485 	ld	a, -7 (ix)
+   0865 77            [ 7] 1486 	ld	(hl), a
+   0866 23            [ 6] 1487 	inc	hl
+   0867 DD 7E FA      [19] 1488 	ld	a, -6 (ix)
+   086A 77            [ 7] 1489 	ld	(hl), a
+                           1490 ;src/entities/entities.c:413: e->nx = p->x / SCALE;   // And calculate new screen position
+   086B 21 0B 00      [10] 1491 	ld	hl, #0x000b
+   086E 09            [11] 1492 	add	hl, bc
+   086F DD 4E FA      [19] 1493 	ld	c, -6 (ix)
+   0872 71            [ 7] 1494 	ld	(hl), c
+                           1495 ;src/entities/entities.c:416: if ( c->status == es_walk )
+   0873 1A            [ 7] 1496 	ld	a, (de)
+                           1497 ;src/entities/entities.c:396: p->vx += G_gx;
+   0874 DD 6E FB      [19] 1498 	ld	l,-5 (ix)
+   0877 DD 66 FC      [19] 1499 	ld	h,-4 (ix)
+   087A 4E            [ 7] 1500 	ld	c, (hl)
+   087B 23            [ 6] 1501 	inc	hl
+   087C 46            [ 7] 1502 	ld	b, (hl)
+                           1503 ;src/entities/entities.c:416: if ( c->status == es_walk )
+   087D 3D            [ 4] 1504 	dec	a
+   087E 20 1A         [12] 1505 	jr	NZ,00109$
+                           1506 ;src/entities/entities.c:417: p->vx /= G_floorFric;   // Friction on the floor
+   0880 21r05r01      [10] 1507 	ld	hl,#_G_floorFric + 0
+   0883 5E            [ 7] 1508 	ld	e, (hl)
+   0884 16 00         [ 7] 1509 	ld	d, #0x00
+   0886 D5            [11] 1510 	push	de
+   0887 C5            [11] 1511 	push	bc
+   0888 CDr00r00      [17] 1512 	call	__divsint
+   088B F1            [10] 1513 	pop	af
+   088C F1            [10] 1514 	pop	af
+   088D 4D            [ 4] 1515 	ld	c, l
+   088E 44            [ 4] 1516 	ld	b, h
+   088F DD 6E FB      [19] 1517 	ld	l,-5 (ix)
+   0892 DD 66 FC      [19] 1518 	ld	h,-4 (ix)
+   0895 71            [ 7] 1519 	ld	(hl), c
+   0896 23            [ 6] 1520 	inc	hl
+   0897 70            [ 7] 1521 	ld	(hl), b
+   0898 18 18         [12] 1522 	jr	00113$
+   089A                    1523 00109$:
+                           1524 ;src/entities/entities.c:419: p->vx /= G_airFric;     // Friction on air
+   089A 21r04r01      [10] 1525 	ld	hl,#_G_airFric + 0
+   089D 5E            [ 7] 1526 	ld	e, (hl)
+   089E 16 00         [ 7] 1527 	ld	d, #0x00
+   08A0 D5            [11] 1528 	push	de
+   08A1 C5            [11] 1529 	push	bc
+   08A2 CDr00r00      [17] 1530 	call	__divsint
+   08A5 F1            [10] 1531 	pop	af
+   08A6 F1            [10] 1532 	pop	af
+   08A7 4D            [ 4] 1533 	ld	c, l
+   08A8 44            [ 4] 1534 	ld	b, h
+   08A9 DD 6E FB      [19] 1535 	ld	l,-5 (ix)
+   08AC DD 66 FC      [19] 1536 	ld	h,-4 (ix)
+   08AF 71            [ 7] 1537 	ld	(hl), c
+   08B0 23            [ 6] 1538 	inc	hl
+   08B1 70            [ 7] 1539 	ld	(hl), b
+   08B2                    1540 00113$:
+   08B2 DD F9         [10] 1541 	ld	sp, ix
+   08B4 DD E1         [14] 1542 	pop	ix
+   08B6 C9            [10] 1543 	ret
+                           1544 ;src/entities/entities.c:429: u8 getNearestBlockID(u8 bid, u8 y) {
+                           1545 ;	---------------------------------
+                           1546 ; Function getNearestBlockID
+                           1547 ; ---------------------------------
+   08B7                    1548 _getNearestBlockID::
+   08B7 DD E5         [15] 1549 	push	ix
+   08B9 DD 21 00 00   [14] 1550 	ld	ix,#0
+   08BD DD 39         [15] 1551 	add	ix,sp
+                           1552 ;src/entities/entities.c:431: if (g_blocks[bid].ny <= y) {
+   08BF DD 4E 04      [19] 1553 	ld	c,4 (ix)
+   08C2 06 00         [ 7] 1554 	ld	b,#0x00
+   08C4 69            [ 4] 1555 	ld	l, c
+   08C5 60            [ 4] 1556 	ld	h, b
+   08C6 29            [11] 1557 	add	hl, hl
+   08C7 09            [11] 1558 	add	hl, bc
+   08C8 29            [11] 1559 	add	hl, hl
+   08C9 09            [11] 1560 	add	hl, bc
+   08CA 29            [11] 1561 	add	hl, hl
+   08CB 09            [11] 1562 	add	hl, bc
+   08CC 29            [11] 1563 	add	hl, hl
+   08CD 09            [11] 1564 	add	hl, bc
+   08CE 11r05r00      [10] 1565 	ld	de, #_g_blocks
+   08D1 19            [11] 1566 	add	hl, de
+   08D2 11 0C 00      [10] 1567 	ld	de, #0x000c
+   08D5 19            [11] 1568 	add	hl, de
+   08D6 46            [ 7] 1569 	ld	b, (hl)
+                           1570 ;src/entities/entities.c:434: while (bid > 0 && g_blocks[bid-1].ny <= y) --bid;
+   08D7 DD 4E 04      [19] 1571 	ld	c, 4 (ix)
+                           1572 ;src/entities/entities.c:431: if (g_blocks[bid].ny <= y) {
+   08DA DD 7E 05      [19] 1573 	ld	a, 5 (ix)
+   08DD 90            [ 4] 1574 	sub	a, b
+   08DE 38 23         [12] 1575 	jr	C,00119$
+                           1576 ;src/entities/entities.c:434: while (bid > 0 && g_blocks[bid-1].ny <= y) --bid;
+   08E0                    1577 00102$:
+   08E0 79            [ 4] 1578 	ld	a, c
+   08E1 B7            [ 4] 1579 	or	a, a
+   08E2 28 51         [12] 1580 	jr	Z,00120$
+   08E4 59            [ 4] 1581 	ld	e, c
+   08E5 16 00         [ 7] 1582 	ld	d, #0x00
+   08E7 1B            [ 6] 1583 	dec	de
+   08E8 6B            [ 4] 1584 	ld	l, e
+   08E9 62            [ 4] 1585 	ld	h, d
+   08EA 29            [11] 1586 	add	hl, hl
+   08EB 19            [11] 1587 	add	hl, de
+   08EC 29            [11] 1588 	add	hl, hl
+   08ED 19            [11] 1589 	add	hl, de
+   08EE 29            [11] 1590 	add	hl, hl
+   08EF 19            [11] 1591 	add	hl, de
+   08F0 29            [11] 1592 	add	hl, hl
+   08F1 19            [11] 1593 	add	hl, de
+   08F2 11r05r00      [10] 1594 	ld	de, #_g_blocks
+   08F5 19            [11] 1595 	add	hl, de
+   08F6 11 0C 00      [10] 1596 	ld	de, #0x000c
+   08F9 19            [11] 1597 	add	hl, de
+   08FA DD 7E 05      [19] 1598 	ld	a,5 (ix)
+   08FD 96            [ 7] 1599 	sub	a,(hl)
+   08FE 38 35         [12] 1600 	jr	C,00120$
+   0900 0D            [ 4] 1601 	dec	c
+   0901 18 DD         [12] 1602 	jr	00102$
+                           1603 ;src/entities/entities.c:438: while (bid < g_lastBlock - 1 && g_blocks[bid+1].ny > y) ++bid;
+   0903                    1604 00119$:
+   0903                    1605 00106$:
+   0903 21rF5r01      [10] 1606 	ld	hl,#_g_lastBlock + 0
+   0906 5E            [ 7] 1607 	ld	e, (hl)
+   0907 16 00         [ 7] 1608 	ld	d, #0x00
+   0909 1B            [ 6] 1609 	dec	de
+   090A 69            [ 4] 1610 	ld	l, c
+   090B 26 00         [ 7] 1611 	ld	h, #0x00
+   090D 7D            [ 4] 1612 	ld	a, l
+   090E 93            [ 4] 1613 	sub	a, e
+   090F 7C            [ 4] 1614 	ld	a, h
+   0910 9A            [ 4] 1615 	sbc	a, d
+   0911 E2r16r09      [10] 1616 	jp	PO, 00143$
+   0914 EE 80         [ 7] 1617 	xor	a, #0x80
+   0916                    1618 00143$:
+   0916 F2r3Ar09      [10] 1619 	jp	P, 00121$
+   0919 23            [ 6] 1620 	inc	hl
+   091A 5D            [ 4] 1621 	ld	e, l
+   091B 54            [ 4] 1622 	ld	d, h
+   091C 29            [11] 1623 	add	hl, hl
+   091D 19            [11] 1624 	add	hl, de
+   091E 29            [11] 1625 	add	hl, hl
+   091F 19            [11] 1626 	add	hl, de
+   0920 29            [11] 1627 	add	hl, hl
+   0921 19            [11] 1628 	add	hl, de
+   0922 29            [11] 1629 	add	hl, hl
+   0923 19            [11] 1630 	add	hl, de
+   0924 11r05r00      [10] 1631 	ld	de, #_g_blocks
+   0927 19            [11] 1632 	add	hl, de
+   0928 11 0C 00      [10] 1633 	ld	de, #0x000c
+   092B 19            [11] 1634 	add	hl, de
+   092C DD 7E 05      [19] 1635 	ld	a,5 (ix)
+   092F 96            [ 7] 1636 	sub	a,(hl)
+   0930 30 08         [12] 1637 	jr	NC,00121$
+   0932 0C            [ 4] 1638 	inc	c
+   0933 18 CE         [12] 1639 	jr	00106$
+   0935                    1640 00120$:
+   0935 DD 71 04      [19] 1641 	ld	4 (ix), c
+                           1642 ;src/entities/entities.c:442: return bid;
+   0938 18 03         [12] 1643 	jr	00111$
+                           1644 ;src/entities/entities.c:438: while (bid < g_lastBlock - 1 && g_blocks[bid+1].ny > y) ++bid;
+   093A                    1645 00121$:
+   093A DD 71 04      [19] 1646 	ld	4 (ix), c
+   093D                    1647 00111$:
+                           1648 ;src/entities/entities.c:442: return bid;
+   093D DD 6E 04      [19] 1649 	ld	l, 4 (ix)
+   0940 DD E1         [14] 1650 	pop	ix
+   0942 C9            [10] 1651 	ret
+                           1652 ;src/entities/entities.c:451: void applyCharacterBlockCollisions(TCharacter *c) {
+                           1653 ;	---------------------------------
+                           1654 ; Function applyCharacterBlockCollisions
+                           1655 ; ---------------------------------
+   0943                    1656 _applyCharacterBlockCollisions::
+   0943 DD E5         [15] 1657 	push	ix
+   0945 DD 21 00 00   [14] 1658 	ld	ix,#0
+   0949 DD 39         [15] 1659 	add	ix,sp
+   094B 21 DE FF      [10] 1660 	ld	hl, #-34
+   094E 39            [11] 1661 	add	hl, sp
+   094F F9            [ 6] 1662 	ld	sp, hl
+                           1663 ;src/entities/entities.c:452: TEntity  *e  = &c->entity;  // Entity associated to the character
+   0950 DD 7E 04      [19] 1664 	ld	a, 4 (ix)
+   0953 DD 77 FE      [19] 1665 	ld	-2 (ix), a
+   0956 DD 7E 05      [19] 1666 	ld	a, 5 (ix)
+   0959 DD 77 FF      [19] 1667 	ld	-1 (ix), a
+   095C DD 4E FE      [19] 1668 	ld	c,-2 (ix)
+   095F DD 46 FF      [19] 1669 	ld	b,-1 (ix)
+   0962 DD 71 E4      [19] 1670 	ld	-28 (ix), c
+   0965 DD 70 E5      [19] 1671 	ld	-27 (ix), b
+                           1672 ;src/entities/entities.c:453: TPhysics *p  = &e->phys;    // Physics component of the character
+   0968 DD 7E E4      [19] 1673 	ld	a, -28 (ix)
+   096B C6 0F         [ 7] 1674 	add	a, #0x0f
+   096D DD 77 E2      [19] 1675 	ld	-30 (ix), a
+   0970 DD 7E E5      [19] 1676 	ld	a, -27 (ix)
+   0973 CE 00         [ 7] 1677 	adc	a, #0x00
+   0975 DD 77 E3      [19] 1678 	ld	-29 (ix), a
+                           1679 ;src/entities/entities.c:457: i = PXMARGIN + e->ny + e->graph.anim.frames[e->graph.anim.frame_id]->height; 
+   0978 DD 7E E4      [19] 1680 	ld	a, -28 (ix)
+   097B C6 0C         [ 7] 1681 	add	a, #0x0c
+   097D DD 77 FC      [19] 1682 	ld	-4 (ix), a
+   0980 DD 7E E5      [19] 1683 	ld	a, -27 (ix)
+   0983 CE 00         [ 7] 1684 	adc	a, #0x00
+   0985 DD 77 FD      [19] 1685 	ld	-3 (ix), a
+   0988 DD 6E FC      [19] 1686 	ld	l,-4 (ix)
+   098B DD 66 FD      [19] 1687 	ld	h,-3 (ix)
+   098E 4E            [ 7] 1688 	ld	c, (hl)
+   098F 0C            [ 4] 1689 	inc	c
+   0990 0C            [ 4] 1690 	inc	c
+   0991 0C            [ 4] 1691 	inc	c
+   0992 0C            [ 4] 1692 	inc	c
+   0993 DD 6E E4      [19] 1693 	ld	l,-28 (ix)
+   0996 DD 66 E5      [19] 1694 	ld	h,-27 (ix)
+   0999 5E            [ 7] 1695 	ld	e, (hl)
+   099A 23            [ 6] 1696 	inc	hl
+   099B 56            [ 7] 1697 	ld	d, (hl)
+   099C DD 6E E4      [19] 1698 	ld	l,-28 (ix)
+   099F DD 66 E5      [19] 1699 	ld	h,-27 (ix)
+   09A2 23            [ 6] 1700 	inc	hl
+   09A3 23            [ 6] 1701 	inc	hl
+   09A4 6E            [ 7] 1702 	ld	l, (hl)
+   09A5 26 00         [ 7] 1703 	ld	h, #0x00
+   09A7 29            [11] 1704 	add	hl, hl
+   09A8 19            [11] 1705 	add	hl, de
+   09A9 7E            [ 7] 1706 	ld	a, (hl)
+   09AA 23            [ 6] 1707 	inc	hl
+   09AB 66            [ 7] 1708 	ld	h, (hl)
+   09AC 6F            [ 4] 1709 	ld	l, a
+   09AD 23            [ 6] 1710 	inc	hl
+   09AE 23            [ 6] 1711 	inc	hl
+   09AF 23            [ 6] 1712 	inc	hl
+   09B0 46            [ 7] 1713 	ld	b, (hl)
+   09B1 79            [ 4] 1714 	ld	a, c
+   09B2 80            [ 4] 1715 	add	a, b
+   09B3 47            [ 4] 1716 	ld	b, a
+                           1717 ;src/entities/entities.c:458: g_colMinBlock = getNearestBlockID(g_colMinBlock, i);
+   09B4 C5            [11] 1718 	push	bc
+   09B5 33            [ 6] 1719 	inc	sp
+   09B6 3ArF6r01      [13] 1720 	ld	a, (_g_colMinBlock)
+   09B9 F5            [11] 1721 	push	af
+   09BA 33            [ 6] 1722 	inc	sp
+   09BB CDrB7r08      [17] 1723 	call	_getNearestBlockID
+   09BE F1            [10] 1724 	pop	af
+   09BF FD 21rF6r01   [14] 1725 	ld	iy, #_g_colMinBlock
+   09C3 FD 75 00      [19] 1726 	ld	0 (iy), l
+                           1727 ;src/entities/entities.c:461: i = e->ny - PXMARGIN;
+   09C6 DD 6E FC      [19] 1728 	ld	l,-4 (ix)
+   09C9 DD 66 FD      [19] 1729 	ld	h,-3 (ix)
+   09CC 7E            [ 7] 1730 	ld	a, (hl)
+   09CD C6 FC         [ 7] 1731 	add	a, #0xfc
+   09CF 47            [ 4] 1732 	ld	b, a
+                           1733 ;src/entities/entities.c:462: g_colMaxBlock = getNearestBlockID(g_colMaxBlock, i);
+   09D0 C5            [11] 1734 	push	bc
+   09D1 33            [ 6] 1735 	inc	sp
+   09D2 3ArF7r01      [13] 1736 	ld	a, (_g_colMaxBlock)
+   09D5 F5            [11] 1737 	push	af
+   09D6 33            [ 6] 1738 	inc	sp
+   09D7 CDrB7r08      [17] 1739 	call	_getNearestBlockID
+   09DA F1            [10] 1740 	pop	af
+   09DB FD 21rF7r01   [14] 1741 	ld	iy, #_g_colMaxBlock
+   09DF FD 75 00      [19] 1742 	ld	0 (iy), l
+                           1743 ;src/entities/entities.c:466: for(i=g_colMinBlock; i <= g_colMaxBlock; ++i) {
+   09E2 3ArF6r01      [13] 1744 	ld	a,(#_g_colMinBlock + 0)
+   09E5 DD 77 F9      [19] 1745 	ld	-7 (ix), a
+   09E8 DD 7E FE      [19] 1746 	ld	a, -2 (ix)
+   09EB DD 77 F7      [19] 1747 	ld	-9 (ix), a
+   09EE DD 7E FF      [19] 1748 	ld	a, -1 (ix)
+   09F1 DD 77 F8      [19] 1749 	ld	-8 (ix), a
+   09F4 DD 7E E4      [19] 1750 	ld	a, -28 (ix)
+   09F7 DD 77 F4      [19] 1751 	ld	-12 (ix), a
+   09FA DD 7E E5      [19] 1752 	ld	a, -27 (ix)
+   09FD DD 77 F5      [19] 1753 	ld	-11 (ix), a
+   0A00 DD 7E E4      [19] 1754 	ld	a, -28 (ix)
+   0A03 DD 77 EE      [19] 1755 	ld	-18 (ix), a
+   0A06 DD 7E E5      [19] 1756 	ld	a, -27 (ix)
+   0A09 DD 77 EF      [19] 1757 	ld	-17 (ix), a
+   0A0C DD 7E E4      [19] 1758 	ld	a, -28 (ix)
+   0A0F DD 77 EA      [19] 1759 	ld	-22 (ix), a
+   0A12 DD 7E E5      [19] 1760 	ld	a, -27 (ix)
+   0A15 DD 77 EB      [19] 1761 	ld	-21 (ix), a
+   0A18 DD 7E E4      [19] 1762 	ld	a, -28 (ix)
+   0A1B DD 77 F0      [19] 1763 	ld	-16 (ix), a
+   0A1E DD 7E E5      [19] 1764 	ld	a, -27 (ix)
+   0A21 DD 77 F1      [19] 1765 	ld	-15 (ix), a
+                           1766 ;src/entities/entities.c:478: e->nx += col->w;    // move col->w bytes right (colliding right)
+   0A24 DD 7E E4      [19] 1767 	ld	a, -28 (ix)
+   0A27 C6 0B         [ 7] 1768 	add	a, #0x0b
+   0A29 DD 77 F2      [19] 1769 	ld	-14 (ix), a
+   0A2C DD 7E E5      [19] 1770 	ld	a, -27 (ix)
+   0A2F CE 00         [ 7] 1771 	adc	a, #0x00
+   0A31 DD 77 F3      [19] 1772 	ld	-13 (ix), a
+                           1773 ;src/entities/entities.c:466: for(i=g_colMinBlock; i <= g_colMaxBlock; ++i) {
+   0A34 DD 7E F2      [19] 1774 	ld	a, -14 (ix)
+   0A37 DD 77 FA      [19] 1775 	ld	-6 (ix), a
+   0A3A DD 7E F3      [19] 1776 	ld	a, -13 (ix)
+   0A3D DD 77 FB      [19] 1777 	ld	-5 (ix), a
+   0A40                    1778 00118$:
+   0A40 3ArF7r01      [13] 1779 	ld	a, (#_g_colMaxBlock)
+   0A43 DD 96 F9      [19] 1780 	sub	a, -7 (ix)
+   0A46 DAr98r0C      [10] 1781 	jp	C, 00120$
+                           1782 ;src/entities/entities.c:468: TEntity    *ebl = &g_blocks[i];
+   0A49 DD 4E F9      [19] 1783 	ld	c,-7 (ix)
+   0A4C 06 00         [ 7] 1784 	ld	b,#0x00
+   0A4E 69            [ 4] 1785 	ld	l, c
+   0A4F 60            [ 4] 1786 	ld	h, b
+   0A50 29            [11] 1787 	add	hl, hl
+   0A51 09            [11] 1788 	add	hl, bc
+   0A52 29            [11] 1789 	add	hl, hl
+   0A53 09            [11] 1790 	add	hl, bc
+   0A54 29            [11] 1791 	add	hl, hl
+   0A55 09            [11] 1792 	add	hl, bc
+   0A56 29            [11] 1793 	add	hl, hl
+   0A57 09            [11] 1794 	add	hl, bc
+   0A58 DD 75 EC      [19] 1795 	ld	-20 (ix), l
+   0A5B DD 74 ED      [19] 1796 	ld	-19 (ix), h
+   0A5E 3Er05         [ 7] 1797 	ld	a, #<(_g_blocks)
+   0A60 DD 86 EC      [19] 1798 	add	a, -20 (ix)
+   0A63 DD 77 EC      [19] 1799 	ld	-20 (ix), a
+   0A66 3Es00         [ 7] 1800 	ld	a, #>(_g_blocks)
+   0A68 DD 8E ED      [19] 1801 	adc	a, -19 (ix)
+   0A6B DD 77 ED      [19] 1802 	ld	-19 (ix), a
+   0A6E DD 7E EC      [19] 1803 	ld	a, -20 (ix)
+   0A71 DD 77 E0      [19] 1804 	ld	-32 (ix), a
+   0A74 DD 7E ED      [19] 1805 	ld	a, -19 (ix)
+   0A77 DD 77 E1      [19] 1806 	ld	-31 (ix), a
+                           1807 ;src/entities/entities.c:469: TCollision *col = checkCollisionEntBlock(e, ebl);
+   0A7A C1            [10] 1808 	pop	bc
+   0A7B E1            [10] 1809 	pop	hl
+   0A7C E5            [11] 1810 	push	hl
+   0A7D C5            [11] 1811 	push	bc
+   0A7E E5            [11] 1812 	push	hl
+   0A7F DD 6E E4      [19] 1813 	ld	l,-28 (ix)
+   0A82 DD 66 E5      [19] 1814 	ld	h,-27 (ix)
+   0A85 E5            [11] 1815 	push	hl
+   0A86 CDr3Fr0F      [17] 1816 	call	_checkCollisionEntBlock
+   0A89 F1            [10] 1817 	pop	af
+   0A8A F1            [10] 1818 	pop	af
+   0A8B DD 74 DF      [19] 1819 	ld	-33 (ix), h
+                           1820 ;src/entities/entities.c:472: if (col->w && col->h) {
+   0A8E DD 75 DE      [19] 1821 	ld	-34 (ix), l
+   0A91 7D            [ 4] 1822 	ld	a, l
+   0A92 C6 02         [ 7] 1823 	add	a, #0x02
+   0A94 DD 77 EC      [19] 1824 	ld	-20 (ix), a
+   0A97 DD 7E DF      [19] 1825 	ld	a, -33 (ix)
+   0A9A CE 00         [ 7] 1826 	adc	a, #0x00
+   0A9C DD 77 ED      [19] 1827 	ld	-19 (ix), a
+   0A9F DD 6E EC      [19] 1828 	ld	l,-20 (ix)
+   0AA2 DD 66 ED      [19] 1829 	ld	h,-19 (ix)
+   0AA5 7E            [ 7] 1830 	ld	a, (hl)
+   0AA6 DD 77 EC      [19] 1831 	ld	-20 (ix), a
+   0AA9 B7            [ 4] 1832 	or	a, a
+   0AAA CAr92r0C      [10] 1833 	jp	Z, 00119$
+   0AAD E1            [10] 1834 	pop	hl
+   0AAE E5            [11] 1835 	push	hl
+   0AAF 23            [ 6] 1836 	inc	hl
+   0AB0 23            [ 6] 1837 	inc	hl
+   0AB1 23            [ 6] 1838 	inc	hl
+   0AB2 7E            [ 7] 1839 	ld	a, (hl)
+   0AB3 DD 77 E8      [19] 1840 	ld	-24 (ix), a
+   0AB6 B7            [ 4] 1841 	or	a, a
+   0AB7 CAr92r0C      [10] 1842 	jp	Z, 00119$
+                           1843 ;src/entities/entities.c:476: if(e->x <= col->x - e->pw  || e->x >= ebl->x + ebl->pw ) {
+   0ABA DD 6E F4      [19] 1844 	ld	l,-12 (ix)
+   0ABD DD 66 F5      [19] 1845 	ld	h,-11 (ix)
+   0AC0 11 09 00      [10] 1846 	ld	de, #0x0009
+   0AC3 19            [11] 1847 	add	hl, de
+   0AC4 4E            [ 7] 1848 	ld	c, (hl)
+   0AC5 E1            [10] 1849 	pop	hl
+   0AC6 E5            [11] 1850 	push	hl
+   0AC7 7E            [ 7] 1851 	ld	a, (hl)
+   0AC8 DD 77 F6      [19] 1852 	ld	-10 (ix), a
+   0ACB 5F            [ 4] 1853 	ld	e, a
+   0ACC 16 00         [ 7] 1854 	ld	d, #0x00
+   0ACE DD 6E EE      [19] 1855 	ld	l,-18 (ix)
+   0AD1 DD 66 EF      [19] 1856 	ld	h,-17 (ix)
+   0AD4 C5            [11] 1857 	push	bc
+   0AD5 01 0D 00      [10] 1858 	ld	bc, #0x000d
+   0AD8 09            [11] 1859 	add	hl, bc
+   0AD9 C1            [10] 1860 	pop	bc
+   0ADA 6E            [ 7] 1861 	ld	l, (hl)
+   0ADB 06 00         [ 7] 1862 	ld	b, #0x00
+   0ADD 7B            [ 4] 1863 	ld	a, e
+   0ADE 95            [ 4] 1864 	sub	a, l
+   0ADF 5F            [ 4] 1865 	ld	e, a
+   0AE0 7A            [ 4] 1866 	ld	a, d
+   0AE1 98            [ 4] 1867 	sbc	a, b
+   0AE2 57            [ 4] 1868 	ld	d, a
+   0AE3 06 00         [ 7] 1869 	ld	b, #0x00
+   0AE5 7B            [ 4] 1870 	ld	a, e
+   0AE6 91            [ 4] 1871 	sub	a, c
+   0AE7 7A            [ 4] 1872 	ld	a, d
+   0AE8 98            [ 4] 1873 	sbc	a, b
+   0AE9 E2rEEr0A      [10] 1874 	jp	PO, 00155$
+   0AEC EE 80         [ 7] 1875 	xor	a, #0x80
+   0AEE                    1876 00155$:
+   0AEE F2r18r0B      [10] 1877 	jp	P, 00109$
+   0AF1 D1            [10] 1878 	pop	de
+   0AF2 E1            [10] 1879 	pop	hl
+   0AF3 E5            [11] 1880 	push	hl
+   0AF4 D5            [11] 1881 	push	de
+   0AF5 11 09 00      [10] 1882 	ld	de, #0x0009
+   0AF8 19            [11] 1883 	add	hl, de
+   0AF9 5E            [ 7] 1884 	ld	e, (hl)
+   0AFA 16 00         [ 7] 1885 	ld	d, #0x00
+   0AFC DD 6E E0      [19] 1886 	ld	l,-32 (ix)
+   0AFF DD 66 E1      [19] 1887 	ld	h,-31 (ix)
+   0B02 C5            [11] 1888 	push	bc
+   0B03 01 0D 00      [10] 1889 	ld	bc, #0x000d
+   0B06 09            [11] 1890 	add	hl, bc
+   0B07 C1            [10] 1891 	pop	bc
+   0B08 6E            [ 7] 1892 	ld	l, (hl)
+   0B09 26 00         [ 7] 1893 	ld	h, #0x00
+   0B0B 19            [11] 1894 	add	hl, de
+   0B0C 79            [ 4] 1895 	ld	a, c
+   0B0D 95            [ 4] 1896 	sub	a, l
+   0B0E 78            [ 4] 1897 	ld	a, b
+   0B0F 9C            [ 4] 1898 	sbc	a, h
+   0B10 E2r15r0B      [10] 1899 	jp	PO, 00156$
+   0B13 EE 80         [ 7] 1900 	xor	a, #0x80
+   0B15                    1901 00156$:
+   0B15 FAr72r0B      [10] 1902 	jp	M, 00110$
+   0B18                    1903 00109$:
+                           1904 ;src/entities/entities.c:477: if (col->x > ebl->nx) 
+   0B18 C1            [10] 1905 	pop	bc
+   0B19 E1            [10] 1906 	pop	hl
+   0B1A E5            [11] 1907 	push	hl
+   0B1B C5            [11] 1908 	push	bc
+   0B1C 11 0B 00      [10] 1909 	ld	de, #0x000b
+   0B1F 19            [11] 1910 	add	hl, de
+   0B20 4E            [ 7] 1911 	ld	c, (hl)
+                           1912 ;src/entities/entities.c:478: e->nx += col->w;    // move col->w bytes right (colliding right)
+   0B21 DD 6E F2      [19] 1913 	ld	l,-14 (ix)
+   0B24 DD 66 F3      [19] 1914 	ld	h,-13 (ix)
+   0B27 7E            [ 7] 1915 	ld	a, (hl)
+   0B28 DD 77 E9      [19] 1916 	ld	-23 (ix), a
+                           1917 ;src/entities/entities.c:477: if (col->x > ebl->nx) 
+   0B2B 79            [ 4] 1918 	ld	a, c
+   0B2C DD 96 F6      [19] 1919 	sub	a, -10 (ix)
+   0B2F 30 0F         [12] 1920 	jr	NC,00102$
+                           1921 ;src/entities/entities.c:478: e->nx += col->w;    // move col->w bytes right (colliding right)
+   0B31 DD 7E E9      [19] 1922 	ld	a, -23 (ix)
+   0B34 DD 86 EC      [19] 1923 	add	a, -20 (ix)
+   0B37 DD 6E F2      [19] 1924 	ld	l,-14 (ix)
+   0B3A DD 66 F3      [19] 1925 	ld	h,-13 (ix)
+   0B3D 77            [ 7] 1926 	ld	(hl), a
+   0B3E 18 0D         [12] 1927 	jr	00103$
+   0B40                    1928 00102$:
+                           1929 ;src/entities/entities.c:480: e->nx -= col->w;    // move col->w bytes left  (colliding left)
+   0B40 DD 7E E9      [19] 1930 	ld	a, -23 (ix)
+   0B43 DD 96 EC      [19] 1931 	sub	a, -20 (ix)
+   0B46 DD 6E F2      [19] 1932 	ld	l,-14 (ix)
+   0B49 DD 66 F3      [19] 1933 	ld	h,-13 (ix)
+   0B4C 77            [ 7] 1934 	ld	(hl), a
+   0B4D                    1935 00103$:
+                           1936 ;src/entities/entities.c:483: p->x  = e->nx * SCALE;
+   0B4D DD 6E FA      [19] 1937 	ld	l,-6 (ix)
+   0B50 DD 66 FB      [19] 1938 	ld	h,-5 (ix)
+   0B53 4E            [ 7] 1939 	ld	c, (hl)
+   0B54 06 00         [ 7] 1940 	ld	b, #0x00
+   0B56 DD 6E E2      [19] 1941 	ld	l,-30 (ix)
+   0B59 DD 66 E3      [19] 1942 	ld	h,-29 (ix)
+   0B5C 70            [ 7] 1943 	ld	(hl), b
+   0B5D 23            [ 6] 1944 	inc	hl
+   0B5E 71            [ 7] 1945 	ld	(hl), c
+                           1946 ;src/entities/entities.c:484: p->vx = 0;
+   0B5F DD 7E E2      [19] 1947 	ld	a, -30 (ix)
+   0B62 C6 04         [ 7] 1948 	add	a, #0x04
+   0B64 6F            [ 4] 1949 	ld	l, a
+   0B65 DD 7E E3      [19] 1950 	ld	a, -29 (ix)
+   0B68 CE 00         [ 7] 1951 	adc	a, #0x00
+   0B6A 67            [ 4] 1952 	ld	h, a
+   0B6B AF            [ 4] 1953 	xor	a, a
+   0B6C 77            [ 7] 1954 	ld	(hl), a
+   0B6D 23            [ 6] 1955 	inc	hl
+   0B6E 77            [ 7] 1956 	ld	(hl), a
+   0B6F C3r92r0C      [10] 1957 	jp	00119$
+   0B72                    1958 00110$:
+                           1959 ;src/entities/entities.c:487: } else if (e->y < col->y - e->ph / 2) { 
+   0B72 DD 6E EA      [19] 1960 	ld	l,-22 (ix)
+   0B75 DD 66 EB      [19] 1961 	ld	h,-21 (ix)
+   0B78 11 0A 00      [10] 1962 	ld	de, #0x000a
+   0B7B 19            [11] 1963 	add	hl, de
+   0B7C 7E            [ 7] 1964 	ld	a, (hl)
+   0B7D DD 77 E9      [19] 1965 	ld	-23 (ix), a
+   0B80 C1            [10] 1966 	pop	bc
+   0B81 C5            [11] 1967 	push	bc
+   0B82 03            [ 6] 1968 	inc	bc
+   0B83 0A            [ 7] 1969 	ld	a, (bc)
+   0B84 DD 77 F6      [19] 1970 	ld	-10 (ix), a
+   0B87 5F            [ 4] 1971 	ld	e, a
+   0B88 16 00         [ 7] 1972 	ld	d, #0x00
+   0B8A DD 6E F0      [19] 1973 	ld	l,-16 (ix)
+   0B8D DD 66 F1      [19] 1974 	ld	h,-15 (ix)
+   0B90 C5            [11] 1975 	push	bc
+   0B91 01 0E 00      [10] 1976 	ld	bc, #0x000e
+   0B94 09            [11] 1977 	add	hl, bc
+   0B95 C1            [10] 1978 	pop	bc
+   0B96 6E            [ 7] 1979 	ld	l, (hl)
+   0B97 CB 3D         [ 8] 1980 	srl	l
+   0B99 26 00         [ 7] 1981 	ld	h, #0x00
+   0B9B 7B            [ 4] 1982 	ld	a, e
+   0B9C 95            [ 4] 1983 	sub	a, l
+   0B9D 5F            [ 4] 1984 	ld	e, a
+   0B9E 7A            [ 4] 1985 	ld	a, d
+   0B9F 9C            [ 4] 1986 	sbc	a, h
+   0BA0 57            [ 4] 1987 	ld	d, a
+   0BA1 DD 6E E9      [19] 1988 	ld	l, -23 (ix)
+   0BA4 26 00         [ 7] 1989 	ld	h, #0x00
+                           1990 ;src/entities/entities.c:496: p->y       = e->ny * SCALE;
+   0BA6 DD 7E E2      [19] 1991 	ld	a, -30 (ix)
+   0BA9 C6 02         [ 7] 1992 	add	a, #0x02
+   0BAB DD 77 EC      [19] 1993 	ld	-20 (ix), a
+   0BAE DD 7E E3      [19] 1994 	ld	a, -29 (ix)
+   0BB1 CE 00         [ 7] 1995 	adc	a, #0x00
+   0BB3 DD 77 ED      [19] 1996 	ld	-19 (ix), a
+                           1997 ;src/entities/entities.c:497: p->vy      = 0;
+   0BB6 DD 7E E2      [19] 1998 	ld	a, -30 (ix)
+   0BB9 C6 06         [ 7] 1999 	add	a, #0x06
+   0BBB DD 77 E6      [19] 2000 	ld	-26 (ix), a
+   0BBE DD 7E E3      [19] 2001 	ld	a, -29 (ix)
+   0BC1 CE 00         [ 7] 2002 	adc	a, #0x00
+   0BC3 DD 77 E7      [19] 2003 	ld	-25 (ix), a
+                           2004 ;src/entities/entities.c:487: } else if (e->y < col->y - e->ph / 2) { 
+   0BC6 7D            [ 4] 2005 	ld	a, l
+   0BC7 93            [ 4] 2006 	sub	a, e
+   0BC8 7C            [ 4] 2007 	ld	a, h
+   0BC9 9A            [ 4] 2008 	sbc	a, d
+   0BCA E2rCFr0B      [10] 2009 	jp	PO, 00157$
+   0BCD EE 80         [ 7] 2010 	xor	a, #0x80
+   0BCF                    2011 00157$:
+   0BCF F2r6Fr0C      [10] 2012 	jp	P, 00107$
+                           2013 ;src/entities/entities.c:488: p->floor   = ebl; // Make this entity the floor
+   0BD2 DD 7E E2      [19] 2014 	ld	a, -30 (ix)
+   0BD5 C6 0A         [ 7] 2015 	add	a, #0x0a
+   0BD7 5F            [ 4] 2016 	ld	e, a
+   0BD8 DD 7E E3      [19] 2017 	ld	a, -29 (ix)
+   0BDB CE 00         [ 7] 2018 	adc	a, #0x00
+   0BDD 57            [ 4] 2019 	ld	d, a
+   0BDE DD 7E E0      [19] 2020 	ld	a, -32 (ix)
+   0BE1 12            [ 7] 2021 	ld	(de), a
+   0BE2 13            [ 6] 2022 	inc	de
+   0BE3 DD 7E E1      [19] 2023 	ld	a, -31 (ix)
+   0BE6 12            [ 7] 2024 	ld	(de), a
+                           2025 ;src/entities/entities.c:489: e->nAnim   = g_anim[es_walk][c->side]; // Next animation changes
+   0BE7 FD 21 1C 00   [14] 2026 	ld	iy, #0x001c
+   0BEB DD 5E E4      [19] 2027 	ld	e,-28 (ix)
+   0BEE DD 56 E5      [19] 2028 	ld	d,-27 (ix)
+   0BF1 FD 19         [15] 2029 	add	iy, de
+   0BF3 DD 6E F7      [19] 2030 	ld	l,-9 (ix)
+   0BF6 DD 66 F8      [19] 2031 	ld	h,-8 (ix)
+   0BF9 11 20 00      [10] 2032 	ld	de, #0x0020
+   0BFC 19            [11] 2033 	add	hl, de
+   0BFD 5E            [ 7] 2034 	ld	e, (hl)
+   0BFE CB 23         [ 8] 2035 	sla	e
+   0C00 21r04r00      [10] 2036 	ld	hl, #(_g_anim + 0x0004)
+   0C03 16 00         [ 7] 2037 	ld	d, #0x00
+   0C05 19            [11] 2038 	add	hl, de
+   0C06 5E            [ 7] 2039 	ld	e, (hl)
+   0C07 23            [ 6] 2040 	inc	hl
+   0C08 56            [ 7] 2041 	ld	d, (hl)
+   0C09 FD 73 00      [19] 2042 	ld	0 (iy), e
+   0C0C FD 72 01      [19] 2043 	ld	1 (iy), d
+                           2044 ;src/entities/entities.c:490: e->nStatus = as_pause;     // Make character cycle animation
+   0C0F DD 7E E4      [19] 2045 	ld	a, -28 (ix)
+   0C12 C6 1E         [ 7] 2046 	add	a, #0x1e
+   0C14 6F            [ 4] 2047 	ld	l, a
+   0C15 DD 7E E5      [19] 2048 	ld	a, -27 (ix)
+   0C18 CE 00         [ 7] 2049 	adc	a, #0x00
+   0C1A 67            [ 4] 2050 	ld	h, a
+   0C1B 36 03         [10] 2051 	ld	(hl), #0x03
+                           2052 ;src/entities/entities.c:491: c->status  = es_walk;
+   0C1D DD 7E FE      [19] 2053 	ld	a, -2 (ix)
+   0C20 C6 1F         [ 7] 2054 	add	a, #0x1f
+   0C22 6F            [ 4] 2055 	ld	l, a
+   0C23 DD 7E FF      [19] 2056 	ld	a, -1 (ix)
+   0C26 CE 00         [ 7] 2057 	adc	a, #0x00
+   0C28 67            [ 4] 2058 	ld	h, a
+   0C29 36 01         [10] 2059 	ld	(hl), #0x01
+                           2060 ;src/entities/entities.c:492: e->ny      = col->y - e->nAnim[0]->height; // Move col->h bytes upside and 
+   0C2B 0A            [ 7] 2061 	ld	a, (bc)
+   0C2C 4F            [ 4] 2062 	ld	c, a
+   0C2D EB            [ 4] 2063 	ex	de,hl
+   0C2E 7E            [ 7] 2064 	ld	a, (hl)
+   0C2F 23            [ 6] 2065 	inc	hl
+   0C30 66            [ 7] 2066 	ld	h, (hl)
+   0C31 6F            [ 4] 2067 	ld	l, a
+   0C32 23            [ 6] 2068 	inc	hl
+   0C33 23            [ 6] 2069 	inc	hl
+   0C34 23            [ 6] 2070 	inc	hl
+   0C35 5E            [ 7] 2071 	ld	e, (hl)
+   0C36 79            [ 4] 2072 	ld	a, c
+   0C37 93            [ 4] 2073 	sub	a, e
+   0C38 4F            [ 4] 2074 	ld	c, a
+   0C39 DD 6E FC      [19] 2075 	ld	l,-4 (ix)
+   0C3C DD 66 FD      [19] 2076 	ld	h,-3 (ix)
+   0C3F 71            [ 7] 2077 	ld	(hl), c
+                           2078 ;src/entities/entities.c:494: if (e->ny > G_maxY)  
+   0C40 3Ar09r01      [13] 2079 	ld	a,(#_G_maxY + 0)
+   0C43 91            [ 4] 2080 	sub	a, c
+   0C44 30 0B         [12] 2081 	jr	NC,00105$
+                           2082 ;src/entities/entities.c:495: e->ny=G_minY;
+   0C46 21r08r01      [10] 2083 	ld	hl,#_G_minY + 0
+   0C49 4E            [ 7] 2084 	ld	c, (hl)
+   0C4A DD 6E FC      [19] 2085 	ld	l,-4 (ix)
+   0C4D DD 66 FD      [19] 2086 	ld	h,-3 (ix)
+   0C50 71            [ 7] 2087 	ld	(hl), c
+   0C51                    2088 00105$:
+                           2089 ;src/entities/entities.c:496: p->y       = e->ny * SCALE;
+   0C51 DD 6E FC      [19] 2090 	ld	l,-4 (ix)
+   0C54 DD 66 FD      [19] 2091 	ld	h,-3 (ix)
+   0C57 46            [ 7] 2092 	ld	b, (hl)
+   0C58 0E 00         [ 7] 2093 	ld	c, #0x00
+   0C5A DD 6E EC      [19] 2094 	ld	l,-20 (ix)
+   0C5D DD 66 ED      [19] 2095 	ld	h,-19 (ix)
+   0C60 71            [ 7] 2096 	ld	(hl), c
+   0C61 23            [ 6] 2097 	inc	hl
+   0C62 70            [ 7] 2098 	ld	(hl), b
+                           2099 ;src/entities/entities.c:497: p->vy      = 0;
+   0C63 DD 6E E6      [19] 2100 	ld	l,-26 (ix)
+   0C66 DD 66 E7      [19] 2101 	ld	h,-25 (ix)
+   0C69 AF            [ 4] 2102 	xor	a, a
+   0C6A 77            [ 7] 2103 	ld	(hl), a
+   0C6B 23            [ 6] 2104 	inc	hl
+   0C6C 77            [ 7] 2105 	ld	(hl), a
+   0C6D 18 23         [12] 2106 	jr	00119$
+   0C6F                    2107 00107$:
+                           2108 ;src/entities/entities.c:501: e->ny  = col->y + col->h;  // Move col->h bytes downside (ceil)
+   0C6F DD 7E F6      [19] 2109 	ld	a, -10 (ix)
+   0C72 DD 86 E8      [19] 2110 	add	a, -24 (ix)
+   0C75 4F            [ 4] 2111 	ld	c, a
+   0C76 DD 6E FC      [19] 2112 	ld	l,-4 (ix)
+   0C79 DD 66 FD      [19] 2113 	ld	h,-3 (ix)
+   0C7C 71            [ 7] 2114 	ld	(hl), c
+                           2115 ;src/entities/entities.c:502: p->y   = e->ny * SCALE;
+   0C7D 06 00         [ 7] 2116 	ld	b, #0x00
+   0C7F DD 6E EC      [19] 2117 	ld	l,-20 (ix)
+   0C82 DD 66 ED      [19] 2118 	ld	h,-19 (ix)
+   0C85 70            [ 7] 2119 	ld	(hl), b
+   0C86 23            [ 6] 2120 	inc	hl
+   0C87 71            [ 7] 2121 	ld	(hl), c
+                           2122 ;src/entities/entities.c:503: p->vy  = 0;
+   0C88 DD 6E E6      [19] 2123 	ld	l,-26 (ix)
+   0C8B DD 66 E7      [19] 2124 	ld	h,-25 (ix)
+   0C8E AF            [ 4] 2125 	xor	a, a
+   0C8F 77            [ 7] 2126 	ld	(hl), a
+   0C90 23            [ 6] 2127 	inc	hl
+   0C91 77            [ 7] 2128 	ld	(hl), a
+   0C92                    2129 00119$:
+                           2130 ;src/entities/entities.c:466: for(i=g_colMinBlock; i <= g_colMaxBlock; ++i) {
+   0C92 DD 34 F9      [23] 2131 	inc	-7 (ix)
+   0C95 C3r40r0A      [10] 2132 	jp	00118$
+   0C98                    2133 00120$:
+   0C98 DD F9         [10] 2134 	ld	sp, ix
+   0C9A DD E1         [14] 2135 	pop	ix
+   0C9C C9            [10] 2136 	ret
+                           2137 ;src/entities/entities.c:514: u8 updateCharacter(TCharacter *c) {
+                           2138 ;	---------------------------------
+                           2139 ; Function updateCharacter
+                           2140 ; ---------------------------------
+   0C9D                    2141 _updateCharacter::
+   0C9D DD E5         [15] 2142 	push	ix
+   0C9F DD 21 00 00   [14] 2143 	ld	ix,#0
+   0CA3 DD 39         [15] 2144 	add	ix,sp
+   0CA5 21 E8 FF      [10] 2145 	ld	hl, #-24
+   0CA8 39            [11] 2146 	add	hl, sp
+   0CA9 F9            [ 6] 2147 	ld	sp, hl
+                           2148 ;src/entities/entities.c:515: TEntity  *e = &c->entity;
+   0CAA DD 7E 04      [19] 2149 	ld	a, 4 (ix)
+   0CAD DD 77 FE      [19] 2150 	ld	-2 (ix), a
+   0CB0 DD 7E 05      [19] 2151 	ld	a, 5 (ix)
+   0CB3 DD 77 FF      [19] 2152 	ld	-1 (ix), a
+   0CB6 DD 5E FE      [19] 2153 	ld	e,-2 (ix)
+   0CB9 DD 56 FF      [19] 2154 	ld	d,-1 (ix)
+                           2155 ;src/entities/entities.c:516: TPhysics *p = &e->phys;
+   0CBC 21 0F 00      [10] 2156 	ld	hl, #0x000f
+   0CBF 19            [11] 2157 	add	hl,de
+   0CC0 DD 75 EB      [19] 2158 	ld	-21 (ix), l
+   0CC3 DD 74 EC      [19] 2159 	ld	-20 (ix), h
+                           2160 ;src/entities/entities.c:518: TAnimFrame   *af = anim->frames[anim->frame_id];
+   0CC6 6B            [ 4] 2161 	ld	l, e
+   0CC7 62            [ 4] 2162 	ld	h, d
+   0CC8 4E            [ 7] 2163 	ld	c, (hl)
+   0CC9 23            [ 6] 2164 	inc	hl
+   0CCA 46            [ 7] 2165 	ld	b, (hl)
+   0CCB 21 02 00      [10] 2166 	ld	hl, #0x0002
+   0CCE 19            [11] 2167 	add	hl,de
+   0CCF DD 75 F3      [19] 2168 	ld	-13 (ix), l
+   0CD2 DD 74 F4      [19] 2169 	ld	-12 (ix), h
+   0CD5 6E            [ 7] 2170 	ld	l, (hl)
+   0CD6 26 00         [ 7] 2171 	ld	h, #0x00
+   0CD8 29            [11] 2172 	add	hl, hl
+   0CD9 09            [11] 2173 	add	hl, bc
+   0CDA 7E            [ 7] 2174 	ld	a, (hl)
+   0CDB DD 77 E9      [19] 2175 	ld	-23 (ix), a
+   0CDE 23            [ 6] 2176 	inc	hl
+   0CDF 7E            [ 7] 2177 	ld	a, (hl)
+   0CE0 DD 77 EA      [19] 2178 	ld	-22 (ix), a
+                           2179 ;src/entities/entities.c:519: u8         alive = 1;
+   0CE3 DD 36 E8 01   [19] 2180 	ld	-24 (ix), #0x01
+                           2181 ;src/entities/entities.c:522: e->x       = e->nx;
+   0CE7 21 09 00      [10] 2182 	ld	hl, #0x0009
+   0CEA 19            [11] 2183 	add	hl,de
+   0CEB 4D            [ 4] 2184 	ld	c, l
+   0CEC 44            [ 4] 2185 	ld	b, h
+   0CED 21 0B 00      [10] 2186 	ld	hl, #0x000b
+   0CF0 19            [11] 2187 	add	hl,de
+   0CF1 DD 75 F5      [19] 2188 	ld	-11 (ix), l
+   0CF4 DD 74 F6      [19] 2189 	ld	-10 (ix), h
+   0CF7 7E            [ 7] 2190 	ld	a, (hl)
+   0CF8 02            [ 7] 2191 	ld	(bc), a
+                           2192 ;src/entities/entities.c:523: e->y       = e->ny;
+   0CF9 21 0A 00      [10] 2193 	ld	hl, #0x000a
+   0CFC 19            [11] 2194 	add	hl,de
+   0CFD DD 75 EF      [19] 2195 	ld	-17 (ix), l
+   0D00 DD 74 F0      [19] 2196 	ld	-16 (ix), h
+   0D03 21 0C 00      [10] 2197 	ld	hl, #0x000c
+   0D06 19            [11] 2198 	add	hl,de
+   0D07 DD 75 FC      [19] 2199 	ld	-4 (ix), l
+   0D0A DD 74 FD      [19] 2200 	ld	-3 (ix), h
+   0D0D 7E            [ 7] 2201 	ld	a, (hl)
+   0D0E DD 6E EF      [19] 2202 	ld	l,-17 (ix)
+   0D11 DD 66 F0      [19] 2203 	ld	h,-16 (ix)
+   0D14 77            [ 7] 2204 	ld	(hl), a
+                           2205 ;src/entities/entities.c:524: e->pscreen = e->npscreen;
+   0D15 FD 21 05 00   [14] 2206 	ld	iy, #0x0005
+   0D19 FD 19         [15] 2207 	add	iy, de
+   0D1B 21 07 00      [10] 2208 	ld	hl, #0x0007
+   0D1E 19            [11] 2209 	add	hl,de
+   0D1F DD 75 F1      [19] 2210 	ld	-15 (ix), l
+   0D22 DD 74 F2      [19] 2211 	ld	-14 (ix), h
+   0D25 7E            [ 7] 2212 	ld	a, (hl)
+   0D26 23            [ 6] 2213 	inc	hl
+   0D27 66            [ 7] 2214 	ld	h, (hl)
+   0D28 FD 77 00      [19] 2215 	ld	0 (iy), a
+   0D2B FD 74 01      [19] 2216 	ld	1 (iy), h
+                           2217 ;src/entities/entities.c:525: e->pw      = af->width;
+   0D2E FD 21 0D 00   [14] 2218 	ld	iy, #0x000d
+   0D32 FD 19         [15] 2219 	add	iy, de
+   0D34 DD 6E E9      [19] 2220 	ld	l,-23 (ix)
+   0D37 DD 66 EA      [19] 2221 	ld	h,-22 (ix)
+   0D3A 23            [ 6] 2222 	inc	hl
+   0D3B 23            [ 6] 2223 	inc	hl
+   0D3C 6E            [ 7] 2224 	ld	l, (hl)
+   0D3D FD 75 00      [19] 2225 	ld	0 (iy), l
+                           2226 ;src/entities/entities.c:526: e->ph      = af->height;
+   0D40 FD 21 0E 00   [14] 2227 	ld	iy, #0x000e
+   0D44 FD 19         [15] 2228 	add	iy, de
+   0D46 DD 6E E9      [19] 2229 	ld	l,-23 (ix)
+   0D49 DD 66 EA      [19] 2230 	ld	h,-22 (ix)
+   0D4C 23            [ 6] 2231 	inc	hl
+   0D4D 23            [ 6] 2232 	inc	hl
+   0D4E 23            [ 6] 2233 	inc	hl
+   0D4F 6E            [ 7] 2234 	ld	l, (hl)
+   0D50 FD 75 00      [19] 2235 	ld	0 (iy), l
+                           2236 ;src/entities/entities.c:529: if ( updateAnimation(&e->graph.anim, e->nAnim, e->nStatus) ) { 
+   0D53 21 1E 00      [10] 2237 	ld	hl, #0x001e
+   0D56 19            [11] 2238 	add	hl,de
+   0D57 DD 75 F7      [19] 2239 	ld	-9 (ix), l
+   0D5A DD 74 F8      [19] 2240 	ld	-8 (ix), h
+   0D5D 7E            [ 7] 2241 	ld	a, (hl)
+   0D5E DD 77 FB      [19] 2242 	ld	-5 (ix), a
+   0D61 21 1C 00      [10] 2243 	ld	hl, #0x001c
+   0D64 19            [11] 2244 	add	hl,de
+   0D65 DD 75 F9      [19] 2245 	ld	-7 (ix), l
+   0D68 DD 74 FA      [19] 2246 	ld	-6 (ix), h
+   0D6B 7E            [ 7] 2247 	ld	a, (hl)
+   0D6C DD 77 ED      [19] 2248 	ld	-19 (ix), a
+   0D6F 23            [ 6] 2249 	inc	hl
+   0D70 7E            [ 7] 2250 	ld	a, (hl)
+   0D71 DD 77 EE      [19] 2251 	ld	-18 (ix), a
+   0D74 C5            [11] 2252 	push	bc
+   0D75 D5            [11] 2253 	push	de
+   0D76 DD 7E FB      [19] 2254 	ld	a, -5 (ix)
+   0D79 F5            [11] 2255 	push	af
+   0D7A 33            [ 6] 2256 	inc	sp
+   0D7B DD 6E ED      [19] 2257 	ld	l,-19 (ix)
+   0D7E DD 66 EE      [19] 2258 	ld	h,-18 (ix)
+   0D81 E5            [11] 2259 	push	hl
+   0D82 D5            [11] 2260 	push	de
+   0D83 CDr00r00      [17] 2261 	call	_updateAnimation
+   0D86 F1            [10] 2262 	pop	af
+   0D87 F1            [10] 2263 	pop	af
+   0D88 33            [ 6] 2264 	inc	sp
+   0D89 D1            [10] 2265 	pop	de
+   0D8A C1            [10] 2266 	pop	bc
+                           2267 ;src/entities/entities.c:530: e->draw = 1;                        // Redraw 
+   0D8B 7B            [ 4] 2268 	ld	a, e
+   0D8C C6 1B         [ 7] 2269 	add	a, #0x1b
+   0D8E DD 77 ED      [19] 2270 	ld	-19 (ix), a
+   0D91 7A            [ 4] 2271 	ld	a, d
+   0D92 CE 00         [ 7] 2272 	adc	a, #0x00
+   0D94 DD 77 EE      [19] 2273 	ld	-18 (ix), a
+                           2274 ;src/entities/entities.c:529: if ( updateAnimation(&e->graph.anim, e->nAnim, e->nStatus) ) { 
+   0D97 7D            [ 4] 2275 	ld	a, l
+   0D98 B7            [ 4] 2276 	or	a, a
+   0D99 28 32         [12] 2277 	jr	Z,00102$
+                           2278 ;src/entities/entities.c:530: e->draw = 1;                        // Redraw 
+   0D9B DD 6E ED      [19] 2279 	ld	l,-19 (ix)
+   0D9E DD 66 EE      [19] 2280 	ld	h,-18 (ix)
+   0DA1 36 01         [10] 2281 	ld	(hl), #0x01
+                           2282 ;src/entities/entities.c:531: af = anim->frames[anim->frame_id];  // Get values of the new frame
+   0DA3 EB            [ 4] 2283 	ex	de,hl
+   0DA4 5E            [ 7] 2284 	ld	e, (hl)
+   0DA5 23            [ 6] 2285 	inc	hl
+   0DA6 56            [ 7] 2286 	ld	d, (hl)
+   0DA7 DD 6E F3      [19] 2287 	ld	l,-13 (ix)
+   0DAA DD 66 F4      [19] 2288 	ld	h,-12 (ix)
+   0DAD 6E            [ 7] 2289 	ld	l, (hl)
+   0DAE 26 00         [ 7] 2290 	ld	h, #0x00
+   0DB0 29            [11] 2291 	add	hl, hl
+   0DB1 19            [11] 2292 	add	hl, de
+   0DB2 7E            [ 7] 2293 	ld	a, (hl)
+   0DB3 DD 77 E9      [19] 2294 	ld	-23 (ix), a
+   0DB6 23            [ 6] 2295 	inc	hl
+   0DB7 7E            [ 7] 2296 	ld	a, (hl)
+   0DB8 DD 77 EA      [19] 2297 	ld	-22 (ix), a
+                           2298 ;src/entities/entities.c:532: e->nAnim   = 0;                     // No next animation/animstatus
+   0DBB DD 6E F9      [19] 2299 	ld	l,-7 (ix)
+   0DBE DD 66 FA      [19] 2300 	ld	h,-6 (ix)
+   0DC1 AF            [ 4] 2301 	xor	a, a
+   0DC2 77            [ 7] 2302 	ld	(hl), a
+   0DC3 23            [ 6] 2303 	inc	hl
+   0DC4 77            [ 7] 2304 	ld	(hl), a
+                           2305 ;src/entities/entities.c:533: e->nStatus = as_null;
+   0DC5 DD 6E F7      [19] 2306 	ld	l,-9 (ix)
+   0DC8 DD 66 F8      [19] 2307 	ld	h,-8 (ix)
+   0DCB 36 00         [10] 2308 	ld	(hl), #0x00
+   0DCD                    2309 00102$:
+                           2310 ;src/entities/entities.c:537: updateCharacterPhysics(c);
+   0DCD C5            [11] 2311 	push	bc
+   0DCE DD 6E FE      [19] 2312 	ld	l,-2 (ix)
+   0DD1 DD 66 FF      [19] 2313 	ld	h,-1 (ix)
+   0DD4 E5            [11] 2314 	push	hl
+   0DD5 CDr7Fr06      [17] 2315 	call	_updateCharacterPhysics
+   0DD8 F1            [10] 2316 	pop	af
+   0DD9 DD 6E 04      [19] 2317 	ld	l,4 (ix)
+   0DDC DD 66 05      [19] 2318 	ld	h,5 (ix)
+   0DDF E5            [11] 2319 	push	hl
+   0DE0 CDr43r09      [17] 2320 	call	_applyCharacterBlockCollisions
+   0DE3 F1            [10] 2321 	pop	af
+   0DE4 C1            [10] 2322 	pop	bc
+                           2323 ;src/entities/entities.c:541: if ( e->nx <= G_minX) { 
+   0DE5 DD 6E F5      [19] 2324 	ld	l,-11 (ix)
+   0DE8 DD 66 F6      [19] 2325 	ld	h,-10 (ix)
+   0DEB 5E            [ 7] 2326 	ld	e, (hl)
+   0DEC 21r06r01      [10] 2327 	ld	hl,#_G_minX + 0
+   0DEF 56            [ 7] 2328 	ld	d, (hl)
+   0DF0 7A            [ 4] 2329 	ld	a, d
+   0DF1 93            [ 4] 2330 	sub	a, e
+   0DF2 38 15         [12] 2331 	jr	C,00106$
+                           2332 ;src/entities/entities.c:542: e->nx = G_minX + 1; 
+   0DF4 14            [ 4] 2333 	inc	d
+   0DF5 DD 6E F5      [19] 2334 	ld	l,-11 (ix)
+   0DF8 DD 66 F6      [19] 2335 	ld	h,-10 (ix)
+   0DFB 72            [ 7] 2336 	ld	(hl), d
+                           2337 ;src/entities/entities.c:543: p->x = e->nx * SCALE; 
+   0DFC 1E 00         [ 7] 2338 	ld	e, #0x00
+   0DFE DD 6E EB      [19] 2339 	ld	l,-21 (ix)
+   0E01 DD 66 EC      [19] 2340 	ld	h,-20 (ix)
+   0E04 73            [ 7] 2341 	ld	(hl), e
+   0E05 23            [ 6] 2342 	inc	hl
+   0E06 72            [ 7] 2343 	ld	(hl), d
+   0E07 18 41         [12] 2344 	jr	00107$
+   0E09                    2345 00106$:
+                           2346 ;src/entities/entities.c:545: else if ( e->nx + af->width >= G_maxX ) {
+   0E09 16 00         [ 7] 2347 	ld	d, #0x00
+   0E0B DD 6E E9      [19] 2348 	ld	l,-23 (ix)
+   0E0E DD 66 EA      [19] 2349 	ld	h,-22 (ix)
+   0E11 23            [ 6] 2350 	inc	hl
+   0E12 23            [ 6] 2351 	inc	hl
+   0E13 7E            [ 7] 2352 	ld	a, (hl)
+   0E14 DD 77 F9      [19] 2353 	ld	-7 (ix), a
+   0E17 6F            [ 4] 2354 	ld	l, a
+   0E18 26 00         [ 7] 2355 	ld	h, #0x00
+   0E1A 19            [11] 2356 	add	hl, de
+   0E1B 3Ar07r01      [13] 2357 	ld	a,(#_G_maxX + 0)
+   0E1E DD 77 FB      [19] 2358 	ld	-5 (ix), a
+   0E21 5F            [ 4] 2359 	ld	e, a
+   0E22 16 00         [ 7] 2360 	ld	d, #0x00
+   0E24 7D            [ 4] 2361 	ld	a, l
+   0E25 93            [ 4] 2362 	sub	a, e
+   0E26 7C            [ 4] 2363 	ld	a, h
+   0E27 9A            [ 4] 2364 	sbc	a, d
+   0E28 E2r2Dr0E      [10] 2365 	jp	PO, 00148$
+   0E2B EE 80         [ 7] 2366 	xor	a, #0x80
+   0E2D                    2367 00148$:
+   0E2D FAr4Ar0E      [10] 2368 	jp	M, 00107$
+                           2369 ;src/entities/entities.c:546: e->nx = G_maxX - af->width;
+   0E30 DD 7E FB      [19] 2370 	ld	a, -5 (ix)
+   0E33 DD 96 F9      [19] 2371 	sub	a, -7 (ix)
+   0E36 5F            [ 4] 2372 	ld	e, a
+   0E37 DD 6E F5      [19] 2373 	ld	l,-11 (ix)
+   0E3A DD 66 F6      [19] 2374 	ld	h,-10 (ix)
+   0E3D 73            [ 7] 2375 	ld	(hl), e
+                           2376 ;src/entities/entities.c:547: p->x  = e->nx * SCALE;  
+   0E3E 53            [ 4] 2377 	ld	d, e
+   0E3F 1E 00         [ 7] 2378 	ld	e, #0x00
+   0E41 DD 6E EB      [19] 2379 	ld	l,-21 (ix)
+   0E44 DD 66 EC      [19] 2380 	ld	h,-20 (ix)
+   0E47 73            [ 7] 2381 	ld	(hl), e
+   0E48 23            [ 6] 2382 	inc	hl
+   0E49 72            [ 7] 2383 	ld	(hl), d
+   0E4A                    2384 00107$:
+                           2385 ;src/entities/entities.c:549: if ( e->ny + af->height >= G_maxY ) { 
+   0E4A DD 6E FC      [19] 2386 	ld	l,-4 (ix)
+   0E4D DD 66 FD      [19] 2387 	ld	h,-3 (ix)
+   0E50 7E            [ 7] 2388 	ld	a, (hl)
+   0E51 DD 77 F9      [19] 2389 	ld	-7 (ix), a
+   0E54 5F            [ 4] 2390 	ld	e, a
+   0E55 16 00         [ 7] 2391 	ld	d, #0x00
+   0E57 DD 6E E9      [19] 2392 	ld	l,-23 (ix)
+   0E5A DD 66 EA      [19] 2393 	ld	h,-22 (ix)
+   0E5D 23            [ 6] 2394 	inc	hl
+   0E5E 23            [ 6] 2395 	inc	hl
+   0E5F 23            [ 6] 2396 	inc	hl
+   0E60 7E            [ 7] 2397 	ld	a, (hl)
+   0E61 DD 77 FB      [19] 2398 	ld	-5 (ix), a
+   0E64 6F            [ 4] 2399 	ld	l, a
+   0E65 26 00         [ 7] 2400 	ld	h, #0x00
+   0E67 19            [11] 2401 	add	hl, de
+   0E68 3Ar09r01      [13] 2402 	ld	a,(#_G_maxY + 0)
+   0E6B DD 77 F7      [19] 2403 	ld	-9 (ix), a
+   0E6E 5F            [ 4] 2404 	ld	e, a
+   0E6F 16 00         [ 7] 2405 	ld	d, #0x00
+                           2406 ;src/entities/entities.c:551: p->y = e->ny * SCALE;
+   0E71 DD 7E EB      [19] 2407 	ld	a, -21 (ix)
+   0E74 C6 02         [ 7] 2408 	add	a, #0x02
+   0E76 DD 77 F3      [19] 2409 	ld	-13 (ix), a
+   0E79 DD 7E EC      [19] 2410 	ld	a, -20 (ix)
+   0E7C CE 00         [ 7] 2411 	adc	a, #0x00
+   0E7E DD 77 F4      [19] 2412 	ld	-12 (ix), a
+                           2413 ;src/entities/entities.c:549: if ( e->ny + af->height >= G_maxY ) { 
+   0E81 7D            [ 4] 2414 	ld	a, l
+   0E82 93            [ 4] 2415 	sub	a, e
+   0E83 7C            [ 4] 2416 	ld	a, h
+   0E84 9A            [ 4] 2417 	sbc	a, d
+   0E85 E2r8Ar0E      [10] 2418 	jp	PO, 00149$
+   0E88 EE 80         [ 7] 2419 	xor	a, #0x80
+   0E8A                    2420 00149$:
+   0E8A FArACr0E      [10] 2421 	jp	M, 00111$
+                           2422 ;src/entities/entities.c:550: e->ny = G_maxY - af->height;
+   0E8D DD 7E F7      [19] 2423 	ld	a, -9 (ix)
+   0E90 DD 96 FB      [19] 2424 	sub	a, -5 (ix)
+   0E93 57            [ 4] 2425 	ld	d, a
+   0E94 DD 6E FC      [19] 2426 	ld	l,-4 (ix)
+   0E97 DD 66 FD      [19] 2427 	ld	h,-3 (ix)
+   0E9A 72            [ 7] 2428 	ld	(hl), d
+                           2429 ;src/entities/entities.c:551: p->y = e->ny * SCALE;
+   0E9B 1E 00         [ 7] 2430 	ld	e, #0x00
+   0E9D DD 6E F3      [19] 2431 	ld	l,-13 (ix)
+   0EA0 DD 66 F4      [19] 2432 	ld	h,-12 (ix)
+   0EA3 73            [ 7] 2433 	ld	(hl), e
+   0EA4 23            [ 6] 2434 	inc	hl
+   0EA5 72            [ 7] 2435 	ld	(hl), d
+                           2436 ;src/entities/entities.c:552: alive = 0;
+   0EA6 DD 36 E8 00   [19] 2437 	ld	-24 (ix), #0x00
+   0EAA 18 1E         [12] 2438 	jr	00112$
+   0EAC                    2439 00111$:
+                           2440 ;src/entities/entities.c:554: else if ( e->ny <= G_minY ) { 
+   0EAC 21r08r01      [10] 2441 	ld	hl,#_G_minY + 0
+   0EAF 5E            [ 7] 2442 	ld	e, (hl)
+   0EB0 7B            [ 4] 2443 	ld	a, e
+   0EB1 DD 96 F9      [19] 2444 	sub	a, -7 (ix)
+   0EB4 38 14         [12] 2445 	jr	C,00112$
+                           2446 ;src/entities/entities.c:555: e->ny = G_minY + 1;
+   0EB6 1C            [ 4] 2447 	inc	e
+   0EB7 DD 6E FC      [19] 2448 	ld	l,-4 (ix)
+   0EBA DD 66 FD      [19] 2449 	ld	h,-3 (ix)
+   0EBD 73            [ 7] 2450 	ld	(hl), e
+                           2451 ;src/entities/entities.c:556: p->y = e->ny * SCALE;
+   0EBE 53            [ 4] 2452 	ld	d, e
+   0EBF 1E 00         [ 7] 2453 	ld	e, #0x00
+   0EC1 DD 6E F3      [19] 2454 	ld	l,-13 (ix)
+   0EC4 DD 66 F4      [19] 2455 	ld	h,-12 (ix)
+   0EC7 73            [ 7] 2456 	ld	(hl), e
+   0EC8 23            [ 6] 2457 	inc	hl
+   0EC9 72            [ 7] 2458 	ld	(hl), d
+   0ECA                    2459 00112$:
+                           2460 ;src/entities/entities.c:549: if ( e->ny + af->height >= G_maxY ) { 
+   0ECA DD 6E FC      [19] 2461 	ld	l,-4 (ix)
+   0ECD DD 66 FD      [19] 2462 	ld	h,-3 (ix)
+   0ED0 5E            [ 7] 2463 	ld	e, (hl)
+                           2464 ;src/entities/entities.c:561: if ( e->ny != e->y ) { 
+   0ED1 DD 6E EF      [19] 2465 	ld	l,-17 (ix)
+   0ED4 DD 66 F0      [19] 2466 	ld	h,-16 (ix)
+   0ED7 56            [ 7] 2467 	ld	d, (hl)
+                           2468 ;src/entities/entities.c:541: if ( e->nx <= G_minX) { 
+   0ED8 DD 6E F5      [19] 2469 	ld	l,-11 (ix)
+   0EDB DD 66 F6      [19] 2470 	ld	h,-10 (ix)
+   0EDE 7E            [ 7] 2471 	ld	a, (hl)
+   0EDF DD 77 F9      [19] 2472 	ld	-7 (ix), a
+                           2473 ;src/entities/entities.c:561: if ( e->ny != e->y ) { 
+   0EE2 7B            [ 4] 2474 	ld	a, e
+   0EE3 92            [ 4] 2475 	sub	a, d
+   0EE4 28 21         [12] 2476 	jr	Z,00116$
+                           2477 ;src/entities/entities.c:562: e->npscreen  = cpct_getScreenPtr(CPCT_VMEM_START, e->nx, e->ny);
+   0EE6 53            [ 4] 2478 	ld	d, e
+   0EE7 DD 5E F9      [19] 2479 	ld	e, -7 (ix)
+   0EEA D5            [11] 2480 	push	de
+   0EEB 21 00 C0      [10] 2481 	ld	hl, #0xc000
+   0EEE E5            [11] 2482 	push	hl
+   0EEF CDr00r00      [17] 2483 	call	_cpct_getScreenPtr
+   0EF2 4D            [ 4] 2484 	ld	c, l
+   0EF3 44            [ 4] 2485 	ld	b, h
+   0EF4 DD 6E F1      [19] 2486 	ld	l,-15 (ix)
+   0EF7 DD 66 F2      [19] 2487 	ld	h,-14 (ix)
+   0EFA 71            [ 7] 2488 	ld	(hl), c
+   0EFB 23            [ 6] 2489 	inc	hl
+   0EFC 70            [ 7] 2490 	ld	(hl), b
+                           2491 ;src/entities/entities.c:563: e->draw = 1;
+   0EFD DD 6E ED      [19] 2492 	ld	l,-19 (ix)
+   0F00 DD 66 EE      [19] 2493 	ld	h,-18 (ix)
+   0F03 36 01         [10] 2494 	ld	(hl), #0x01
+   0F05 18 30         [12] 2495 	jr	00117$
+   0F07                    2496 00116$:
+                           2497 ;src/entities/entities.c:564: } else if ( e->nx != e->x ) {
+   0F07 0A            [ 7] 2498 	ld	a, (bc)
+   0F08 4F            [ 4] 2499 	ld	c, a
+   0F09 DD 7E F9      [19] 2500 	ld	a, -7 (ix)
+   0F0C 91            [ 4] 2501 	sub	a, c
+   0F0D 28 28         [12] 2502 	jr	Z,00117$
+                           2503 ;src/entities/entities.c:565: e->npscreen = e->npscreen + e->nx - e->x;
+   0F0F DD 6E F1      [19] 2504 	ld	l,-15 (ix)
+   0F12 DD 66 F2      [19] 2505 	ld	h,-14 (ix)
+   0F15 5E            [ 7] 2506 	ld	e, (hl)
+   0F16 23            [ 6] 2507 	inc	hl
+   0F17 56            [ 7] 2508 	ld	d, (hl)
+   0F18 DD 6E F9      [19] 2509 	ld	l,-7 (ix)
+   0F1B 26 00         [ 7] 2510 	ld	h,#0x00
+   0F1D 19            [11] 2511 	add	hl, de
+   0F1E 06 00         [ 7] 2512 	ld	b, #0x00
+   0F20 7D            [ 4] 2513 	ld	a, l
+   0F21 91            [ 4] 2514 	sub	a, c
+   0F22 4F            [ 4] 2515 	ld	c, a
+   0F23 7C            [ 4] 2516 	ld	a, h
+   0F24 98            [ 4] 2517 	sbc	a, b
+   0F25 47            [ 4] 2518 	ld	b, a
+   0F26 DD 6E F1      [19] 2519 	ld	l,-15 (ix)
+   0F29 DD 66 F2      [19] 2520 	ld	h,-14 (ix)
+   0F2C 71            [ 7] 2521 	ld	(hl), c
+   0F2D 23            [ 6] 2522 	inc	hl
+   0F2E 70            [ 7] 2523 	ld	(hl), b
+                           2524 ;src/entities/entities.c:566: e->draw = 1; 
+   0F2F DD 6E ED      [19] 2525 	ld	l,-19 (ix)
+   0F32 DD 66 EE      [19] 2526 	ld	h,-18 (ix)
+   0F35 36 01         [10] 2527 	ld	(hl), #0x01
+   0F37                    2528 00117$:
+                           2529 ;src/entities/entities.c:569: return alive;
+   0F37 DD 6E E8      [19] 2530 	ld	l, -24 (ix)
+   0F3A DD F9         [10] 2531 	ld	sp, ix
+   0F3C DD E1         [14] 2532 	pop	ix
+   0F3E C9            [10] 2533 	ret
+                           2534 ;src/entities/entities.c:575: TCollision* checkCollisionEntBlock(TEntity *a, TEntity *b) {
+                           2535 ;	---------------------------------
+                           2536 ; Function checkCollisionEntBlock
+                           2537 ; ---------------------------------
+   0F3F                    2538 _checkCollisionEntBlock::
+   0F3F DD E5         [15] 2539 	push	ix
+   0F41 DD 21 00 00   [14] 2540 	ld	ix,#0
+   0F45 DD 39         [15] 2541 	add	ix,sp
+   0F47 21 F5 FF      [10] 2542 	ld	hl, #-11
+   0F4A 39            [11] 2543 	add	hl, sp
+   0F4B F9            [ 6] 2544 	ld	sp, hl
+                           2545 ;src/entities/entities.c:577: TAnimFrame *ani = a->graph.anim.frames [a->graph.anim.frame_id];
+   0F4C DD 4E 04      [19] 2546 	ld	c,4 (ix)
+   0F4F DD 46 05      [19] 2547 	ld	b,5 (ix)
+   0F52 69            [ 4] 2548 	ld	l, c
+   0F53 60            [ 4] 2549 	ld	h, b
+   0F54 5E            [ 7] 2550 	ld	e, (hl)
+   0F55 23            [ 6] 2551 	inc	hl
+   0F56 56            [ 7] 2552 	ld	d, (hl)
+   0F57 69            [ 4] 2553 	ld	l, c
+   0F58 60            [ 4] 2554 	ld	h, b
+   0F59 23            [ 6] 2555 	inc	hl
+   0F5A 23            [ 6] 2556 	inc	hl
+   0F5B 6E            [ 7] 2557 	ld	l, (hl)
+   0F5C 26 00         [ 7] 2558 	ld	h, #0x00
+   0F5E 29            [11] 2559 	add	hl, hl
+   0F5F 19            [11] 2560 	add	hl, de
+   0F60 7E            [ 7] 2561 	ld	a, (hl)
+   0F61 DD 77 F7      [19] 2562 	ld	-9 (ix), a
+   0F64 23            [ 6] 2563 	inc	hl
+   0F65 7E            [ 7] 2564 	ld	a, (hl)
+   0F66 DD 77 F8      [19] 2565 	ld	-8 (ix), a
+                           2566 ;src/entities/entities.c:578: TBlock     *blk = &b->graph.block;
+   0F69 DD 7E 06      [19] 2567 	ld	a, 6 (ix)
+   0F6C DD 77 FD      [19] 2568 	ld	-3 (ix), a
+   0F6F DD 7E 07      [19] 2569 	ld	a, 7 (ix)
+   0F72 DD 77 FE      [19] 2570 	ld	-2 (ix), a
+   0F75 DD 5E FD      [19] 2571 	ld	e,-3 (ix)
+   0F78 DD 56 FE      [19] 2572 	ld	d,-2 (ix)
+   0F7B DD 73 F9      [19] 2573 	ld	-7 (ix), e
+   0F7E DD 72 FA      [19] 2574 	ld	-6 (ix), d
+                           2575 ;src/entities/entities.c:581: c.h = 0;
+   0F81 21rFCr01      [10] 2576 	ld	hl, #(_checkCollisionEntBlock_c_1_213 + 0x0003)
+   0F84 36 00         [10] 2577 	ld	(hl), #0x00
+                           2578 ;src/entities/entities.c:585: u8 a_bbound = a->ny + ani->height - 1;// -- bottom boundary of a
+   0F86 69            [ 4] 2579 	ld	l, c
+   0F87 60            [ 4] 2580 	ld	h, b
+   0F88 11 0C 00      [10] 2581 	ld	de, #0x000c
+   0F8B 19            [11] 2582 	add	hl, de
+   0F8C 5E            [ 7] 2583 	ld	e, (hl)
+   0F8D DD 6E F7      [19] 2584 	ld	l,-9 (ix)
+   0F90 DD 66 F8      [19] 2585 	ld	h,-8 (ix)
+   0F93 23            [ 6] 2586 	inc	hl
+   0F94 23            [ 6] 2587 	inc	hl
+   0F95 23            [ 6] 2588 	inc	hl
+   0F96 56            [ 7] 2589 	ld	d, (hl)
+   0F97 7B            [ 4] 2590 	ld	a, e
+   0F98 82            [ 4] 2591 	add	a, d
+   0F99 C6 FF         [ 7] 2592 	add	a, #0xff
+   0F9B DD 77 F5      [19] 2593 	ld	-11 (ix), a
+                           2594 ;src/entities/entities.c:586: u8 b_bbound = b->ny + blk->h - 1;     // -- bottom boundary of b
+   0F9E DD 6E FD      [19] 2595 	ld	l,-3 (ix)
+   0FA1 DD 66 FE      [19] 2596 	ld	h,-2 (ix)
+   0FA4 C5            [11] 2597 	push	bc
+   0FA5 01 0C 00      [10] 2598 	ld	bc, #0x000c
+   0FA8 09            [11] 2599 	add	hl, bc
+   0FA9 C1            [10] 2600 	pop	bc
+   0FAA 56            [ 7] 2601 	ld	d, (hl)
+   0FAB DD 6E F9      [19] 2602 	ld	l,-7 (ix)
+   0FAE DD 66 FA      [19] 2603 	ld	h,-6 (ix)
+   0FB1 23            [ 6] 2604 	inc	hl
+   0FB2 6E            [ 7] 2605 	ld	l, (hl)
+   0FB3 7A            [ 4] 2606 	ld	a, d
+   0FB4 85            [ 4] 2607 	add	a, l
+   0FB5 C6 FF         [ 7] 2608 	add	a, #0xff
+                           2609 ;src/entities/entities.c:591: c.y = b->ny;                    // Yes, calculate vertical collision area
+                           2610 ;src/entities/entities.c:592: if ( b_bbound < a_bbound )
+   0FB7 DD 77 F6      [19] 2611 	ld	-10 (ix), a
+   0FBA DD 96 F5      [19] 2612 	sub	a, -11 (ix)
+   0FBD 3E 00         [ 7] 2613 	ld	a, #0x00
+   0FBF 17            [ 4] 2614 	rla
+   0FC0 DD 77 FF      [19] 2615 	ld	-1 (ix), a
+                           2616 ;src/entities/entities.c:589: if ( a->ny <= b->ny ) {               // Case 1: a is up, b is down
+   0FC3 7A            [ 4] 2617 	ld	a, d
+   0FC4 93            [ 4] 2618 	sub	a, e
+   0FC5 38 28         [12] 2619 	jr	C,00112$
+                           2620 ;src/entities/entities.c:590: if ( b->ny <= a_bbound ) {         // Check if b is inside the height of a
+   0FC7 DD 7E F5      [19] 2621 	ld	a, -11 (ix)
+   0FCA 92            [ 4] 2622 	sub	a, d
+   0FCB 38 48         [12] 2623 	jr	C,00113$
+                           2624 ;src/entities/entities.c:591: c.y = b->ny;                    // Yes, calculate vertical collision area
+   0FCD 21rFAr01      [10] 2625 	ld	hl, #(_checkCollisionEntBlock_c_1_213 + 0x0001)
+   0FD0 72            [ 7] 2626 	ld	(hl), d
+                           2627 ;src/entities/entities.c:593: c.h = b_bbound - c.y + 1;
+   0FD1 21rFAr01      [10] 2628 	ld	hl, #(_checkCollisionEntBlock_c_1_213 + 0x0001) + 0
+   0FD4 5E            [ 7] 2629 	ld	e, (hl)
+                           2630 ;src/entities/entities.c:592: if ( b_bbound < a_bbound )
+   0FD5 DD 7E FF      [19] 2631 	ld	a, -1 (ix)
+   0FD8 B7            [ 4] 2632 	or	a, a
+   0FD9 28 0A         [12] 2633 	jr	Z,00102$
+                           2634 ;src/entities/entities.c:593: c.h = b_bbound - c.y + 1;
+   0FDB DD 7E F6      [19] 2635 	ld	a, -10 (ix)
+   0FDE 93            [ 4] 2636 	sub	a, e
+   0FDF 3C            [ 4] 2637 	inc	a
+   0FE0 32rFCr01      [13] 2638 	ld	(#(_checkCollisionEntBlock_c_1_213 + 0x0003)),a
+   0FE3 18 30         [12] 2639 	jr	00113$
+   0FE5                    2640 00102$:
+                           2641 ;src/entities/entities.c:595: c.h = a_bbound - c.y + 1;
+   0FE5 DD 7E F5      [19] 2642 	ld	a, -11 (ix)
+   0FE8 93            [ 4] 2643 	sub	a, e
+   0FE9 3C            [ 4] 2644 	inc	a
+   0FEA 32rFCr01      [13] 2645 	ld	(#(_checkCollisionEntBlock_c_1_213 + 0x0003)),a
+   0FED 18 26         [12] 2646 	jr	00113$
+   0FEF                    2647 00112$:
+                           2648 ;src/entities/entities.c:598: if ( a->ny <= b_bbound ) {         // Check if a is inside the height of b
+   0FEF DD 7E F6      [19] 2649 	ld	a, -10 (ix)
+   0FF2 93            [ 4] 2650 	sub	a, e
+   0FF3 38 20         [12] 2651 	jr	C,00113$
+                           2652 ;src/entities/entities.c:599: c.y = a->ny;                    // Yes, calculate vertical collision area
+   0FF5 21rFAr01      [10] 2653 	ld	hl, #(_checkCollisionEntBlock_c_1_213 + 0x0001)
+   0FF8 73            [ 7] 2654 	ld	(hl), e
+                           2655 ;src/entities/entities.c:593: c.h = b_bbound - c.y + 1;
+   0FF9 21rFAr01      [10] 2656 	ld	hl, #(_checkCollisionEntBlock_c_1_213 + 0x0001) + 0
+   0FFC 5E            [ 7] 2657 	ld	e, (hl)
+                           2658 ;src/entities/entities.c:600: if ( b_bbound < a_bbound )
+   0FFD DD 7E FF      [19] 2659 	ld	a, -1 (ix)
+   1000 B7            [ 4] 2660 	or	a, a
+   1001 28 0A         [12] 2661 	jr	Z,00107$
+                           2662 ;src/entities/entities.c:601: c.h = b_bbound - c.y + 1;
+   1003 DD 7E F6      [19] 2663 	ld	a, -10 (ix)
+   1006 93            [ 4] 2664 	sub	a, e
+   1007 3C            [ 4] 2665 	inc	a
+   1008 32rFCr01      [13] 2666 	ld	(#(_checkCollisionEntBlock_c_1_213 + 0x0003)),a
+   100B 18 08         [12] 2667 	jr	00113$
+   100D                    2668 00107$:
+                           2669 ;src/entities/entities.c:603: c.h = a_bbound - c.y + 1;
+   100D DD 7E F5      [19] 2670 	ld	a, -11 (ix)
+   1010 93            [ 4] 2671 	sub	a, e
+   1011 3C            [ 4] 2672 	inc	a
+   1012 32rFCr01      [13] 2673 	ld	(#(_checkCollisionEntBlock_c_1_213 + 0x0003)),a
+   1015                    2674 00113$:
+                           2675 ;src/entities/entities.c:610: if (c.h) {
+   1015 3ArFCr01      [13] 2676 	ld	a, (#(_checkCollisionEntBlock_c_1_213 + 0x0003) + 0)
+   1018 B7            [ 4] 2677 	or	a, a
+   1019 CArB9r10      [10] 2678 	jp	Z, 00128$
+                           2679 ;src/entities/entities.c:611: u8 a_rbound = a->nx + ani->width - 1; // -- right boundary limit of a
+   101C 21 0B 00      [10] 2680 	ld	hl, #0x000b
+   101F 09            [11] 2681 	add	hl,bc
+   1020 DD 75 FB      [19] 2682 	ld	-5 (ix), l
+   1023 DD 74 FC      [19] 2683 	ld	-4 (ix), h
+   1026 4E            [ 7] 2684 	ld	c, (hl)
+   1027 D1            [10] 2685 	pop	de
+   1028 E1            [10] 2686 	pop	hl
+   1029 E5            [11] 2687 	push	hl
+   102A D5            [11] 2688 	push	de
+   102B 23            [ 6] 2689 	inc	hl
+   102C 23            [ 6] 2690 	inc	hl
+   102D 5E            [ 7] 2691 	ld	e, (hl)
+   102E 79            [ 4] 2692 	ld	a, c
+   102F 83            [ 4] 2693 	add	a, e
+   1030 C6 FF         [ 7] 2694 	add	a, #0xff
+   1032 DD 77 F6      [19] 2695 	ld	-10 (ix), a
+                           2696 ;src/entities/entities.c:612: u8 b_rbound = b->nx + blk->w - 1;     // -- right boundary limit of b
+   1035 DD 7E FD      [19] 2697 	ld	a, -3 (ix)
+   1038 C6 0B         [ 7] 2698 	add	a, #0x0b
+   103A 4F            [ 4] 2699 	ld	c, a
+   103B DD 7E FE      [19] 2700 	ld	a, -2 (ix)
+   103E CE 00         [ 7] 2701 	adc	a, #0x00
+   1040 47            [ 4] 2702 	ld	b, a
+   1041 0A            [ 7] 2703 	ld	a, (bc)
+   1042 5F            [ 4] 2704 	ld	e, a
+   1043 DD 6E F9      [19] 2705 	ld	l,-7 (ix)
+   1046 DD 66 FA      [19] 2706 	ld	h,-6 (ix)
+   1049 56            [ 7] 2707 	ld	d, (hl)
+   104A 7B            [ 4] 2708 	ld	a, e
+   104B 82            [ 4] 2709 	add	a, d
+   104C C6 FF         [ 7] 2710 	add	a, #0xff
+   104E DD 77 F5      [19] 2711 	ld	-11 (ix), a
+                           2712 ;src/entities/entities.c:613: c.w = 0;                          // Erase previous values and set to 0
+   1051 11rFBr01      [10] 2713 	ld	de, #_checkCollisionEntBlock_c_1_213 + 2
+   1054 AF            [ 4] 2714 	xor	a, a
+   1055 12            [ 7] 2715 	ld	(de), a
+                           2716 ;src/entities/entities.c:615: if ( a->nx <= b->nx ) {           // Case 1: a is left, b is right
+   1056 DD 6E FB      [19] 2717 	ld	l,-5 (ix)
+   1059 DD 66 FC      [19] 2718 	ld	h,-4 (ix)
+   105C 7E            [ 7] 2719 	ld	a, (hl)
+   105D DD 77 FB      [19] 2720 	ld	-5 (ix), a
+   1060 0A            [ 7] 2721 	ld	a, (bc)
+   1061 47            [ 4] 2722 	ld	b, a
+                           2723 ;src/entities/entities.c:618: if ( b_rbound < a_rbound )
+   1062 DD 7E F5      [19] 2724 	ld	a, -11 (ix)
+   1065 DD 96 F6      [19] 2725 	sub	a, -10 (ix)
+   1068 3E 00         [ 7] 2726 	ld	a, #0x00
+   106A 17            [ 4] 2727 	rla
+   106B 4F            [ 4] 2728 	ld	c, a
+                           2729 ;src/entities/entities.c:615: if ( a->nx <= b->nx ) {           // Case 1: a is left, b is right
+   106C 78            [ 4] 2730 	ld	a, b
+   106D DD 96 FB      [19] 2731 	sub	a, -5 (ix)
+   1070 38 22         [12] 2732 	jr	C,00125$
+                           2733 ;src/entities/entities.c:616: if ( b->nx <= a_rbound ) {     // Check if b is inside the width of a
+   1072 DD 7E F6      [19] 2734 	ld	a, -10 (ix)
+   1075 90            [ 4] 2735 	sub	a, b
+   1076 38 41         [12] 2736 	jr	C,00128$
+                           2737 ;src/entities/entities.c:617: c.x = b->nx;                // Yes, calculate horizontal collision area
+   1078 21rF9r01      [10] 2738 	ld	hl, #_checkCollisionEntBlock_c_1_213
+   107B 70            [ 7] 2739 	ld	(hl), b
+                           2740 ;src/entities/entities.c:619: c.w = b_rbound - c.x + 1;
+   107C 21rF9r01      [10] 2741 	ld	hl, #_checkCollisionEntBlock_c_1_213 + 0
+   107F 6E            [ 7] 2742 	ld	l, (hl)
+                           2743 ;src/entities/entities.c:618: if ( b_rbound < a_rbound )
+   1080 79            [ 4] 2744 	ld	a, c
+   1081 B7            [ 4] 2745 	or	a, a
+   1082 28 08         [12] 2746 	jr	Z,00115$
+                           2747 ;src/entities/entities.c:619: c.w = b_rbound - c.x + 1;
+   1084 DD 7E F5      [19] 2748 	ld	a, -11 (ix)
+   1087 95            [ 4] 2749 	sub	a, l
+   1088 3C            [ 4] 2750 	inc	a
+   1089 12            [ 7] 2751 	ld	(de), a
+   108A 18 2D         [12] 2752 	jr	00128$
+   108C                    2753 00115$:
+                           2754 ;src/entities/entities.c:621: c.w = a_rbound - c.x + 1;
+   108C DD 7E F6      [19] 2755 	ld	a, -10 (ix)
+   108F 95            [ 4] 2756 	sub	a, l
+   1090 3C            [ 4] 2757 	inc	a
+   1091 12            [ 7] 2758 	ld	(de), a
+   1092 18 25         [12] 2759 	jr	00128$
+   1094                    2760 00125$:
+                           2761 ;src/entities/entities.c:624: if ( a->nx <= b_rbound ) {     // Check if a is inside the width of b
+   1094 DD 7E F5      [19] 2762 	ld	a, -11 (ix)
+   1097 DD 96 FB      [19] 2763 	sub	a, -5 (ix)
+   109A 38 1D         [12] 2764 	jr	C,00128$
+                           2765 ;src/entities/entities.c:625: c.x = a->nx;                // Yes, calculate horizontal collision area
+   109C 21rF9r01      [10] 2766 	ld	hl, #_checkCollisionEntBlock_c_1_213
+   109F DD 7E FB      [19] 2767 	ld	a, -5 (ix)
+   10A2 77            [ 7] 2768 	ld	(hl), a
+                           2769 ;src/entities/entities.c:619: c.w = b_rbound - c.x + 1;
+   10A3 21rF9r01      [10] 2770 	ld	hl, #_checkCollisionEntBlock_c_1_213 + 0
+   10A6 6E            [ 7] 2771 	ld	l, (hl)
+                           2772 ;src/entities/entities.c:626: if ( b_rbound < a_rbound )
+   10A7 79            [ 4] 2773 	ld	a, c
+   10A8 B7            [ 4] 2774 	or	a, a
+   10A9 28 08         [12] 2775 	jr	Z,00120$
+                           2776 ;src/entities/entities.c:627: c.w = b_rbound - c.x + 1;
+   10AB DD 7E F5      [19] 2777 	ld	a, -11 (ix)
+   10AE 95            [ 4] 2778 	sub	a, l
+   10AF 3C            [ 4] 2779 	inc	a
+   10B0 12            [ 7] 2780 	ld	(de), a
+   10B1 18 06         [12] 2781 	jr	00128$
+   10B3                    2782 00120$:
+                           2783 ;src/entities/entities.c:629: c.w = a_rbound - c.x + 1;
+   10B3 DD 7E F6      [19] 2784 	ld	a, -10 (ix)
+   10B6 95            [ 4] 2785 	sub	a, l
+   10B7 3C            [ 4] 2786 	inc	a
+   10B8 12            [ 7] 2787 	ld	(de), a
+   10B9                    2788 00128$:
+                           2789 ;src/entities/entities.c:634: return &c;
+   10B9 21rF9r01      [10] 2790 	ld	hl, #_checkCollisionEntBlock_c_1_213
+   10BC DD F9         [10] 2791 	ld	sp, ix
+   10BE DD E1         [14] 2792 	pop	ix
+   10C0 C9            [10] 2793 	ret
+                           2794 ;src/entities/entities.c:640: u8 isOverFloor(TEntity *e) {
+                           2795 ;	---------------------------------
+                           2796 ; Function isOverFloor
+                           2797 ; ---------------------------------
+   10C1                    2798 _isOverFloor::
+   10C1 DD E5         [15] 2799 	push	ix
+   10C3 DD 21 00 00   [14] 2800 	ld	ix,#0
+   10C7 DD 39         [15] 2801 	add	ix,sp
+   10C9 F5            [11] 2802 	push	af
+   10CA F5            [11] 2803 	push	af
+   10CB 3B            [ 6] 2804 	dec	sp
+                           2805 ;src/entities/entities.c:641: u8 over = 0;                  // Value to sign if we are over a floor or not
+   10CC DD 36 FF 00   [19] 2806 	ld	-1 (ix), #0x00
+                           2807 ;src/entities/entities.c:642: TEntity *f = e->phys.floor;   // Get the pointer to the floor assigned to this entity
+   10D0 DD 4E 04      [19] 2808 	ld	c,4 (ix)
+   10D3 DD 46 05      [19] 2809 	ld	b,5 (ix)
+   10D6 C5            [11] 2810 	push	bc
+   10D7 FD E1         [14] 2811 	pop	iy
+   10D9 FD 7E 19      [19] 2812 	ld	a, 25 (iy)
+   10DC DD 77 FD      [19] 2813 	ld	-3 (ix), a
+   10DF FD 7E 1A      [19] 2814 	ld	a, 26 (iy)
+                           2815 ;src/entities/entities.c:645: if ( f ) {
+   10E2 DD 77 FE      [19] 2816 	ld	-2 (ix), a
+   10E5 DD B6 FD      [19] 2817 	or	a,-3 (ix)
+   10E8 28 59         [12] 2818 	jr	Z,00105$
+                           2819 ;src/entities/entities.c:646: TAnimFrame *e_a = e->graph.anim.frames[e->graph.anim.frame_id];
+   10EA 69            [ 4] 2820 	ld	l, c
+   10EB 60            [ 4] 2821 	ld	h, b
+   10EC 5E            [ 7] 2822 	ld	e, (hl)
+   10ED 23            [ 6] 2823 	inc	hl
+   10EE 56            [ 7] 2824 	ld	d, (hl)
+   10EF 69            [ 4] 2825 	ld	l, c
+   10F0 60            [ 4] 2826 	ld	h, b
+   10F1 23            [ 6] 2827 	inc	hl
+   10F2 23            [ 6] 2828 	inc	hl
+   10F3 6E            [ 7] 2829 	ld	l, (hl)
+   10F4 26 00         [ 7] 2830 	ld	h, #0x00
+   10F6 29            [11] 2831 	add	hl, hl
+   10F7 19            [11] 2832 	add	hl, de
+   10F8 7E            [ 7] 2833 	ld	a, (hl)
+   10F9 DD 77 FB      [19] 2834 	ld	-5 (ix), a
+   10FC 23            [ 6] 2835 	inc	hl
+   10FD 7E            [ 7] 2836 	ld	a, (hl)
+   10FE DD 77 FC      [19] 2837 	ld	-4 (ix), a
+                           2838 ;src/entities/entities.c:648: if ( e->x <= (f->x + f->graph.block.w) &&    // X lower  than right border of the block
+   1101 69            [ 4] 2839 	ld	l, c
+   1102 60            [ 4] 2840 	ld	h, b
+   1103 11 09 00      [10] 2841 	ld	de, #0x0009
+   1106 19            [11] 2842 	add	hl, de
+   1107 5E            [ 7] 2843 	ld	e, (hl)
+   1108 C1            [10] 2844 	pop	bc
+   1109 E1            [10] 2845 	pop	hl
+   110A E5            [11] 2846 	push	hl
+   110B C5            [11] 2847 	push	bc
+   110C 01 09 00      [10] 2848 	ld	bc, #0x0009
+   110F 09            [11] 2849 	add	hl, bc
+   1110 4E            [ 7] 2850 	ld	c, (hl)
+   1111 06 00         [ 7] 2851 	ld	b, #0x00
+   1113 DD 6E FD      [19] 2852 	ld	l,-3 (ix)
+   1116 DD 66 FE      [19] 2853 	ld	h,-2 (ix)
+   1119 6E            [ 7] 2854 	ld	l, (hl)
+   111A 26 00         [ 7] 2855 	ld	h, #0x00
+   111C 09            [11] 2856 	add	hl, bc
+   111D 16 00         [ 7] 2857 	ld	d, #0x00
+   111F 7D            [ 4] 2858 	ld	a, l
+   1120 93            [ 4] 2859 	sub	a, e
+   1121 7C            [ 4] 2860 	ld	a, h
+   1122 9A            [ 4] 2861 	sbc	a, d
+   1123 E2r28r11      [10] 2862 	jp	PO, 00120$
+   1126 EE 80         [ 7] 2863 	xor	a, #0x80
+   1128                    2864 00120$:
+   1128 FAr43r11      [10] 2865 	jp	M, 00105$
+                           2866 ;src/entities/entities.c:649: (e->x + e_a->width) >= f->x           )  // X + width higher than left border of the block
+   112B E1            [10] 2867 	pop	hl
+   112C E5            [11] 2868 	push	hl
+   112D 23            [ 6] 2869 	inc	hl
+   112E 23            [ 6] 2870 	inc	hl
+   112F 6E            [ 7] 2871 	ld	l, (hl)
+   1130 26 00         [ 7] 2872 	ld	h, #0x00
+   1132 19            [11] 2873 	add	hl, de
+   1133 7D            [ 4] 2874 	ld	a, l
+   1134 91            [ 4] 2875 	sub	a, c
+   1135 7C            [ 4] 2876 	ld	a, h
+   1136 98            [ 4] 2877 	sbc	a, b
+   1137 E2r3Cr11      [10] 2878 	jp	PO, 00121$
+   113A EE 80         [ 7] 2879 	xor	a, #0x80
+   113C                    2880 00121$:
+   113C FAr43r11      [10] 2881 	jp	M, 00105$
+                           2882 ;src/entities/entities.c:650: over = 1;
+   113F DD 36 FF 01   [19] 2883 	ld	-1 (ix), #0x01
+   1143                    2884 00105$:
+                           2885 ;src/entities/entities.c:657: return over;
+   1143 DD 6E FF      [19] 2886 	ld	l, -1 (ix)
+   1146 DD F9         [10] 2887 	ld	sp, ix
+   1148 DD E1         [14] 2888 	pop	ix
+   114A C9            [10] 2889 	ret
+                           2890 ;src/entities/entities.c:664: void setEntityLocation(TEntity *e, u8 x, u8 y, u8 vx, u8 vy, u8 eraseprev) {
+                           2891 ;	---------------------------------
+                           2892 ; Function setEntityLocation
+                           2893 ; ---------------------------------
+   114B                    2894 _setEntityLocation::
+   114B DD E5         [15] 2895 	push	ix
+   114D DD 21 00 00   [14] 2896 	ld	ix,#0
+   1151 DD 39         [15] 2897 	add	ix,sp
+   1153 F5            [11] 2898 	push	af
+                           2899 ;src/entities/entities.c:666: e->npscreen   = cpct_getScreenPtr(CPCT_VMEM_START, x, y);
+   1154 DD 4E 04      [19] 2900 	ld	c,4 (ix)
+   1157 DD 46 05      [19] 2901 	ld	b,5 (ix)
+   115A 21 07 00      [10] 2902 	ld	hl, #0x0007
+   115D 09            [11] 2903 	add	hl,bc
+   115E E3            [19] 2904 	ex	(sp), hl
+   115F C5            [11] 2905 	push	bc
+   1160 DD 66 07      [19] 2906 	ld	h, 7 (ix)
+   1163 DD 6E 06      [19] 2907 	ld	l, 6 (ix)
+   1166 E5            [11] 2908 	push	hl
+   1167 21 00 C0      [10] 2909 	ld	hl, #0xc000
+   116A E5            [11] 2910 	push	hl
+   116B CDr00r00      [17] 2911 	call	_cpct_getScreenPtr
+   116E EB            [ 4] 2912 	ex	de,hl
+   116F C1            [10] 2913 	pop	bc
+   1170 E1            [10] 2914 	pop	hl
+   1171 E5            [11] 2915 	push	hl
+   1172 73            [ 7] 2916 	ld	(hl), e
+   1173 23            [ 6] 2917 	inc	hl
+   1174 72            [ 7] 2918 	ld	(hl), d
+                           2919 ;src/entities/entities.c:667: e->nx = x;
+   1175 21 0B 00      [10] 2920 	ld	hl, #0x000b
+   1178 09            [11] 2921 	add	hl, bc
+   1179 DD 7E 06      [19] 2922 	ld	a, 6 (ix)
+   117C 77            [ 7] 2923 	ld	(hl), a
+                           2924 ;src/entities/entities.c:668: e->ny = y;
+   117D 21 0C 00      [10] 2925 	ld	hl, #0x000c
+   1180 09            [11] 2926 	add	hl, bc
+   1181 DD 7E 07      [19] 2927 	ld	a, 7 (ix)
+   1184 77            [ 7] 2928 	ld	(hl), a
+                           2929 ;src/entities/entities.c:671: e->phys.x    = x  * SCALE;
+   1185 21 0F 00      [10] 2930 	ld	hl, #0x000f
+   1188 09            [11] 2931 	add	hl, bc
+   1189 DD 56 06      [19] 2932 	ld	d, 6 (ix)
+   118C 36 00         [10] 2933 	ld	(hl), #0x00
+   118E 23            [ 6] 2934 	inc	hl
+   118F 72            [ 7] 2935 	ld	(hl), d
+                           2936 ;src/entities/entities.c:672: e->phys.y    = y  * SCALE;
+   1190 21 11 00      [10] 2937 	ld	hl, #0x0011
+   1193 09            [11] 2938 	add	hl, bc
+   1194 DD 56 07      [19] 2939 	ld	d, 7 (ix)
+   1197 36 00         [10] 2940 	ld	(hl), #0x00
+   1199 23            [ 6] 2941 	inc	hl
+   119A 72            [ 7] 2942 	ld	(hl), d
+                           2943 ;src/entities/entities.c:673: e->phys.vx   = vx * SCALE;
+   119B 21 13 00      [10] 2944 	ld	hl, #0x0013
+   119E 09            [11] 2945 	add	hl, bc
+   119F DD 56 08      [19] 2946 	ld	d, 8 (ix)
+   11A2 36 00         [10] 2947 	ld	(hl), #0x00
+   11A4 23            [ 6] 2948 	inc	hl
+   11A5 72            [ 7] 2949 	ld	(hl), d
+                           2950 ;src/entities/entities.c:674: e->phys.vy   = vy * SCALE;
+   11A6 21 15 00      [10] 2951 	ld	hl, #0x0015
+   11A9 09            [11] 2952 	add	hl, bc
+   11AA DD 56 09      [19] 2953 	ld	d, 9 (ix)
+   11AD 36 00         [10] 2954 	ld	(hl), #0x00
+   11AF 23            [ 6] 2955 	inc	hl
+   11B0 72            [ 7] 2956 	ld	(hl), d
+                           2957 ;src/entities/entities.c:677: if (eraseprev) {
+   11B1 DD 7E 0A      [19] 2958 	ld	a, 10 (ix)
+   11B4 B7            [ 4] 2959 	or	a, a
+   11B5 28 21         [12] 2960 	jr	Z,00103$
+                           2961 ;src/entities/entities.c:678: e->pscreen  = e->npscreen;
+   11B7 FD 21 05 00   [14] 2962 	ld	iy, #0x0005
+   11BB FD 09         [15] 2963 	add	iy, bc
+   11BD E1            [10] 2964 	pop	hl
+   11BE E5            [11] 2965 	push	hl
+   11BF 5E            [ 7] 2966 	ld	e, (hl)
+   11C0 23            [ 6] 2967 	inc	hl
+   11C1 56            [ 7] 2968 	ld	d, (hl)
+   11C2 FD 73 00      [19] 2969 	ld	0 (iy), e
+   11C5 FD 72 01      [19] 2970 	ld	1 (iy), d
+                           2971 ;src/entities/entities.c:679: e->x = x;
+   11C8 21 09 00      [10] 2972 	ld	hl, #0x0009
+   11CB 09            [11] 2973 	add	hl, bc
+   11CC DD 7E 06      [19] 2974 	ld	a, 6 (ix)
+   11CF 77            [ 7] 2975 	ld	(hl), a
+                           2976 ;src/entities/entities.c:680: e->y = y;
+   11D0 21 0A 00      [10] 2977 	ld	hl, #0x000a
+   11D3 09            [11] 2978 	add	hl, bc
+   11D4 DD 7E 07      [19] 2979 	ld	a, 7 (ix)
+   11D7 77            [ 7] 2980 	ld	(hl), a
+   11D8                    2981 00103$:
+   11D8 DD F9         [10] 2982 	ld	sp, ix
+   11DA DD E1         [14] 2983 	pop	ix
+   11DC C9            [10] 2984 	ret
+                           2985 ;src/entities/entities.c:687: void drawAnimEntity (TEntity* e) {
+                           2986 ;	---------------------------------
+                           2987 ; Function drawAnimEntity
+                           2988 ; ---------------------------------
+   11DD                    2989 _drawAnimEntity::
+   11DD DD E5         [15] 2990 	push	ix
+   11DF DD 21 00 00   [14] 2991 	ld	ix,#0
+   11E3 DD 39         [15] 2992 	add	ix,sp
+   11E5 F5            [11] 2993 	push	af
+   11E6 F5            [11] 2994 	push	af
+                           2995 ;src/entities/entities.c:689: if ( e->draw ) {
+   11E7 DD 4E 04      [19] 2996 	ld	c,4 (ix)
+   11EA DD 46 05      [19] 2997 	ld	b,5 (ix)
+   11ED 21 1B 00      [10] 2998 	ld	hl, #0x001b
+   11F0 09            [11] 2999 	add	hl,bc
+   11F1 E3            [19] 3000 	ex	(sp), hl
+   11F2 E1            [10] 3001 	pop	hl
+   11F3 E5            [11] 3002 	push	hl
+   11F4 7E            [ 7] 3003 	ld	a, (hl)
+   11F5 B7            [ 4] 3004 	or	a, a
+   11F6 28 79         [12] 3005 	jr	Z,00103$
+                           3006 ;src/entities/entities.c:691: TAnimation* anim  = &e->graph.anim;
+   11F8 69            [ 4] 3007 	ld	l, c
+   11F9 60            [ 4] 3008 	ld	h, b
+                           3009 ;src/entities/entities.c:692: TAnimFrame* frame = anim->frames[anim->frame_id];
+   11FA E5            [11] 3010 	push	hl
+   11FB 5E            [ 7] 3011 	ld	e, (hl)
+   11FC 23            [ 6] 3012 	inc	hl
+   11FD 56            [ 7] 3013 	ld	d, (hl)
+   11FE E1            [10] 3014 	pop	hl
+   11FF 23            [ 6] 3015 	inc	hl
+   1200 23            [ 6] 3016 	inc	hl
+   1201 6E            [ 7] 3017 	ld	l, (hl)
+   1202 26 00         [ 7] 3018 	ld	h, #0x00
+   1204 29            [11] 3019 	add	hl, hl
+   1205 19            [11] 3020 	add	hl, de
+   1206 5E            [ 7] 3021 	ld	e, (hl)
+   1207 23            [ 6] 3022 	inc	hl
+   1208 56            [ 7] 3023 	ld	d, (hl)
+                           3024 ;src/entities/entities.c:695: cpct_drawSolidBox(e->pscreen, 0x00, e->pw, e->ph);
+   1209 69            [ 4] 3025 	ld	l, c
+   120A 60            [ 4] 3026 	ld	h, b
+   120B C5            [11] 3027 	push	bc
+   120C 01 0E 00      [10] 3028 	ld	bc, #0x000e
+   120F 09            [11] 3029 	add	hl, bc
+   1210 C1            [10] 3030 	pop	bc
+   1211 7E            [ 7] 3031 	ld	a, (hl)
+   1212 DD 77 FF      [19] 3032 	ld	-1 (ix), a
+   1215 69            [ 4] 3033 	ld	l, c
+   1216 60            [ 4] 3034 	ld	h, b
+   1217 C5            [11] 3035 	push	bc
+   1218 01 0D 00      [10] 3036 	ld	bc, #0x000d
+   121B 09            [11] 3037 	add	hl, bc
+   121C C1            [10] 3038 	pop	bc
+   121D 7E            [ 7] 3039 	ld	a, (hl)
+   121E DD 77 FE      [19] 3040 	ld	-2 (ix), a
+   1221 69            [ 4] 3041 	ld	l, c
+   1222 60            [ 4] 3042 	ld	h, b
+   1223 23            [ 6] 3043 	inc	hl
+   1224 23            [ 6] 3044 	inc	hl
+   1225 23            [ 6] 3045 	inc	hl
+   1226 23            [ 6] 3046 	inc	hl
+   1227 23            [ 6] 3047 	inc	hl
+   1228 7E            [ 7] 3048 	ld	a, (hl)
+   1229 23            [ 6] 3049 	inc	hl
+   122A 66            [ 7] 3050 	ld	h, (hl)
+   122B 6F            [ 4] 3051 	ld	l, a
+   122C E5            [11] 3052 	push	hl
+   122D FD E1         [14] 3053 	pop	iy
+   122F C5            [11] 3054 	push	bc
+   1230 D5            [11] 3055 	push	de
+   1231 DD 66 FF      [19] 3056 	ld	h, -1 (ix)
+   1234 DD 6E FE      [19] 3057 	ld	l, -2 (ix)
+   1237 E5            [11] 3058 	push	hl
+   1238 21 00 00      [10] 3059 	ld	hl, #0x0000
+   123B E5            [11] 3060 	push	hl
+   123C FD E5         [15] 3061 	push	iy
+   123E CDr00r00      [17] 3062 	call	_cpct_drawSolidBox
+   1241 D1            [10] 3063 	pop	de
+   1242 C1            [10] 3064 	pop	bc
+                           3065 ;src/entities/entities.c:698: cpct_drawSprite(frame->sprite, e->npscreen, frame->width, frame->height);
+   1243 6B            [ 4] 3066 	ld	l, e
+   1244 62            [ 4] 3067 	ld	h, d
+   1245 23            [ 6] 3068 	inc	hl
+   1246 23            [ 6] 3069 	inc	hl
+   1247 23            [ 6] 3070 	inc	hl
+   1248 7E            [ 7] 3071 	ld	a, (hl)
+   1249 DD 77 FE      [19] 3072 	ld	-2 (ix), a
+   124C 6B            [ 4] 3073 	ld	l, e
+   124D 62            [ 4] 3074 	ld	h, d
+   124E 23            [ 6] 3075 	inc	hl
+   124F 23            [ 6] 3076 	inc	hl
+   1250 7E            [ 7] 3077 	ld	a, (hl)
+   1251 DD 77 FF      [19] 3078 	ld	-1 (ix), a
+   1254 69            [ 4] 3079 	ld	l, c
+   1255 60            [ 4] 3080 	ld	h, b
+   1256 01 07 00      [10] 3081 	ld	bc, #0x0007
+   1259 09            [11] 3082 	add	hl, bc
+   125A 4E            [ 7] 3083 	ld	c, (hl)
+   125B 23            [ 6] 3084 	inc	hl
+   125C 46            [ 7] 3085 	ld	b, (hl)
+   125D EB            [ 4] 3086 	ex	de,hl
+   125E 5E            [ 7] 3087 	ld	e, (hl)
+   125F 23            [ 6] 3088 	inc	hl
+   1260 56            [ 7] 3089 	ld	d, (hl)
+   1261 DD 66 FE      [19] 3090 	ld	h, -2 (ix)
+   1264 DD 6E FF      [19] 3091 	ld	l, -1 (ix)
+   1267 E5            [11] 3092 	push	hl
+   1268 C5            [11] 3093 	push	bc
+   1269 D5            [11] 3094 	push	de
+   126A CDr00r00      [17] 3095 	call	_cpct_drawSprite
+                           3096 ;src/entities/entities.c:700: e->draw = 0;
+   126D E1            [10] 3097 	pop	hl
+   126E E5            [11] 3098 	push	hl
+   126F 36 00         [10] 3099 	ld	(hl), #0x00
+   1271                    3100 00103$:
+   1271 DD F9         [10] 3101 	ld	sp, ix
+   1273 DD E1         [14] 3102 	pop	ix
+   1275 C9            [10] 3103 	ret
+                           3104 ;src/entities/entities.c:707: void drawBlockEntity (TEntity* e){
+                           3105 ;	---------------------------------
+                           3106 ; Function drawBlockEntity
+                           3107 ; ---------------------------------
+   1276                    3108 _drawBlockEntity::
+   1276 DD E5         [15] 3109 	push	ix
+   1278 DD 21 00 00   [14] 3110 	ld	ix,#0
+   127C DD 39         [15] 3111 	add	ix,sp
+   127E 21 F2 FF      [10] 3112 	ld	hl, #-14
+   1281 39            [11] 3113 	add	hl, sp
+   1282 F9            [ 6] 3114 	ld	sp, hl
+                           3115 ;src/entities/entities.c:709: if ( e->draw ) {
+   1283 DD 7E 04      [19] 3116 	ld	a, 4 (ix)
+   1286 DD 77 FE      [19] 3117 	ld	-2 (ix), a
+   1289 DD 7E 05      [19] 3118 	ld	a, 5 (ix)
+   128C DD 77 FF      [19] 3119 	ld	-1 (ix), a
+   128F DD 7E FE      [19] 3120 	ld	a, -2 (ix)
+   1292 C6 1B         [ 7] 3121 	add	a, #0x1b
+   1294 DD 77 FC      [19] 3122 	ld	-4 (ix), a
+   1297 DD 7E FF      [19] 3123 	ld	a, -1 (ix)
+   129A CE 00         [ 7] 3124 	adc	a, #0x00
+   129C DD 77 FD      [19] 3125 	ld	-3 (ix), a
+   129F DD 6E FC      [19] 3126 	ld	l,-4 (ix)
+   12A2 DD 66 FD      [19] 3127 	ld	h,-3 (ix)
+   12A5 7E            [ 7] 3128 	ld	a, (hl)
+   12A6 DD 77 F7      [19] 3129 	ld	-9 (ix), a
+   12A9 B7            [ 4] 3130 	or	a, a
+   12AA CArD8r13      [10] 3131 	jp	Z, 00113$
+                           3132 ;src/entities/entities.c:715: TBlock* block  = &e->graph.block;
+   12AD DD 7E FE      [19] 3133 	ld	a, -2 (ix)
+   12B0 DD 77 F2      [19] 3134 	ld	-14 (ix), a
+   12B3 DD 7E FF      [19] 3135 	ld	a, -1 (ix)
+   12B6 DD 77 F3      [19] 3136 	ld	-13 (ix), a
+                           3137 ;src/entities/entities.c:718: sp = e->npscreen;
+   12B9 DD 7E FE      [19] 3138 	ld	a, -2 (ix)
+   12BC DD 77 F5      [19] 3139 	ld	-11 (ix), a
+   12BF DD 7E FF      [19] 3140 	ld	a, -1 (ix)
+   12C2 DD 77 F6      [19] 3141 	ld	-10 (ix), a
+   12C5 DD 6E F5      [19] 3142 	ld	l,-11 (ix)
+   12C8 DD 66 F6      [19] 3143 	ld	h,-10 (ix)
+   12CB 11 07 00      [10] 3144 	ld	de, #0x0007
+   12CE 19            [11] 3145 	add	hl, de
+   12CF 7E            [ 7] 3146 	ld	a, (hl)
+   12D0 DD 77 F5      [19] 3147 	ld	-11 (ix), a
+   12D3 23            [ 6] 3148 	inc	hl
+   12D4 7E            [ 7] 3149 	ld	a, (hl)
+   12D5 DD 77 F6      [19] 3150 	ld	-10 (ix), a
+                           3151 ;src/entities/entities.c:719: if (e->ny <= G_minY) {
+   12D8 DD 7E FE      [19] 3152 	ld	a, -2 (ix)
+   12DB DD 77 FA      [19] 3153 	ld	-6 (ix), a
+   12DE DD 7E FF      [19] 3154 	ld	a, -1 (ix)
+   12E1 DD 77 FB      [19] 3155 	ld	-5 (ix), a
+   12E4 DD 6E FA      [19] 3156 	ld	l,-6 (ix)
+   12E7 DD 66 FB      [19] 3157 	ld	h,-5 (ix)
+   12EA 11 0C 00      [10] 3158 	ld	de, #0x000c
+   12ED 19            [11] 3159 	add	hl, de
+   12EE 7E            [ 7] 3160 	ld	a, (hl)
+   12EF DD 77 FA      [19] 3161 	ld	-6 (ix), a
+   12F2 3Ar08r01      [13] 3162 	ld	a,(#_G_minY + 0)
+   12F5 DD 77 F7      [19] 3163 	ld	-9 (ix), a
+                           3164 ;src/entities/entities.c:720: drawh = block->h + e->ny - G_minY;
+   12F8 DD 7E F2      [19] 3165 	ld	a, -14 (ix)
+   12FB DD 77 F8      [19] 3166 	ld	-8 (ix), a
+   12FE DD 7E F3      [19] 3167 	ld	a, -13 (ix)
+   1301 DD 77 F9      [19] 3168 	ld	-7 (ix), a
+   1304 DD 6E F8      [19] 3169 	ld	l,-8 (ix)
+   1307 DD 66 F9      [19] 3170 	ld	h,-7 (ix)
+   130A 23            [ 6] 3171 	inc	hl
+   130B 7E            [ 7] 3172 	ld	a, (hl)
+   130C DD 77 F8      [19] 3173 	ld	-8 (ix), a
+                           3174 ;src/entities/entities.c:719: if (e->ny <= G_minY) {
+   130F DD 7E F7      [19] 3175 	ld	a, -9 (ix)
+   1312 DD 96 FA      [19] 3176 	sub	a, -6 (ix)
+   1315 38 2E         [12] 3177 	jr	C,00107$
+                           3178 ;src/entities/entities.c:720: drawh = block->h + e->ny - G_minY;
+   1317 DD 7E F8      [19] 3179 	ld	a, -8 (ix)
+   131A DD 86 FA      [19] 3180 	add	a, -6 (ix)
+   131D 4F            [ 4] 3181 	ld	c,a
+   131E DD 96 F7      [19] 3182 	sub	a, -9 (ix)
+   1321 DD 77 F4      [19] 3183 	ld	-12 (ix), a
+                           3184 ;src/entities/entities.c:721: sp = cpct_getScreenPtr(CPCT_VMEM_START, e->nx, G_minY);
+   1324 DD 6E FE      [19] 3185 	ld	l,-2 (ix)
+   1327 DD 66 FF      [19] 3186 	ld	h,-1 (ix)
+   132A 11 0B 00      [10] 3187 	ld	de, #0x000b
+   132D 19            [11] 3188 	add	hl, de
+   132E 46            [ 7] 3189 	ld	b, (hl)
+   132F DD 7E F7      [19] 3190 	ld	a, -9 (ix)
+   1332 F5            [11] 3191 	push	af
+   1333 33            [ 6] 3192 	inc	sp
+   1334 C5            [11] 3193 	push	bc
+   1335 33            [ 6] 3194 	inc	sp
+   1336 21 00 C0      [10] 3195 	ld	hl, #0xc000
+   1339 E5            [11] 3196 	push	hl
+   133A CDr00r00      [17] 3197 	call	_cpct_getScreenPtr
+   133D DD 75 F5      [19] 3198 	ld	-11 (ix), l
+   1340 DD 74 F6      [19] 3199 	ld	-10 (ix), h
+   1343 18 63         [12] 3200 	jr	00108$
+   1345                    3201 00107$:
+                           3202 ;src/entities/entities.c:723: if (e->ny + block->h > G_maxY) {
+   1345 DD 4E FA      [19] 3203 	ld	c, -6 (ix)
+   1348 06 00         [ 7] 3204 	ld	b, #0x00
+   134A DD 6E F8      [19] 3205 	ld	l, -8 (ix)
+   134D 26 00         [ 7] 3206 	ld	h, #0x00
+   134F 09            [11] 3207 	add	hl, bc
+   1350 3Ar09r01      [13] 3208 	ld	a,(#_G_maxY + 0)
+   1353 DD 77 F7      [19] 3209 	ld	-9 (ix), a
+   1356 06 00         [ 7] 3210 	ld	b, #0x00
+   1358 95            [ 4] 3211 	sub	a, l
+   1359 78            [ 4] 3212 	ld	a, b
+   135A 9C            [ 4] 3213 	sbc	a, h
+   135B E2r60r13      [10] 3214 	jp	PO, 00135$
+   135E EE 80         [ 7] 3215 	xor	a, #0x80
+   1360                    3216 00135$:
+   1360 F2r7Dr13      [10] 3217 	jp	P, 00102$
+                           3218 ;src/entities/entities.c:724: drawh  = G_maxY - e->ny;
+   1363 DD 7E F7      [19] 3219 	ld	a, -9 (ix)
+   1366 DD 96 FA      [19] 3220 	sub	a, -6 (ix)
+   1369 DD 77 F4      [19] 3221 	ld	-12 (ix), a
+                           3222 ;src/entities/entities.c:725: eraseh = G_maxY - e->y;
+   136C DD 6E FE      [19] 3223 	ld	l,-2 (ix)
+   136F DD 66 FF      [19] 3224 	ld	h,-1 (ix)
+   1372 11 0A 00      [10] 3225 	ld	de, #0x000a
+   1375 19            [11] 3226 	add	hl, de
+   1376 DD 7E F7      [19] 3227 	ld	a,-9 (ix)
+   1379 96            [ 7] 3228 	sub	a,(hl)
+   137A 4F            [ 4] 3229 	ld	c, a
+   137B 18 0A         [12] 3230 	jr	00103$
+   137D                    3231 00102$:
+                           3232 ;src/entities/entities.c:727: drawh  = block->h;
+   137D DD 7E F8      [19] 3233 	ld	a, -8 (ix)
+   1380 DD 77 F8      [19] 3234 	ld	-8 (ix), a
+                           3235 ;src/entities/entities.c:728: eraseh = drawh;
+   1383 DD 77 F4      [19] 3236 	ld	-12 (ix), a
+   1386 4F            [ 4] 3237 	ld	c, a
+   1387                    3238 00103$:
+                           3239 ;src/entities/entities.c:732: if (eraseh)
+   1387 79            [ 4] 3240 	ld	a, c
+   1388 B7            [ 4] 3241 	or	a, a
+   1389 28 1D         [12] 3242 	jr	Z,00108$
+                           3243 ;src/entities/entities.c:733: cpct_drawSolidBox(e->pscreen,  0x00, block->w, eraseh);
+   138B E1            [10] 3244 	pop	hl
+   138C E5            [11] 3245 	push	hl
+   138D 46            [ 7] 3246 	ld	b, (hl)
+   138E DD 6E FE      [19] 3247 	ld	l,-2 (ix)
+   1391 DD 66 FF      [19] 3248 	ld	h,-1 (ix)
+   1394 11 05 00      [10] 3249 	ld	de, #0x0005
+   1397 19            [11] 3250 	add	hl, de
+   1398 5E            [ 7] 3251 	ld	e, (hl)
+   1399 23            [ 6] 3252 	inc	hl
+   139A 56            [ 7] 3253 	ld	d, (hl)
+   139B 79            [ 4] 3254 	ld	a, c
+   139C F5            [11] 3255 	push	af
+   139D 33            [ 6] 3256 	inc	sp
+   139E C5            [11] 3257 	push	bc
+   139F 33            [ 6] 3258 	inc	sp
+   13A0 21 00 00      [10] 3259 	ld	hl, #0x0000
+   13A3 E5            [11] 3260 	push	hl
+   13A4 D5            [11] 3261 	push	de
+   13A5 CDr00r00      [17] 3262 	call	_cpct_drawSolidBox
+   13A8                    3263 00108$:
+                           3264 ;src/entities/entities.c:737: if (drawh)
+   13A8 DD 7E F4      [19] 3265 	ld	a, -12 (ix)
+   13AB B7            [ 4] 3266 	or	a, a
+   13AC 28 22         [12] 3267 	jr	Z,00110$
+                           3268 ;src/entities/entities.c:738: cpct_drawSolidBox(sp, block->colour, block->w, drawh);
+   13AE E1            [10] 3269 	pop	hl
+   13AF E5            [11] 3270 	push	hl
+   13B0 56            [ 7] 3271 	ld	d, (hl)
+   13B1 E1            [10] 3272 	pop	hl
+   13B2 E5            [11] 3273 	push	hl
+   13B3 23            [ 6] 3274 	inc	hl
+   13B4 23            [ 6] 3275 	inc	hl
+   13B5 4E            [ 7] 3276 	ld	c, (hl)
+   13B6 06 00         [ 7] 3277 	ld	b, #0x00
+   13B8 E5            [11] 3278 	push	hl
+   13B9 DD 6E F5      [19] 3279 	ld	l, -11 (ix)
+   13BC DD 66 F6      [19] 3280 	ld	h, -10 (ix)
+   13BF E5            [11] 3281 	push	hl
+   13C0 FD E1         [14] 3282 	pop	iy
+   13C2 E1            [10] 3283 	pop	hl
+   13C3 DD 7E F4      [19] 3284 	ld	a, -12 (ix)
+   13C6 F5            [11] 3285 	push	af
+   13C7 33            [ 6] 3286 	inc	sp
+   13C8 D5            [11] 3287 	push	de
+   13C9 33            [ 6] 3288 	inc	sp
+   13CA C5            [11] 3289 	push	bc
+   13CB FD E5         [15] 3290 	push	iy
+   13CD CDr00r00      [17] 3291 	call	_cpct_drawSolidBox
+   13D0                    3292 00110$:
+                           3293 ;src/entities/entities.c:740: e->draw = 0;
+   13D0 DD 6E FC      [19] 3294 	ld	l,-4 (ix)
+   13D3 DD 66 FD      [19] 3295 	ld	h,-3 (ix)
+   13D6 36 00         [10] 3296 	ld	(hl), #0x00
+   13D8                    3297 00113$:
+   13D8 DD F9         [10] 3298 	ld	sp, ix
+   13DA DD E1         [14] 3299 	pop	ix
+   13DC C9            [10] 3300 	ret
+                           3301 ;src/entities/entities.c:747: void drawAll() {
+                           3302 ;	---------------------------------
+                           3303 ; Function drawAll
+                           3304 ; ---------------------------------
+   13DD                    3305 _drawAll::
+                           3306 ;src/entities/entities.c:748: u8  i = g_lastBlock;
+   13DD 21rF5r01      [10] 3307 	ld	hl,#_g_lastBlock + 0
+   13E0 4E            [ 7] 3308 	ld	c, (hl)
+                           3309 ;src/entities/entities.c:751: while(i--) 
+   13E1                    3310 00101$:
+   13E1 41            [ 4] 3311 	ld	b, c
+   13E2 0D            [ 4] 3312 	dec	c
+   13E3 78            [ 4] 3313 	ld	a, b
+   13E4 B7            [ 4] 3314 	or	a, a
+   13E5 28 19         [12] 3315 	jr	Z,00103$
+                           3316 ;src/entities/entities.c:752: drawBlockEntity(&g_blocks[i]);
+   13E7 06 00         [ 7] 3317 	ld	b,#0x00
+   13E9 69            [ 4] 3318 	ld	l, c
+   13EA 60            [ 4] 3319 	ld	h, b
+   13EB 29            [11] 3320 	add	hl, hl
+   13EC 09            [11] 3321 	add	hl, bc
+   13ED 29            [11] 3322 	add	hl, hl
+   13EE 09            [11] 3323 	add	hl, bc
+   13EF 29            [11] 3324 	add	hl, hl
+   13F0 09            [11] 3325 	add	hl, bc
+   13F1 29            [11] 3326 	add	hl, hl
+   13F2 09            [11] 3327 	add	hl, bc
+   13F3 11r05r00      [10] 3328 	ld	de, #_g_blocks
+   13F6 19            [11] 3329 	add	hl, de
+   13F7 C5            [11] 3330 	push	bc
+   13F8 E5            [11] 3331 	push	hl
+   13F9 CDr76r12      [17] 3332 	call	_drawBlockEntity
+   13FC F1            [10] 3333 	pop	af
+   13FD C1            [10] 3334 	pop	bc
+   13FE 18 E1         [12] 3335 	jr	00101$
+   1400                    3336 00103$:
+                           3337 ;src/entities/entities.c:755: drawAnimEntity(&g_Character.entity);
+   1400 21r0Cr01      [10] 3338 	ld	hl, #_g_Character
+   1403 E5            [11] 3339 	push	hl
+   1404 CDrDDr11      [17] 3340 	call	_drawAnimEntity
+   1407 F1            [10] 3341 	pop	af
+   1408 C9            [10] 3342 	ret
+                           3343 ;src/entities/entities.c:761: TEntity* newSolidBlock(u8 x, u8 y, u8 width, u8 height, u8 colour) {
+                           3344 ;	---------------------------------
+                           3345 ; Function newSolidBlock
+                           3346 ; ---------------------------------
+   1409                    3347 _newSolidBlock::
+   1409 DD E5         [15] 3348 	push	ix
+   140B DD 21 00 00   [14] 3349 	ld	ix,#0
+   140F DD 39         [15] 3350 	add	ix,sp
+   1411 F5            [11] 3351 	push	af
+   1412 F5            [11] 3352 	push	af
+                           3353 ;src/entities/entities.c:762: TEntity *newEnt = 0;
+   1413 01 00 00      [10] 3354 	ld	bc, #0x0000
+                           3355 ;src/entities/entities.c:765: if (g_lastBlock < g_MaxBlocks) {
+   1416 3ArF5r01      [13] 3356 	ld	a,(#_g_lastBlock + 0)
+   1419 D6 10         [ 7] 3357 	sub	a, #0x10
+   141B D2rEBr14      [10] 3358 	jp	NC, 00104$
+                           3359 ;src/entities/entities.c:767: newEnt = &g_blocks[g_lastBlock];
+   141E ED 4BrF5r01   [20] 3360 	ld	bc, (_g_lastBlock)
+   1422 06 00         [ 7] 3361 	ld	b, #0x00
+   1424 69            [ 4] 3362 	ld	l, c
+   1425 60            [ 4] 3363 	ld	h, b
+   1426 29            [11] 3364 	add	hl, hl
+   1427 09            [11] 3365 	add	hl, bc
+   1428 29            [11] 3366 	add	hl, hl
+   1429 09            [11] 3367 	add	hl, bc
+   142A 29            [11] 3368 	add	hl, hl
+   142B 09            [11] 3369 	add	hl, bc
+   142C 29            [11] 3370 	add	hl, hl
+   142D 09            [11] 3371 	add	hl, bc
+   142E 11r05r00      [10] 3372 	ld	de, #_g_blocks
+   1431 19            [11] 3373 	add	hl, de
+   1432 4D            [ 4] 3374 	ld	c, l
+   1433 44            [ 4] 3375 	ld	b, h
+                           3376 ;src/entities/entities.c:768: newEnt->graph.block.w      = width;
+   1434 DD 7E 06      [19] 3377 	ld	a, 6 (ix)
+   1437 02            [ 7] 3378 	ld	(bc), a
+                           3379 ;src/entities/entities.c:769: newEnt->graph.block.h      = height;
+   1438 59            [ 4] 3380 	ld	e, c
+   1439 50            [ 4] 3381 	ld	d, b
+   143A 13            [ 6] 3382 	inc	de
+   143B DD 7E 07      [19] 3383 	ld	a, 7 (ix)
+   143E 12            [ 7] 3384 	ld	(de), a
+                           3385 ;src/entities/entities.c:770: newEnt->pw                 = width;
+   143F 21 0D 00      [10] 3386 	ld	hl, #0x000d
+   1442 09            [11] 3387 	add	hl, bc
+   1443 DD 7E 06      [19] 3388 	ld	a, 6 (ix)
+   1446 77            [ 7] 3389 	ld	(hl), a
+                           3390 ;src/entities/entities.c:771: newEnt->ph                 = height;
+   1447 21 0E 00      [10] 3391 	ld	hl, #0x000e
+   144A 09            [11] 3392 	add	hl, bc
+   144B DD 7E 07      [19] 3393 	ld	a, 7 (ix)
+   144E 77            [ 7] 3394 	ld	(hl), a
+                           3395 ;src/entities/entities.c:772: newEnt->graph.block.colour = colour;
+   144F 59            [ 4] 3396 	ld	e, c
+   1450 50            [ 4] 3397 	ld	d, b
+   1451 13            [ 6] 3398 	inc	de
+   1452 13            [ 6] 3399 	inc	de
+   1453 DD 7E 08      [19] 3400 	ld	a, 8 (ix)
+   1456 12            [ 7] 3401 	ld	(de), a
+                           3402 ;src/entities/entities.c:773: setEntityLocation(newEnt, x, y, 0, 0, 1);
+   1457 C5            [11] 3403 	push	bc
+   1458 21 00 01      [10] 3404 	ld	hl, #0x0100
+   145B E5            [11] 3405 	push	hl
+   145C AF            [ 4] 3406 	xor	a, a
+   145D F5            [11] 3407 	push	af
+   145E 33            [ 6] 3408 	inc	sp
+   145F DD 66 05      [19] 3409 	ld	h, 5 (ix)
+   1462 DD 6E 04      [19] 3410 	ld	l, 4 (ix)
+   1465 E5            [11] 3411 	push	hl
+   1466 C5            [11] 3412 	push	bc
+   1467 CDr4Br11      [17] 3413 	call	_setEntityLocation
+   146A 21 07 00      [10] 3414 	ld	hl, #7
+   146D 39            [11] 3415 	add	hl, sp
+   146E F9            [ 6] 3416 	ld	sp, hl
+   146F C1            [10] 3417 	pop	bc
+                           3418 ;src/entities/entities.c:774: newEnt->draw               = 1;
+   1470 21 1B 00      [10] 3419 	ld	hl, #0x001b
+   1473 09            [11] 3420 	add	hl, bc
+   1474 36 01         [10] 3421 	ld	(hl), #0x01
+                           3422 ;src/entities/entities.c:777: newEnt->phys.y += g_blocks[g_lastBlock-1].phys.y % SCALE;
+   1476 21 0F 00      [10] 3423 	ld	hl, #0x000f
+   1479 09            [11] 3424 	add	hl,bc
+   147A EB            [ 4] 3425 	ex	de,hl
+                           3426 ;src/entities/entities.c:776: if (g_lastBlock > 0) 
+   147B FD 21rF5r01   [14] 3427 	ld	iy, #_g_lastBlock
+   147F FD 7E 00      [19] 3428 	ld	a, 0 (iy)
+   1482 B7            [ 4] 3429 	or	a, a
+   1483 28 51         [12] 3430 	jr	Z,00102$
+                           3431 ;src/entities/entities.c:777: newEnt->phys.y += g_blocks[g_lastBlock-1].phys.y % SCALE;
+   1485 21 02 00      [10] 3432 	ld	hl, #0x0002
+   1488 19            [11] 3433 	add	hl,de
+   1489 DD 75 FE      [19] 3434 	ld	-2 (ix), l
+   148C DD 74 FF      [19] 3435 	ld	-1 (ix), h
+   148F 7E            [ 7] 3436 	ld	a, (hl)
+   1490 DD 77 FC      [19] 3437 	ld	-4 (ix), a
+   1493 23            [ 6] 3438 	inc	hl
+   1494 7E            [ 7] 3439 	ld	a, (hl)
+   1495 DD 77 FD      [19] 3440 	ld	-3 (ix), a
+   1498 FD 6E 00      [19] 3441 	ld	l, 0 (iy)
+   149B 26 00         [ 7] 3442 	ld	h, #0x00
+   149D 2B            [ 6] 3443 	dec	hl
+   149E D5            [11] 3444 	push	de
+   149F 5D            [ 4] 3445 	ld	e, l
+   14A0 54            [ 4] 3446 	ld	d, h
+   14A1 29            [11] 3447 	add	hl, hl
+   14A2 19            [11] 3448 	add	hl, de
+   14A3 29            [11] 3449 	add	hl, hl
+   14A4 19            [11] 3450 	add	hl, de
+   14A5 29            [11] 3451 	add	hl, hl
+   14A6 19            [11] 3452 	add	hl, de
+   14A7 29            [11] 3453 	add	hl, hl
+   14A8 19            [11] 3454 	add	hl, de
+   14A9 D1            [10] 3455 	pop	de
+   14AA FD 21r05r00   [14] 3456 	ld	iy, #_g_blocks
+   14AE C5            [11] 3457 	push	bc
+   14AF 4D            [ 4] 3458 	ld	c, l
+   14B0 44            [ 4] 3459 	ld	b, h
+   14B1 FD 09         [15] 3460 	add	iy, bc
+   14B3 C1            [10] 3461 	pop	bc
+   14B4 FD 6E 11      [19] 3462 	ld	l, 17 (iy)
+   14B7 26 00         [ 7] 3463 	ld	h, #0x00
+   14B9 DD 7E FC      [19] 3464 	ld	a, -4 (ix)
+   14BC 85            [ 4] 3465 	add	a, l
+   14BD DD 77 FC      [19] 3466 	ld	-4 (ix), a
+   14C0 DD 7E FD      [19] 3467 	ld	a, -3 (ix)
+   14C3 8C            [ 4] 3468 	adc	a, h
+   14C4 DD 77 FD      [19] 3469 	ld	-3 (ix), a
+   14C7 DD 6E FE      [19] 3470 	ld	l,-2 (ix)
+   14CA DD 66 FF      [19] 3471 	ld	h,-1 (ix)
+   14CD DD 7E FC      [19] 3472 	ld	a, -4 (ix)
+   14D0 77            [ 7] 3473 	ld	(hl), a
+   14D1 23            [ 6] 3474 	inc	hl
+   14D2 DD 7E FD      [19] 3475 	ld	a, -3 (ix)
+   14D5 77            [ 7] 3476 	ld	(hl), a
+   14D6                    3477 00102$:
+                           3478 ;src/entities/entities.c:778: newEnt->phys.bounce        = 0.85 * SCALE;
+   14D6 21 08 00      [10] 3479 	ld	hl, #0x0008
+   14D9 19            [11] 3480 	add	hl, de
+   14DA 36 D9         [10] 3481 	ld	(hl), #0xd9
+   14DC 23            [ 6] 3482 	inc	hl
+   14DD 36 00         [10] 3483 	ld	(hl), #0x00
+                           3484 ;src/entities/entities.c:779: newEnt->phys.vx            = 0;
+   14DF 21 04 00      [10] 3485 	ld	hl, #0x0004
+   14E2 19            [11] 3486 	add	hl, de
+   14E3 AF            [ 4] 3487 	xor	a, a
+   14E4 77            [ 7] 3488 	ld	(hl), a
+   14E5 23            [ 6] 3489 	inc	hl
+   14E6 77            [ 7] 3490 	ld	(hl), a
+                           3491 ;src/entities/entities.c:781: ++g_lastBlock;   // One more entity added to the vector
+   14E7 21rF5r01      [10] 3492 	ld	hl, #_g_lastBlock+0
+   14EA 34            [11] 3493 	inc	(hl)
+   14EB                    3494 00104$:
+                           3495 ;src/entities/entities.c:784: return newEnt;
+   14EB 69            [ 4] 3496 	ld	l, c
+   14EC 60            [ 4] 3497 	ld	h, b
+   14ED DD F9         [10] 3498 	ld	sp, ix
+   14EF DD E1         [14] 3499 	pop	ix
+   14F1 C9            [10] 3500 	ret
+                           3501 ;src/entities/entities.c:790: void destroyBlock(u8 i) {
+                           3502 ;	---------------------------------
+                           3503 ; Function destroyBlock
+                           3504 ; ---------------------------------
+   14F2                    3505 _destroyBlock::
+   14F2 DD E5         [15] 3506 	push	ix
+   14F4 DD 21 00 00   [14] 3507 	ld	ix,#0
+   14F8 DD 39         [15] 3508 	add	ix,sp
+                           3509 ;src/entities/entities.c:791: i8 nEnts = g_lastBlock - i - 1; // Entities to the right of the block
+   14FA 3ArF5r01      [13] 3510 	ld	a,(#_g_lastBlock + 0)
+   14FD DD 96 04      [19] 3511 	sub	a, 4 (ix)
+   1500 4F            [ 4] 3512 	ld	c, a
+   1501 0D            [ 4] 3513 	dec	c
+                           3514 ;src/entities/entities.c:794: if (g_blocks[i].phys.vx)
+   1502 DD 5E 04      [19] 3515 	ld	e,4 (ix)
+   1505 16 00         [ 7] 3516 	ld	d,#0x00
+   1507 6B            [ 4] 3517 	ld	l, e
+   1508 62            [ 4] 3518 	ld	h, d
+   1509 29            [11] 3519 	add	hl, hl
+   150A 19            [11] 3520 	add	hl, de
+   150B 29            [11] 3521 	add	hl, hl
+   150C 19            [11] 3522 	add	hl, de
+   150D 29            [11] 3523 	add	hl, hl
+   150E 19            [11] 3524 	add	hl, de
+   150F 29            [11] 3525 	add	hl, hl
+   1510 19            [11] 3526 	add	hl, de
+   1511 3Er05         [ 7] 3527 	ld	a, #<(_g_blocks)
+   1513 85            [ 4] 3528 	add	a, l
+   1514 5F            [ 4] 3529 	ld	e, a
+   1515 3Es00         [ 7] 3530 	ld	a, #>(_g_blocks)
+   1517 8C            [ 4] 3531 	adc	a, h
+   1518 57            [ 4] 3532 	ld	d, a
+   1519 D5            [11] 3533 	push	de
+   151A FD E1         [14] 3534 	pop	iy
+   151C FD 6E 13      [19] 3535 	ld	l, 19 (iy)
+   151F FD 7E 14      [19] 3536 	ld	a, 20 (iy)
+   1522 B5            [ 4] 3537 	or	a,l
+   1523 28 04         [12] 3538 	jr	Z,00102$
+                           3539 ;src/entities/entities.c:795: --g_movingBlocks;
+   1525 21rF8r01      [10] 3540 	ld	hl, #_g_movingBlocks+0
+   1528 35            [11] 3541 	dec	(hl)
+   1529                    3542 00102$:
+                           3543 ;src/entities/entities.c:798: if (nEnts)
+   1529 79            [ 4] 3544 	ld	a, c
+   152A B7            [ 4] 3545 	or	a, a
+   152B 28 2D         [12] 3546 	jr	Z,00104$
+                           3547 ;src/entities/entities.c:799: cpct_memcpy(&g_blocks[i], &g_blocks[i+1], nEnts*sizeof(TEntity));
+   152D 79            [ 4] 3548 	ld	a, c
+   152E CB 07         [ 8] 3549 	rlc	a
+   1530 9F            [ 4] 3550 	sbc	a, a
+   1531 47            [ 4] 3551 	ld	b, a
+   1532 69            [ 4] 3552 	ld	l, c
+   1533 60            [ 4] 3553 	ld	h, b
+   1534 29            [11] 3554 	add	hl, hl
+   1535 09            [11] 3555 	add	hl, bc
+   1536 29            [11] 3556 	add	hl, hl
+   1537 09            [11] 3557 	add	hl, bc
+   1538 29            [11] 3558 	add	hl, hl
+   1539 09            [11] 3559 	add	hl, bc
+   153A 29            [11] 3560 	add	hl, hl
+   153B 09            [11] 3561 	add	hl, bc
+   153C 4D            [ 4] 3562 	ld	c, l
+   153D 44            [ 4] 3563 	ld	b, h
+   153E DD 6E 04      [19] 3564 	ld	l, 4 (ix)
+   1541 26 00         [ 7] 3565 	ld	h, #0x00
+   1543 23            [ 6] 3566 	inc	hl
+   1544 D5            [11] 3567 	push	de
+   1545 5D            [ 4] 3568 	ld	e, l
+   1546 54            [ 4] 3569 	ld	d, h
+   1547 29            [11] 3570 	add	hl, hl
+   1548 19            [11] 3571 	add	hl, de
+   1549 29            [11] 3572 	add	hl, hl
+   154A 19            [11] 3573 	add	hl, de
+   154B 29            [11] 3574 	add	hl, hl
+   154C 19            [11] 3575 	add	hl, de
+   154D 29            [11] 3576 	add	hl, hl
+   154E 19            [11] 3577 	add	hl, de
+   154F D1            [10] 3578 	pop	de
+   1550 C5            [11] 3579 	push	bc
+   1551 01r05r00      [10] 3580 	ld	bc, #_g_blocks
+   1554 09            [11] 3581 	add	hl, bc
+   1555 E5            [11] 3582 	push	hl
+   1556 D5            [11] 3583 	push	de
+   1557 CDr00r00      [17] 3584 	call	_cpct_memcpy
+   155A                    3585 00104$:
+                           3586 ;src/entities/entities.c:802: --g_lastBlock;
+   155A 21rF5r01      [10] 3587 	ld	hl, #_g_lastBlock+0
+   155D 35            [11] 3588 	dec	(hl)
+   155E DD E1         [14] 3589 	pop	ix
+   1560 C9            [10] 3590 	ret
+                           3591 ;src/entities/entities.c:817: u8 randomCreateNewBlock(u8 y, u8 h, u8 rndinc) {
+                           3592 ;	---------------------------------
+                           3593 ; Function randomCreateNewBlock
+                           3594 ; ---------------------------------
+   1561                    3595 _randomCreateNewBlock::
+   1561 DD E5         [15] 3596 	push	ix
+   1563 DD 21 00 00   [14] 3597 	ld	ix,#0
+   1567 DD 39         [15] 3598 	add	ix,sp
+   1569 F5            [11] 3599 	push	af
+                           3600 ;src/entities/entities.c:818: u8 last_y = g_blocks[g_lastBlock-1].ny;   // y coordinate of the upmost block
+   156A 01r05r00      [10] 3601 	ld	bc, #_g_blocks+0
+   156D 21rF5r01      [10] 3602 	ld	hl,#_g_lastBlock + 0
+   1570 5E            [ 7] 3603 	ld	e, (hl)
+   1571 16 00         [ 7] 3604 	ld	d, #0x00
+   1573 1B            [ 6] 3605 	dec	de
+   1574 6B            [ 4] 3606 	ld	l, e
+   1575 62            [ 4] 3607 	ld	h, d
+   1576 29            [11] 3608 	add	hl, hl
+   1577 19            [11] 3609 	add	hl, de
+   1578 29            [11] 3610 	add	hl, hl
+   1579 19            [11] 3611 	add	hl, de
+   157A 29            [11] 3612 	add	hl, hl
+   157B 19            [11] 3613 	add	hl, de
+   157C 29            [11] 3614 	add	hl, hl
+   157D 19            [11] 3615 	add	hl, de
+   157E 09            [11] 3616 	add	hl, bc
+   157F 11 0C 00      [10] 3617 	ld	de, #0x000c
+   1582 19            [11] 3618 	add	hl, de
+   1583 4E            [ 7] 3619 	ld	c, (hl)
+                           3620 ;src/entities/entities.c:819: u8 created = 0;                           // Flag to signal if a new block was created
+   1584 DD 36 FE 00   [19] 3621 	ld	-2 (ix), #0x00
+                           3622 ;src/entities/entities.c:823: if ( (RAND_0_15(1) + MINPIXELSPACE) < last_y ) {
+   1588 C5            [11] 3623 	push	bc
+   1589 3E 01         [ 7] 3624 	ld	a, #0x01
+   158B F5            [11] 3625 	push	af
+   158C 33            [ 6] 3626 	inc	sp
+   158D CDr00r00      [17] 3627 	call	_getRandomUniform
+   1590 33            [ 6] 3628 	inc	sp
+   1591 C1            [10] 3629 	pop	bc
+   1592 7D            [ 4] 3630 	ld	a, l
+   1593 E6 0F         [ 7] 3631 	and	a, #0x0f
+   1595 5F            [ 4] 3632 	ld	e, a
+   1596 16 00         [ 7] 3633 	ld	d, #0x00
+   1598 FD 21r08r01   [14] 3634 	ld	iy, #_G_minY
+   159C FD 6E 00      [19] 3635 	ld	l, 0 (iy)
+   159F 26 00         [ 7] 3636 	ld	h, #0x00
+   15A1 19            [11] 3637 	add	hl, de
+   15A2 11 0A 00      [10] 3638 	ld	de, #0x000a
+   15A5 19            [11] 3639 	add	hl, de
+   15A6 06 00         [ 7] 3640 	ld	b, #0x00
+   15A8 7D            [ 4] 3641 	ld	a, l
+   15A9 91            [ 4] 3642 	sub	a, c
+   15AA 7C            [ 4] 3643 	ld	a, h
+   15AB 98            [ 4] 3644 	sbc	a, b
+   15AC E2rB1r15      [10] 3645 	jp	PO, 00127$
+   15AF EE 80         [ 7] 3646 	xor	a, #0x80
+   15B1                    3647 00127$:
+   15B1 F2r46r16      [10] 3648 	jp	P, 00108$
+                           3649 ;src/entities/entities.c:825: u8 x = G_minX + RAND_0_63(1);  // Random X for the new block
+   15B4 3E 01         [ 7] 3650 	ld	a, #0x01
+   15B6 F5            [11] 3651 	push	af
+   15B7 33            [ 6] 3652 	inc	sp
+   15B8 CDr00r00      [17] 3653 	call	_getRandomUniform
+   15BB 33            [ 6] 3654 	inc	sp
+   15BC 7D            [ 4] 3655 	ld	a, l
+   15BD E6 3F         [ 7] 3656 	and	a, #0x3f
+   15BF 6F            [ 4] 3657 	ld	l, a
+   15C0 FD 21r06r01   [14] 3658 	ld	iy, #_G_minX
+   15C4 FD 4E 00      [19] 3659 	ld	c, 0 (iy)
+   15C7 09            [11] 3660 	add	hl, bc
+   15C8 5D            [ 4] 3661 	ld	e, l
+                           3662 ;src/entities/entities.c:828: if (x >= G_maxX - 1) x = x - G_maxX + G_minX;
+   15C9 3Ar07r01      [13] 3663 	ld	a,(#_G_maxX + 0)
+   15CC DD 77 FF      [19] 3664 	ld	-1 (ix), a
+   15CF 6F            [ 4] 3665 	ld	l, a
+   15D0 26 00         [ 7] 3666 	ld	h, #0x00
+   15D2 2B            [ 6] 3667 	dec	hl
+   15D3 43            [ 4] 3668 	ld	b, e
+   15D4 16 00         [ 7] 3669 	ld	d, #0x00
+   15D6 78            [ 4] 3670 	ld	a, b
+   15D7 95            [ 4] 3671 	sub	a, l
+   15D8 7A            [ 4] 3672 	ld	a, d
+   15D9 9C            [ 4] 3673 	sbc	a, h
+   15DA E2rDFr15      [10] 3674 	jp	PO, 00128$
+   15DD EE 80         [ 7] 3675 	xor	a, #0x80
+   15DF                    3676 00128$:
+   15DF FArE9r15      [10] 3677 	jp	M, 00102$
+   15E2 7B            [ 4] 3678 	ld	a, e
+   15E3 DD 96 FF      [19] 3679 	sub	a, -1 (ix)
+   15E6 6F            [ 4] 3680 	ld	l, a
+   15E7 09            [11] 3681 	add	hl, bc
+   15E8 5D            [ 4] 3682 	ld	e, l
+   15E9                    3683 00102$:
+                           3684 ;src/entities/entities.c:831: w = RAND_0_15(rndinc) + 4;
+   15E9 D5            [11] 3685 	push	de
+   15EA DD 7E 06      [19] 3686 	ld	a, 6 (ix)
+   15ED F5            [11] 3687 	push	af
+   15EE 33            [ 6] 3688 	inc	sp
+   15EF CDr00r00      [17] 3689 	call	_getRandomUniform
+   15F2 33            [ 6] 3690 	inc	sp
+   15F3 D1            [10] 3691 	pop	de
+   15F4 7D            [ 4] 3692 	ld	a, l
+   15F5 E6 0F         [ 7] 3693 	and	a, #0x0f
+   15F7 57            [ 4] 3694 	ld	d, a
+   15F8 14            [ 4] 3695 	inc	d
+   15F9 14            [ 4] 3696 	inc	d
+   15FA 14            [ 4] 3697 	inc	d
+   15FB 14            [ 4] 3698 	inc	d
+                           3699 ;src/entities/entities.c:835: if (x + w > G_maxX) w = G_maxX - x;
+   15FC 4B            [ 4] 3700 	ld	c, e
+   15FD 06 00         [ 7] 3701 	ld	b, #0x00
+   15FF 6A            [ 4] 3702 	ld	l, d
+   1600 26 00         [ 7] 3703 	ld	h, #0x00
+   1602 09            [11] 3704 	add	hl, bc
+   1603 3Ar07r01      [13] 3705 	ld	a,(#_G_maxX + 0)
+   1606 DD 77 FF      [19] 3706 	ld	-1 (ix), a
+   1609 06 00         [ 7] 3707 	ld	b, #0x00
+   160B 95            [ 4] 3708 	sub	a, l
+   160C 78            [ 4] 3709 	ld	a, b
+   160D 9C            [ 4] 3710 	sbc	a, h
+   160E E2r13r16      [10] 3711 	jp	PO, 00129$
+   1611 EE 80         [ 7] 3712 	xor	a, #0x80
+   1613                    3713 00129$:
+   1613 F2r1Br16      [10] 3714 	jp	P, 00104$
+   1616 DD 7E FF      [19] 3715 	ld	a, -1 (ix)
+   1619 93            [ 4] 3716 	sub	a, e
+   161A 57            [ 4] 3717 	ld	d, a
+   161B                    3718 00104$:
+                           3719 ;src/entities/entities.c:838: if ( newSolidBlock(x, y, w, h, cpct_px2byteM0(G_platfColour, G_platfColour)) )
+   161B D5            [11] 3720 	push	de
+   161C 3Ar02r00      [13] 3721 	ld	a, (_G_platfColour)
+   161F F5            [11] 3722 	push	af
+   1620 33            [ 6] 3723 	inc	sp
+   1621 3Ar02r00      [13] 3724 	ld	a, (_G_platfColour)
+   1624 F5            [11] 3725 	push	af
+   1625 33            [ 6] 3726 	inc	sp
+   1626 CDr00r00      [17] 3727 	call	_cpct_px2byteM0
+   1629 45            [ 4] 3728 	ld	b, l
+   162A D1            [10] 3729 	pop	de
+   162B C5            [11] 3730 	push	bc
+   162C 33            [ 6] 3731 	inc	sp
+   162D DD 7E 05      [19] 3732 	ld	a, 5 (ix)
+   1630 F5            [11] 3733 	push	af
+   1631 33            [ 6] 3734 	inc	sp
+   1632 D5            [11] 3735 	push	de
+   1633 33            [ 6] 3736 	inc	sp
+   1634 DD 56 04      [19] 3737 	ld	d, 4 (ix)
+   1637 D5            [11] 3738 	push	de
+   1638 CDr09r14      [17] 3739 	call	_newSolidBlock
+   163B F1            [10] 3740 	pop	af
+   163C F1            [10] 3741 	pop	af
+   163D 33            [ 6] 3742 	inc	sp
+   163E 7C            [ 4] 3743 	ld	a, h
+   163F B5            [ 4] 3744 	or	a,l
+   1640 28 04         [12] 3745 	jr	Z,00108$
+                           3746 ;src/entities/entities.c:839: created = 1;
+   1642 DD 36 FE 01   [19] 3747 	ld	-2 (ix), #0x01
+   1646                    3748 00108$:
+                           3749 ;src/entities/entities.c:842: return created;
+   1646 DD 6E FE      [19] 3750 	ld	l, -2 (ix)
+   1649 DD F9         [10] 3751 	ld	sp, ix
+   164B DD E1         [14] 3752 	pop	ix
+   164D C9            [10] 3753 	ret
+                           3754 	.area _CODE
+                           3755 	.area _INITIALIZER
+                           3756 	.area _CABS (ABS)

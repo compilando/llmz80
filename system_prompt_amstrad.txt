@@ -1,0 +1,166 @@
+SPECIFIC INSTRUCTIONS FOR AMSTRAD CPC:
+
+1. BASIC STRUCTURE:
+   - Always include necessary CPCtelera headers (cpctelera.h, etc.)
+   - Use the cpct_disableFirmware() function at the start to disable the CPC firmware
+   - Implement a main loop for games or interactive applications
+
+2. GRAPHICS:
+   - If asked for a text mode program, you won't use graphic handling functions
+   - Use CPCtelera functions for drawing: cpct_drawSprite, cpct_drawSolidBox, etc.
+   - Remember that Amstrad CPC has 3 graphic modes:
+     * Mode 0: 160x200 with 16 colors (cpct_setVideoMode(0))
+     * Mode 1: 320x200 with 4 colors (cpct_setVideoMode(1))
+     * Mode 2: 640x200 with 2 colors (cpct_setVideoMode(2))
+   - The color palette is configured with cpct_setPalette() and cpct_setPALColour()
+   - Video memory starts at 0xC000
+
+3. SOUND:
+   - Use CPCtelera audio functions for the AY-3-8912 chip
+   - Examples: cpct_akp_musicInit, cpct_akp_musicPlay, cpct_akp_SFXInit, cpct_akp_SFXPlay
+
+4. INPUT:
+   - Read keyboard with cpct_scanKeyboard() and cpct_isKeyPressed()
+   - Read joystick with cpct_readJoystick()
+
+5. OPTIMIZATION:
+   - Use __z88dk_fastcall when possible for functions with a single parameter
+   - Take advantage of CPCtelera macros for common operations
+   - Minimize floating point operations, prioritize integers
+
+6. MEMORY:
+   - Available memory for programs starts at 0x4000
+   - Avoid writing to system reserved areas (0x0000-0x3FFF)
+   - There is NO malloc or dynamic memory in Z80/CPCtelera
+   - Use static arrays and object pools to simulate dynamic memory
+
+7. COMPILATION:
+   - Code must be compatible with CPCtelera
+   - Don't use Z88DK specific features that aren't in CPCtelera
+
+8. DATA STRUCTURES:
+   - To implement linked lists, trees or other data structures, use static arrays (pools)
+   - Clearly define the structure with typedef and use pointers for connections
+   - Implement functions to "allocate" and "free" nodes from the pool
+   - Initialize all pointers to NULL before using them
+   - Example of a linked list:
+   ```c
+   // Node structure definition
+   typedef struct Node {
+       u8 value;
+       struct Node* next;
+   } Node;
+
+   // Node pool
+   #define MAX_NODES 20
+   Node nodes_pool[MAX_NODES];
+   u8 next_free_node = 0;
+
+   // "Allocate" a node
+   Node* allocate_node() {
+       if (next_free_node < MAX_NODES) {
+           return &nodes_pool[next_free_node++];
+       }
+       return NULL;
+   }
+   ```
+
+9. SOLUTIONS TO COMMON ERRORS:
+   - Error with 'u8' type: Make sure to include <cpctelera.h> before using types like u8, u16, etc.
+   - Error with hexadecimal constants (0x0400, 0x0100): SDCC may have problems with some hexadecimal constants. Use parentheses or define constants: #define ADDR_0x0400 0x0400
+   - Error "Undefined identifier 'palette'": You must define variables before using them. For palettes, use u8 arrays: u8 palette[16] = {0, 1, 2, 3...};
+   - Error "converting integral to pointer without a cast": Use explicit casting when converting between types, especially with pointers: (u8*)0xC000 instead of 0xC000
+   - Error with CPCtelera functions: Verify you're using the correct syntax. Many functions require specific parameters.
+   - Error "incompatible types": Make sure types match in assignments and function parameters. Use casting when necessary.
+   - Error with arrays: Declare arrays with fixed size: u8 my_array[10]; not u8 my_array[];
+   - Error "function 'malloc' implicit declaration": There is NO malloc in Z80/CPCtelera. Use static arrays and object pools.
+   - Error "too many parameters": Check the correct function signature in the CPCtelera documentation.
+   - Error "syntax error: token -> 'Node' or 'char'": Define structures correctly with typedef before using them.
+   - Error "indirections to different types assignment": Use explicit casting when assigning pointers of different types.
+   - Error "Pointer required": Make sure to use the -> operator only with pointers. For non-pointer variables, use the dot (.) operator.
+   - Error "Undefined identifier 'animal', 'vegetal', 'mineral'": Declare all variables before using them, especially if they are pointers to structures.
+
+10. EXAMPLES OF CORRECT CODE:
+   ```c
+   #include <cpctelera.h>
+   
+   // Correct palette definition
+   const u8 g_palette[16] = {0, 3, 6, 9, 12, 15, 18, 21, 24, 26, 28, 30, 31, 22, 14, 6};
+   
+   // Correct structure definition
+   typedef struct {
+       u8 x;
+       u8 y;
+       u8 color;
+   } Sprite;
+   
+   // Sprite pool to simulate dynamic memory
+   #define MAX_SPRITES 10
+   Sprite sprites_pool[MAX_SPRITES];
+   u8 next_free_sprite = 0;
+   
+   // Function to "allocate" a sprite
+   Sprite* allocate_sprite() {
+       if (next_free_sprite < MAX_SPRITES) {
+           return &sprites_pool[next_free_sprite++];
+       }
+       return NULL; // No more sprites available
+   }
+   
+   void main(void) {
+       // Disable firmware
+       cpct_disableFirmware();
+       
+       // Set video mode (1 = 320x200, 4 colors)
+       cpct_setVideoMode(1);
+       
+       // Set color palette
+       cpct_setPalette(g_palette, 16);
+       
+       // Create a sprite using our pool
+       Sprite* player = allocate_sprite();
+       if (player != NULL) {
+           player->x = 40;
+           player->y = 100;
+           player->color = 1;
+       }
+       
+       // Draw a solid rectangle (with correct casting for the memory address)
+       cpct_drawSolidBox((void*)0xC000, 1, 40, 40);
+       
+       // Main loop
+       while(1) {
+           // Scan keyboard
+           cpct_scanKeyboard();
+           
+           // Check if ESC key is pressed
+           if (cpct_isKeyPressed(Key_Esc)) {
+               break;
+           }
+       }
+   }
+   ```
+
+11. EXAMPLE OF ANIVEMIN GAME (ANIMAL, VEGETABLE OR MINERAL):
+   - To implement a guessing game like Anivemin, use a binary tree with a node pool.
+   - Define the node structure with fields for the question, answers, and category.
+   - Initialize all variables before using them.
+   - Basic example:
+   ```c
+   // Node structure definition
+   typedef struct Node {
+       char question[40];           // Question or answer
+       struct Node* yes;            // Pointer to node if answer is "yes"
+       struct Node* no;             // Pointer to node if answer is "no"
+       u8 is_answer;                // 1 if it's a final answer, 0 if it's a question
+       u8 category;                 // 0=animal, 1=vegetable, 2=mineral
+   } Node;
+
+   // Global variables for categories
+   Node* animal = NULL;
+   Node* vegetal = NULL;
+   Node* mineral = NULL;
+   Node* current_node = NULL;
+   ```
+
+REMEMBER: Amstrad CPC is different from ZX Spectrum. Make sure to use the functions and features specific to Amstrad CPC and CPCtelera.

@@ -1,0 +1,417 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module main
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _main
+                             12 	.globl _printMessages
+                             13 	.globl _printf
+                             14 	.globl _cpct_setVideoMemoryPage
+                             15 	.globl _cpct_setPALColour
+                             16 	.globl _cpct_waitVSYNC
+                             17 	.globl _cpct_isKeyPressed
+                             18 	.globl _cpct_scanKeyboard
+                             19 	.globl _cpct_setStackLocation
+                             20 	.globl _cpct_memcpy
+                             21 	.globl _cpct_memset_f64
+                             22 	.globl _cpct_disableFirmware
+                             23 ;--------------------------------------------------------
+                             24 ; special function registers
+                             25 ;--------------------------------------------------------
+                             26 ;--------------------------------------------------------
+                             27 ; ram data
+                             28 ;--------------------------------------------------------
+                             29 	.area _DATA
+                             30 ;--------------------------------------------------------
+                             31 ; ram data
+                             32 ;--------------------------------------------------------
+                             33 	.area _INITIALIZED
+                             34 ;--------------------------------------------------------
+                             35 ; absolute external ram data
+                             36 ;--------------------------------------------------------
+                             37 	.area _DABS (ABS)
+                             38 ;--------------------------------------------------------
+                             39 ; global & static initialisations
+                             40 ;--------------------------------------------------------
+                             41 	.area _HOME
+                             42 	.area _GSINIT
+                             43 	.area _GSFINAL
+                             44 	.area _GSINIT
+                             45 ;--------------------------------------------------------
+                             46 ; Home
+                             47 ;--------------------------------------------------------
+                             48 	.area _HOME
+                             49 	.area _HOME
+                             50 ;--------------------------------------------------------
+                             51 ; code
+                             52 ;--------------------------------------------------------
+                             53 	.area _CODE
+                             54 ;src/main.c:29: void printMessages() {
+                             55 ;	---------------------------------
+                             56 ; Function printMessages
+                             57 ; ---------------------------------
+   0000                      58 _printMessages::
+                             59 ;src/main.c:33: printf("     \017\003SET PROGRAM STACK LOCATION DEMO\n\r");
+   0000 21r8Br00      [10]   60 	ld	hl, #___str_0
+   0003 E5            [11]   61 	push	hl
+   0004 CDr00r00      [17]   62 	call	_printf
+                             63 ;src/main.c:34: printf("    \017\002#################################\n\n\r");
+   0007 21rB4r00      [10]   64 	ld	hl, #___str_1
+   000A E3            [19]   65 	ex	(sp),hl
+   000B CDr00r00      [17]   66 	call	_printf
+                             67 ;src/main.c:36: printf("\017\001  This program  changes  stack  location");
+   000E 21rDFr00      [10]   68 	ld	hl, #___str_2
+   0011 E3            [19]   69 	ex	(sp),hl
+   0012 CDr00r00      [17]   70 	call	_printf
+                             71 ;src/main.c:37: printf("to \017\0030x200\017\001, just  below  the start  of the");
+   0015 21r0Ar01      [10]   72 	ld	hl, #___str_3
+   0018 E3            [19]   73 	ex	(sp),hl
+   0019 CDr00r00      [17]   74 	call	_printf
+                             75 ;src/main.c:38: printf("main function.\n\n\r");
+   001C 21r37r01      [10]   76 	ld	hl, #___str_4
+   001F E3            [19]   77 	ex	(sp),hl
+   0020 CDr00r00      [17]   78 	call	_printf
+                             79 ;src/main.c:40: printf("  With this change, the 3rd  memory bank");
+   0023 21r49r01      [10]   80 	ld	hl, #___str_5
+   0026 E3            [19]   81 	ex	(sp),hl
+   0027 CDr00r00      [17]   82 	call	_printf
+                             83 ;src/main.c:41: printf("can be  enterely used as  double buffer,");
+   002A 21r72r01      [10]   84 	ld	hl, #___str_6
+   002D E3            [19]   85 	ex	(sp),hl
+   002E CDr00r00      [17]   86 	call	_printf
+                             87 ;src/main.c:42: printf("making easier to map code and  data into");
+   0031 21r9Br01      [10]   88 	ld	hl, #___str_7
+   0034 E3            [19]   89 	ex	(sp),hl
+   0035 CDr00r00      [17]   90 	call	_printf
+                             91 ;src/main.c:43: printf("memory.\n\n\r");
+   0038 21rC4r01      [10]   92 	ld	hl, #___str_8
+   003B E3            [19]   93 	ex	(sp),hl
+   003C CDr00r00      [17]   94 	call	_printf
+                             95 ;src/main.c:45: printf("  If you  want to  check this, open  the");
+   003F 21rCFr01      [10]   96 	ld	hl, #___str_9
+   0042 E3            [19]   97 	ex	(sp),hl
+   0043 CDr00r00      [17]   98 	call	_printf
+                             99 ;src/main.c:46: printf("debugger and  have  a look at the  stack");
+   0046 21rF8r01      [10]  100 	ld	hl, #___str_10
+   0049 E3            [19]  101 	ex	(sp),hl
+   004A CDr00r00      [17]  102 	call	_printf
+                            103 ;src/main.c:47: printf("pointer (\017\002SP\017\001) and the stack contents.\n\n\r");
+   004D 21r21r02      [10]  104 	ld	hl, #___str_11
+   0050 E3            [19]  105 	ex	(sp),hl
+   0051 CDr00r00      [17]  106 	call	_printf
+                            107 ;src/main.c:49: printf("  Now you can use \017\002keys \017\003[\017\0021\017\003]");
+   0054 21r4Dr02      [10]  108 	ld	hl, #___str_12
+   0057 E3            [19]  109 	ex	(sp),hl
+   0058 CDr00r00      [17]  110 	call	_printf
+                            111 ;src/main.c:50: printf("\017\001&\017\003[\017\0022\017\003]\017\001 to change");
+   005B 21r70r02      [10]  112 	ld	hl, #___str_13
+   005E E3            [19]  113 	ex	(sp),hl
+   005F CDr00r00      [17]  114 	call	_printf
+                            115 ;src/main.c:51: printf("from main  screen  buffer to  the double");
+   0062 21r89r02      [10]  116 	ld	hl, #___str_14
+   0065 E3            [19]  117 	ex	(sp),hl
+   0066 CDr00r00      [17]  118 	call	_printf
+                            119 ;src/main.c:52: printf("buffer which contains a fullscreen image");
+   0069 21rB2r02      [10]  120 	ld	hl, #___str_15
+   006C E3            [19]  121 	ex	(sp),hl
+   006D CDr00r00      [17]  122 	call	_printf
+                            123 ;src/main.c:53: printf("with a pattern like this:\n\n\r");
+   0070 21rDBr02      [10]  124 	ld	hl, #___str_16
+   0073 E3            [19]  125 	ex	(sp),hl
+   0074 CDr00r00      [17]  126 	call	_printf
+   0077 F1            [10]  127 	pop	af
+                            128 ;src/main.c:55: for (i=0; i < 60; ++i)
+   0078 0E 00         [ 7]  129 	ld	c, #0x00
+   007A                     130 00102$:
+                            131 ;src/main.c:56: printf("\017\001#\017\003#");
+   007A C5            [11]  132 	push	bc
+   007B 21rF8r02      [10]  133 	ld	hl, #___str_17
+   007E E5            [11]  134 	push	hl
+   007F CDr00r00      [17]  135 	call	_printf
+   0082 F1            [10]  136 	pop	af
+   0083 C1            [10]  137 	pop	bc
+                            138 ;src/main.c:55: for (i=0; i < 60; ++i)
+   0084 0C            [ 4]  139 	inc	c
+   0085 79            [ 4]  140 	ld	a, c
+   0086 D6 3C         [ 7]  141 	sub	a, #0x3c
+   0088 38 F0         [12]  142 	jr	C,00102$
+   008A C9            [10]  143 	ret
+   008B                     144 ___str_0:
+   008B 20 20 20 20 20      145 	.ascii "     "
+   0090 0F                  146 	.db 0x0f
+   0091 03                  147 	.db 0x03
+   0092 53 45 54 20 50 52   148 	.ascii "SET PROGRAM STACK LOCATION DEMO"
+        4F 47 52 41 4D 20
+        53 54 41 43 4B 20
+        4C 4F 43 41 54 49
+        4F 4E 20 44 45 4D
+        4F
+   00B1 0A                  149 	.db 0x0a
+   00B2 0D                  150 	.db 0x0d
+   00B3 00                  151 	.db 0x00
+   00B4                     152 ___str_1:
+   00B4 20 20 20 20         153 	.ascii "    "
+   00B8 0F                  154 	.db 0x0f
+   00B9 02                  155 	.db 0x02
+   00BA 23 23 23 23 23 23   156 	.ascii "#################################"
+        23 23 23 23 23 23
+        23 23 23 23 23 23
+        23 23 23 23 23 23
+        23 23 23 23 23 23
+        23 23 23
+   00DB 0A                  157 	.db 0x0a
+   00DC 0A                  158 	.db 0x0a
+   00DD 0D                  159 	.db 0x0d
+   00DE 00                  160 	.db 0x00
+   00DF                     161 ___str_2:
+   00DF 0F                  162 	.db 0x0f
+   00E0 01                  163 	.db 0x01
+   00E1 20 20 54 68 69 73   164 	.ascii "  This program  changes  stack  location"
+        20 70 72 6F 67 72
+        61 6D 20 20 63 68
+        61 6E 67 65 73 20
+        20 73 74 61 63 6B
+        20 20 6C 6F 63 61
+        74 69 6F 6E
+   0109 00                  165 	.db 0x00
+   010A                     166 ___str_3:
+   010A 74 6F 20            167 	.ascii "to "
+   010D 0F                  168 	.db 0x0f
+   010E 03                  169 	.db 0x03
+   010F 30 78 32 30 30      170 	.ascii "0x200"
+   0114 0F                  171 	.db 0x0f
+   0115 01                  172 	.db 0x01
+   0116 2C 20 6A 75 73 74   173 	.ascii ", just  below  the start  of the"
+        20 20 62 65 6C 6F
+        77 20 20 74 68 65
+        20 73 74 61 72 74
+        20 20 6F 66 20 74
+        68 65
+   0136 00                  174 	.db 0x00
+   0137                     175 ___str_4:
+   0137 6D 61 69 6E 20 66   176 	.ascii "main function."
+        75 6E 63 74 69 6F
+        6E 2E
+   0145 0A                  177 	.db 0x0a
+   0146 0A                  178 	.db 0x0a
+   0147 0D                  179 	.db 0x0d
+   0148 00                  180 	.db 0x00
+   0149                     181 ___str_5:
+   0149 20 20 57 69 74 68   182 	.ascii "  With this change, the 3rd  memory bank"
+        20 74 68 69 73 20
+        63 68 61 6E 67 65
+        2C 20 74 68 65 20
+        33 72 64 20 20 6D
+        65 6D 6F 72 79 20
+        62 61 6E 6B
+   0171 00                  183 	.db 0x00
+   0172                     184 ___str_6:
+   0172 63 61 6E 20 62 65   185 	.ascii "can be  enterely used as  double buffer,"
+        20 20 65 6E 74 65
+        72 65 6C 79 20 75
+        73 65 64 20 61 73
+        20 20 64 6F 75 62
+        6C 65 20 62 75 66
+        66 65 72 2C
+   019A 00                  186 	.db 0x00
+   019B                     187 ___str_7:
+   019B 6D 61 6B 69 6E 67   188 	.ascii "making easier to map code and  data into"
+        20 65 61 73 69 65
+        72 20 74 6F 20 6D
+        61 70 20 63 6F 64
+        65 20 61 6E 64 20
+        20 64 61 74 61 20
+        69 6E 74 6F
+   01C3 00                  189 	.db 0x00
+   01C4                     190 ___str_8:
+   01C4 6D 65 6D 6F 72 79   191 	.ascii "memory."
+        2E
+   01CB 0A                  192 	.db 0x0a
+   01CC 0A                  193 	.db 0x0a
+   01CD 0D                  194 	.db 0x0d
+   01CE 00                  195 	.db 0x00
+   01CF                     196 ___str_9:
+   01CF 20 20 49 66 20 79   197 	.ascii "  If you  want to  check this, open  the"
+        6F 75 20 20 77 61
+        6E 74 20 74 6F 20
+        20 63 68 65 63 6B
+        20 74 68 69 73 2C
+        20 6F 70 65 6E 20
+        20 74 68 65
+   01F7 00                  198 	.db 0x00
+   01F8                     199 ___str_10:
+   01F8 64 65 62 75 67 67   200 	.ascii "debugger and  have  a look at the  stack"
+        65 72 20 61 6E 64
+        20 20 68 61 76 65
+        20 20 61 20 6C 6F
+        6F 6B 20 61 74 20
+        74 68 65 20 20 73
+        74 61 63 6B
+   0220 00                  201 	.db 0x00
+   0221                     202 ___str_11:
+   0221 70 6F 69 6E 74 65   203 	.ascii "pointer ("
+        72 20 28
+   022A 0F                  204 	.db 0x0f
+   022B 02                  205 	.db 0x02
+   022C 53 50               206 	.ascii "SP"
+   022E 0F                  207 	.db 0x0f
+   022F 01                  208 	.db 0x01
+   0230 29 20 61 6E 64 20   209 	.ascii ") and the stack contents."
+        74 68 65 20 73 74
+        61 63 6B 20 63 6F
+        6E 74 65 6E 74 73
+        2E
+   0249 0A                  210 	.db 0x0a
+   024A 0A                  211 	.db 0x0a
+   024B 0D                  212 	.db 0x0d
+   024C 00                  213 	.db 0x00
+   024D                     214 ___str_12:
+   024D 20 20 4E 6F 77 20   215 	.ascii "  Now you can use "
+        79 6F 75 20 63 61
+        6E 20 75 73 65 20
+   025F 0F                  216 	.db 0x0f
+   0260 02                  217 	.db 0x02
+   0261 6B 65 79 73 20      218 	.ascii "keys "
+   0266 0F                  219 	.db 0x0f
+   0267 03                  220 	.db 0x03
+   0268 5B                  221 	.ascii "["
+   0269 0F                  222 	.db 0x0f
+   026A 02                  223 	.db 0x02
+   026B 31                  224 	.ascii "1"
+   026C 0F                  225 	.db 0x0f
+   026D 03                  226 	.db 0x03
+   026E 5D                  227 	.ascii "]"
+   026F 00                  228 	.db 0x00
+   0270                     229 ___str_13:
+   0270 0F                  230 	.db 0x0f
+   0271 01                  231 	.db 0x01
+   0272 26                  232 	.ascii "&"
+   0273 0F                  233 	.db 0x0f
+   0274 03                  234 	.db 0x03
+   0275 5B                  235 	.ascii "["
+   0276 0F                  236 	.db 0x0f
+   0277 02                  237 	.db 0x02
+   0278 32                  238 	.ascii "2"
+   0279 0F                  239 	.db 0x0f
+   027A 03                  240 	.db 0x03
+   027B 5D                  241 	.ascii "]"
+   027C 0F                  242 	.db 0x0f
+   027D 01                  243 	.db 0x01
+   027E 20 74 6F 20 63 68   244 	.ascii " to change"
+        61 6E 67 65
+   0288 00                  245 	.db 0x00
+   0289                     246 ___str_14:
+   0289 66 72 6F 6D 20 6D   247 	.ascii "from main  screen  buffer to  the double"
+        61 69 6E 20 20 73
+        63 72 65 65 6E 20
+        20 62 75 66 66 65
+        72 20 74 6F 20 20
+        74 68 65 20 64 6F
+        75 62 6C 65
+   02B1 00                  248 	.db 0x00
+   02B2                     249 ___str_15:
+   02B2 62 75 66 66 65 72   250 	.ascii "buffer which contains a fullscreen image"
+        20 77 68 69 63 68
+        20 63 6F 6E 74 61
+        69 6E 73 20 61 20
+        66 75 6C 6C 73 63
+        72 65 65 6E 20 69
+        6D 61 67 65
+   02DA 00                  251 	.db 0x00
+   02DB                     252 ___str_16:
+   02DB 77 69 74 68 20 61   253 	.ascii "with a pattern like this:"
+        20 70 61 74 74 65
+        72 6E 20 6C 69 6B
+        65 20 74 68 69 73
+        3A
+   02F4 0A                  254 	.db 0x0a
+   02F5 0A                  255 	.db 0x0a
+   02F6 0D                  256 	.db 0x0d
+   02F7 00                  257 	.db 0x00
+   02F8                     258 ___str_17:
+   02F8 0F                  259 	.db 0x0f
+   02F9 01                  260 	.db 0x01
+   02FA 23                  261 	.ascii "#"
+   02FB 0F                  262 	.db 0x0f
+   02FC 03                  263 	.db 0x03
+   02FD 23                  264 	.ascii "#"
+   02FE 00                  265 	.db 0x00
+                            266 ;src/main.c:62: void main(void) { 
+                            267 ;	---------------------------------
+                            268 ; Function main
+                            269 ; ---------------------------------
+   02FF                     270 _main::
+                            271 ;src/main.c:64: cpct_clearScreen_f64(0x0000);
+   02FF 21 00 40      [10]  272 	ld	hl, #0x4000
+   0302 E5            [11]  273 	push	hl
+   0303 26 00         [ 7]  274 	ld	h, #0x00
+   0305 E5            [11]  275 	push	hl
+   0306 26 C0         [ 7]  276 	ld	h, #0xc0
+   0308 E5            [11]  277 	push	hl
+   0309 CDr00r00      [17]  278 	call	_cpct_memset_f64
+                            279 ;src/main.c:65: printMessages();
+   030C CDr00r00      [17]  280 	call	_printMessages
+                            281 ;src/main.c:69: cpct_disableFirmware();
+   030F CDr00r00      [17]  282 	call	_cpct_disableFirmware
+                            283 ;src/main.c:76: cpct_memcpy(NEW_STACK_LOCATION - 6, PREVIOUS_STACK_LOCATION - 6, 6);
+   0312 21 06 00      [10]  284 	ld	hl, #0x0006
+   0315 E5            [11]  285 	push	hl
+   0316 21 FA BF      [10]  286 	ld	hl, #0xbffa
+   0319 E5            [11]  287 	push	hl
+   031A 26 01         [ 7]  288 	ld	h, #0x01
+   031C E5            [11]  289 	push	hl
+   031D CDr00r00      [17]  290 	call	_cpct_memcpy
+                            291 ;src/main.c:77: cpct_setStackLocation(NEW_STACK_LOCATION - 6);
+   0320 21 FA 01      [10]  292 	ld	hl, #0x01fa
+   0323 CDr00r00      [17]  293 	call	_cpct_setStackLocation
+                            294 ;src/main.c:81: cpct_memset_f64((void*)0x8000, 0xFFF0, 0x4000);
+   0326 21 00 40      [10]  295 	ld	hl, #0x4000
+   0329 E5            [11]  296 	push	hl
+   032A 21 F0 FF      [10]  297 	ld	hl, #0xfff0
+   032D E5            [11]  298 	push	hl
+   032E 21 00 80      [10]  299 	ld	hl, #0x8000
+   0331 E5            [11]  300 	push	hl
+   0332 CDr00r00      [17]  301 	call	_cpct_memset_f64
+                            302 ;src/main.c:85: while(1) {
+   0335                     303 00107$:
+                            304 ;src/main.c:86: cpct_waitVSYNC();
+   0335 CDr00r00      [17]  305 	call	_cpct_waitVSYNC
+                            306 ;src/main.c:87: cpct_scanKeyboard();     
+   0338 CDr00r00      [17]  307 	call	_cpct_scanKeyboard
+                            308 ;src/main.c:89: if (cpct_isKeyPressed(Key_1)) {
+   033B 21 08 01      [10]  309 	ld	hl, #0x0108
+   033E CDr00r00      [17]  310 	call	_cpct_isKeyPressed
+   0341 7D            [ 4]  311 	ld	a, l
+   0342 B7            [ 4]  312 	or	a, a
+   0343 28 0E         [12]  313 	jr	Z,00104$
+                            314 ;src/main.c:90: cpct_setBorder(4);
+   0345 21 10 04      [10]  315 	ld	hl, #0x0410
+   0348 E5            [11]  316 	push	hl
+   0349 CDr00r00      [17]  317 	call	_cpct_setPALColour
+                            318 ;src/main.c:91: cpct_setVideoMemoryPage(cpct_pageC0);
+   034C 2E 30         [ 7]  319 	ld	l, #0x30
+   034E CDr00r00      [17]  320 	call	_cpct_setVideoMemoryPage
+   0351 18 E2         [12]  321 	jr	00107$
+   0353                     322 00104$:
+                            323 ;src/main.c:92: } else if (cpct_isKeyPressed(Key_2)) {
+   0353 21 08 02      [10]  324 	ld	hl, #0x0208
+   0356 CDr00r00      [17]  325 	call	_cpct_isKeyPressed
+   0359 7D            [ 4]  326 	ld	a, l
+   035A B7            [ 4]  327 	or	a, a
+   035B 28 D8         [12]  328 	jr	Z,00107$
+                            329 ;src/main.c:93: cpct_setBorder(3);
+   035D 21 10 03      [10]  330 	ld	hl, #0x0310
+   0360 E5            [11]  331 	push	hl
+   0361 CDr00r00      [17]  332 	call	_cpct_setPALColour
+                            333 ;src/main.c:94: cpct_setVideoMemoryPage(cpct_page80);
+   0364 2E 20         [ 7]  334 	ld	l, #0x20
+   0366 CDr00r00      [17]  335 	call	_cpct_setVideoMemoryPage
+   0369 18 CA         [12]  336 	jr	00107$
+                            337 	.area _CODE
+                            338 	.area _INITIALIZER
+                            339 	.area _CABS (ABS)

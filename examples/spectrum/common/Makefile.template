@@ -1,0 +1,18 @@
+CC=zcc
+CFLAGS=+zx -vn -O3 -clib=sdcc_iy
+LDFLAGS=-create-app -subtype=tap
+TARGET=example_name
+
+SOURCES=$(wildcard src/*.c)
+OBJECTS=$(SOURCES:src/%.c=obj/%.o)
+
+all: $(TARGET)
+
+$(TARGET): $(OBJECTS)
+	$(CC) $(CFLAGS) $(OBJECTS) -o $@ $(LDFLAGS)
+
+obj/%.o: src/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+clean:
+	rm -f obj/* $(TARGET) $(TARGET).tap

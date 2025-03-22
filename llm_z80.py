@@ -33,7 +33,7 @@ class ConsoleFormatter(logging.Formatter):
         return colored(f"{icon} {record.levelname}: {record.getMessage()}", color)
 
 class LLMZ80Generator:
-    def __init__(self, platform="zx_spectrum", config_path="config.yml"):
+    def __init__(self, platform="spectrum", config_path="config.yml"):
         # Configure logging
         log_dir = Path('local/logs')
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -55,7 +55,7 @@ class LLMZ80Generator:
             handlers=[file_handler, console_handler]
         )
         
-        # Set platform (zx_spectrum or amstrad_cpc)
+        # Set platform (spectrum or amstrad_cpc)
         self.platform = platform
         logging.info(f"Starting LLMZ80 Code Generator for {self.platform.upper().replace('_', ' ')}")
         
@@ -100,7 +100,7 @@ class LLMZ80Generator:
         }
         
         # Añadir archivos específicos de la plataforma
-        if self.platform == 'zx_spectrum':
+        if self.platform == 'spectrum':
             paths['output_file'] = base_dir / 'output.tap'
         elif self.platform == 'amstrad_cpc':
             paths['output_file'] = base_dir / 'output.dsk'
@@ -139,24 +139,19 @@ class LLMZ80Generator:
         logging.info(f"✅ {len(examples)} ejemplos cargados")
         return examples
 
-    def read_system_prompt_extra(self):
+    def read_system_prompt(self):
         """Lee el archivo de recomendaciones adicionales para el system prompt"""
         content = ""
         
         # Intentar leer archivo específico de la plataforma primero
-        platform_file = f'system_prompt_extra_{self.platform}.txt'
+        platform_file = f'system_prompt_{self.platform}.txt'
         try:
             if os.path.exists(platform_file):
                 with open(platform_file, 'r', encoding='utf-8') as f:
                     content = "\n" + f.read()
                 logging.info(f"✅ Archivo de prompt específico cargado: {platform_file}")
-            else:
-                # Caer en el archivo genérico
-                with open('system_prompt_extra.txt', 'r', encoding='utf-8') as f:
-                    content = "\n" + f.read()
-                logging.info(f"✅ Archivo de prompt genérico cargado: system_prompt_extra.txt")
         except FileNotFoundError:
-            logging.warning(f"⚠️ No se encontró {platform_file} ni system_prompt_extra.txt")
+            logging.warning(f"⚠️ No se encontró {platform_file}")
         except Exception as e:
             logging.error(f"❌ Error leyendo archivo de prompt: {e}")
         
@@ -207,7 +202,7 @@ class LLMZ80Generator:
         examples = self._load_examples()
         
         # Crear el prompt del sistema con los ejemplos
-        if self.platform == 'zx_spectrum':
+        if self.platform == 'spectrum':
             system_prompt = """You are a Z88DK C code generator for ZX Spectrum 48K.
 CRITICAL: Output ONLY the source code itself. No introduction, no explanation, no markdown blocks.
 """
@@ -229,7 +224,10 @@ CRITICAL: Output ONLY the source code itself. No introduction, no explanation, n
                 system_prompt += f"Description: {example['description']}\n"
             system_prompt += f"Code:\n{example['content']}\n"
         
-        if self.platform == 'zx_spectrum':
+        # Leer instrucciones adicionales del system prompt
+        additional_instructions = self.read_system_prompt()
+        
+        if self.platform == 'spectrum':
             system_prompt += """
 Based on these examples, generate a new program following these rules:
 - Use similar structure and style to the examples
@@ -250,14 +248,18 @@ Based on these examples, generate a new program following these rules:
 - Must compile with CPCtelera
 """
         
-        system_prompt += self.read_system_prompt_extra()
+        # Añadir instrucciones adicionales del archivo system_prompt
+        system_prompt += additional_instructions
+        
+        # Crear un prompt de usuario enriquecido que incorpore el contexto
+        user_prompt = f"Write {self.platform.replace('_', ' ')} C code that: {prompt}\n\nYour code should follow all the instructions and examples provided in the system prompt. Remember to output ONLY the code without any markdown or explanations."
         
         try:
             response = self.client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Write {self.platform.replace('_', ' ')} C code that: {prompt} OUTPUT CODE ONLY."}
+                    {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.7,
                 max_tokens=4096
@@ -301,9 +303,11 @@ Based on these examples, generate a new program following these rules:
 def main():
     # Configurar argumentos de línea de comandos
     parser = argparse.ArgumentParser(description='LLMZ80 Code Generator')
-    parser.add_argument('--platform', type=str, default='zx_spectrum', 
-                        choices=['zx_spectrum', 'amstrad_cpc'],
-                        help='Target platform (zx_spectrum or amstrad_cpc)')
+    parser.add_argument('--platform', type=str, default='spectrum', 
+                        choices=['spectrum', 'amstrad_cpc'],
+                        help='Target platform (spectrum or amstrad_cpc)')
+    parser.add_argument('--prompt', type=str,
+                        help='Prompt for code generation (optional)')
     args = parser.parse_args()
     
     platform_name = args.platform.upper().replace('_', ' ')
@@ -313,7 +317,12 @@ def main():
     
     try:
         generator = LLMZ80Generator(platform=args.platform)
-        prompt = input(colored("\n📝 Enter your prompt: ", "yellow"))
+        
+        # Use provided prompt or request one interactively
+        prompt = args.prompt
+        if not prompt:
+            prompt = input(colored("\n📝 Enter your prompt: ", "yellow"))
+            
         logging.info("Starting code generation process")
         
         paths = generator._get_output_paths(prompt)
@@ -324,7 +333,7 @@ def main():
         print(colored(f"📂 Files saved in: {paths['base']}", "cyan"))
         print(colored(f"📄 C code: {paths['c_file']}", "cyan"))
         
-        if args.platform == 'zx_spectrum':
+        if args.platform == 'spectrum':
             print(colored("\n🚀 Continuing 'build.sh' to compile and run the program", "yellow"))
         elif args.platform == 'amstrad_cpc':
             print(colored("\n🚀 Continuing 'build_amstrad.sh' to compile and run the program", "yellow"))

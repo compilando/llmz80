@@ -104,7 +104,7 @@ echo -e "${BLUE}${BOLD}🧪 Retro Computer Examples Test Suite${NC}\n"
 PLATFORMS=("zx")
 
 # Count total examples and platforms
-total_examples=$(ls examples/zx_spectrum/*.c | wc -l)
+total_examples=$(ls examples/spectrum/*.c | wc -l)
 total_tests=$((total_examples * ${#PLATFORMS[@]}))
 current=0
 successful=0
@@ -112,7 +112,7 @@ failed=0
 
 # Test each example on each platform
 for platform in "${PLATFORMS[@]}"; do
-    for example in examples/zx_spectrum/*.c; do
+    for example in examples/spectrum/*.c; do
         current=$((current + 1))
         progress=$((current * 100 / total_tests))
         

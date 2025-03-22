@@ -1,0 +1,288 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module main
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _main
+                             12 	.globl _initialize
+                             13 	.globl _cpct_getScreenPtr
+                             14 	.globl _cpct_setPALColour
+                             15 	.globl _cpct_waitVSYNC
+                             16 	.globl _cpct_setVideoMode
+                             17 	.globl _cpct_drawStringM2
+                             18 	.globl _cpct_setDrawCharM2
+                             19 	.globl _cpct_drawSprite
+                             20 	.globl _cpct_drawSolidBox
+                             21 	.globl _cpct_hflipSpriteM2
+                             22 	.globl _cpct_isAnyKeyPressed
+                             23 	.globl _cpct_scanKeyboard_f
+                             24 	.globl _cpct_disableFirmware
+                             25 	.globl _g_animation
+                             26 ;--------------------------------------------------------
+                             27 ; special function registers
+                             28 ;--------------------------------------------------------
+                             29 ;--------------------------------------------------------
+                             30 ; ram data
+                             31 ;--------------------------------------------------------
+                             32 	.area _DATA
+                             33 ;--------------------------------------------------------
+                             34 ; ram data
+                             35 ;--------------------------------------------------------
+                             36 	.area _INITIALIZED
+                             37 ;--------------------------------------------------------
+                             38 ; absolute external ram data
+                             39 ;--------------------------------------------------------
+                             40 	.area _DABS (ABS)
+                             41 ;--------------------------------------------------------
+                             42 ; global & static initialisations
+                             43 ;--------------------------------------------------------
+                             44 	.area _HOME
+                             45 	.area _GSINIT
+                             46 	.area _GSFINAL
+                             47 	.area _GSINIT
+                             48 ;--------------------------------------------------------
+                             49 ; Home
+                             50 ;--------------------------------------------------------
+                             51 	.area _HOME
+                             52 	.area _HOME
+                             53 ;--------------------------------------------------------
+                             54 ; code
+                             55 ;--------------------------------------------------------
+                             56 	.area _CODE
+                             57 ;src/main.c:52: void initialize() {
+                             58 ;	---------------------------------
+                             59 ; Function initialize
+                             60 ; ---------------------------------
+   0000                      61 _initialize::
+                             62 ;src/main.c:56: cpct_disableFirmware();
+   0000 CDr00r00      [17]   63 	call	_cpct_disableFirmware
+                             64 ;src/main.c:59: cpct_setBorder(HW_BLACK);
+   0003 21 10 14      [10]   65 	ld	hl, #0x1410
+   0006 E5            [11]   66 	push	hl
+   0007 CDr00r00      [17]   67 	call	_cpct_setPALColour
+                             68 ;src/main.c:60: cpct_setPALColour(0, HW_BLACK);
+   000A 21 00 14      [10]   69 	ld	hl, #0x1400
+   000D E5            [11]   70 	push	hl
+   000E CDr00r00      [17]   71 	call	_cpct_setPALColour
+                             72 ;src/main.c:61: cpct_setPALColour(1, HW_WHITE);
+   0011 21 01 00      [10]   73 	ld	hl, #0x0001
+   0014 E5            [11]   74 	push	hl
+   0015 CDr00r00      [17]   75 	call	_cpct_setPALColour
+                             76 ;src/main.c:64: cpct_setVideoMode(2);
+   0018 2E 02         [ 7]   77 	ld	l, #0x02
+   001A CDr00r00      [17]   78 	call	_cpct_setVideoMode
+                             79 ;src/main.c:68: cpct_drawSprite(g_banner_0, CPCT_VMEM_START             , BANNER_W/2, BANNER_H);
+   001D 21 28 34      [10]   80 	ld	hl, #0x3428
+   0020 E5            [11]   81 	push	hl
+   0021 21 00 C0      [10]   82 	ld	hl, #0xc000
+   0024 E5            [11]   83 	push	hl
+   0025 21r00r00      [10]   84 	ld	hl, #_g_banner_0
+   0028 E5            [11]   85 	push	hl
+   0029 CDr00r00      [17]   86 	call	_cpct_drawSprite
+                             87 ;src/main.c:69: cpct_drawSprite(g_banner_1, CPCT_VMEM_START + BANNER_W/2, BANNER_W/2, BANNER_H);
+   002C 21 28 34      [10]   88 	ld	hl, #0x3428
+   002F E5            [11]   89 	push	hl
+   0030 26 C0         [ 7]   90 	ld	h, #0xc0
+   0032 E5            [11]   91 	push	hl
+   0033 21r00r00      [10]   92 	ld	hl, #_g_banner_1
+   0036 E5            [11]   93 	push	hl
+   0037 CDr00r00      [17]   94 	call	_cpct_drawSprite
+                             95 ;src/main.c:72: pvideomem = cpct_getScreenPtr(CPCT_VMEM_START, 29, 60);
+   003A 21 1D 3C      [10]   96 	ld	hl, #0x3c1d
+   003D E5            [11]   97 	push	hl
+   003E 21 00 C0      [10]   98 	ld	hl, #0xc000
+   0041 E5            [11]   99 	push	hl
+   0042 CDr00r00      [17]  100 	call	_cpct_getScreenPtr
+                            101 ;src/main.c:73: cpct_setDrawCharM2(0, 1);
+   0045 E5            [11]  102 	push	hl
+   0046 01 00 01      [10]  103 	ld	bc, #0x0100
+   0049 C5            [11]  104 	push	bc
+   004A CDr00r00      [17]  105 	call	_cpct_setDrawCharM2
+   004D E1            [10]  106 	pop	hl
+                            107 ;src/main.c:74: cpct_drawStringM2("[Any Key] Run Opposite", pvideomem);
+   004E 01r63r00      [10]  108 	ld	bc, #___str_0+0
+   0051 E5            [11]  109 	push	hl
+   0052 C5            [11]  110 	push	bc
+   0053 CDr00r00      [17]  111 	call	_cpct_drawStringM2
+   0056 C9            [10]  112 	ret
+   0057                     113 _g_animation:
+   0057r00r00               114 	.dw _g_runner_0
+   0059r00r00               115 	.dw _g_runner_1
+   005Br00r00               116 	.dw _g_runner_2
+   005Dr00r00               117 	.dw _g_runner_3
+   005Fr00r00               118 	.dw _g_runner_4
+   0061r00r00               119 	.dw _g_runner_5
+   0063                     120 ___str_0:
+   0063 5B 41 6E 79 20 4B   121 	.ascii "[Any Key] Run Opposite"
+        65 79 5D 20 52 75
+        6E 20 4F 70 70 6F
+        73 69 74 65
+   0079 00                  122 	.db 0x00
+                            123 ;src/main.c:80: void main(void) {
+                            124 ;	---------------------------------
+                            125 ; Function main
+                            126 ; ---------------------------------
+   007A                     127 _main::
+   007A DD E5         [15]  128 	push	ix
+   007C DD 21 00 00   [14]  129 	ld	ix,#0
+   0080 DD 39         [15]  130 	add	ix,sp
+   0082 F5            [11]  131 	push	af
+   0083 F5            [11]  132 	push	af
+   0084 3B            [ 6]  133 	dec	sp
+                            134 ;src/main.c:81: u8  frame  = 0;  // Actual animation frame
+   0085 0E 00         [ 7]  135 	ld	c, #0x00
+                            136 ;src/main.c:82: u8  cycles = 0;  // Number of waiting cycles done for present frame
+   0087 DD 36 FB 00   [19]  137 	ld	-5 (ix), #0x00
+                            138 ;src/main.c:85: u8  floor_color = 0b1101010; // Pixel pattern for the floor
+   008B 1E 6A         [ 7]  139 	ld	e, #0x6a
+                            140 ;src/main.c:89: initialize();
+   008D C5            [11]  141 	push	bc
+   008E D5            [11]  142 	push	de
+   008F CDr00r00      [17]  143 	call	_initialize
+   0092 21 22 56      [10]  144 	ld	hl, #0x5622
+   0095 E5            [11]  145 	push	hl
+   0096 21 00 C0      [10]  146 	ld	hl, #0xc000
+   0099 E5            [11]  147 	push	hl
+   009A CDr00r00      [17]  148 	call	_cpct_getScreenPtr
+   009D D1            [10]  149 	pop	de
+   009E C1            [10]  150 	pop	bc
+   009F DD 75 FC      [19]  151 	ld	-4 (ix), l
+   00A2 DD 74 FD      [19]  152 	ld	-3 (ix), h
+                            153 ;src/main.c:94: pvmem_floor = cpct_getScreenPtr(CPCT_VMEM_START, FLOOR_X, FLOOR_Y);
+   00A5 C5            [11]  154 	push	bc
+   00A6 D5            [11]  155 	push	de
+   00A7 21 1E B4      [10]  156 	ld	hl, #0xb41e
+   00AA E5            [11]  157 	push	hl
+   00AB 21 00 C0      [10]  158 	ld	hl, #0xc000
+   00AE E5            [11]  159 	push	hl
+   00AF CDr00r00      [17]  160 	call	_cpct_getScreenPtr
+   00B2 D1            [10]  161 	pop	de
+   00B3 C1            [10]  162 	pop	bc
+   00B4 DD 75 FE      [19]  163 	ld	-2 (ix), l
+   00B7 DD 74 FF      [19]  164 	ld	-1 (ix), h
+                            165 ;src/main.c:98: while(1) {
+   00BA                     166 00111$:
+                            167 ;src/main.c:102: cpct_scanKeyboard_f();
+   00BA C5            [11]  168 	push	bc
+   00BB D5            [11]  169 	push	de
+   00BC CDr00r00      [17]  170 	call	_cpct_scanKeyboard_f
+   00BF CDr00r00      [17]  171 	call	_cpct_isAnyKeyPressed
+   00C2 D1            [10]  172 	pop	de
+   00C3 C1            [10]  173 	pop	bc
+   00C4 7D            [ 4]  174 	ld	a, l
+   00C5 B7            [ 4]  175 	or	a, a
+   00C6 28 26         [12]  176 	jr	Z,00105$
+                            177 ;src/main.c:107: while (i--) {
+   00C8 06 06         [ 7]  178 	ld	b, #0x06
+   00CA                     179 00101$:
+   00CA 50            [ 4]  180 	ld	d, b
+   00CB 05            [ 4]  181 	dec	b
+   00CC 7A            [ 4]  182 	ld	a, d
+   00CD B7            [ 4]  183 	or	a, a
+   00CE 28 1E         [12]  184 	jr	Z,00105$
+                            185 ;src/main.c:108: cpct_hflipSpriteM2(SP_W, SP_H, g_animation[i]);
+   00D0 68            [ 4]  186 	ld	l, b
+   00D1 26 00         [ 7]  187 	ld	h, #0x00
+   00D3 29            [11]  188 	add	hl, hl
+   00D4 7D            [ 4]  189 	ld	a, l
+   00D5 C6r57         [ 7]  190 	add	a, #<(_g_animation)
+   00D7 6F            [ 4]  191 	ld	l, a
+   00D8 7C            [ 4]  192 	ld	a, h
+   00D9 CEs00         [ 7]  193 	adc	a, #>(_g_animation)
+   00DB 67            [ 4]  194 	ld	h, a
+   00DC 7E            [ 7]  195 	ld	a, (hl)
+   00DD 23            [ 6]  196 	inc	hl
+   00DE 66            [ 7]  197 	ld	h, (hl)
+   00DF 6F            [ 4]  198 	ld	l, a
+   00E0 C5            [11]  199 	push	bc
+   00E1 D5            [11]  200 	push	de
+   00E2 E5            [11]  201 	push	hl
+   00E3 21 0A 5E      [10]  202 	ld	hl, #0x5e0a
+   00E6 E5            [11]  203 	push	hl
+   00E7 CDr00r00      [17]  204 	call	_cpct_hflipSpriteM2
+   00EA D1            [10]  205 	pop	de
+   00EB C1            [10]  206 	pop	bc
+   00EC 18 DC         [12]  207 	jr	00101$
+   00EE                     208 00105$:
+                            209 ;src/main.c:116: if (++cycles == wait_cycles) {
+   00EE DD 34 FB      [23]  210 	inc	-5 (ix)
+   00F1 DD 7E FB      [19]  211 	ld	a, -5 (ix)
+   00F4 D6 06         [ 7]  212 	sub	a, #0x06
+   00F6 20 0F         [12]  213 	jr	NZ,00109$
+                            214 ;src/main.c:117: cycles = 0;                   // Restart frame counter
+   00F8 DD 36 FB 00   [19]  215 	ld	-5 (ix), #0x00
+                            216 ;src/main.c:118: if (++frame == ANIM_FRAMES) {  // Next animation frame
+   00FC 0C            [ 4]  217 	inc	c
+   00FD 79            [ 4]  218 	ld	a, c
+                            219 ;src/main.c:119: frame = 0;
+   00FE D6 06         [ 7]  220 	sub	a,#0x06
+   0100 20 01         [12]  221 	jr	NZ,00107$
+   0102 4F            [ 4]  222 	ld	c,a
+   0103                     223 00107$:
+                            224 ;src/main.c:122: floor_color ^= 0xFF;
+   0103 7B            [ 4]  225 	ld	a, e
+   0104 EE FF         [ 7]  226 	xor	a, #0xff
+   0106 5F            [ 4]  227 	ld	e, a
+   0107                     228 00109$:
+                            229 ;src/main.c:126: cpct_waitVSYNC();
+   0107 C5            [11]  230 	push	bc
+   0108 D5            [11]  231 	push	de
+   0109 CDr00r00      [17]  232 	call	_cpct_waitVSYNC
+   010C D1            [10]  233 	pop	de
+   010D C1            [10]  234 	pop	bc
+                            235 ;src/main.c:129: cpct_drawSprite(g_animation[frame], pvmem_spr, SP_W, SP_H);
+   010E DD 46 FC      [19]  236 	ld	b, -4 (ix)
+   0111 DD 56 FD      [19]  237 	ld	d, -3 (ix)
+   0114 69            [ 4]  238 	ld	l, c
+   0115 26 00         [ 7]  239 	ld	h, #0x00
+   0117 29            [11]  240 	add	hl, hl
+   0118 3Er57         [ 7]  241 	ld	a, #<(_g_animation)
+   011A 85            [ 4]  242 	add	a, l
+   011B 6F            [ 4]  243 	ld	l, a
+   011C 3Es00         [ 7]  244 	ld	a, #>(_g_animation)
+   011E 8C            [ 4]  245 	adc	a, h
+   011F 67            [ 4]  246 	ld	h, a
+   0120 7E            [ 7]  247 	ld	a, (hl)
+   0121 23            [ 6]  248 	inc	hl
+   0122 66            [ 7]  249 	ld	h, (hl)
+   0123 6F            [ 4]  250 	ld	l, a
+   0124 E5            [11]  251 	push	hl
+   0125 FD E1         [14]  252 	pop	iy
+   0127 C5            [11]  253 	push	bc
+   0128 D5            [11]  254 	push	de
+   0129 21 0A 5E      [10]  255 	ld	hl, #0x5e0a
+   012C E5            [11]  256 	push	hl
+   012D 58            [ 4]  257 	ld	e,b
+   012E D5            [11]  258 	push	de
+   012F FD E5         [15]  259 	push	iy
+   0131 CDr00r00      [17]  260 	call	_cpct_drawSprite
+   0134 D1            [10]  261 	pop	de
+   0135 C1            [10]  262 	pop	bc
+                            263 ;src/main.c:132: cpct_drawSolidBox(pvmem_floor, floor_color, FLOOR_W, FLOOR_H);
+   0136 43            [ 4]  264 	ld	b, e
+   0137 16 00         [ 7]  265 	ld	d, #0x00
+   0139 E5            [11]  266 	push	hl
+   013A DD 6E FE      [19]  267 	ld	l, -2 (ix)
+   013D DD 66 FF      [19]  268 	ld	h, -1 (ix)
+   0140 E5            [11]  269 	push	hl
+   0141 FD E1         [14]  270 	pop	iy
+   0143 E1            [10]  271 	pop	hl
+   0144 C5            [11]  272 	push	bc
+   0145 D5            [11]  273 	push	de
+   0146 21 14 0A      [10]  274 	ld	hl, #0x0a14
+   0149 E5            [11]  275 	push	hl
+   014A 58            [ 4]  276 	ld	e,b
+   014B D5            [11]  277 	push	de
+   014C FD E5         [15]  278 	push	iy
+   014E CDr00r00      [17]  279 	call	_cpct_drawSolidBox
+   0151 D1            [10]  280 	pop	de
+   0152 C1            [10]  281 	pop	bc
+   0153 C3rBAr00      [10]  282 	jp	00111$
+                            283 	.area _CODE
+                            284 	.area _INITIALIZER
+                            285 	.area _CABS (ABS)

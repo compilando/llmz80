@@ -1,0 +1,124 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           cpct_firmware
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     00000020  l__DATA                         
+     00000040  s__CODE                         
+     00005D25  l__CODE                         
+     00005D65  s__DATA                         
+     00005D85  s__GSFINAL                      
+     00005D85  s__GSINIT                       
+     00005D85  s__HOME                         
+     00005D85  s__INITIALIZED                  
+     00005D85  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00000040    00005D25 =       23845. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000040  _g_palette                         background
+     00000044  _g_tileset                         background
+     00000064  _g_background_00                   background
+     0000044C  _g_background_01                   background
+     00000834  _g_background_02                   background
+     00000C1C  _g_background_03                   background
+     00001004  _g_background_04                   background
+     000013EC  _g_background_05                   background
+     000017D4  _g_background_06                   background
+     00001BBC  _g_background_07                   background
+     00001FA4  _g_background_08                   background
+     0000238C  _g_background_09                   background
+     00002774  _g_background_10                   background
+     00002B5C  _g_background_11                   background
+     00002F44  _g_background_12                   background
+     0000332C  _g_background_13                   background
+     00003714  _g_background_14                   background
+     00003AFC  _g_background_15                   background
+     00003EE4  _g_spr_knight                      knight
+     00005B36  initialize                         
+     00005B4E  drawBackgroundTiles                
+     00005B6E  switch_screen_buffer               
+     00005B88  redrawKnight                       
+     00005BAB  moveKnight                         
+     00005BD5  _main                              
+     00005C0A  cpct_setPalette_asm                cpct_video
+     00005C1D  cpct_setPALColour_asm              cpct_video
+     00005C27  cpct_hflipSpriteMaskedM1_asm       cpct_sprites
+     00005C74  cpct_drawSprite_asm                cpct_sprites
+     00005D14  _cpct_setVideoMemoryPage           cpct_video
+     00005D14  cpct_setVideoMemoryPage_asm        cpct_video
+     00005D1D  cpct_drawSpriteMasked_asm          cpct_sprites
+     00005D47  cpct_setVideoMode_asm              cpct_video
+     00005D54  _cpct_disableFirmware              cpct_firmware
+     00005D54  _cpct_removeInterruptHandler       cpct_firmware
+     00005D54  cpct_disableFirmware_asm           cpct_firmware
+     00005D54  cpct_removeInterruptHandler_asm    cpct_firmware
+     00005D64  _cpct_mode_rom_status              cpct_firmware
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_DATA                               00005D65    00000020 =          32. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+
+Files Linked                              [ module(s) ]
+
+obj/background.rel                        [ background ]
+obj/knight.rel                            [ knight ]
+obj/main.rel                              [  ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPalette_asmbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPALColour_asmbindings.re ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_hflipSpriteMaskedM1_asmbind ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSprite_asmbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMemoryPage.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSpriteMasked_asmbinding ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMode_asmbindings.re ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 5.
+
+User Base Address Definitions
+
+_CODE = 0x0040
+_DATA = 0x0000
+
+

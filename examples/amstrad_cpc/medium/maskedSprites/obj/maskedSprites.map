@@ -1,0 +1,114 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           cpct_strings
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__DATA                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     00000100  s__CODE                         
+     00000F98  l__CODE                         
+     00001098  s__DATA                         
+     00001098  s__GSFINAL                      
+     00001098  s__GSINIT                       
+     00001098  s__HOME                         
+     00001098  s__INITIALIZED                  
+     00001098  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00000100    00000F98 =        3992. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000100  _drawFrame                         main
+     00000163  _drawBackground                    main
+     000001D3  _repaintBackgroundOverSprite       main
+     0000030D  _initialization                    main
+     0000033F  _main                              main
+     00000393  _G_background                      background
+     00000E13  _G_palette                         palette
+     00000E23  _G_sprite_EMR                      sprites
+     00000EA3  _cpct_drawTileAligned4x8_f         cpct_sprites
+     00000F08  _cpct_setPalette                   cpct_video
+     00000F1F  _cpct_setPALColour                 cpct_video
+     00000F2B  _cpct_fw2hw                        cpct_video
+     00000F3E  _cpct_drawSpriteMasked             cpct_sprites
+     00000F6D  cpct_firmware2hw_colour            
+     00000F88  _cpct_waitVSYNC                    cpct_video
+     00000F88  cpct_waitVSYNC_asm                 cpct_video
+     00000F90  _cpct_setVideoMode                 cpct_video
+     00000F9E  _cpct_px2byteM0                    cpct_sprites
+     00000FBA  _cpct_disableFirmware              cpct_firmware
+     00000FBA  _cpct_removeInterruptHandler       cpct_firmware
+     00000FBA  cpct_disableFirmware_asm           cpct_firmware
+     00000FBA  cpct_removeInterruptHandler_asm    cpct_firmware
+     00000FCA  _cpct_drawSolidBox                 cpct_sprites
+     00001071  _cpct_mode_rom_status              cpct_firmware
+     00001072  _cpct_getScreenPtr                 cpct_video
+     00001088  dc_mode0_ct                        cpct_strings
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+
+Files Linked                              [ module(s) ]
+
+obj/main.rel                              [ main ]
+obj/sprites/background.rel                [ background ]
+obj/sprites/palette.rel                   [ palette ]
+obj/sprites/sprites.rel                   [ sprites ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawTileAligned4x8_f_cbindi ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPalette_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPALColour_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_fw2hw_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSpriteMasked_cbindings. ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_firmware2hw_colour_table.re ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_waitVSYNC.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMode_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_px2byteM0_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSolidBox_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_getScreenPtr_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_dc_mode0_ct.rel ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+
+User Base Address Definitions
+
+_CODE = 0x0100
+_DATA = 0x0000
+
+

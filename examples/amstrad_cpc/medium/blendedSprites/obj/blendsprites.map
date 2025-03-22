@@ -1,0 +1,185 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           cpct_strings
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     00000002  l__DATA                         
+     00002F27  l__CODE                         
+     00004000  s__CODE                         
+     00006F27  s__DATA                         
+     00006F29  s__GSFINAL                      
+     00006F29  s__GSINIT                       
+     00006F29  s__HOME                         
+     00006F29  s__INITIALIZED                  
+     00006F29  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    00002F27 =       12071. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00004000  _g_items_0                         items
+     00004020  _g_items_1                         items
+     00004040  _g_items_2                         items
+     00004060  _g_items_3                         items
+     00004080  _g_scifi_bg_0                      scifi_bg
+     00005480  _g_scifi_bg_1                      scifi_bg
+     00006880  _drawBackground                    draw
+     000068AD  _drawSpriteMixed                   draw
+     000068E0  _drawCurrentSpriteAtRandom         draw
+     00006950  _drawUserInterfaceStatus           draw
+     000069C9  _drawUserInterfaceMessages         draw
+     00006AAF  _g_blendModes                      globaldata
+     00006ADC  _g_items                           globaldata
+     00006B00  _g_palette                         globaldata
+     00006B0B  _g_keys                            globaldata
+     00006B1F  _updateKeyboardStatus              keyboard
+     00006BA9  _selectNextItem                    main
+     00006BBF  _selectNextBlendMode               main
+     00006BD5  _performUserActions                main
+     00006C01  _initialize                        main
+     00006C2F  _main                              main
+     00006C3A  _cpct_setPalette                   cpct_video
+     00006C51  _cpct_isKeyPressed                 cpct_keyboard
+     00006C51  cpct_isKeyPressed_asm              cpct_keyboard
+     00006C5D  _cpct_setPALColour                 cpct_video
+     00006C69  _cpct_drawStringM0                 cpct_strings
+     00006CA3  cpct_drawCharM0_inner_asm          cpct_strings
+     00006D03  dc_2pxtableM0                      cpct_strings
+     00006D07  _cpct_drawSprite                   cpct_sprites
+     00006DAC  __moduchar                         
+     00006DB8  __moduint                          
+     00006DC3  _cpct_keyboardStatusBuffer         cpct_keyboard
+     00006DCD  __divuint                          
+     00006DD5  __divuchar                         
+     00006DDC  __divu8                            
+     00006DDF  __divu16                           
+     00006E0E  _cpct_setBlendMode                 cpct_sprites
+     00006E0E  cpct_setBlendMode_asm              cpct_sprites
+     00006E14  ___sdcc_call_hl                    
+     00006E15  _cpct_setVideoMode                 cpct_video
+     00006E23  _cpct_disableFirmware              cpct_firmware
+     00006E23  _cpct_removeInterruptHandler       cpct_firmware
+     00006E23  cpct_disableFirmware_asm           cpct_firmware
+     00006E23  cpct_removeInterruptHandler_asm    cpct_firmware
+     00006E33  _cpct_getRandom_mxor_u8            cpct_random
+     00006E33  cpct_getRandom_mxor_u8_asm         cpct_random
+     00006E34  cpct_randomIdx_mxor_u8             cpct_random
+     00006E58  _cpct_drawSpriteBlended            cpct_sprites
+     00006E62  _cpct_dsb_blendFunction            cpct_sprites
+     00006E83  _cpct_mode_rom_status              cpct_firmware
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    00002F27 =       12071. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00006E84  _cpct_setDrawCharM0                cpct_strings
+     00006EA9  _cpct_scanKeyboard                 cpct_keyboard
+     00006EA9  cpct_scanKeyboard_asm              cpct_keyboard
+     00006EDA  _cpct_getScreenPtr                 cpct_video
+     00006EF0  _cpct_mxor32_seed                  cpct_random
+     00006EF4  _cpct_nextRandom_mxor_u32          cpct_random
+     00006EF4  cpct_nextRandom_mxor_u32_asm       cpct_random
+     00006F17  dc_mode0_ct                        cpct_strings
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_DATA                               00006F27    00000002 =           2. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00006F27  _g_selectedItem                    globaldata
+     00006F28  _g_selectedBlendMode               globaldata
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 5.
+
+Files Linked                              [ module(s) ]
+
+obj/items.rel                             [ items ]
+obj/scifi_bg.rel                          [ scifi_bg ]
+obj/draw.rel                              [ draw ]
+obj/globaldata.rel                        [ globaldata ]
+obj/keyboard.rel                          [ keyboard ]
+obj/main.rel                              [ main ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPalette_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_isKeyPressed.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPALColour_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawStringM0_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawCharM0_inner.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSprite_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ modunsigned.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ keyboard.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ divunsigned.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setBlendMode.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ __sdcc_call_hl.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMode_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_getRandom_mxor_u8.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSpriteBlended_cbindings ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setDrawCharM0_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_scanKeyboard.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_getScreenPtr_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_mxor32_seed.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_nextRandom_mxor_u32.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_dc_mode0_ct.rel ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 6.
+
+User Base Address Definitions
+
+_CODE = 0x4000
+_DATA = 0x0000
+
+

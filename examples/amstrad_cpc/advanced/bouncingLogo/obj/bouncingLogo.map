@@ -1,0 +1,187 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           cpct_strings
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     00000015  l__DATA                         
+     00000C52  l__HOME                         
+     00001231  l__CODE                         
+     00004000  s__CODE                         
+     00005231  s__DATA                         
+     00005246  s__HOME                         
+     00005246  s__INITIALIZED                  
+     00005E98  s__GSFINAL                      
+     00005E98  s__GSINIT                       
+     00005E98  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    00001231 =        4657. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00004000  _checkUserInput                    main
+     00004135  _main                              main
+     000042C6  _drawMessage                       message
+     0000430D  _strcpy                            message
+     00004323  _concatNum                         message
+     000043B0  _moveEntityX                       entities
+     000044FD  _moveEntityY                       entities
+     000045F6  _entityPhysicsUpdate               entities
+     00004885  _updateEntities                    entities
+     00004AE5  _gc_palette                        logofremos
+     00004AF5  _gc_LogoFremos                     logofremos
+     00004F41  _cpct_setPalette                   cpct_video
+     00004F58  _cpct_isKeyPressed                 cpct_keyboard
+     00004F58  cpct_isKeyPressed_asm              cpct_keyboard
+     00004F64  _cpct_scanKeyboard_f               cpct_keyboard
+     00004F64  cpct_scanKeyboard_f_asm            cpct_keyboard
+     00004FCE  _cpct_setPALColour                 cpct_video
+     00004FDA  _cpct_drawStringM0                 cpct_strings
+     00005014  cpct_drawCharM0_inner_asm          cpct_strings
+     00005074  dc_2pxtableM0                      cpct_strings
+     00005078  _cpct_drawSprite                   cpct_sprites
+     0000511D  __moduchar                         
+     00005129  __moduint                          
+     00005134  __divuint                          
+     0000513C  __divuchar                         
+     00005143  __divu8                            
+     00005146  __divu16                           
+     00005175  _cpct_fw2hw                        cpct_video
+     00005188  _cpct_keyboardStatusBuffer         cpct_keyboard
+     00005192  cpct_firmware2hw_colour            
+     000051AD  _cpct_setVideoMode                 cpct_video
+     000051BB  _cpct_disableFirmware              cpct_firmware
+     000051BB  _cpct_removeInterruptHandler       cpct_firmware
+     000051BB  cpct_disableFirmware_asm           cpct_firmware
+     000051BB  cpct_removeInterruptHandler_asm    cpct_firmware
+     000051CB  _cpct_mode_rom_status              cpct_firmware
+     000051CC  _cpct_setDrawCharM0                cpct_strings
+     000051F1  _cpct_getScreenPtr                 cpct_video
+     00005207  __mulint                           
+     0000520D  __mul16                            
+     00005221  dc_mode0_ct                        cpct_strings
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_DATA                               00005231    00000015 =          21. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00005231  _g_message                         message
+     00005242  _g_gravity                         entities
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_HOME                               00005246    00000C52 =        3154. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00005246  ___fssub                           _fssub
+     0000527B  ___fsmul                           _fsmul
+     000055E0  ___fsgt                            _fsgt
+     000056DB  ___fslt                            _fslt
+     000057D6  ___fsadd                           _fsadd
+     00005B9F  ___fs2schar                        _fs2schar
+     00005BED  __mullong                          _mullong
+     00005D69  ___fs2slong                        _fs2slong
+     00005DE6  ___fs2ulong                        _fs2ulong
+ASxxxx Linker V03.00 + NoICE + sdld,  page 5.
+
+Files Linked                              [ module(s) ]
+
+obj/main.rel                              [ main ]
+obj/msg/message.rel                       [ message ]
+obj/entities/entities.rel                 [ entities ]
+obj/entities/logofremos.rel               [ logofremos ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ _fssub.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPalette_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_isKeyPressed.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_scanKeyboard_f.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ _fsmul.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPALColour_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawStringM0_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawCharM0_inner.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSprite_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ _fsgt.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ modunsigned.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ divunsigned.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ _fslt.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_fw2hw_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ keyboard.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ _fsadd.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_firmware2hw_colour_table.re ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMode_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ _fs2schar.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ _mullong.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setDrawCharM0_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_getScreenPtr_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ _fs2slong.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ _fs2ulong.rel ]
+/home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80/z80.lib
+                                          [ mul.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_dc_mode0_ct.rel ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 6.
+
+User Base Address Definitions
+
+_CODE = 0x4000
+_DATA = 0x0000
+
+

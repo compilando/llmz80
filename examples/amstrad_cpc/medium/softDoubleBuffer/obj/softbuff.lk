@@ -1,0 +1,19 @@
+-mjwx
+-i obj/softbuff.ihx
+-b _CODE = 0x4000
+-b _DATA = 0x0000
+-u
+-k /home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/bin/../share/sdcc/lib/z80
+-k /home/oscar/cpctelera/cpctelera/tools/sdcc-3.6.8-r9946/share/sdcc/lib/z80
+-l /home/oscar/cpctelera/cpctelera/cpctelera.lib
+-l z80
+obj/sprites/title.rel
+obj/sprites/ship.rel
+obj/sprites/fire.rel
+obj/sprites/back.rel
+obj/drawing.rel
+obj/main.rel
+obj/manageVideoMem.rel
+obj/textDrawing.rel
+
+-e

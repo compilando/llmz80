@@ -1,0 +1,1197 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module entities
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _updateAnimation
+                             12 	.globl _cpct_getScreenPtr
+                             13 	.globl _cpct_drawSprite
+                             14 	.globl _cpct_drawSolidBox
+                             15 	.globl _g_SCR_HEIGHT
+                             16 	.globl _g_SCR_WIDTH
+                             17 	.globl _g_persea
+                             18 	.globl _g_perseaAnimation
+                             19 	.globl _g_animDie
+                             20 	.globl _g_animWin
+                             21 	.globl _g_animHit
+                             22 	.globl _g_animKick
+                             23 	.globl _g_animFist
+                             24 	.globl _g_animWalkLeft
+                             25 	.globl _g_animWalkRight
+                             26 	.globl _g_animStay
+                             27 	.globl _g_allAnimFrames
+                             28 	.globl _getPersea
+                             29 	.globl _moveEntityX
+                             30 	.globl _moveEntityY
+                             31 	.globl _updateEntity
+                             32 	.globl _setAnimation
+                             33 	.globl _drawEntity
+                             34 ;--------------------------------------------------------
+                             35 ; special function registers
+                             36 ;--------------------------------------------------------
+                             37 ;--------------------------------------------------------
+                             38 ; ram data
+                             39 ;--------------------------------------------------------
+                             40 	.area _DATA
+                             41 ;--------------------------------------------------------
+                             42 ; ram data
+                             43 ;--------------------------------------------------------
+                             44 	.area _INITIALIZED
+                             45 ;--------------------------------------------------------
+                             46 ; absolute external ram data
+                             47 ;--------------------------------------------------------
+                             48 	.area _DABS (ABS)
+                             49 ;--------------------------------------------------------
+                             50 ; global & static initialisations
+                             51 ;--------------------------------------------------------
+                             52 	.area _HOME
+                             53 	.area _GSINIT
+                             54 	.area _GSFINAL
+                             55 	.area _GSINIT
+                             56 ;--------------------------------------------------------
+                             57 ; Home
+                             58 ;--------------------------------------------------------
+                             59 	.area _HOME
+                             60 	.area _HOME
+                             61 ;--------------------------------------------------------
+                             62 ; code
+                             63 ;--------------------------------------------------------
+                             64 	.area _CODE
+                             65 ;src/entities/entities.c:102: TEntity* getPersea() {
+                             66 ;	---------------------------------
+                             67 ; Function getPersea
+                             68 ; ---------------------------------
+   0000                      69 _getPersea::
+                             70 ;src/entities/entities.c:103: return (TEntity*)g_persea;
+   0000 21rCBr00      [10]   71 	ld	hl, #_g_persea+0
+   0003 C9            [10]   72 	ret
+   0004                      73 _g_allAnimFrames:
+   0004r00r00                74 	.dw _gc_PerseaWalk2
+   0006 08                   75 	.db #0x08	; 8
+   0007 18                   76 	.db #0x18	; 24
+   0008 02                   77 	.db #0x02	;  2
+   0009 00                   78 	.db #0x00	;  0
+   000A 00                   79 	.db #0x00	;  0
+   000B 00                   80 	.db #0x00	;  0
+   000C 00                   81 	.db #0x00	;  0
+   000D 04                   82 	.db #0x04	; 4
+   000Er00r00                83 	.dw _gc_PerseaWalk13
+   0010 08                   84 	.db #0x08	; 8
+   0011 18                   85 	.db #0x18	; 24
+   0012 02                   86 	.db #0x02	;  2
+   0013 00                   87 	.db #0x00	;  0
+   0014 00                   88 	.db #0x00	;  0
+   0015 03                   89 	.db #0x03	;  3
+   0016 18                   90 	.db #0x18	;  24
+   0017 04                   91 	.db #0x04	; 4
+   0018r00r00                92 	.dw _gc_PerseaWalk4
+   001A 08                   93 	.db #0x08	; 8
+   001B 18                   94 	.db #0x18	; 24
+   001C 02                   95 	.db #0x02	;  2
+   001D 00                   96 	.db #0x00	;  0
+   001E 00                   97 	.db #0x00	;  0
+   001F 00                   98 	.db #0x00	;  0
+   0020 00                   99 	.db #0x00	;  0
+   0021 04                  100 	.db #0x04	; 4
+   0022r00r00               101 	.dw _gc_PerseaWalk4
+   0024 08                  102 	.db #0x08	; 8
+   0025 18                  103 	.db #0x18	; 24
+   0026 FE                  104 	.db #0xfe	; -2
+   0027 00                  105 	.db #0x00	;  0
+   0028 00                  106 	.db #0x00	;  0
+   0029 00                  107 	.db #0x00	;  0
+   002A 00                  108 	.db #0x00	;  0
+   002B 04                  109 	.db #0x04	; 4
+   002Cr00r00               110 	.dw _gc_PerseaWalk13
+   002E 08                  111 	.db #0x08	; 8
+   002F 18                  112 	.db #0x18	; 24
+   0030 FE                  113 	.db #0xfe	; -2
+   0031 00                  114 	.db #0x00	;  0
+   0032 06                  115 	.db #0x06	;  6
+   0033 03                  116 	.db #0x03	;  3
+   0034 18                  117 	.db #0x18	;  24
+   0035 04                  118 	.db #0x04	; 4
+   0036r00r00               119 	.dw _gc_PerseaWalk2
+   0038 08                  120 	.db #0x08	; 8
+   0039 18                  121 	.db #0x18	; 24
+   003A FE                  122 	.db #0xfe	; -2
+   003B 00                  123 	.db #0x00	;  0
+   003C 00                  124 	.db #0x00	;  0
+   003D 00                  125 	.db #0x00	;  0
+   003E 00                  126 	.db #0x00	;  0
+   003F 04                  127 	.db #0x04	; 4
+   0040r00r00               128 	.dw _gc_PerseaFist
+   0042 09                  129 	.db #0x09	; 9
+   0043 18                  130 	.db #0x18	; 24
+   0044 00                  131 	.db #0x00	;  0
+   0045 00                  132 	.db #0x00	;  0
+   0046 06                  133 	.db #0x06	;  6
+   0047 03                  134 	.db #0x03	;  3
+   0048 06                  135 	.db #0x06	;  6
+   0049 0F                  136 	.db #0x0f	; 15
+   004Ar00r00               137 	.dw _gc_PerseaKick
+   004C 09                  138 	.db #0x09	; 9
+   004D 18                  139 	.db #0x18	; 24
+   004E 00                  140 	.db #0x00	;  0
+   004F 00                  141 	.db #0x00	;  0
+   0050 06                  142 	.db #0x06	;  6
+   0051 03                  143 	.db #0x03	;  3
+   0052 0C                  144 	.db #0x0c	;  12
+   0053 19                  145 	.db #0x19	; 25
+   0054r00r00               146 	.dw _gc_PerseaHit
+   0056 08                  147 	.db #0x08	; 8
+   0057 18                  148 	.db #0x18	; 24
+   0058 00                  149 	.db #0x00	;  0
+   0059 00                  150 	.db #0x00	;  0
+   005A 00                  151 	.db #0x00	;  0
+   005B 00                  152 	.db #0x00	;  0
+   005C 00                  153 	.db #0x00	;  0
+   005D 19                  154 	.db #0x19	; 25
+   005Er00r00               155 	.dw _gc_PerseaKO
+   0060 0C                  156 	.db #0x0c	; 12
+   0061 08                  157 	.db #0x08	; 8
+   0062 FC                  158 	.db #0xfc	; -4
+   0063 10                  159 	.db #0x10	;  16
+   0064 02                  160 	.db #0x02	;  2
+   0065 04                  161 	.db #0x04	;  4
+   0066 10                  162 	.db #0x10	;  16
+   0067 32                  163 	.db #0x32	; 50	'2'
+   0068r00r00               164 	.dw _gc_PerseaWins
+   006A 08                  165 	.db #0x08	; 8
+   006B 18                  166 	.db #0x18	; 24
+   006C 00                  167 	.db #0x00	;  0
+   006D 00                  168 	.db #0x00	;  0
+   006E 00                  169 	.db #0x00	;  0
+   006F 00                  170 	.db #0x00	;  0
+   0070 00                  171 	.db #0x00	;  0
+   0071 32                  172 	.db #0x32	; 50	'2'
+   0072r00r00               173 	.dw _gc_PerseaWalk13
+   0074 08                  174 	.db #0x08	; 8
+   0075 18                  175 	.db #0x18	; 24
+   0076 00                  176 	.db #0x00	;  0
+   0077 00                  177 	.db #0x00	;  0
+   0078 06                  178 	.db #0x06	;  6
+   0079 03                  179 	.db #0x03	;  3
+   007A 18                  180 	.db #0x18	;  24
+   007B 01                  181 	.db #0x01	; 1
+   007Cr00r00               182 	.dw _gc_PerseaWalk13
+   007E 08                  183 	.db #0x08	; 8
+   007F 18                  184 	.db #0x18	; 24
+   0080 00                  185 	.db #0x00	;  0
+   0081 00                  186 	.db #0x00	;  0
+   0082 00                  187 	.db #0x00	;  0
+   0083 00                  188 	.db #0x00	;  0
+   0084 00                  189 	.db #0x00	;  0
+   0085 01                  190 	.db #0x01	; 1
+   0086r00r00               191 	.dw _gc_PerseaWalk13
+   0088 08                  192 	.db #0x08	; 8
+   0089 18                  193 	.db #0x18	; 24
+   008A 04                  194 	.db #0x04	;  4
+   008B F0                  195 	.db #0xf0	; -16
+   008C 00                  196 	.db #0x00	;  0
+   008D 0C                  197 	.db #0x0c	;  12
+   008E 08                  198 	.db #0x08	;  8
+   008F 01                  199 	.db #0x01	; 1
+   0090                     200 _g_animStay:
+   0090r2Cr00               201 	.dw (_g_allAnimFrames + 40)
+   0092 00 00               202 	.dw #0x0000
+   0094                     203 _g_animWalkRight:
+   0094r04r00               204 	.dw (_g_allAnimFrames + 0)
+   0096r0Er00               205 	.dw (_g_allAnimFrames + 10)
+   0098r18r00               206 	.dw (_g_allAnimFrames + 20)
+   009Ar0Er00               207 	.dw (_g_allAnimFrames + 10)
+   009C 00 00               208 	.dw #0x0000
+   009E                     209 _g_animWalkLeft:
+   009Er22r00               210 	.dw (_g_allAnimFrames + 30)
+   00A0r2Cr00               211 	.dw (_g_allAnimFrames + 40)
+   00A2r36r00               212 	.dw (_g_allAnimFrames + 50)
+   00A4r2Cr00               213 	.dw (_g_allAnimFrames + 40)
+   00A6 00 00               214 	.dw #0x0000
+   00A8                     215 _g_animFist:
+   00A8r40r00               216 	.dw (_g_allAnimFrames + 60)
+   00AAr72r00               217 	.dw (_g_allAnimFrames + 110)
+   00AC 00 00               218 	.dw #0x0000
+   00AE                     219 _g_animKick:
+   00AEr4Ar00               220 	.dw (_g_allAnimFrames + 70)
+   00B0r72r00               221 	.dw (_g_allAnimFrames + 110)
+   00B2 00 00               222 	.dw #0x0000
+   00B4                     223 _g_animHit:
+   00B4r54r00               224 	.dw (_g_allAnimFrames + 80)
+   00B6r7Cr00               225 	.dw (_g_allAnimFrames + 120)
+   00B8 00 00               226 	.dw #0x0000
+   00BA                     227 _g_animWin:
+   00BAr68r00               228 	.dw (_g_allAnimFrames + 100)
+   00BCr72r00               229 	.dw (_g_allAnimFrames + 110)
+   00BE 00 00               230 	.dw #0x0000
+   00C0                     231 _g_animDie:
+   00C0r5Er00               232 	.dw (_g_allAnimFrames + 90)
+   00C2r86r00               233 	.dw (_g_allAnimFrames + 130)
+   00C4 00 00               234 	.dw #0x0000
+   00C6                     235 _g_perseaAnimation:
+   00C6r90r00               236 	.dw _g_animStay
+   00C8 00                  237 	.db #0x00	; 0
+   00C9 00                  238 	.db #0x00	; 0
+   00CA 03                  239 	.db #0x03	; 3
+   00CB                     240 _g_persea:
+   00CBrC6r00               241 	.dw _g_perseaAnimation
+   00CD D0 C2               242 	.dw #0xc2d0
+   00CF 00                  243 	.db #0x00	; 0
+   00D0 48                  244 	.db #0x48	; 72	'H'
+   00D1 01                  245 	.db #0x01	; 1
+   00D2                     246 _g_SCR_WIDTH:
+   00D2 50                  247 	.db #0x50	; 80	'P'
+   00D3                     248 _g_SCR_HEIGHT:
+   00D3 C8                  249 	.db #0xc8	; 200
+                            250 ;src/entities/entities.c:113: i8 moveEntityX (TEntity* ent, i8 mx) {
+                            251 ;	---------------------------------
+                            252 ; Function moveEntityX
+                            253 ; ---------------------------------
+   00D4                     254 _moveEntityX::
+   00D4 DD E5         [15]  255 	push	ix
+   00D6 DD 21 00 00   [14]  256 	ld	ix,#0
+   00DA DD 39         [15]  257 	add	ix,sp
+   00DC 21 F1 FF      [10]  258 	ld	hl, #-15
+   00DF 39            [11]  259 	add	hl, sp
+   00E0 F9            [ 6]  260 	ld	sp, hl
+                            261 ;src/entities/entities.c:114: u8 moved = 0;// Tells us how many bytes the entity has moved
+   00E1 DD 36 FF 00   [19]  262 	ld	-1 (ix), #0x00
+                            263 ;src/entities/entities.c:122: if (umx <= ent->x) {
+   00E5 DD 7E 04      [19]  264 	ld	a, 4 (ix)
+   00E8 DD 77 F1      [19]  265 	ld	-15 (ix), a
+   00EB DD 7E 05      [19]  266 	ld	a, 5 (ix)
+   00EE DD 77 F2      [19]  267 	ld	-14 (ix), a
+                            268 ;src/entities/entities.c:124: ent->videopos -= umx;
+   00F1 DD 7E F1      [19]  269 	ld	a, -15 (ix)
+   00F4 C6 02         [ 7]  270 	add	a, #0x02
+   00F6 DD 77 F7      [19]  271 	ld	-9 (ix), a
+   00F9 DD 7E F2      [19]  272 	ld	a, -14 (ix)
+   00FC CE 00         [ 7]  273 	adc	a, #0x00
+   00FE DD 77 F8      [19]  274 	ld	-8 (ix), a
+                            275 ;src/entities/entities.c:125: moved          = mx;
+   0101 DD 7E 06      [19]  276 	ld	a, 6 (ix)
+   0104 DD 77 F6      [19]  277 	ld	-10 (ix), a
+                            278 ;src/entities/entities.c:122: if (umx <= ent->x) {
+   0107 DD 7E F1      [19]  279 	ld	a, -15 (ix)
+   010A C6 04         [ 7]  280 	add	a, #0x04
+   010C DD 77 F4      [19]  281 	ld	-12 (ix), a
+   010F DD 7E F2      [19]  282 	ld	a, -14 (ix)
+   0112 CE 00         [ 7]  283 	adc	a, #0x00
+   0114 DD 77 F5      [19]  284 	ld	-11 (ix), a
+                            285 ;src/entities/entities.c:118: if (mx < 0) {
+   0117 DD CB 06 7E   [20]  286 	bit	7, 6 (ix)
+   011B CArC5r01      [10]  287 	jp	Z, 00114$
+                            288 ;src/entities/entities.c:119: umx = -mx;   // umx = positive value of mx, that is negative
+   011E AF            [ 4]  289 	xor	a, a
+   011F DD 96 06      [19]  290 	sub	a, 6 (ix)
+   0122 DD 77 F3      [19]  291 	ld	-13 (ix), a
+                            292 ;src/entities/entities.c:122: if (umx <= ent->x) {
+   0125 DD 6E F4      [19]  293 	ld	l,-12 (ix)
+   0128 DD 66 F5      [19]  294 	ld	h,-11 (ix)
+   012B 7E            [ 7]  295 	ld	a, (hl)
+   012C DD 77 FE      [19]  296 	ld	-2 (ix), a
+   012F DD 96 F3      [19]  297 	sub	a, -13 (ix)
+   0132 38 56         [12]  298 	jr	C,00104$
+                            299 ;src/entities/entities.c:123: ent->x        -= umx;
+   0134 DD 7E FE      [19]  300 	ld	a, -2 (ix)
+   0137 DD 96 F3      [19]  301 	sub	a, -13 (ix)
+   013A DD 77 FD      [19]  302 	ld	-3 (ix), a
+   013D DD 6E F4      [19]  303 	ld	l,-12 (ix)
+   0140 DD 66 F5      [19]  304 	ld	h,-11 (ix)
+   0143 DD 7E FD      [19]  305 	ld	a, -3 (ix)
+   0146 77            [ 7]  306 	ld	(hl), a
+                            307 ;src/entities/entities.c:124: ent->videopos -= umx;
+   0147 DD 6E F7      [19]  308 	ld	l,-9 (ix)
+   014A DD 66 F8      [19]  309 	ld	h,-8 (ix)
+   014D 7E            [ 7]  310 	ld	a, (hl)
+   014E DD 77 FB      [19]  311 	ld	-5 (ix), a
+   0151 23            [ 6]  312 	inc	hl
+   0152 7E            [ 7]  313 	ld	a, (hl)
+   0153 DD 77 FC      [19]  314 	ld	-4 (ix), a
+   0156 DD 7E F3      [19]  315 	ld	a, -13 (ix)
+   0159 DD 77 F9      [19]  316 	ld	-7 (ix), a
+   015C DD 36 FA 00   [19]  317 	ld	-6 (ix), #0x00
+   0160 DD 7E FB      [19]  318 	ld	a, -5 (ix)
+   0163 DD 96 F9      [19]  319 	sub	a, -7 (ix)
+   0166 DD 77 F9      [19]  320 	ld	-7 (ix), a
+   0169 DD 7E FC      [19]  321 	ld	a, -4 (ix)
+   016C DD 9E FA      [19]  322 	sbc	a, -6 (ix)
+   016F DD 77 FA      [19]  323 	ld	-6 (ix), a
+   0172 DD 6E F7      [19]  324 	ld	l,-9 (ix)
+   0175 DD 66 F8      [19]  325 	ld	h,-8 (ix)
+   0178 DD 7E F9      [19]  326 	ld	a, -7 (ix)
+   017B 77            [ 7]  327 	ld	(hl), a
+   017C 23            [ 6]  328 	inc	hl
+   017D DD 7E FA      [19]  329 	ld	a, -6 (ix)
+   0180 77            [ 7]  330 	ld	(hl), a
+                            331 ;src/entities/entities.c:125: moved          = mx;
+   0181 DD 7E F6      [19]  332 	ld	a, -10 (ix)
+   0184 DD 77 FF      [19]  333 	ld	-1 (ix), a
+   0187 C3r50r02      [10]  334 	jp	00115$
+   018A                     335 00104$:
+                            336 ;src/entities/entities.c:126: } else if (ent->x) {
+   018A DD 7E FE      [19]  337 	ld	a, -2 (ix)
+   018D B7            [ 4]  338 	or	a, a
+   018E CAr50r02      [10]  339 	jp	Z, 00115$
+                            340 ;src/entities/entities.c:128: ent->videopos -= ent->x;
+   0191 DD 6E F7      [19]  341 	ld	l,-9 (ix)
+   0194 DD 66 F8      [19]  342 	ld	h,-8 (ix)
+   0197 4E            [ 7]  343 	ld	c, (hl)
+   0198 23            [ 6]  344 	inc	hl
+   0199 46            [ 7]  345 	ld	b, (hl)
+   019A DD 5E FE      [19]  346 	ld	e, -2 (ix)
+   019D 16 00         [ 7]  347 	ld	d, #0x00
+   019F 79            [ 4]  348 	ld	a, c
+   01A0 93            [ 4]  349 	sub	a, e
+   01A1 4F            [ 4]  350 	ld	c, a
+   01A2 78            [ 4]  351 	ld	a, b
+   01A3 9A            [ 4]  352 	sbc	a, d
+   01A4 47            [ 4]  353 	ld	b, a
+   01A5 DD 6E F7      [19]  354 	ld	l,-9 (ix)
+   01A8 DD 66 F8      [19]  355 	ld	h,-8 (ix)
+   01AB 71            [ 7]  356 	ld	(hl), c
+   01AC 23            [ 6]  357 	inc	hl
+   01AD 70            [ 7]  358 	ld	(hl), b
+                            359 ;src/entities/entities.c:129: moved          = -ent->x;
+   01AE DD 6E F4      [19]  360 	ld	l,-12 (ix)
+   01B1 DD 66 F5      [19]  361 	ld	h,-11 (ix)
+   01B4 4E            [ 7]  362 	ld	c, (hl)
+   01B5 AF            [ 4]  363 	xor	a, a
+   01B6 91            [ 4]  364 	sub	a, c
+   01B7 DD 77 FF      [19]  365 	ld	-1 (ix), a
+                            366 ;src/entities/entities.c:130: ent->x         = 0;
+   01BA DD 6E F4      [19]  367 	ld	l,-12 (ix)
+   01BD DD 66 F5      [19]  368 	ld	h,-11 (ix)
+   01C0 36 00         [10]  369 	ld	(hl), #0x00
+   01C2 C3r50r02      [10]  370 	jp	00115$
+   01C5                     371 00114$:
+                            372 ;src/entities/entities.c:133: } else if (mx) {
+   01C5 DD 7E 06      [19]  373 	ld	a, 6 (ix)
+   01C8 B7            [ 4]  374 	or	a, a
+   01C9 CAr50r02      [10]  375 	jp	Z, 00115$
+                            376 ;src/entities/entities.c:139: anim = ent->anim; 
+   01CC E1            [10]  377 	pop	hl
+   01CD E5            [11]  378 	push	hl
+   01CE 7E            [ 7]  379 	ld	a, (hl)
+   01CF 23            [ 6]  380 	inc	hl
+   01D0 66            [ 7]  381 	ld	h, (hl)
+   01D1 6F            [ 4]  382 	ld	l, a
+                            383 ;src/entities/entities.c:140: space_left = g_SCR_WIDTH - anim->frames[anim->frame_id]->width - ent->x;
+   01D2 E5            [11]  384 	push	hl
+   01D3 4E            [ 7]  385 	ld	c, (hl)
+   01D4 23            [ 6]  386 	inc	hl
+   01D5 46            [ 7]  387 	ld	b, (hl)
+   01D6 E1            [10]  388 	pop	hl
+   01D7 23            [ 6]  389 	inc	hl
+   01D8 23            [ 6]  390 	inc	hl
+   01D9 6E            [ 7]  391 	ld	l, (hl)
+   01DA 26 00         [ 7]  392 	ld	h, #0x00
+   01DC 29            [11]  393 	add	hl, hl
+   01DD 09            [11]  394 	add	hl, bc
+   01DE 7E            [ 7]  395 	ld	a, (hl)
+   01DF 23            [ 6]  396 	inc	hl
+   01E0 66            [ 7]  397 	ld	h, (hl)
+   01E1 6F            [ 4]  398 	ld	l, a
+   01E2 23            [ 6]  399 	inc	hl
+   01E3 23            [ 6]  400 	inc	hl
+   01E4 4E            [ 7]  401 	ld	c, (hl)
+   01E5 3ArD2r00      [13]  402 	ld	a,(#_g_SCR_WIDTH + 0)
+   01E8 91            [ 4]  403 	sub	a, c
+   01E9 4F            [ 4]  404 	ld	c, a
+   01EA DD 6E F4      [19]  405 	ld	l,-12 (ix)
+   01ED DD 66 F5      [19]  406 	ld	h,-11 (ix)
+   01F0 46            [ 7]  407 	ld	b, (hl)
+   01F1 79            [ 4]  408 	ld	a, c
+   01F2 90            [ 4]  409 	sub	a, b
+                            410 ;src/entities/entities.c:144: if (umx <= space_left) {
+   01F3 4F            [ 4]  411 	ld	c,a
+   01F4 DD 96 F6      [19]  412 	sub	a, -10 (ix)
+   01F7 38 2E         [12]  413 	jr	C,00109$
+                            414 ;src/entities/entities.c:145: ent->x        += umx;
+   01F9 78            [ 4]  415 	ld	a, b
+   01FA DD 86 F6      [19]  416 	add	a, -10 (ix)
+   01FD DD 6E F4      [19]  417 	ld	l,-12 (ix)
+   0200 DD 66 F5      [19]  418 	ld	h,-11 (ix)
+   0203 77            [ 7]  419 	ld	(hl), a
+                            420 ;src/entities/entities.c:146: ent->videopos += umx;
+   0204 DD 6E F7      [19]  421 	ld	l,-9 (ix)
+   0207 DD 66 F8      [19]  422 	ld	h,-8 (ix)
+   020A 4E            [ 7]  423 	ld	c, (hl)
+   020B 23            [ 6]  424 	inc	hl
+   020C 46            [ 7]  425 	ld	b, (hl)
+   020D 79            [ 4]  426 	ld	a, c
+   020E DD 86 F6      [19]  427 	add	a, -10 (ix)
+   0211 4F            [ 4]  428 	ld	c, a
+   0212 78            [ 4]  429 	ld	a, b
+   0213 CE 00         [ 7]  430 	adc	a, #0x00
+   0215 47            [ 4]  431 	ld	b, a
+   0216 DD 6E F7      [19]  432 	ld	l,-9 (ix)
+   0219 DD 66 F8      [19]  433 	ld	h,-8 (ix)
+   021C 71            [ 7]  434 	ld	(hl), c
+   021D 23            [ 6]  435 	inc	hl
+   021E 70            [ 7]  436 	ld	(hl), b
+                            437 ;src/entities/entities.c:147: moved         = umx;
+   021F DD 7E F6      [19]  438 	ld	a, -10 (ix)
+   0222 DD 77 FF      [19]  439 	ld	-1 (ix), a
+   0225 18 29         [12]  440 	jr	00115$
+   0227                     441 00109$:
+                            442 ;src/entities/entities.c:148: } else if (space_left) {
+   0227 79            [ 4]  443 	ld	a, c
+   0228 B7            [ 4]  444 	or	a, a
+   0229 28 25         [12]  445 	jr	Z,00115$
+                            446 ;src/entities/entities.c:150: ent->x        += space_left;
+   022B 78            [ 4]  447 	ld	a, b
+   022C 81            [ 4]  448 	add	a, c
+   022D DD 6E F4      [19]  449 	ld	l,-12 (ix)
+   0230 DD 66 F5      [19]  450 	ld	h,-11 (ix)
+   0233 77            [ 7]  451 	ld	(hl), a
+                            452 ;src/entities/entities.c:151: ent->videopos += space_left;
+   0234 DD 6E F7      [19]  453 	ld	l,-9 (ix)
+   0237 DD 66 F8      [19]  454 	ld	h,-8 (ix)
+   023A 46            [ 7]  455 	ld	b, (hl)
+   023B 23            [ 6]  456 	inc	hl
+   023C 5E            [ 7]  457 	ld	e, (hl)
+   023D 78            [ 4]  458 	ld	a, b
+   023E 81            [ 4]  459 	add	a, c
+   023F 47            [ 4]  460 	ld	b, a
+   0240 7B            [ 4]  461 	ld	a, e
+   0241 CE 00         [ 7]  462 	adc	a, #0x00
+   0243 5F            [ 4]  463 	ld	e, a
+   0244 DD 6E F7      [19]  464 	ld	l,-9 (ix)
+   0247 DD 66 F8      [19]  465 	ld	h,-8 (ix)
+   024A 70            [ 7]  466 	ld	(hl), b
+   024B 23            [ 6]  467 	inc	hl
+   024C 73            [ 7]  468 	ld	(hl), e
+                            469 ;src/entities/entities.c:152: moved         = space_left;
+   024D DD 71 FF      [19]  470 	ld	-1 (ix), c
+   0250                     471 00115$:
+                            472 ;src/entities/entities.c:157: return moved;
+   0250 DD 6E FF      [19]  473 	ld	l, -1 (ix)
+   0253 DD F9         [10]  474 	ld	sp, ix
+   0255 DD E1         [14]  475 	pop	ix
+   0257 C9            [10]  476 	ret
+                            477 ;src/entities/entities.c:167: i8 moveEntityY (TEntity* ent, i8 my) {
+                            478 ;	---------------------------------
+                            479 ; Function moveEntityY
+                            480 ; ---------------------------------
+   0258                     481 _moveEntityY::
+   0258 DD E5         [15]  482 	push	ix
+   025A DD 21 00 00   [14]  483 	ld	ix,#0
+   025E DD 39         [15]  484 	add	ix,sp
+   0260 21 F5 FF      [10]  485 	ld	hl, #-11
+   0263 39            [11]  486 	add	hl, sp
+   0264 F9            [ 6]  487 	ld	sp, hl
+                            488 ;src/entities/entities.c:168: i8 moved = 0;      // Number of bytes the entity has moved 
+   0265 DD 36 F6 00   [19]  489 	ld	-10 (ix), #0x00
+                            490 ;src/entities/entities.c:176: if (umy <= ent->y) {
+   0269 DD 7E 04      [19]  491 	ld	a, 4 (ix)
+   026C DD 77 FE      [19]  492 	ld	-2 (ix), a
+   026F DD 7E 05      [19]  493 	ld	a, 5 (ix)
+   0272 DD 77 FF      [19]  494 	ld	-1 (ix), a
+                            495 ;src/entities/entities.c:178: ent->videopos  = cpct_getScreenPtr(CPCT_VMEM_START, ent->x, ent->y);
+   0275 DD 7E FE      [19]  496 	ld	a, -2 (ix)
+   0278 C6 02         [ 7]  497 	add	a, #0x02
+   027A DD 77 F7      [19]  498 	ld	-9 (ix), a
+   027D DD 7E FF      [19]  499 	ld	a, -1 (ix)
+   0280 CE 00         [ 7]  500 	adc	a, #0x00
+   0282 DD 77 F8      [19]  501 	ld	-8 (ix), a
+   0285 DD 7E FE      [19]  502 	ld	a, -2 (ix)
+   0288 C6 04         [ 7]  503 	add	a, #0x04
+   028A DD 77 F9      [19]  504 	ld	-7 (ix), a
+   028D DD 7E FF      [19]  505 	ld	a, -1 (ix)
+   0290 CE 00         [ 7]  506 	adc	a, #0x00
+   0292 DD 77 FA      [19]  507 	ld	-6 (ix), a
+                            508 ;src/entities/entities.c:179: moved          = my;
+   0295 DD 7E 06      [19]  509 	ld	a, 6 (ix)
+   0298 DD 77 FB      [19]  510 	ld	-5 (ix), a
+                            511 ;src/entities/entities.c:176: if (umy <= ent->y) {
+   029B DD 7E FE      [19]  512 	ld	a, -2 (ix)
+   029E C6 05         [ 7]  513 	add	a, #0x05
+   02A0 DD 77 FC      [19]  514 	ld	-4 (ix), a
+   02A3 DD 7E FF      [19]  515 	ld	a, -1 (ix)
+   02A6 CE 00         [ 7]  516 	adc	a, #0x00
+   02A8 DD 77 FD      [19]  517 	ld	-3 (ix), a
+                            518 ;src/entities/entities.c:172: if (my < 0) {
+   02AB DD CB 06 7E   [20]  519 	bit	7, 6 (ix)
+   02AF 28 6D         [12]  520 	jr	Z,00116$
+                            521 ;src/entities/entities.c:173: umy = -my;  // umy = possive value of my, that is negative.
+   02B1 AF            [ 4]  522 	xor	a, a
+   02B2 DD 96 06      [19]  523 	sub	a, 6 (ix)
+   02B5 47            [ 4]  524 	ld	b, a
+                            525 ;src/entities/entities.c:176: if (umy <= ent->y) {
+   02B6 DD 6E FC      [19]  526 	ld	l,-4 (ix)
+   02B9 DD 66 FD      [19]  527 	ld	h,-3 (ix)
+   02BC 4E            [ 7]  528 	ld	c, (hl)
+                            529 ;src/entities/entities.c:177: ent->y        -= umy;
+   02BD 79            [ 4]  530 	ld	a,c
+   02BE B8            [ 4]  531 	cp	a,b
+   02BF 38 2C         [12]  532 	jr	C,00104$
+   02C1 90            [ 4]  533 	sub	a, b
+   02C2 57            [ 4]  534 	ld	d, a
+   02C3 DD 6E FC      [19]  535 	ld	l,-4 (ix)
+   02C6 DD 66 FD      [19]  536 	ld	h,-3 (ix)
+   02C9 72            [ 7]  537 	ld	(hl), d
+                            538 ;src/entities/entities.c:178: ent->videopos  = cpct_getScreenPtr(CPCT_VMEM_START, ent->x, ent->y);
+   02CA DD 6E F9      [19]  539 	ld	l,-7 (ix)
+   02CD DD 66 FA      [19]  540 	ld	h,-6 (ix)
+   02D0 5E            [ 7]  541 	ld	e, (hl)
+   02D1 D5            [11]  542 	push	de
+   02D2 21 00 C0      [10]  543 	ld	hl, #0xc000
+   02D5 E5            [11]  544 	push	hl
+   02D6 CDr00r00      [17]  545 	call	_cpct_getScreenPtr
+   02D9 4D            [ 4]  546 	ld	c, l
+   02DA 44            [ 4]  547 	ld	b, h
+   02DB DD 6E F7      [19]  548 	ld	l,-9 (ix)
+   02DE DD 66 F8      [19]  549 	ld	h,-8 (ix)
+   02E1 71            [ 7]  550 	ld	(hl), c
+   02E2 23            [ 6]  551 	inc	hl
+   02E3 70            [ 7]  552 	ld	(hl), b
+                            553 ;src/entities/entities.c:179: moved          = my;
+   02E4 DD 7E FB      [19]  554 	ld	a, -5 (ix)
+   02E7 DD 77 F6      [19]  555 	ld	-10 (ix), a
+   02EA C3rB3r03      [10]  556 	jp	00117$
+   02ED                     557 00104$:
+                            558 ;src/entities/entities.c:180: } else if ( ent->y ) {
+   02ED 79            [ 4]  559 	ld	a, c
+   02EE B7            [ 4]  560 	or	a, a
+   02EF CArB3r03      [10]  561 	jp	Z, 00117$
+                            562 ;src/entities/entities.c:182: ent->videopos  = CPCT_VMEM_START + ent->x;
+   02F2 DD 6E F9      [19]  563 	ld	l,-7 (ix)
+   02F5 DD 66 FA      [19]  564 	ld	h,-6 (ix)
+   02F8 4E            [ 7]  565 	ld	c, (hl)
+   02F9 3E 00         [ 7]  566 	ld	a,#0x00
+   02FB C6 C0         [ 7]  567 	add	a,#0xc0
+   02FD 47            [ 4]  568 	ld	b, a
+   02FE DD 6E F7      [19]  569 	ld	l,-9 (ix)
+   0301 DD 66 F8      [19]  570 	ld	h,-8 (ix)
+   0304 71            [ 7]  571 	ld	(hl), c
+   0305 23            [ 6]  572 	inc	hl
+   0306 70            [ 7]  573 	ld	(hl), b
+                            574 ;src/entities/entities.c:183: moved          = -ent->y;
+   0307 DD 6E FC      [19]  575 	ld	l,-4 (ix)
+   030A DD 66 FD      [19]  576 	ld	h,-3 (ix)
+   030D 4E            [ 7]  577 	ld	c, (hl)
+   030E AF            [ 4]  578 	xor	a, a
+   030F 91            [ 4]  579 	sub	a, c
+   0310 DD 77 F6      [19]  580 	ld	-10 (ix), a
+                            581 ;src/entities/entities.c:184: ent->y         = 0;
+   0313 DD 6E FC      [19]  582 	ld	l,-4 (ix)
+   0316 DD 66 FD      [19]  583 	ld	h,-3 (ix)
+   0319 36 00         [10]  584 	ld	(hl), #0x00
+   031B C3rB3r03      [10]  585 	jp	00117$
+   031E                     586 00116$:
+                            587 ;src/entities/entities.c:187: } else if (my) {
+   031E DD 7E 06      [19]  588 	ld	a, 6 (ix)
+   0321 B7            [ 4]  589 	or	a, a
+   0322 CArB3r03      [10]  590 	jp	Z, 00117$
+                            591 ;src/entities/entities.c:193: anim       = ent->anim;
+   0325 DD 6E FE      [19]  592 	ld	l,-2 (ix)
+   0328 DD 66 FF      [19]  593 	ld	h,-1 (ix)
+   032B 7E            [ 7]  594 	ld	a, (hl)
+   032C 23            [ 6]  595 	inc	hl
+   032D 66            [ 7]  596 	ld	h, (hl)
+   032E 6F            [ 4]  597 	ld	l, a
+                            598 ;src/entities/entities.c:194: space_left = g_SCR_HEIGHT - anim->frames[anim->frame_id]->height - ent->y;
+   032F E5            [11]  599 	push	hl
+   0330 4E            [ 7]  600 	ld	c, (hl)
+   0331 23            [ 6]  601 	inc	hl
+   0332 46            [ 7]  602 	ld	b, (hl)
+   0333 E1            [10]  603 	pop	hl
+   0334 23            [ 6]  604 	inc	hl
+   0335 23            [ 6]  605 	inc	hl
+   0336 6E            [ 7]  606 	ld	l, (hl)
+   0337 26 00         [ 7]  607 	ld	h, #0x00
+   0339 29            [11]  608 	add	hl, hl
+   033A 09            [11]  609 	add	hl, bc
+   033B 7E            [ 7]  610 	ld	a, (hl)
+   033C 23            [ 6]  611 	inc	hl
+   033D 66            [ 7]  612 	ld	h, (hl)
+   033E 6F            [ 4]  613 	ld	l, a
+   033F 23            [ 6]  614 	inc	hl
+   0340 23            [ 6]  615 	inc	hl
+   0341 23            [ 6]  616 	inc	hl
+   0342 4E            [ 7]  617 	ld	c, (hl)
+   0343 3ArD3r00      [13]  618 	ld	a,(#_g_SCR_HEIGHT + 0)
+   0346 91            [ 4]  619 	sub	a, c
+   0347 4F            [ 4]  620 	ld	c, a
+   0348 DD 6E FC      [19]  621 	ld	l,-4 (ix)
+   034B DD 66 FD      [19]  622 	ld	h,-3 (ix)
+   034E 7E            [ 7]  623 	ld	a, (hl)
+   034F DD 77 FE      [19]  624 	ld	-2 (ix), a
+   0352 79            [ 4]  625 	ld	a, c
+   0353 DD 96 FE      [19]  626 	sub	a, -2 (ix)
+                            627 ;src/entities/entities.c:197: if (umy <= space_left) {
+   0356 DD 77 F5      [19]  628 	ld	-11 (ix), a
+   0359 DD 96 FB      [19]  629 	sub	a, -5 (ix)
+   035C 38 15         [12]  630 	jr	C,00109$
+                            631 ;src/entities/entities.c:198: ent->y  += umy;
+   035E DD 7E FE      [19]  632 	ld	a, -2 (ix)
+   0361 DD 86 FB      [19]  633 	add	a, -5 (ix)
+   0364 DD 6E FC      [19]  634 	ld	l,-4 (ix)
+   0367 DD 66 FD      [19]  635 	ld	h,-3 (ix)
+   036A 77            [ 7]  636 	ld	(hl), a
+                            637 ;src/entities/entities.c:199: moved    = umy;
+   036B DD 7E FB      [19]  638 	ld	a, -5 (ix)
+   036E DD 77 F6      [19]  639 	ld	-10 (ix), a
+   0371 18 19         [12]  640 	jr	00110$
+   0373                     641 00109$:
+                            642 ;src/entities/entities.c:200: } else if (space_left) {
+   0373 DD 7E F5      [19]  643 	ld	a, -11 (ix)
+   0376 B7            [ 4]  644 	or	a, a
+   0377 28 13         [12]  645 	jr	Z,00110$
+                            646 ;src/entities/entities.c:202: ent->y  += space_left;
+   0379 DD 7E FE      [19]  647 	ld	a, -2 (ix)
+   037C DD 86 F5      [19]  648 	add	a, -11 (ix)
+   037F DD 6E FC      [19]  649 	ld	l,-4 (ix)
+   0382 DD 66 FD      [19]  650 	ld	h,-3 (ix)
+   0385 77            [ 7]  651 	ld	(hl), a
+                            652 ;src/entities/entities.c:203: moved    = space_left;
+   0386 DD 7E F5      [19]  653 	ld	a, -11 (ix)
+   0389 DD 77 F6      [19]  654 	ld	-10 (ix), a
+   038C                     655 00110$:
+                            656 ;src/entities/entities.c:205: if (moved) {
+   038C DD 7E F6      [19]  657 	ld	a, -10 (ix)
+   038F B7            [ 4]  658 	or	a, a
+   0390 28 21         [12]  659 	jr	Z,00117$
+                            660 ;src/entities/entities.c:207: ent->videopos = cpct_getScreenPtr(CPCT_VMEM_START, ent->x, ent->y);
+   0392 DD 6E FC      [19]  661 	ld	l,-4 (ix)
+   0395 DD 66 FD      [19]  662 	ld	h,-3 (ix)
+   0398 46            [ 7]  663 	ld	b, (hl)
+   0399 DD 6E F9      [19]  664 	ld	l,-7 (ix)
+   039C DD 66 FA      [19]  665 	ld	h,-6 (ix)
+   039F 4E            [ 7]  666 	ld	c, (hl)
+   03A0 C5            [11]  667 	push	bc
+   03A1 21 00 C0      [10]  668 	ld	hl, #0xc000
+   03A4 E5            [11]  669 	push	hl
+   03A5 CDr00r00      [17]  670 	call	_cpct_getScreenPtr
+   03A8 4D            [ 4]  671 	ld	c, l
+   03A9 44            [ 4]  672 	ld	b, h
+   03AA DD 6E F7      [19]  673 	ld	l,-9 (ix)
+   03AD DD 66 F8      [19]  674 	ld	h,-8 (ix)
+   03B0 71            [ 7]  675 	ld	(hl), c
+   03B1 23            [ 6]  676 	inc	hl
+   03B2 70            [ 7]  677 	ld	(hl), b
+   03B3                     678 00117$:
+                            679 ;src/entities/entities.c:212: return moved;
+   03B3 DD 6E F6      [19]  680 	ld	l, -10 (ix)
+   03B6 DD F9         [10]  681 	ld	sp, ix
+   03B8 DD E1         [14]  682 	pop	ix
+   03BA C9            [10]  683 	ret
+                            684 ;src/entities/entities.c:219: i8 updateAnimation(TAnimation* anim) {
+                            685 ;	---------------------------------
+                            686 ; Function updateAnimation
+                            687 ; ---------------------------------
+   03BB                     688 _updateAnimation::
+   03BB DD E5         [15]  689 	push	ix
+   03BD DD 21 00 00   [14]  690 	ld	ix,#0
+   03C1 DD 39         [15]  691 	add	ix,sp
+   03C3 F5            [11]  692 	push	af
+   03C4 F5            [11]  693 	push	af
+   03C5 3B            [ 6]  694 	dec	sp
+                            695 ;src/entities/entities.c:220: i8 newframe = 0;
+   03C6 DD 36 FB 00   [19]  696 	ld	-5 (ix), #0x00
+                            697 ;src/entities/entities.c:223: if (anim->status != as_pause && anim->status != as_end) {
+   03CA DD 4E 04      [19]  698 	ld	c,4 (ix)
+   03CD DD 46 05      [19]  699 	ld	b,5 (ix)
+   03D0 21 04 00      [10]  700 	ld	hl, #0x0004
+   03D3 09            [11]  701 	add	hl,bc
+   03D4 DD 75 FE      [19]  702 	ld	-2 (ix), l
+   03D7 DD 74 FF      [19]  703 	ld	-1 (ix), h
+   03DA 7E            [ 7]  704 	ld	a, (hl)
+   03DB FE 02         [ 7]  705 	cp	a, #0x02
+   03DD CAr60r04      [10]  706 	jp	Z,00110$
+   03E0 D6 03         [ 7]  707 	sub	a, #0x03
+   03E2 CAr60r04      [10]  708 	jp	Z,00110$
+                            709 ;src/entities/entities.c:226: if ( ! --anim->time ) {
+   03E5 59            [ 4]  710 	ld	e, c
+   03E6 50            [ 4]  711 	ld	d, b
+   03E7 13            [ 6]  712 	inc	de
+   03E8 13            [ 6]  713 	inc	de
+   03E9 13            [ 6]  714 	inc	de
+   03EA 1A            [ 7]  715 	ld	a, (de)
+   03EB C6 FF         [ 7]  716 	add	a, #0xff
+   03ED 12            [ 7]  717 	ld	(de), a
+   03EE B7            [ 4]  718 	or	a, a
+   03EF 20 6F         [12]  719 	jr	NZ,00110$
+                            720 ;src/entities/entities.c:230: newframe = 1;
+   03F1 DD 36 FB 01   [19]  721 	ld	-5 (ix), #0x01
+                            722 ;src/entities/entities.c:231: frame = anim->frames[ ++anim->frame_id ]; 
+   03F5 0A            [ 7]  723 	ld	a, (bc)
+   03F6 DD 77 FC      [19]  724 	ld	-4 (ix), a
+   03F9 03            [ 6]  725 	inc	bc
+   03FA 0A            [ 7]  726 	ld	a, (bc)
+   03FB DD 77 FD      [19]  727 	ld	-3 (ix), a
+   03FE 0B            [ 6]  728 	dec	bc
+   03FF C5            [11]  729 	push	bc
+   0400 FD E1         [14]  730 	pop	iy
+   0402 FD 23         [10]  731 	inc	iy
+   0404 FD 23         [10]  732 	inc	iy
+   0406 FD 34 00      [23]  733 	inc	0 (iy)
+   0409 FD 6E 00      [19]  734 	ld	l, 0 (iy)
+   040C 26 00         [ 7]  735 	ld	h, #0x00
+   040E 29            [11]  736 	add	hl, hl
+   040F DD 7E FC      [19]  737 	ld	a, -4 (ix)
+   0412 85            [ 4]  738 	add	a, l
+   0413 6F            [ 4]  739 	ld	l, a
+   0414 DD 7E FD      [19]  740 	ld	a, -3 (ix)
+   0417 8C            [ 4]  741 	adc	a, h
+   0418 67            [ 4]  742 	ld	h, a
+   0419 7E            [ 7]  743 	ld	a, (hl)
+   041A 23            [ 6]  744 	inc	hl
+   041B 66            [ 7]  745 	ld	h, (hl)
+   041C 6F            [ 4]  746 	ld	l, a
+   041D DD 75 FC      [19]  747 	ld	-4 (ix), l
+   0420 DD 74 FD      [19]  748 	ld	-3 (ix), h
+                            749 ;src/entities/entities.c:234: if (frame) {
+   0423 7C            [ 4]  750 	ld	a, h
+   0424 B5            [ 4]  751 	or	a,l
+   0425 28 0E         [12]  752 	jr	Z,00105$
+                            753 ;src/entities/entities.c:236: anim->time = frame->time;  // Get animation cycles for this frame
+   0427 DD 6E FC      [19]  754 	ld	l,-4 (ix)
+   042A DD 66 FD      [19]  755 	ld	h,-3 (ix)
+   042D 01 09 00      [10]  756 	ld	bc, #0x0009
+   0430 09            [11]  757 	add	hl, bc
+   0431 7E            [ 7]  758 	ld	a, (hl)
+   0432 12            [ 7]  759 	ld	(de), a
+   0433 18 2B         [12]  760 	jr	00110$
+   0435                     761 00105$:
+                            762 ;src/entities/entities.c:237: } else if ( anim->status == as_cycle ) {
+   0435 DD 6E FE      [19]  763 	ld	l,-2 (ix)
+   0438 DD 66 FF      [19]  764 	ld	h,-1 (ix)
+   043B 6E            [ 7]  765 	ld	l, (hl)
+   043C 2D            [ 4]  766 	dec	l
+   043D 20 16         [12]  767 	jr	NZ,00102$
+                            768 ;src/entities/entities.c:239: anim->frame_id = 0;        // Next frame_id is first one of this animation
+   043F FD 36 00 00   [19]  769 	ld	0 (iy), #0x00
+                            770 ;src/entities/entities.c:240: anim->time     = anim->frames[0]->time; // Restore animation cycles for the first frame
+   0443 69            [ 4]  771 	ld	l, c
+   0444 60            [ 4]  772 	ld	h, b
+   0445 7E            [ 7]  773 	ld	a, (hl)
+   0446 23            [ 6]  774 	inc	hl
+   0447 66            [ 7]  775 	ld	h, (hl)
+   0448 6F            [ 4]  776 	ld	l, a
+   0449 7E            [ 7]  777 	ld	a, (hl)
+   044A 23            [ 6]  778 	inc	hl
+   044B 66            [ 7]  779 	ld	h, (hl)
+   044C 6F            [ 4]  780 	ld	l, a
+   044D 01 09 00      [10]  781 	ld	bc, #0x0009
+   0450 09            [11]  782 	add	hl, bc
+   0451 7E            [ 7]  783 	ld	a, (hl)
+   0452 12            [ 7]  784 	ld	(de), a
+   0453 18 0B         [12]  785 	jr	00110$
+   0455                     786 00102$:
+                            787 ;src/entities/entities.c:243: anim->status = as_end;  // Animation set to end status
+   0455 DD 6E FE      [19]  788 	ld	l,-2 (ix)
+   0458 DD 66 FF      [19]  789 	ld	h,-1 (ix)
+   045B 36 03         [10]  790 	ld	(hl), #0x03
+                            791 ;src/entities/entities.c:244: --anim->frame_id;       // frame_id decremented to leave animation permanently on last frame
+   045D FD 35 00      [23]  792 	dec	0 (iy)
+   0460                     793 00110$:
+                            794 ;src/entities/entities.c:250: return newframe;
+   0460 DD 6E FB      [19]  795 	ld	l, -5 (ix)
+   0463 DD F9         [10]  796 	ld	sp, ix
+   0465 DD E1         [14]  797 	pop	ix
+   0467 C9            [10]  798 	ret
+                            799 ;src/entities/entities.c:256: void updateEntity(TEntity *ent) {
+                            800 ;	---------------------------------
+                            801 ; Function updateEntity
+                            802 ; ---------------------------------
+   0468                     803 _updateEntity::
+   0468 DD E5         [15]  804 	push	ix
+   046A DD 21 00 00   [14]  805 	ld	ix,#0
+   046E DD 39         [15]  806 	add	ix,sp
+   0470 21 F9 FF      [10]  807 	ld	hl, #-7
+   0473 39            [11]  808 	add	hl, sp
+   0474 F9            [ 6]  809 	ld	sp, hl
+                            810 ;src/entities/entities.c:257: TAnimation* anim = ent->anim;
+   0475 DD 7E 04      [19]  811 	ld	a, 4 (ix)
+   0478 DD 77 FE      [19]  812 	ld	-2 (ix), a
+   047B DD 7E 05      [19]  813 	ld	a, 5 (ix)
+   047E DD 77 FF      [19]  814 	ld	-1 (ix), a
+   0481 DD 6E FE      [19]  815 	ld	l,-2 (ix)
+   0484 DD 66 FF      [19]  816 	ld	h,-1 (ix)
+   0487 7E            [ 7]  817 	ld	a, (hl)
+   0488 DD 77 F9      [19]  818 	ld	-7 (ix), a
+   048B 23            [ 6]  819 	inc	hl
+   048C 7E            [ 7]  820 	ld	a, (hl)
+   048D DD 77 FA      [19]  821 	ld	-6 (ix), a
+                            822 ;src/entities/entities.c:259: if ( updateAnimation(anim) ) {
+   0490 E1            [10]  823 	pop	hl
+   0491 E5            [11]  824 	push	hl
+   0492 E5            [11]  825 	push	hl
+   0493 CDrBBr03      [17]  826 	call	_updateAnimation
+   0496 F1            [10]  827 	pop	af
+   0497 7D            [ 4]  828 	ld	a, l
+   0498 B7            [ 4]  829 	or	a, a
+   0499 CAr8Cr05      [10]  830 	jp	Z, 00117$
+                            831 ;src/entities/entities.c:260: if ( anim->status != as_end ) {
+   049C E1            [10]  832 	pop	hl
+   049D E5            [11]  833 	push	hl
+   049E 11 04 00      [10]  834 	ld	de, #0x0004
+   04A1 19            [11]  835 	add	hl, de
+   04A2 4E            [ 7]  836 	ld	c, (hl)
+                            837 ;src/entities/entities.c:261: TAnimFrame* frame = anim->frames[anim->frame_id];
+   04A3 E1            [10]  838 	pop	hl
+   04A4 E5            [11]  839 	push	hl
+   04A5 23            [ 6]  840 	inc	hl
+   04A6 23            [ 6]  841 	inc	hl
+   04A7 7E            [ 7]  842 	ld	a, (hl)
+   04A8 DD 77 FD      [19]  843 	ld	-3 (ix), a
+                            844 ;src/entities/entities.c:260: if ( anim->status != as_end ) {
+   04AB 79            [ 4]  845 	ld	a, c
+   04AC D6 03         [ 7]  846 	sub	a, #0x03
+   04AE CAr67r05      [10]  847 	jp	Z,00113$
+                            848 ;src/entities/entities.c:261: TAnimFrame* frame = anim->frames[anim->frame_id];
+   04B1 E1            [10]  849 	pop	hl
+   04B2 E5            [11]  850 	push	hl
+   04B3 4E            [ 7]  851 	ld	c, (hl)
+   04B4 23            [ 6]  852 	inc	hl
+   04B5 46            [ 7]  853 	ld	b, (hl)
+   04B6 DD 6E FD      [19]  854 	ld	l, -3 (ix)
+   04B9 26 00         [ 7]  855 	ld	h, #0x00
+   04BB 29            [11]  856 	add	hl, hl
+   04BC 09            [11]  857 	add	hl, bc
+   04BD 4E            [ 7]  858 	ld	c, (hl)
+   04BE 23            [ 6]  859 	inc	hl
+   04BF 46            [ 7]  860 	ld	b, (hl)
+                            861 ;src/entities/entities.c:264: if (frame->ew) cpct_drawSolidBox(ent->videopos + (int)frame->ex, 0x00, frame->ew, frame->eh);
+   04C0 C5            [11]  862 	push	bc
+   04C1 FD E1         [14]  863 	pop	iy
+   04C3 FD 7E 07      [19]  864 	ld	a, 7 (iy)
+   04C6 DD 77 FC      [19]  865 	ld	-4 (ix), a
+   04C9 B7            [ 4]  866 	or	a, a
+   04CA 28 31         [12]  867 	jr	Z,00102$
+   04CC C5            [11]  868 	push	bc
+   04CD FD E1         [14]  869 	pop	iy
+   04CF FD 7E 08      [19]  870 	ld	a, 8 (iy)
+   04D2 DD 77 FB      [19]  871 	ld	-5 (ix), a
+   04D5 DD 6E FE      [19]  872 	ld	l,-2 (ix)
+   04D8 DD 66 FF      [19]  873 	ld	h,-1 (ix)
+   04DB 23            [ 6]  874 	inc	hl
+   04DC 23            [ 6]  875 	inc	hl
+   04DD 5E            [ 7]  876 	ld	e, (hl)
+   04DE 23            [ 6]  877 	inc	hl
+   04DF 56            [ 7]  878 	ld	d, (hl)
+   04E0 C5            [11]  879 	push	bc
+   04E1 FD E1         [14]  880 	pop	iy
+   04E3 FD 6E 06      [19]  881 	ld	l, 6 (iy)
+   04E6 7D            [ 4]  882 	ld	a, l
+   04E7 17            [ 4]  883 	rla
+   04E8 9F            [ 4]  884 	sbc	a, a
+   04E9 67            [ 4]  885 	ld	h, a
+   04EA 19            [11]  886 	add	hl,de
+   04EB EB            [ 4]  887 	ex	de,hl
+   04EC C5            [11]  888 	push	bc
+   04ED DD 66 FB      [19]  889 	ld	h, -5 (ix)
+   04F0 DD 6E FC      [19]  890 	ld	l, -4 (ix)
+   04F3 E5            [11]  891 	push	hl
+   04F4 21 00 00      [10]  892 	ld	hl, #0x0000
+   04F7 E5            [11]  893 	push	hl
+   04F8 D5            [11]  894 	push	de
+   04F9 CDr00r00      [17]  895 	call	_cpct_drawSolidBox
+   04FC C1            [10]  896 	pop	bc
+   04FD                     897 00102$:
+                            898 ;src/entities/entities.c:265: if (frame->mx) moveEntityX(ent, frame->mx);
+   04FD C5            [11]  899 	push	bc
+   04FE FD E1         [14]  900 	pop	iy
+   0500 FD 56 04      [19]  901 	ld	d, 4 (iy)
+   0503 7A            [ 4]  902 	ld	a, d
+   0504 B7            [ 4]  903 	or	a, a
+   0505 28 10         [12]  904 	jr	Z,00104$
+   0507 C5            [11]  905 	push	bc
+   0508 D5            [11]  906 	push	de
+   0509 33            [ 6]  907 	inc	sp
+   050A DD 6E FE      [19]  908 	ld	l,-2 (ix)
+   050D DD 66 FF      [19]  909 	ld	h,-1 (ix)
+   0510 E5            [11]  910 	push	hl
+   0511 CDrD4r00      [17]  911 	call	_moveEntityX
+   0514 F1            [10]  912 	pop	af
+   0515 33            [ 6]  913 	inc	sp
+   0516 C1            [10]  914 	pop	bc
+   0517                     915 00104$:
+                            916 ;src/entities/entities.c:266: if (frame->my) moveEntityY(ent, frame->my);
+   0517 C5            [11]  917 	push	bc
+   0518 FD E1         [14]  918 	pop	iy
+   051A FD 7E 05      [19]  919 	ld	a, 5 (iy)
+   051D B7            [ 4]  920 	or	a, a
+   051E 28 10         [12]  921 	jr	Z,00106$
+   0520 C5            [11]  922 	push	bc
+   0521 F5            [11]  923 	push	af
+   0522 33            [ 6]  924 	inc	sp
+   0523 DD 6E 04      [19]  925 	ld	l,4 (ix)
+   0526 DD 66 05      [19]  926 	ld	h,5 (ix)
+   0529 E5            [11]  927 	push	hl
+   052A CDr58r02      [17]  928 	call	_moveEntityY
+   052D F1            [10]  929 	pop	af
+   052E 33            [ 6]  930 	inc	sp
+   052F C1            [10]  931 	pop	bc
+   0530                     932 00106$:
+                            933 ;src/entities/entities.c:269: if (frame->width + ent->x > g_SCR_WIDTH) {
+   0530 69            [ 4]  934 	ld	l, c
+   0531 60            [ 4]  935 	ld	h, b
+   0532 23            [ 6]  936 	inc	hl
+   0533 23            [ 6]  937 	inc	hl
+   0534 4E            [ 7]  938 	ld	c, (hl)
+   0535 06 00         [ 7]  939 	ld	b, #0x00
+   0537 DD 6E FE      [19]  940 	ld	l,-2 (ix)
+   053A DD 66 FF      [19]  941 	ld	h,-1 (ix)
+   053D 11 04 00      [10]  942 	ld	de, #0x0004
+   0540 19            [11]  943 	add	hl, de
+   0541 6E            [ 7]  944 	ld	l, (hl)
+   0542 26 00         [ 7]  945 	ld	h, #0x00
+   0544 09            [11]  946 	add	hl, bc
+   0545 3ArD2r00      [13]  947 	ld	a,(#_g_SCR_WIDTH + 0)
+   0548 06 00         [ 7]  948 	ld	b, #0x00
+   054A 95            [ 4]  949 	sub	a, l
+   054B 78            [ 4]  950 	ld	a, b
+   054C 9C            [ 4]  951 	sbc	a, h
+   054D E2r52r05      [10]  952 	jp	PO, 00148$
+   0550 EE 80         [ 7]  953 	xor	a, #0x80
+   0552                     954 00148$:
+   0552 F2r8Cr05      [10]  955 	jp	P, 00117$
+                            956 ;src/entities/entities.c:270: moveEntityX(ent, -1);
+   0555 3E FF         [ 7]  957 	ld	a, #0xff
+   0557 F5            [11]  958 	push	af
+   0558 33            [ 6]  959 	inc	sp
+   0559 DD 6E FE      [19]  960 	ld	l,-2 (ix)
+   055C DD 66 FF      [19]  961 	ld	h,-1 (ix)
+   055F E5            [11]  962 	push	hl
+   0560 CDrD4r00      [17]  963 	call	_moveEntityX
+   0563 F1            [10]  964 	pop	af
+   0564 33            [ 6]  965 	inc	sp
+   0565 18 25         [12]  966 	jr	00117$
+   0567                     967 00113$:
+                            968 ;src/entities/entities.c:272: } else if (anim->frame_id == 0xFF) {
+   0567 DD 7E FD      [19]  969 	ld	a, -3 (ix)
+   056A 3C            [ 4]  970 	inc	a
+   056B 20 11         [12]  971 	jr	NZ,00110$
+                            972 ;src/entities/entities.c:273: cpct_drawSolidBox(CPCT_VMEM_START, 0xFF, 4, 8);
+   056D 21 04 08      [10]  973 	ld	hl, #0x0804
+   0570 E5            [11]  974 	push	hl
+   0571 21 FF 00      [10]  975 	ld	hl, #0x00ff
+   0574 E5            [11]  976 	push	hl
+   0575 21 00 C0      [10]  977 	ld	hl, #0xc000
+   0578 E5            [11]  978 	push	hl
+   0579 CDr00r00      [17]  979 	call	_cpct_drawSolidBox
+   057C 18 0E         [12]  980 	jr	00117$
+   057E                     981 00110$:
+                            982 ;src/entities/entities.c:275: ent->status = es_stop;
+   057E DD 7E FE      [19]  983 	ld	a, -2 (ix)
+   0581 C6 06         [ 7]  984 	add	a, #0x06
+   0583 6F            [ 4]  985 	ld	l, a
+   0584 DD 7E FF      [19]  986 	ld	a, -1 (ix)
+   0587 CE 00         [ 7]  987 	adc	a, #0x00
+   0589 67            [ 4]  988 	ld	h, a
+   058A 36 01         [10]  989 	ld	(hl), #0x01
+   058C                     990 00117$:
+   058C DD F9         [10]  991 	ld	sp, ix
+   058E DD E1         [14]  992 	pop	ix
+   0590 C9            [10]  993 	ret
+                            994 ;src/entities/entities.c:283: void setAnimation(TEntity *ent, TEntityStatus newstatus) {
+                            995 ;	---------------------------------
+                            996 ; Function setAnimation
+                            997 ; ---------------------------------
+   0591                     998 _setAnimation::
+   0591 DD E5         [15]  999 	push	ix
+   0593 DD 21 00 00   [14] 1000 	ld	ix,#0
+   0597 DD 39         [15] 1001 	add	ix,sp
+   0599 F5            [11] 1002 	push	af
+                           1003 ;src/entities/entities.c:284: TAnimation* anim = ent->anim;
+   059A DD 4E 04      [19] 1004 	ld	c,4 (ix)
+   059D DD 46 05      [19] 1005 	ld	b,5 (ix)
+   05A0 69            [ 4] 1006 	ld	l, c
+   05A1 60            [ 4] 1007 	ld	h, b
+   05A2 5E            [ 7] 1008 	ld	e, (hl)
+   05A3 23            [ 6] 1009 	inc	hl
+   05A4 56            [ 7] 1010 	ld	d, (hl)
+                           1011 ;src/entities/entities.c:287: if ( anim->status == as_end ) {
+   05A5 21 04 00      [10] 1012 	ld	hl, #0x0004
+   05A8 19            [11] 1013 	add	hl,de
+   05A9 E3            [19] 1014 	ex	(sp), hl
+   05AA E1            [10] 1015 	pop	hl
+   05AB E5            [11] 1016 	push	hl
+   05AC 7E            [ 7] 1017 	ld	a, (hl)
+   05AD D6 03         [ 7] 1018 	sub	a, #0x03
+   05AF C2r3Cr06      [10] 1019 	jp	NZ,00112$
+                           1020 ;src/entities/entities.c:288: ent->status = newstatus;
+   05B2 21 06 00      [10] 1021 	ld	hl, #0x0006
+   05B5 09            [11] 1022 	add	hl, bc
+   05B6 DD 7E 06      [19] 1023 	ld	a, 6 (ix)
+   05B9 77            [ 7] 1024 	ld	(hl), a
+                           1025 ;src/entities/entities.c:291: switch (newstatus) {
+   05BA 3E 07         [ 7] 1026 	ld	a, #0x07
+   05BC DD 96 06      [19] 1027 	sub	a, 6 (ix)
+   05BF 38 6A         [12] 1028 	jr	C,00109$
+   05C1 DD 4E 06      [19] 1029 	ld	c, 6 (ix)
+   05C4 06 00         [ 7] 1030 	ld	b, #0x00
+   05C6 21rCDr05      [10] 1031 	ld	hl, #00124$
+   05C9 09            [11] 1032 	add	hl, bc
+   05CA 09            [11] 1033 	add	hl, bc
+   05CB 09            [11] 1034 	add	hl, bc
+   05CC E9            [ 4] 1035 	jp	(hl)
+   05CD                    1036 00124$:
+   05CD C3rE5r05      [10] 1037 	jp	00101$
+   05D0 C3rEEr05      [10] 1038 	jp	00102$
+   05D3 C3rF7r05      [10] 1039 	jp	00103$
+   05D6 C3r00r06      [10] 1040 	jp	00104$
+   05D9 C3r09r06      [10] 1041 	jp	00105$
+   05DC C3r12r06      [10] 1042 	jp	00106$
+   05DF C3r1Br06      [10] 1043 	jp	00107$
+   05E2 C3r24r06      [10] 1044 	jp	00108$
+                           1045 ;src/entities/entities.c:292: case es_dead:        { anim->frames = (TAnimFrame**)g_animDie;       break;  }
+   05E5                    1046 00101$:
+   05E5 6B            [ 4] 1047 	ld	l, e
+   05E6 62            [ 4] 1048 	ld	h, d
+   05E7 36rC0         [10] 1049 	ld	(hl), #<(_g_animDie)
+   05E9 23            [ 6] 1050 	inc	hl
+   05EA 36s00         [10] 1051 	ld	(hl), #>(_g_animDie)
+   05EC 18 3D         [12] 1052 	jr	00109$
+                           1053 ;src/entities/entities.c:293: case es_stop:        { anim->frames = (TAnimFrame**)g_animStay;      break;  }
+   05EE                    1054 00102$:
+   05EE 6B            [ 4] 1055 	ld	l, e
+   05EF 62            [ 4] 1056 	ld	h, d
+   05F0 36r90         [10] 1057 	ld	(hl), #<(_g_animStay)
+   05F2 23            [ 6] 1058 	inc	hl
+   05F3 36s00         [10] 1059 	ld	(hl), #>(_g_animStay)
+   05F5 18 34         [12] 1060 	jr	00109$
+                           1061 ;src/entities/entities.c:294: case es_walk_right:  { anim->frames = (TAnimFrame**)g_animWalkRight; break;  }
+   05F7                    1062 00103$:
+   05F7 6B            [ 4] 1063 	ld	l, e
+   05F8 62            [ 4] 1064 	ld	h, d
+   05F9 36r94         [10] 1065 	ld	(hl), #<(_g_animWalkRight)
+   05FB 23            [ 6] 1066 	inc	hl
+   05FC 36s00         [10] 1067 	ld	(hl), #>(_g_animWalkRight)
+   05FE 18 2B         [12] 1068 	jr	00109$
+                           1069 ;src/entities/entities.c:295: case es_walk_left:   { anim->frames = (TAnimFrame**)g_animWalkLeft;  break;  }
+   0600                    1070 00104$:
+   0600 6B            [ 4] 1071 	ld	l, e
+   0601 62            [ 4] 1072 	ld	h, d
+   0602 36r9E         [10] 1073 	ld	(hl), #<(_g_animWalkLeft)
+   0604 23            [ 6] 1074 	inc	hl
+   0605 36s00         [10] 1075 	ld	(hl), #>(_g_animWalkLeft)
+   0607 18 22         [12] 1076 	jr	00109$
+                           1077 ;src/entities/entities.c:296: case es_fist:        { anim->frames = (TAnimFrame**)g_animFist;      break;  }
+   0609                    1078 00105$:
+   0609 6B            [ 4] 1079 	ld	l, e
+   060A 62            [ 4] 1080 	ld	h, d
+   060B 36rA8         [10] 1081 	ld	(hl), #<(_g_animFist)
+   060D 23            [ 6] 1082 	inc	hl
+   060E 36s00         [10] 1083 	ld	(hl), #>(_g_animFist)
+   0610 18 19         [12] 1084 	jr	00109$
+                           1085 ;src/entities/entities.c:297: case es_kick:        { anim->frames = (TAnimFrame**)g_animKick;      break;  }
+   0612                    1086 00106$:
+   0612 6B            [ 4] 1087 	ld	l, e
+   0613 62            [ 4] 1088 	ld	h, d
+   0614 36rAE         [10] 1089 	ld	(hl), #<(_g_animKick)
+   0616 23            [ 6] 1090 	inc	hl
+   0617 36s00         [10] 1091 	ld	(hl), #>(_g_animKick)
+   0619 18 10         [12] 1092 	jr	00109$
+                           1093 ;src/entities/entities.c:298: case es_win:         { anim->frames = (TAnimFrame**)g_animWin;       break;  }
+   061B                    1094 00107$:
+   061B 6B            [ 4] 1095 	ld	l, e
+   061C 62            [ 4] 1096 	ld	h, d
+   061D 36rBA         [10] 1097 	ld	(hl), #<(_g_animWin)
+   061F 23            [ 6] 1098 	inc	hl
+   0620 36s00         [10] 1099 	ld	(hl), #>(_g_animWin)
+   0622 18 07         [12] 1100 	jr	00109$
+                           1101 ;src/entities/entities.c:299: case es_hit:         { anim->frames = (TAnimFrame**)g_animHit;       break;  }
+   0624                    1102 00108$:
+   0624 6B            [ 4] 1103 	ld	l, e
+   0625 62            [ 4] 1104 	ld	h, d
+   0626 36rB4         [10] 1105 	ld	(hl), #<(_g_animHit)
+   0628 23            [ 6] 1106 	inc	hl
+   0629 36s00         [10] 1107 	ld	(hl), #>(_g_animHit)
+                           1108 ;src/entities/entities.c:300: }
+   062B                    1109 00109$:
+                           1110 ;src/entities/entities.c:303: anim->status=as_play;
+   062B E1            [10] 1111 	pop	hl
+   062C E5            [11] 1112 	push	hl
+   062D 36 00         [10] 1113 	ld	(hl), #0x00
+                           1114 ;src/entities/entities.c:304: anim->frame_id = 0xFF;
+   062F 6B            [ 4] 1115 	ld	l, e
+   0630 62            [ 4] 1116 	ld	h, d
+   0631 23            [ 6] 1117 	inc	hl
+   0632 23            [ 6] 1118 	inc	hl
+   0633 36 FF         [10] 1119 	ld	(hl), #0xff
+                           1120 ;src/entities/entities.c:305: anim->time = 1;
+   0635 13            [ 6] 1121 	inc	de
+   0636 13            [ 6] 1122 	inc	de
+   0637 13            [ 6] 1123 	inc	de
+   0638 62            [ 4] 1124 	ld	h, d
+   0639 6B            [ 4] 1125 	ld	l, e
+   063A 36 01         [10] 1126 	ld	(hl), #0x01
+   063C                    1127 00112$:
+   063C DD F9         [10] 1128 	ld	sp, ix
+   063E DD E1         [14] 1129 	pop	ix
+   0640 C9            [10] 1130 	ret
+                           1131 ;src/entities/entities.c:312: void drawEntity  (TEntity* ent){
+                           1132 ;	---------------------------------
+                           1133 ; Function drawEntity
+                           1134 ; ---------------------------------
+   0641                    1135 _drawEntity::
+   0641 DD E5         [15] 1136 	push	ix
+   0643 DD 21 00 00   [14] 1137 	ld	ix,#0
+   0647 DD 39         [15] 1138 	add	ix,sp
+   0649 F5            [11] 1139 	push	af
+                           1140 ;src/entities/entities.c:314: TAnimation* anim  = ent->anim;
+   064A DD 5E 04      [19] 1141 	ld	e,4 (ix)
+   064D DD 56 05      [19] 1142 	ld	d,5 (ix)
+   0650 6B            [ 4] 1143 	ld	l, e
+   0651 62            [ 4] 1144 	ld	h, d
+   0652 7E            [ 7] 1145 	ld	a, (hl)
+   0653 23            [ 6] 1146 	inc	hl
+   0654 66            [ 7] 1147 	ld	h, (hl)
+   0655 6F            [ 4] 1148 	ld	l, a
+                           1149 ;src/entities/entities.c:315: TAnimFrame* frame = anim->frames[anim->frame_id];
+   0656 E5            [11] 1150 	push	hl
+   0657 4E            [ 7] 1151 	ld	c, (hl)
+   0658 23            [ 6] 1152 	inc	hl
+   0659 46            [ 7] 1153 	ld	b, (hl)
+   065A E1            [10] 1154 	pop	hl
+   065B 23            [ 6] 1155 	inc	hl
+   065C 23            [ 6] 1156 	inc	hl
+   065D 6E            [ 7] 1157 	ld	l, (hl)
+   065E 26 00         [ 7] 1158 	ld	h, #0x00
+   0660 29            [11] 1159 	add	hl, hl
+   0661 09            [11] 1160 	add	hl, bc
+   0662 4E            [ 7] 1161 	ld	c, (hl)
+   0663 23            [ 6] 1162 	inc	hl
+   0664 46            [ 7] 1163 	ld	b, (hl)
+                           1164 ;src/entities/entities.c:318: cpct_drawSprite(frame->sprite, ent->videopos, frame->width, frame->height);
+   0665 C5            [11] 1165 	push	bc
+   0666 FD E1         [14] 1166 	pop	iy
+   0668 FD 7E 03      [19] 1167 	ld	a, 3 (iy)
+   066B DD 77 FF      [19] 1168 	ld	-1 (ix), a
+   066E 69            [ 4] 1169 	ld	l, c
+   066F 60            [ 4] 1170 	ld	h, b
+   0670 23            [ 6] 1171 	inc	hl
+   0671 23            [ 6] 1172 	inc	hl
+   0672 7E            [ 7] 1173 	ld	a, (hl)
+   0673 DD 77 FE      [19] 1174 	ld	-2 (ix), a
+   0676 EB            [ 4] 1175 	ex	de,hl
+   0677 23            [ 6] 1176 	inc	hl
+   0678 23            [ 6] 1177 	inc	hl
+   0679 5E            [ 7] 1178 	ld	e, (hl)
+   067A 23            [ 6] 1179 	inc	hl
+   067B 56            [ 7] 1180 	ld	d, (hl)
+   067C 69            [ 4] 1181 	ld	l, c
+   067D 60            [ 4] 1182 	ld	h, b
+   067E 4E            [ 7] 1183 	ld	c, (hl)
+   067F 23            [ 6] 1184 	inc	hl
+   0680 46            [ 7] 1185 	ld	b, (hl)
+   0681 DD 66 FF      [19] 1186 	ld	h, -1 (ix)
+   0684 DD 6E FE      [19] 1187 	ld	l, -2 (ix)
+   0687 E5            [11] 1188 	push	hl
+   0688 D5            [11] 1189 	push	de
+   0689 C5            [11] 1190 	push	bc
+   068A CDr00r00      [17] 1191 	call	_cpct_drawSprite
+   068D DD F9         [10] 1192 	ld	sp, ix
+   068F DD E1         [14] 1193 	pop	ix
+   0691 C9            [10] 1194 	ret
+                           1195 	.area _CODE
+                           1196 	.area _INITIALIZER
+                           1197 	.area _CABS (ABS)

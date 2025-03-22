@@ -1,0 +1,115 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           cpct_video
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     00000036  l__DATA                         
+     0000045E  l__CODE                         
+     00004000  s__CODE                         
+     0000445E  s__DATA                         
+     00004494  s__GSFINAL                      
+     00004494  s__GSINIT                       
+     00004494  s__HOME                         
+     00004494  s__INITIALIZED                  
+     00004494  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    0000045E =        1118. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00004000  _g_spr_palette                     monsters
+     00004004  _g_spr_monsters_0                  monsters
+     0000407C  _g_spr_monsters_1                  monsters
+     000040F4  initialize                         
+     00004118  drawEntity                         
+     0000413F  moveNextEntity                     
+     00004183  _main                              
+     00004197  cpct_setPalette_asm                cpct_video
+     000041AA  cpct_setPALColour_asm              cpct_video
+     000041B4  cpct_drawSprite_asm                cpct_sprites
+     00004254  _cpct_drawStringM1_f               cpct_strings
+     0000425C  cpct_drawStringM1_f_asm            cpct_strings
+     00004276  _cpct_drawCharM1_f                 cpct_strings
+     00004283  cpct_drawCharM1_f_asm              cpct_strings
+     000043D3  cpct_setVideoMode_asm              cpct_video
+     000043E0  cpct_hflipSpriteM1_asm             cpct_sprites
+     00004433  _cpct_waitVSYNC                    cpct_video
+     00004433  cpct_waitVSYNC_asm                 cpct_video
+     0000443B  _cpct_disableFirmware              cpct_firmware
+     0000443B  _cpct_removeInterruptHandler       cpct_firmware
+     0000443B  cpct_disableFirmware_asm           cpct_firmware
+     0000443B  cpct_removeInterruptHandler_asm    cpct_firmware
+     0000444B  _cpct_mode_rom_status              cpct_firmware
+     0000444C  cpct_getScreenPtr_asm              cpct_video
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_DATA                               0000445E    00000036 =          54. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     0000445E  str_demo                           
+     0000447E  g_sprites                          
+     00004484  g_mentities                        
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+
+Files Linked                              [ module(s) ]
+
+obj/monsters.rel                          [ monsters ]
+obj/main.rel                              [  ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPalette_asmbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPALColour_asmbindings.re ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSprite_asmbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawStringM1_f.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawCharM1_f.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMode_asmbindings.re ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_hflipSpriteM1_asmbindings.r ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_waitVSYNC.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_getScreenPtr_asmbindings.re ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 5.
+
+User Base Address Definitions
+
+_CODE = 0x4000
+_DATA = 0x0000
+
+

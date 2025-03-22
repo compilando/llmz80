@@ -1,0 +1,63 @@
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180), page 1.
+Hexadecimal [16-Bits]
+
+Symbol Table
+
+    .__.$$$.                                                    =  2710 L
+    .__.ABS.                                                    =  0000 G
+    .__.CPU.                                                    =  0000 L
+    .__.H$L.                                                    =  0000 L
+  0 ___str_0                                                       00B0 R
+  0 ___str_1                                                       00DB R
+  0 ___str_10                                                      0259 R
+  0 ___str_11                                                      0283 R
+  0 ___str_12                                                      02AD R
+  0 ___str_13                                                      02D8 R
+  0 ___str_14                                                      02FC R
+  0 ___str_2                                                       00FA R
+  0 ___str_3                                                       0127 R
+  0 ___str_4                                                       0156 R
+  0 ___str_5                                                       0183 R
+  0 ___str_6                                                       01B8 R
+  0 ___str_7                                                       01EB R
+  0 ___str_8                                                       0218 R
+  0 ___str_9                                                       0235 R
+  0 _application                                                   0669 GR
+    _cpct_disableFirmware                                          **** GX
+    _cpct_etm_drawTileBox2x4                                       **** GX
+    _cpct_etm_setTileset2x4                                        **** GX
+    _cpct_getScreenPtr                                             **** GX
+    _cpct_isKeyPressed                                             **** GX
+    _cpct_memset_f64                                               **** GX
+    _cpct_scanKeyboard_f                                           **** GX
+    _cpct_setPALColour                                             **** GX
+    _cpct_setStackLocation                                         **** GX
+    _cpct_setVideoMemoryPage                                       **** GX
+    _cpct_waitVSYNC                                                **** GX
+  0 _drawScreenTilemap                                             05EC GR
+  0 _g_scrbuffers                                                  004E GR
+    _g_tilemap                                                     **** GX
+    _g_tileset                                                     **** GX
+  0 _main                                                          06CA GR
+    _printf                                                        **** GX
+  0 _readKeyboardInput                                             0325 GR
+  0 _showMessages                                                  006F GR
+  0 _showMessages_messages_1_142                                   0092 R
+  0 _swapBuffers                                                   0000 GR
+  0 _wait4Key                                                      0052 GR
+
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180), page 2.
+Hexadecimal [16-Bits]
+
+Area Table
+
+   0 _CODE                                      size  6D3   flags    0
+   1 _DATA                                      size    0   flags    0
+   2 _INITIALIZED                               size    0   flags    0
+   3 _DABS                                      size    0   flags    8
+   4 _HOME                                      size    0   flags    0
+   5 _GSINIT                                    size    0   flags    0
+   6 _GSFINAL                                   size    0   flags    0
+   7 _INITIALIZER                               size    0   flags    0
+   8 _CABS                                      size    0   flags    8
+

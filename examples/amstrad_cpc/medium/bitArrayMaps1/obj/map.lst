@@ -1,0 +1,610 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module map
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _map_clear
+                             12 	.globl _map_changeTile
+                             13 	.globl _map_draw
+                             14 	.globl _map_drawTile
+                             15 	.globl _map_getTile
+                             16 	.globl _map_setTile
+                             17 	.globl _map_getBaseMem
+                             18 	.globl _map_setBaseMem
+                             19 	.globl _cpct_getScreenPtr
+                             20 	.globl _cpct_drawStringM1
+                             21 	.globl _cpct_setDrawCharM1
+                             22 	.globl _cpct_drawSolidBox
+                             23 	.globl _cpct_px2byteM1
+                             24 	.globl _cpct_setBit
+                             25 	.globl _cpct_getBit
+                             26 	.globl _map_base_location
+                             27 	.globl _map
+                             28 ;--------------------------------------------------------
+                             29 ; special function registers
+                             30 ;--------------------------------------------------------
+                             31 ;--------------------------------------------------------
+                             32 ; ram data
+                             33 ;--------------------------------------------------------
+                             34 	.area _DATA
+   0000                      35 _map_base_location::
+   0000                      36 	.ds 2
+                             37 ;--------------------------------------------------------
+                             38 ; ram data
+                             39 ;--------------------------------------------------------
+                             40 	.area _INITIALIZED
+                             41 ;--------------------------------------------------------
+                             42 ; absolute external ram data
+                             43 ;--------------------------------------------------------
+                             44 	.area _DABS (ABS)
+                             45 ;--------------------------------------------------------
+                             46 ; global & static initialisations
+                             47 ;--------------------------------------------------------
+                             48 	.area _HOME
+                             49 	.area _GSINIT
+                             50 	.area _GSFINAL
+                             51 	.area _GSINIT
+                             52 ;--------------------------------------------------------
+                             53 ; Home
+                             54 ;--------------------------------------------------------
+                             55 	.area _HOME
+                             56 	.area _HOME
+                             57 ;--------------------------------------------------------
+                             58 ; code
+                             59 ;--------------------------------------------------------
+                             60 	.area _CODE
+                             61 ;src/map.c:97: void map_setBaseMem(u8* mem_location) {
+                             62 ;	---------------------------------
+                             63 ; Function map_setBaseMem
+                             64 ; ---------------------------------
+   0000                      65 _map_setBaseMem::
+                             66 ;src/map.c:98: map_base_location = mem_location;
+   0000 21 02 00      [10]   67 	ld	hl, #2+0
+   0003 39            [11]   68 	add	hl, sp
+   0004 7E            [ 7]   69 	ld	a, (hl)
+   0005 32r00r00      [13]   70 	ld	(#_map_base_location + 0),a
+   0008 21 03 00      [10]   71 	ld	hl, #2+1
+   000B 39            [11]   72 	add	hl, sp
+   000C 7E            [ 7]   73 	ld	a, (hl)
+   000D 32r01r00      [13]   74 	ld	(#_map_base_location + 1),a
+   0010 C9            [10]   75 	ret
+   0011                      76 _map:
+   0011 FF                   77 	.db #0xff	; 255
+   0012 FF                   78 	.db #0xff	; 255
+   0013 FF                   79 	.db #0xff	; 255
+   0014 FF                   80 	.db #0xff	; 255
+   0015 FF                   81 	.db #0xff	; 255
+   0016 FF                   82 	.db #0xff	; 255
+   0017 FF                   83 	.db #0xff	; 255
+   0018 FF                   84 	.db #0xff	; 255
+   0019 FF                   85 	.db #0xff	; 255
+   001A FF                   86 	.db #0xff	; 255
+   001B C0                   87 	.db #0xc0	; 192
+   001C 00                   88 	.db #0x00	; 0
+   001D 00                   89 	.db #0x00	; 0
+   001E 00                   90 	.db #0x00	; 0
+   001F 00                   91 	.db #0x00	; 0
+   0020 00                   92 	.db #0x00	; 0
+   0021 00                   93 	.db #0x00	; 0
+   0022 00                   94 	.db #0x00	; 0
+   0023 00                   95 	.db #0x00	; 0
+   0024 03                   96 	.db #0x03	; 3
+   0025 C0                   97 	.db #0xc0	; 192
+   0026 00                   98 	.db #0x00	; 0
+   0027 00                   99 	.db #0x00	; 0
+   0028 00                  100 	.db #0x00	; 0
+   0029 00                  101 	.db #0x00	; 0
+   002A 00                  102 	.db #0x00	; 0
+   002B 00                  103 	.db #0x00	; 0
+   002C 00                  104 	.db #0x00	; 0
+   002D 00                  105 	.db #0x00	; 0
+   002E 03                  106 	.db #0x03	; 3
+   002F C3                  107 	.db #0xc3	; 195
+   0030 F6                  108 	.db #0xf6	; 246
+   0031 5F                  109 	.db #0x5f	; 95
+   0032 BF                  110 	.db #0xbf	; 191
+   0033 00                  111 	.db #0x00	; 0
+   0034 00                  112 	.db #0x00	; 0
+   0035 00                  113 	.db #0x00	; 0
+   0036 00                  114 	.db #0x00	; 0
+   0037 00                  115 	.db #0x00	; 0
+   0038 03                  116 	.db #0x03	; 3
+   0039 C0                  117 	.db #0xc0	; 192
+   003A C7                  118 	.db #0xc7	; 199
+   003B C6                  119 	.db #0xc6	; 198
+   003C 30                  120 	.db #0x30	; 48	'0'
+   003D 00                  121 	.db #0x00	; 0
+   003E 00                  122 	.db #0x00	; 0
+   003F 00                  123 	.db #0x00	; 0
+   0040 00                  124 	.db #0x00	; 0
+   0041 00                  125 	.db #0x00	; 0
+   0042 03                  126 	.db #0x03	; 3
+   0043 C0                  127 	.db #0xc0	; 192
+   0044 C7                  128 	.db #0xc7	; 199
+   0045 C6                  129 	.db #0xc6	; 198
+   0046 0C                  130 	.db #0x0c	; 12
+   0047 00                  131 	.db #0x00	; 0
+   0048 00                  132 	.db #0x00	; 0
+   0049 00                  133 	.db #0x00	; 0
+   004A 00                  134 	.db #0x00	; 0
+   004B 00                  135 	.db #0x00	; 0
+   004C 03                  136 	.db #0x03	; 3
+   004D C0                  137 	.db #0xc0	; 192
+   004E C6                  138 	.db #0xc6	; 198
+   004F 5F                  139 	.db #0x5f	; 95
+   0050 BF                  140 	.db #0xbf	; 191
+   0051 00                  141 	.db #0x00	; 0
+   0052 00                  142 	.db #0x00	; 0
+   0053 00                  143 	.db #0x00	; 0
+   0054 00                  144 	.db #0x00	; 0
+   0055 00                  145 	.db #0x00	; 0
+   0056 03                  146 	.db #0x03	; 3
+   0057 C0                  147 	.db #0xc0	; 192
+   0058 00                  148 	.db #0x00	; 0
+   0059 00                  149 	.db #0x00	; 0
+   005A 00                  150 	.db #0x00	; 0
+   005B 00                  151 	.db #0x00	; 0
+   005C 00                  152 	.db #0x00	; 0
+   005D 00                  153 	.db #0x00	; 0
+   005E 00                  154 	.db #0x00	; 0
+   005F 00                  155 	.db #0x00	; 0
+   0060 03                  156 	.db #0x03	; 3
+   0061 C0                  157 	.db #0xc0	; 192
+   0062 00                  158 	.db #0x00	; 0
+   0063 00                  159 	.db #0x00	; 0
+   0064 0F                  160 	.db #0x0f	; 15
+   0065 DF                  161 	.db #0xdf	; 223
+   0066 80                  162 	.db #0x80	; 128
+   0067 00                  163 	.db #0x00	; 0
+   0068 00                  164 	.db #0x00	; 0
+   0069 00                  165 	.db #0x00	; 0
+   006A 03                  166 	.db #0x03	; 3
+   006B C0                  167 	.db #0xc0	; 192
+   006C 00                  168 	.db #0x00	; 0
+   006D 00                  169 	.db #0x00	; 0
+   006E 03                  170 	.db #0x03	; 3
+   006F 0C                  171 	.db #0x0c	; 12
+   0070 00                  172 	.db #0x00	; 0
+   0071 00                  173 	.db #0x00	; 0
+   0072 00                  174 	.db #0x00	; 0
+   0073 00                  175 	.db #0x00	; 0
+   0074 03                  176 	.db #0x03	; 3
+   0075 C0                  177 	.db #0xc0	; 192
+   0076 00                  178 	.db #0x00	; 0
+   0077 00                  179 	.db #0x00	; 0
+   0078 03                  180 	.db #0x03	; 3
+   0079 03                  181 	.db #0x03	; 3
+   007A 00                  182 	.db #0x00	; 0
+   007B 00                  183 	.db #0x00	; 0
+   007C 00                  184 	.db #0x00	; 0
+   007D 00                  185 	.db #0x00	; 0
+   007E 03                  186 	.db #0x03	; 3
+   007F C0                  187 	.db #0xc0	; 192
+   0080 00                  188 	.db #0x00	; 0
+   0081 00                  189 	.db #0x00	; 0
+   0082 0F                  190 	.db #0x0f	; 15
+   0083 DF                  191 	.db #0xdf	; 223
+   0084 80                  192 	.db #0x80	; 128
+   0085 00                  193 	.db #0x00	; 0
+   0086 00                  194 	.db #0x00	; 0
+   0087 00                  195 	.db #0x00	; 0
+   0088 03                  196 	.db #0x03	; 3
+   0089 C0                  197 	.db #0xc0	; 192
+   008A 00                  198 	.db #0x00	; 0
+   008B 00                  199 	.db #0x00	; 0
+   008C 00                  200 	.db #0x00	; 0
+   008D 00                  201 	.db #0x00	; 0
+   008E 00                  202 	.db #0x00	; 0
+   008F 00                  203 	.db #0x00	; 0
+   0090 00                  204 	.db #0x00	; 0
+   0091 00                  205 	.db #0x00	; 0
+   0092 03                  206 	.db #0x03	; 3
+   0093 C0                  207 	.db #0xc0	; 192
+   0094 00                  208 	.db #0x00	; 0
+   0095 00                  209 	.db #0x00	; 0
+   0096 00                  210 	.db #0x00	; 0
+   0097 00                  211 	.db #0x00	; 0
+   0098 30                  212 	.db #0x30	; 48	'0'
+   0099 00                  213 	.db #0x00	; 0
+   009A 00                  214 	.db #0x00	; 0
+   009B 00                  215 	.db #0x00	; 0
+   009C 03                  216 	.db #0x03	; 3
+   009D C0                  217 	.db #0xc0	; 192
+   009E 00                  218 	.db #0x00	; 0
+   009F 00                  219 	.db #0x00	; 0
+   00A0 00                  220 	.db #0x00	; 0
+   00A1 00                  221 	.db #0x00	; 0
+   00A2 48                  222 	.db #0x48	; 72	'H'
+   00A3 00                  223 	.db #0x00	; 0
+   00A4 00                  224 	.db #0x00	; 0
+   00A5 00                  225 	.db #0x00	; 0
+   00A6 03                  226 	.db #0x03	; 3
+   00A7 C0                  227 	.db #0xc0	; 192
+   00A8 00                  228 	.db #0x00	; 0
+   00A9 00                  229 	.db #0x00	; 0
+   00AA 00                  230 	.db #0x00	; 0
+   00AB 00                  231 	.db #0x00	; 0
+   00AC FC                  232 	.db #0xfc	; 252
+   00AD 00                  233 	.db #0x00	; 0
+   00AE 00                  234 	.db #0x00	; 0
+   00AF 00                  235 	.db #0x00	; 0
+   00B0 03                  236 	.db #0x03	; 3
+   00B1 C0                  237 	.db #0xc0	; 192
+   00B2 00                  238 	.db #0x00	; 0
+   00B3 00                  239 	.db #0x00	; 0
+   00B4 00                  240 	.db #0x00	; 0
+   00B5 00                  241 	.db #0x00	; 0
+   00B6 CC                  242 	.db #0xcc	; 204
+   00B7 00                  243 	.db #0x00	; 0
+   00B8 00                  244 	.db #0x00	; 0
+   00B9 00                  245 	.db #0x00	; 0
+   00BA 03                  246 	.db #0x03	; 3
+   00BB C0                  247 	.db #0xc0	; 192
+   00BC 00                  248 	.db #0x00	; 0
+   00BD 00                  249 	.db #0x00	; 0
+   00BE 00                  250 	.db #0x00	; 0
+   00BF 00                  251 	.db #0x00	; 0
+   00C0 00                  252 	.db #0x00	; 0
+   00C1 00                  253 	.db #0x00	; 0
+   00C2 00                  254 	.db #0x00	; 0
+   00C3 00                  255 	.db #0x00	; 0
+   00C4 03                  256 	.db #0x03	; 3
+   00C5 C0                  257 	.db #0xc0	; 192
+   00C6 38                  258 	.db #0x38	; 56	'8'
+   00C7 3E                  259 	.db #0x3e	; 62
+   00C8 FD                  260 	.db #0xfd	; 253
+   00C9 F8                  261 	.db #0xf8	; 248
+   00CA 19                  262 	.db #0x19	; 25
+   00CB 8C                  263 	.db #0x8c	; 140
+   00CC 7E                  264 	.db #0x7e	; 126
+   00CD 00                  265 	.db #0x00	; 0
+   00CE 03                  266 	.db #0x03	; 3
+   00CF C0                  267 	.db #0xc0	; 192
+   00D0 58                  268 	.db #0x58	; 88	'X'
+   00D1 34                  269 	.db #0x34	; 52	'4'
+   00D2 30                  270 	.db #0x30	; 48	'0'
+   00D3 60                  271 	.db #0x60	; 96
+   00D4 1F                  272 	.db #0x1f	; 31
+   00D5 92                  273 	.db #0x92	; 146
+   00D6 66                  274 	.db #0x66	; 102	'f'
+   00D7 00                  275 	.db #0x00	; 0
+   00D8 03                  276 	.db #0x03	; 3
+   00D9 C0                  277 	.db #0xc0	; 192
+   00DA 18                  278 	.db #0x18	; 24
+   00DB 32                  279 	.db #0x32	; 50	'2'
+   00DC 30                  280 	.db #0x30	; 48	'0'
+   00DD 60                  281 	.db #0x60	; 96
+   00DE 19                  282 	.db #0x19	; 25
+   00DF BF                  283 	.db #0xbf	; 191
+   00E0 7E                  284 	.db #0x7e	; 126
+   00E1 00                  285 	.db #0x00	; 0
+   00E2 03                  286 	.db #0x03	; 3
+   00E3 C0                  287 	.db #0xc0	; 192
+   00E4 7E                  288 	.db #0x7e	; 126
+   00E5 3C                  289 	.db #0x3c	; 60
+   00E6 FC                  290 	.db #0xfc	; 252
+   00E7 60                  291 	.db #0x60	; 96
+   00E8 19                  292 	.db #0x19	; 25
+   00E9 B3                  293 	.db #0xb3	; 179
+   00EA 60                  294 	.db #0x60	; 96
+   00EB 00                  295 	.db #0x00	; 0
+   00EC 03                  296 	.db #0x03	; 3
+   00ED C0                  297 	.db #0xc0	; 192
+   00EE 00                  298 	.db #0x00	; 0
+   00EF 00                  299 	.db #0x00	; 0
+   00F0 00                  300 	.db #0x00	; 0
+   00F1 00                  301 	.db #0x00	; 0
+   00F2 00                  302 	.db #0x00	; 0
+   00F3 00                  303 	.db #0x00	; 0
+   00F4 00                  304 	.db #0x00	; 0
+   00F5 00                  305 	.db #0x00	; 0
+   00F6 03                  306 	.db #0x03	; 3
+   00F7 C0                  307 	.db #0xc0	; 192
+   00F8 00                  308 	.db #0x00	; 0
+   00F9 00                  309 	.db #0x00	; 0
+   00FA 00                  310 	.db #0x00	; 0
+   00FB 00                  311 	.db #0x00	; 0
+   00FC 00                  312 	.db #0x00	; 0
+   00FD 00                  313 	.db #0x00	; 0
+   00FE 00                  314 	.db #0x00	; 0
+   00FF 00                  315 	.db #0x00	; 0
+   0100 03                  316 	.db #0x03	; 3
+   0101 FF                  317 	.db #0xff	; 255
+   0102 FF                  318 	.db #0xff	; 255
+   0103 FF                  319 	.db #0xff	; 255
+   0104 FF                  320 	.db #0xff	; 255
+   0105 FF                  321 	.db #0xff	; 255
+   0106 FF                  322 	.db #0xff	; 255
+   0107 FF                  323 	.db #0xff	; 255
+   0108 FF                  324 	.db #0xff	; 255
+   0109 FF                  325 	.db #0xff	; 255
+   010A FF                  326 	.db #0xff	; 255
+                            327 ;src/map.c:106: u8* map_getBaseMem() { return map_base_location; }
+                            328 ;	---------------------------------
+                            329 ; Function map_getBaseMem
+                            330 ; ---------------------------------
+   010B                     331 _map_getBaseMem::
+   010B 2Ar00r00      [16]  332 	ld	hl, (_map_base_location)
+   010E C9            [10]  333 	ret
+                            334 ;src/map.c:114: void map_setTile(u8 x, u8 y, u8 value) {
+                            335 ;	---------------------------------
+                            336 ; Function map_setTile
+                            337 ; ---------------------------------
+   010F                     338 _map_setTile::
+   010F DD E5         [15]  339 	push	ix
+   0111 DD 21 00 00   [14]  340 	ld	ix,#0
+   0115 DD 39         [15]  341 	add	ix,sp
+                            342 ;src/map.c:118: u16 tile_index = y * MAP_WIDTH + x;
+   0117 DD 4E 05      [19]  343 	ld	c,5 (ix)
+   011A 06 00         [ 7]  344 	ld	b,#0x00
+   011C 69            [ 4]  345 	ld	l, c
+   011D 60            [ 4]  346 	ld	h, b
+   011E 29            [11]  347 	add	hl, hl
+   011F 29            [11]  348 	add	hl, hl
+   0120 09            [11]  349 	add	hl, bc
+   0121 29            [11]  350 	add	hl, hl
+   0122 29            [11]  351 	add	hl, hl
+   0123 29            [11]  352 	add	hl, hl
+   0124 29            [11]  353 	add	hl, hl
+   0125 DD 4E 04      [19]  354 	ld	c, 4 (ix)
+   0128 06 00         [ 7]  355 	ld	b, #0x00
+   012A 09            [11]  356 	add	hl, bc
+                            357 ;src/map.c:121: cpct_setBit(map, value, tile_index);
+   012B DD 5E 06      [19]  358 	ld	e, 6 (ix)
+   012E 16 00         [ 7]  359 	ld	d, #0x00
+   0130 01r11r00      [10]  360 	ld	bc, #_map+0
+   0133 E5            [11]  361 	push	hl
+   0134 D5            [11]  362 	push	de
+   0135 C5            [11]  363 	push	bc
+   0136 CDr00r00      [17]  364 	call	_cpct_setBit
+   0139 DD E1         [14]  365 	pop	ix
+   013B C9            [10]  366 	ret
+                            367 ;src/map.c:130: u8 map_getTile(u8 x, u8 y) {
+                            368 ;	---------------------------------
+                            369 ; Function map_getTile
+                            370 ; ---------------------------------
+   013C                     371 _map_getTile::
+   013C DD E5         [15]  372 	push	ix
+   013E DD 21 00 00   [14]  373 	ld	ix,#0
+   0142 DD 39         [15]  374 	add	ix,sp
+                            375 ;src/map.c:134: u16 tile_index = y * MAP_WIDTH + x;
+   0144 DD 4E 05      [19]  376 	ld	c,5 (ix)
+   0147 06 00         [ 7]  377 	ld	b,#0x00
+   0149 69            [ 4]  378 	ld	l, c
+   014A 60            [ 4]  379 	ld	h, b
+   014B 29            [11]  380 	add	hl, hl
+   014C 29            [11]  381 	add	hl, hl
+   014D 09            [11]  382 	add	hl, bc
+   014E 29            [11]  383 	add	hl, hl
+   014F 29            [11]  384 	add	hl, hl
+   0150 29            [11]  385 	add	hl, hl
+   0151 29            [11]  386 	add	hl, hl
+   0152 DD 4E 04      [19]  387 	ld	c, 4 (ix)
+   0155 06 00         [ 7]  388 	ld	b, #0x00
+   0157 09            [11]  389 	add	hl, bc
+                            390 ;src/map.c:137: u8  tile_value = cpct_getBit(map, tile_index);
+   0158 01r11r00      [10]  391 	ld	bc, #_map+0
+   015B E5            [11]  392 	push	hl
+   015C C5            [11]  393 	push	bc
+   015D CDr00r00      [17]  394 	call	_cpct_getBit
+                            395 ;src/map.c:138: return tile_value;
+   0160 DD E1         [14]  396 	pop	ix
+   0162 C9            [10]  397 	ret
+                            398 ;src/map.c:149: void map_drawTile(u8 x, u8 y) {
+                            399 ;	---------------------------------
+                            400 ; Function map_drawTile
+                            401 ; ---------------------------------
+   0163                     402 _map_drawTile::
+   0163 DD E5         [15]  403 	push	ix
+   0165 DD 21 00 00   [14]  404 	ld	ix,#0
+   0169 DD 39         [15]  405 	add	ix,sp
+                            406 ;src/map.c:151: u8 *pmem = cpct_getScreenPtr(map_base_location, x, y*TILE_HEIGHT);
+   016B DD 7E 05      [19]  407 	ld	a, 5 (ix)
+   016E 87            [ 4]  408 	add	a, a
+   016F 87            [ 4]  409 	add	a, a
+   0170 57            [ 4]  410 	ld	d, a
+   0171 ED 4Br00r00   [20]  411 	ld	bc, (_map_base_location)
+   0175 D5            [11]  412 	push	de
+   0176 33            [ 6]  413 	inc	sp
+   0177 DD 7E 04      [19]  414 	ld	a, 4 (ix)
+   017A F5            [11]  415 	push	af
+   017B 33            [ 6]  416 	inc	sp
+   017C C5            [11]  417 	push	bc
+   017D CDr00r00      [17]  418 	call	_cpct_getScreenPtr
+                            419 ;src/map.c:155: u8 c_pattern = cpct_px2byteM1(C_BLACK, C_BLACK, C_BLACK, C_BLACK);
+   0180 E5            [11]  420 	push	hl
+   0181 21 00 00      [10]  421 	ld	hl, #0x0000
+   0184 E5            [11]  422 	push	hl
+   0185 2E 00         [ 7]  423 	ld	l, #0x00
+   0187 E5            [11]  424 	push	hl
+   0188 CDr00r00      [17]  425 	call	_cpct_px2byteM1
+   018B F1            [10]  426 	pop	af
+   018C F1            [10]  427 	pop	af
+   018D 5D            [ 4]  428 	ld	e, l
+   018E D5            [11]  429 	push	de
+   018F DD 66 05      [19]  430 	ld	h, 5 (ix)
+   0192 DD 6E 04      [19]  431 	ld	l, 4 (ix)
+   0195 E5            [11]  432 	push	hl
+   0196 CDr3Cr01      [17]  433 	call	_map_getTile
+   0199 F1            [10]  434 	pop	af
+   019A D1            [10]  435 	pop	de
+   019B C1            [10]  436 	pop	bc
+   019C 7D            [ 4]  437 	ld	a, l
+   019D B7            [ 4]  438 	or	a, a
+   019E 28 0F         [12]  439 	jr	Z,00102$
+                            440 ;src/map.c:157: c_pattern = cpct_px2byteM1(C_YELLOW, C_YELLOW, C_YELLOW, C_YELLOW);
+   01A0 C5            [11]  441 	push	bc
+   01A1 21 01 01      [10]  442 	ld	hl, #0x0101
+   01A4 E5            [11]  443 	push	hl
+   01A5 2E 01         [ 7]  444 	ld	l, #0x01
+   01A7 E5            [11]  445 	push	hl
+   01A8 CDr00r00      [17]  446 	call	_cpct_px2byteM1
+   01AB F1            [10]  447 	pop	af
+   01AC F1            [10]  448 	pop	af
+   01AD 5D            [ 4]  449 	ld	e, l
+   01AE C1            [10]  450 	pop	bc
+   01AF                     451 00102$:
+                            452 ;src/map.c:160: cpct_drawSolidBox(pmem, c_pattern, TILE_WIDTH, TILE_HEIGHT);   
+   01AF 16 00         [ 7]  453 	ld	d, #0x00
+   01B1 21 01 04      [10]  454 	ld	hl, #0x0401
+   01B4 E5            [11]  455 	push	hl
+   01B5 D5            [11]  456 	push	de
+   01B6 C5            [11]  457 	push	bc
+   01B7 CDr00r00      [17]  458 	call	_cpct_drawSolidBox
+   01BA DD E1         [14]  459 	pop	ix
+   01BC C9            [10]  460 	ret
+                            461 ;src/map.c:168: void map_draw() {
+                            462 ;	---------------------------------
+                            463 ; Function map_draw
+                            464 ; ---------------------------------
+   01BD                     465 _map_draw::
+                            466 ;src/map.c:175: pmem = cpct_getScreenPtr(CPCT_VMEM_START, 30, 160);
+   01BD 21 1E A0      [10]  467 	ld	hl, #0xa01e
+   01C0 E5            [11]  468 	push	hl
+   01C1 21 00 C0      [10]  469 	ld	hl, #0xc000
+   01C4 E5            [11]  470 	push	hl
+   01C5 CDr00r00      [17]  471 	call	_cpct_getScreenPtr
+                            472 ;src/map.c:176: cpct_setDrawCharM1(C_BLACK, C_RED);
+   01C8 E5            [11]  473 	push	hl
+   01C9 21 00 03      [10]  474 	ld	hl, #0x0300
+   01CC E5            [11]  475 	push	hl
+   01CD CDr00r00      [17]  476 	call	_cpct_setDrawCharM1
+   01D0 C1            [10]  477 	pop	bc
+                            478 ;src/map.c:177: cpct_drawStringM1(string, pmem);
+   01D1 2Ar0Ar02      [16]  479 	ld	hl, (_map_draw_string_1_137)
+   01D4 C5            [11]  480 	push	bc
+   01D5 C5            [11]  481 	push	bc
+   01D6 E5            [11]  482 	push	hl
+   01D7 CDr00r00      [17]  483 	call	_cpct_drawStringM1
+   01DA C1            [10]  484 	pop	bc
+                            485 ;src/map.c:180: for(y=0; y < MAP_HEIGHT; y++) 
+   01DB 1E 00         [ 7]  486 	ld	e, #0x00
+                            487 ;src/map.c:181: for(x=0; x < MAP_WIDTH; x++) 
+   01DD                     488 00109$:
+   01DD 16 00         [ 7]  489 	ld	d, #0x00
+   01DF                     490 00103$:
+                            491 ;src/map.c:182: map_drawTile(x, y);
+   01DF C5            [11]  492 	push	bc
+   01E0 D5            [11]  493 	push	de
+   01E1 7B            [ 4]  494 	ld	a, e
+   01E2 F5            [11]  495 	push	af
+   01E3 33            [ 6]  496 	inc	sp
+   01E4 D5            [11]  497 	push	de
+   01E5 33            [ 6]  498 	inc	sp
+   01E6 CDr63r01      [17]  499 	call	_map_drawTile
+   01E9 F1            [10]  500 	pop	af
+   01EA D1            [10]  501 	pop	de
+   01EB C1            [10]  502 	pop	bc
+                            503 ;src/map.c:181: for(x=0; x < MAP_WIDTH; x++) 
+   01EC 14            [ 4]  504 	inc	d
+   01ED 7A            [ 4]  505 	ld	a, d
+   01EE D6 50         [ 7]  506 	sub	a, #0x50
+   01F0 38 ED         [12]  507 	jr	C,00103$
+                            508 ;src/map.c:180: for(y=0; y < MAP_HEIGHT; y++) 
+   01F2 1C            [ 4]  509 	inc	e
+   01F3 7B            [ 4]  510 	ld	a, e
+   01F4 D6 19         [ 7]  511 	sub	a, #0x19
+   01F6 38 E5         [12]  512 	jr	C,00109$
+                            513 ;src/map.c:186: cpct_setDrawCharM1(C_BLACK, C_BLACK);
+   01F8 C5            [11]  514 	push	bc
+   01F9 21 00 00      [10]  515 	ld	hl, #0x0000
+   01FC E5            [11]  516 	push	hl
+   01FD CDr00r00      [17]  517 	call	_cpct_setDrawCharM1
+   0200 C1            [10]  518 	pop	bc
+                            519 ;src/map.c:187: cpct_drawStringM1(string, pmem);
+   0201 2Ar0Ar02      [16]  520 	ld	hl, (_map_draw_string_1_137)
+   0204 C5            [11]  521 	push	bc
+   0205 E5            [11]  522 	push	hl
+   0206 CDr00r00      [17]  523 	call	_cpct_drawStringM1
+   0209 C9            [10]  524 	ret
+   020A                     525 _map_draw_string_1_137:
+   020Ar0Cr02               526 	.dw ___str_0
+   020C                     527 ___str_0:
+   020C 44 72 61 77 69 6E   528 	.ascii "Drawing Map"
+        67 20 4D 61 70
+   0217 00                  529 	.db 0x00
+                            530 ;src/map.c:195: void map_changeTile(u8 x, u8 y) {
+                            531 ;	---------------------------------
+                            532 ; Function map_changeTile
+                            533 ; ---------------------------------
+   0218                     534 _map_changeTile::
+   0218 DD E5         [15]  535 	push	ix
+   021A DD 21 00 00   [14]  536 	ld	ix,#0
+   021E DD 39         [15]  537 	add	ix,sp
+                            538 ;src/map.c:197: u8 tile = map_getTile(x, y);
+   0220 DD 66 05      [19]  539 	ld	h, 5 (ix)
+   0223 DD 6E 04      [19]  540 	ld	l, 4 (ix)
+   0226 E5            [11]  541 	push	hl
+   0227 CDr3Cr01      [17]  542 	call	_map_getTile
+   022A F1            [10]  543 	pop	af
+                            544 ;src/map.c:201: tile = (tile == 0);
+   022B 7D            [ 4]  545 	ld	a, l
+   022C B7            [ 4]  546 	or	a, a
+   022D 20 04         [12]  547 	jr	NZ,00103$
+   022F 3E 01         [ 7]  548 	ld	a,#0x01
+   0231 18 01         [12]  549 	jr	00104$
+   0233                     550 00103$:
+   0233 AF            [ 4]  551 	xor	a,a
+   0234                     552 00104$:
+   0234 47            [ 4]  553 	ld	b, a
+                            554 ;src/map.c:204: map_setTile(x, y, tile);
+   0235 C5            [11]  555 	push	bc
+   0236 33            [ 6]  556 	inc	sp
+   0237 DD 66 05      [19]  557 	ld	h, 5 (ix)
+   023A DD 6E 04      [19]  558 	ld	l, 4 (ix)
+   023D E5            [11]  559 	push	hl
+   023E CDr0Fr01      [17]  560 	call	_map_setTile
+                            561 ;src/map.c:205: map_drawTile(x, y);
+   0241 33            [ 6]  562 	inc	sp
+   0242 DD 66 05      [19]  563 	ld	h, 5 (ix)
+   0245 DD 6E 04      [19]  564 	ld	l, 4 (ix)
+   0248 E3            [19]  565 	ex	(sp),hl
+   0249 CDr63r01      [17]  566 	call	_map_drawTile
+   024C F1            [10]  567 	pop	af
+   024D DD E1         [14]  568 	pop	ix
+   024F C9            [10]  569 	ret
+                            570 ;src/map.c:213: void map_clear() {
+                            571 ;	---------------------------------
+                            572 ; Function map_clear
+                            573 ; ---------------------------------
+   0250                     574 _map_clear::
+                            575 ;src/map.c:217: for(y=0; y < MAP_HEIGHT; y++) 
+   0250 0E 00         [ 7]  576 	ld	c, #0x00
+                            577 ;src/map.c:218: for(x=0; x < MAP_WIDTH; x++) 
+   0252                     578 00109$:
+   0252 06 00         [ 7]  579 	ld	b, #0x00
+   0254                     580 00103$:
+                            581 ;src/map.c:219: map_setTile(x, y, 0);
+   0254 C5            [11]  582 	push	bc
+   0255 AF            [ 4]  583 	xor	a, a
+   0256 F5            [11]  584 	push	af
+   0257 33            [ 6]  585 	inc	sp
+   0258 79            [ 4]  586 	ld	a, c
+   0259 F5            [11]  587 	push	af
+   025A 33            [ 6]  588 	inc	sp
+   025B C5            [11]  589 	push	bc
+   025C 33            [ 6]  590 	inc	sp
+   025D CDr0Fr01      [17]  591 	call	_map_setTile
+   0260 F1            [10]  592 	pop	af
+   0261 33            [ 6]  593 	inc	sp
+   0262 C1            [10]  594 	pop	bc
+                            595 ;src/map.c:218: for(x=0; x < MAP_WIDTH; x++) 
+   0263 04            [ 4]  596 	inc	b
+   0264 78            [ 4]  597 	ld	a, b
+   0265 D6 50         [ 7]  598 	sub	a, #0x50
+   0267 38 EB         [12]  599 	jr	C,00103$
+                            600 ;src/map.c:217: for(y=0; y < MAP_HEIGHT; y++) 
+   0269 0C            [ 4]  601 	inc	c
+   026A 79            [ 4]  602 	ld	a, c
+   026B D6 19         [ 7]  603 	sub	a, #0x19
+   026D 38 E3         [12]  604 	jr	C,00109$
+                            605 ;src/map.c:222: map_draw();
+   026F C3rBDr01      [10]  606 	jp  _map_draw
+                            607 	.area _CODE
+                            608 	.area _INITIALIZER
+                            609 	.area _CABS (ABS)

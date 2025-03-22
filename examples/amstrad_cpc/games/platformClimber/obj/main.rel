@@ -1,0 +1,44 @@
+XL2
+H 9 areas B global symbols
+M main
+O -mz80
+S _cpct_setPalette Ref0000
+S _cpct_setPALColour Ref0000
+S _cpct_fw2hw Ref0000
+S .__.ABS. Def0000
+S _cpct_setVideoMode Ref0000
+S _showGameEnd Ref0000
+S _G_palette Ref0000
+S _cpct_disableFirmware Ref0000
+S _game Ref0000
+A _CODE size 4E flags 0 addr 0
+S _main Def002C
+S _initializeCPC Def0000
+A _DATA size 0 flags 0 addr 0
+A _INITIALIZED size 0 flags 0 addr 0
+A _DABS size 0 flags 8 addr 0
+A _HOME size 0 flags 0 addr 0
+A _GSINIT size 0 flags 0 addr 0
+A _GSFINAL size 0 flags 0 addr 0
+A _INITIALIZER size 0 flags 0 addr 0
+A _CABS size 0 flags 8 addr 0
+T 00 00
+R 00 00 00 00
+T 00 00 CD 00 00 21 10 00 E5 21 00 00 E5 CD 00 00
+R 00 00 00 00 02 03 07 00 02 0A 06 00 02 0E 02 00
+T 0E 00 21 10 00 E5 21 00 00 E5 CD 00 00 21 08 00
+R 00 00 00 00 02 07 06 00 02 0B 00 00 02 0E 06 00
+T 1C 00 46 C5 33 3E 10 F5 33 CD 00 00 2E 00 CD
+R 00 00 00 00 02 0A 01 00
+T 29 00 00 00 C9
+R 00 00 00 00 02 02 04 00
+T 2C 00
+R 00 00 00 00
+T 2C 00 01 00 00 C5 CD 00 00 C1
+R 00 00 00 00 00 07 00 00
+T 34 00
+R 00 00 00 00
+T 34 00 C5 C5 CD 00 00 F1 C1 E5 C5 E5 CD 00 00 F1
+R 00 00 00 00 02 05 08 00 02 0D 05 00
+T 42 00 C1 E1 79 95 78 9C 30 EA 4D 44 18 E6
+R 00 00 00 00

@@ -1,0 +1,979 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module main
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _main
+                             12 	.globl _application
+                             13 	.globl _drawScreenTilemap
+                             14 	.globl _readKeyboardInput
+                             15 	.globl _showMessages
+                             16 	.globl _wait4Key
+                             17 	.globl _swapBuffers
+                             18 	.globl _printf
+                             19 	.globl _cpct_etm_setTileset2x4
+                             20 	.globl _cpct_etm_drawTileBox2x4
+                             21 	.globl _cpct_getScreenPtr
+                             22 	.globl _cpct_setVideoMemoryPage
+                             23 	.globl _cpct_setPALColour
+                             24 	.globl _cpct_waitVSYNC
+                             25 	.globl _cpct_isKeyPressed
+                             26 	.globl _cpct_scanKeyboard_f
+                             27 	.globl _cpct_setStackLocation
+                             28 	.globl _cpct_memset_f64
+                             29 	.globl _cpct_disableFirmware
+                             30 	.globl _g_scrbuffers
+                             31 ;--------------------------------------------------------
+                             32 ; special function registers
+                             33 ;--------------------------------------------------------
+                             34 ;--------------------------------------------------------
+                             35 ; ram data
+                             36 ;--------------------------------------------------------
+                             37 	.area _DATA
+                             38 ;--------------------------------------------------------
+                             39 ; ram data
+                             40 ;--------------------------------------------------------
+                             41 	.area _INITIALIZED
+                             42 ;--------------------------------------------------------
+                             43 ; absolute external ram data
+                             44 ;--------------------------------------------------------
+                             45 	.area _DABS (ABS)
+                             46 ;--------------------------------------------------------
+                             47 ; global & static initialisations
+                             48 ;--------------------------------------------------------
+                             49 	.area _HOME
+                             50 	.area _GSINIT
+                             51 	.area _GSFINAL
+                             52 	.area _GSINIT
+                             53 ;--------------------------------------------------------
+                             54 ; Home
+                             55 ;--------------------------------------------------------
+                             56 	.area _HOME
+                             57 	.area _HOME
+                             58 ;--------------------------------------------------------
+                             59 ; code
+                             60 ;--------------------------------------------------------
+                             61 	.area _CODE
+                             62 ;src/main.c:51: void swapBuffers(u8** scrbuffers) {
+                             63 ;	---------------------------------
+                             64 ; Function swapBuffers
+                             65 ; ---------------------------------
+   0000                      66 _swapBuffers::
+   0000 DD E5         [15]   67 	push	ix
+   0002 DD 21 00 00   [14]   68 	ld	ix,#0
+   0006 DD 39         [15]   69 	add	ix,sp
+   0008 F5            [11]   70 	push	af
+                             71 ;src/main.c:59: cpct_setVideoMemoryPage( (u16)(scrbuffers[1]) >> 10 );
+   0009 DD 6E 04      [19]   72 	ld	l,4 (ix)
+   000C DD 66 05      [19]   73 	ld	h,5 (ix)
+   000F 23            [ 6]   74 	inc	hl
+   0010 23            [ 6]   75 	inc	hl
+   0011 4E            [ 7]   76 	ld	c, (hl)
+   0012 23            [ 6]   77 	inc	hl
+   0013 7E            [ 7]   78 	ld	a, (hl)
+   0014 0F            [ 4]   79 	rrca
+   0015 0F            [ 4]   80 	rrca
+   0016 E6 3F         [ 7]   81 	and	a, #0x3f
+   0018 6F            [ 4]   82 	ld	l, a
+   0019 CDr00r00      [17]   83 	call	_cpct_setVideoMemoryPage
+                             84 ;src/main.c:63: aux = scrbuffers[0];
+   001C DD 5E 04      [19]   85 	ld	e,4 (ix)
+   001F DD 56 05      [19]   86 	ld	d,5 (ix)
+   0022 6B            [ 4]   87 	ld	l, e
+   0023 62            [ 4]   88 	ld	h, d
+   0024 4E            [ 7]   89 	ld	c, (hl)
+   0025 23            [ 6]   90 	inc	hl
+   0026 46            [ 7]   91 	ld	b, (hl)
+                             92 ;src/main.c:64: scrbuffers[0] = scrbuffers[1];
+   0027 D5            [11]   93 	push	de
+   0028 FD E1         [14]   94 	pop	iy
+   002A FD 23         [10]   95 	inc	iy
+   002C FD 23         [10]   96 	inc	iy
+   002E FD 7E 00      [19]   97 	ld	a, 0 (iy)
+   0031 DD 77 FE      [19]   98 	ld	-2 (ix), a
+   0034 FD 7E 01      [19]   99 	ld	a, 1 (iy)
+   0037 DD 77 FF      [19]  100 	ld	-1 (ix), a
+   003A DD 7E FE      [19]  101 	ld	a, -2 (ix)
+   003D 12            [ 7]  102 	ld	(de), a
+   003E 13            [ 6]  103 	inc	de
+   003F DD 7E FF      [19]  104 	ld	a, -1 (ix)
+   0042 12            [ 7]  105 	ld	(de), a
+                            106 ;src/main.c:65: scrbuffers[1] = aux;
+   0043 FD 71 00      [19]  107 	ld	0 (iy), c
+   0046 FD 70 01      [19]  108 	ld	1 (iy), b
+   0049 DD F9         [10]  109 	ld	sp, ix
+   004B DD E1         [14]  110 	pop	ix
+   004D C9            [10]  111 	ret
+   004E                     112 _g_scrbuffers:
+   004E 00 C0               113 	.dw #0xc000
+   0050 00 80               114 	.dw #0x8000
+                            115 ;src/main.c:71: void wait4Key(cpct_keyID key) {
+                            116 ;	---------------------------------
+                            117 ; Function wait4Key
+                            118 ; ---------------------------------
+   0052                     119 _wait4Key::
+                            120 ;src/main.c:74: do
+   0052                     121 00101$:
+                            122 ;src/main.c:75: cpct_scanKeyboard_f();
+   0052 CDr00r00      [17]  123 	call	_cpct_scanKeyboard_f
+                            124 ;src/main.c:76: while(cpct_isKeyPressed(key));
+   0055 C1            [10]  125 	pop	bc
+   0056 E1            [10]  126 	pop	hl
+   0057 E5            [11]  127 	push	hl
+   0058 C5            [11]  128 	push	bc
+   0059 CDr00r00      [17]  129 	call	_cpct_isKeyPressed
+   005C 7D            [ 4]  130 	ld	a, l
+   005D B7            [ 4]  131 	or	a, a
+   005E 20 F2         [12]  132 	jr	NZ,00101$
+                            133 ;src/main.c:79: do
+   0060                     134 00104$:
+                            135 ;src/main.c:80: cpct_scanKeyboard_f();
+   0060 CDr00r00      [17]  136 	call	_cpct_scanKeyboard_f
+                            137 ;src/main.c:81: while(!cpct_isKeyPressed(key));
+   0063 C1            [10]  138 	pop	bc
+   0064 E1            [10]  139 	pop	hl
+   0065 E5            [11]  140 	push	hl
+   0066 C5            [11]  141 	push	bc
+   0067 CDr00r00      [17]  142 	call	_cpct_isKeyPressed
+   006A 7D            [ 4]  143 	ld	a, l
+   006B B7            [ 4]  144 	or	a, a
+   006C 28 F2         [12]  145 	jr	Z,00104$
+   006E C9            [10]  146 	ret
+                            147 ;src/main.c:89: void showMessages() {
+                            148 ;	---------------------------------
+                            149 ; Function showMessages
+                            150 ; ---------------------------------
+   006F                     151 _showMessages::
+                            152 ;src/main.c:112: for (i=0; i < NUMMSGS; ++i)
+   006F 0E 00         [ 7]  153 	ld	c, #0x00
+   0071                     154 00102$:
+                            155 ;src/main.c:113: printf(messages [i]);
+   0071 69            [ 4]  156 	ld	l, c
+   0072 26 00         [ 7]  157 	ld	h, #0x00
+   0074 29            [11]  158 	add	hl, hl
+   0075 11r92r00      [10]  159 	ld	de, #_showMessages_messages_1_142
+   0078 19            [11]  160 	add	hl, de
+   0079 5E            [ 7]  161 	ld	e, (hl)
+   007A 23            [ 6]  162 	inc	hl
+   007B 56            [ 7]  163 	ld	d, (hl)
+   007C C5            [11]  164 	push	bc
+   007D D5            [11]  165 	push	de
+   007E CDr00r00      [17]  166 	call	_printf
+   0081 F1            [10]  167 	pop	af
+   0082 C1            [10]  168 	pop	bc
+                            169 ;src/main.c:112: for (i=0; i < NUMMSGS; ++i)
+   0083 0C            [ 4]  170 	inc	c
+   0084 79            [ 4]  171 	ld	a, c
+   0085 D6 0F         [ 7]  172 	sub	a, #0x0f
+   0087 38 E8         [12]  173 	jr	C,00102$
+                            174 ;src/main.c:116: wait4Key(Key_Space);
+   0089 21 05 80      [10]  175 	ld	hl, #0x8005
+   008C E5            [11]  176 	push	hl
+   008D CDr52r00      [17]  177 	call	_wait4Key
+   0090 F1            [10]  178 	pop	af
+   0091 C9            [10]  179 	ret
+   0092                     180 _showMessages_messages_1_142:
+   0092rB0r00               181 	.dw ___str_0
+   0094rDBr00               182 	.dw ___str_1
+   0096rFAr00               183 	.dw ___str_2
+   0098r27r01               184 	.dw ___str_3
+   009Ar56r01               185 	.dw ___str_4
+   009Cr83r01               186 	.dw ___str_5
+   009ErB8r01               187 	.dw ___str_6
+   00A0rEBr01               188 	.dw ___str_7
+   00A2r18r02               189 	.dw ___str_8
+   00A4r35r02               190 	.dw ___str_9
+   00A6r59r02               191 	.dw ___str_10
+   00A8r83r02               192 	.dw ___str_11
+   00AArADr02               193 	.dw ___str_12
+   00ACrD8r02               194 	.dw ___str_13
+   00AErFCr02               195 	.dw ___str_14
+   00B0                     196 ___str_0:
+   00B0 0F                  197 	.db 0x0f
+   00B1 02                  198 	.db 0x02
+   00B2 2A 2D 2A 2D 2A 2D   199 	.ascii "*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-"
+        2A 2D 2A 2D 2A 2D
+        2A 2D 2A 2D 2A 2D
+        2A 2D 2A 2D 2A 2D
+        2A 2D 2A 2D 2A 2D
+        2A 2D 2A 2D 2A 2D
+        2A 2D 2A 2D
+   00DA 00                  200 	.db 0x00
+   00DB                     201 ___str_1:
+   00DB 0F                  202 	.db 0x0f
+   00DC 03                  203 	.db 0x03
+   00DD 20 20 20 20 20 20   204 	.ascii "             TILEMAPS DEMO"
+        20 20 20 20 20 20
+        20 54 49 4C 45 4D
+        41 50 53 20 44 45
+        4D 4F
+   00F7 0A                  205 	.db 0x0a
+   00F8 0D                  206 	.db 0x0d
+   00F9 00                  207 	.db 0x00
+   00FA                     208 ___str_2:
+   00FA 0F                  209 	.db 0x0f
+   00FB 02                  210 	.db 0x02
+   00FC 2A 2D 2A 2D 2A 2D   211 	.ascii "*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-"
+        2A 2D 2A 2D 2A 2D
+        2A 2D 2A 2D 2A 2D
+        2A 2D 2A 2D 2A 2D
+        2A 2D 2A 2D 2A 2D
+        2A 2D 2A 2D 2A 2D
+        2A 2D 2A 2D
+   0124 0A                  212 	.db 0x0a
+   0125 0D                  213 	.db 0x0d
+   0126 00                  214 	.db 0x00
+   0127                     215 ___str_3:
+   0127 0F                  216 	.db 0x0f
+   0128 01                  217 	.db 0x01
+   0129 53 68 6F 77 73 20   218 	.ascii "Shows  a "
+        20 61 20
+   0132 0F                  219 	.db 0x0f
+   0133 03                  220 	.db 0x03
+   0134 74 69 6C 65 6D 61   221 	.ascii "tilemap"
+        70
+   013B 0F                  222 	.db 0x0f
+   013C 01                  223 	.db 0x01
+   013D 20 20 74 68 72 6F   224 	.ascii "  through   a  viewport,"
+        75 67 68 20 20 20
+        61 20 20 76 69 65
+        77 70 6F 72 74 2C
+   0155 00                  225 	.db 0x00
+   0156                     226 ___str_4:
+   0156 6C 65 74 74 69 6E   227 	.ascii "letting you control the  "
+        67 20 79 6F 75 20
+        63 6F 6E 74 72 6F
+        6C 20 74 68 65 20
+        20
+   016F 0F                  228 	.db 0x0f
+   0170 02                  229 	.db 0x02
+   0171 6C 6F 63 61 74 69   230 	.ascii "location"
+        6F 6E
+   0179 0F                  231 	.db 0x0f
+   017A 01                  232 	.db 0x01
+   017B 20 6F 66 20 74 68   233 	.ascii " of the"
+        65
+   0182 00                  234 	.db 0x00
+   0183                     235 ___str_5:
+   0183 0F                  236 	.db 0x0f
+   0184 03                  237 	.db 0x03
+   0185 74 69 6C 65 6D 61   238 	.ascii "tilemap"
+        70
+   018C 0F                  239 	.db 0x0f
+   018D 01                  240 	.db 0x01
+   018E 20 61 6E 64 20 74   241 	.ascii " and the "
+        68 65 20
+   0197 0F                  242 	.db 0x0f
+   0198 02                  243 	.db 0x02
+   0199 73 69 7A 65         244 	.ascii "size"
+   019D 0F                  245 	.db 0x0f
+   019E 01                  246 	.db 0x01
+   019F 20 61 6E 64 20      247 	.ascii " and "
+   01A4 0F                  248 	.db 0x0f
+   01A5 02                  249 	.db 0x02
+   01A6 70 6F 73 69 74 69   250 	.ascii "position"
+        6F 6E
+   01AE 0F                  251 	.db 0x0f
+   01AF 01                  252 	.db 0x01
+   01B0 20 6F 66 20 74 68   253 	.ascii " of the"
+        65
+   01B7 00                  254 	.db 0x00
+   01B8                     255 ___str_6:
+   01B8 76 69 65 77 70 6F   256 	.ascii "viewport. All is done  using "
+        72 74 2E 20 41 6C
+        6C 20 69 73 20 64
+        6F 6E 65 20 20 75
+        73 69 6E 67 20
+   01D5 0F                  257 	.db 0x0f
+   01D6 03                  258 	.db 0x03
+   01D7 43                  259 	.ascii "C"
+   01D8 0F                  260 	.db 0x0f
+   01D9 03                  261 	.db 0x03
+   01DA 50                  262 	.ascii "P"
+   01DB 0F                  263 	.db 0x0f
+   01DC 03                  264 	.db 0x03
+   01DD 43                  265 	.ascii "C"
+   01DE 0F                  266 	.db 0x0f
+   01DF 02                  267 	.db 0x02
+   01E0 74 65 6C 65 72 61   268 	.ascii "telera"
+   01E6 0F                  269 	.db 0x0f
+   01E7 01                  270 	.db 0x01
+   01E8 27 73               271 	.ascii "'s"
+   01EA 00                  272 	.db 0x00
+   01EB                     273 ___str_7:
+   01EB 66 75 6E 63 74 69   274 	.ascii "function  "
+        6F 6E 20 20
+   01F5 0F                  275 	.db 0x0f
+   01F6 02                  276 	.db 0x02
+   01F7 63 70 63 74 5F 65   277 	.ascii "cpct_etm_drawTileBox2x4"
+        74 6D 5F 64 72 61
+        77 54 69 6C 65 42
+        6F 78 32 78 34
+   020E 0F                  278 	.db 0x0f
+   020F 01                  279 	.db 0x01
+   0210 2C 20 20 66 72 6F   280 	.ascii ",  from"
+        6D
+   0217 00                  281 	.db 0x00
+   0218                     282 ___str_8:
+   0218 69 74 73 20 45 61   283 	.ascii "its EasyTileMaps module."
+        73 79 54 69 6C 65
+        4D 61 70 73 20 6D
+        6F 64 75 6C 65 2E
+   0230 0A                  284 	.db 0x0a
+   0231 0D                  285 	.db 0x0d
+   0232 0A                  286 	.db 0x0a
+   0233 0D                  287 	.db 0x0d
+   0234 00                  288 	.db 0x00
+   0235                     289 ___str_9:
+   0235 54 68 65 73 65 20   290 	.ascii "These are the "
+        61 72 65 20 74 68
+        65 20
+   0243 0F                  291 	.db 0x0f
+   0244 03                  292 	.db 0x03
+   0245 63 6F 6E 74 72 6F   293 	.ascii "control Keys"
+        6C 20 4B 65 79 73
+   0251 0F                  294 	.db 0x0f
+   0252 01                  295 	.db 0x01
+   0253 3A                  296 	.ascii ":"
+   0254 0A                  297 	.db 0x0a
+   0255 0D                  298 	.db 0x0d
+   0256 0A                  299 	.db 0x0a
+   0257 0D                  300 	.db 0x0d
+   0258 00                  301 	.db 0x00
+   0259                     302 ___str_10:
+   0259 0F                  303 	.db 0x0f
+   025A 02                  304 	.db 0x02
+   025B 20 43 75 72 73 6F   305 	.ascii " Cursors "
+        72 73 20
+   0264 0F                  306 	.db 0x0f
+   0265 03                  307 	.db 0x03
+   0266 2D                  308 	.ascii "-"
+   0267 0F                  309 	.db 0x0f
+   0268 01                  310 	.db 0x01
+   0269 20 4D 6F 76 65 20   311 	.ascii " Move tilemap location."
+        74 69 6C 65 6D 61
+        70 20 6C 6F 63 61
+        74 69 6F 6E 2E
+   0280 0A                  312 	.db 0x0a
+   0281 0D                  313 	.db 0x0d
+   0282 00                  314 	.db 0x00
+   0283                     315 ___str_11:
+   0283 0F                  316 	.db 0x0f
+   0284 02                  317 	.db 0x02
+   0285 20 20 31 2C 20 32   318 	.ascii "  1, 2   "
+        20 20 20
+   028E 0F                  319 	.db 0x0f
+   028F 03                  320 	.db 0x03
+   0290 2D                  321 	.ascii "-"
+   0291 0F                  322 	.db 0x0f
+   0292 01                  323 	.db 0x01
+   0293 20 43 68 61 6E 67   324 	.ascii " Change viewport width."
+        65 20 76 69 65 77
+        70 6F 72 74 20 77
+        69 64 74 68 2E
+   02AA 0A                  325 	.db 0x0a
+   02AB 0D                  326 	.db 0x0d
+   02AC 00                  327 	.db 0x00
+   02AD                     328 ___str_12:
+   02AD 0F                  329 	.db 0x0f
+   02AE 02                  330 	.db 0x02
+   02AF 20 20 33 2C 20 34   331 	.ascii "  3, 4   "
+        20 20 20
+   02B8 0F                  332 	.db 0x0f
+   02B9 03                  333 	.db 0x03
+   02BA 2D                  334 	.ascii "-"
+   02BB 0F                  335 	.db 0x0f
+   02BC 01                  336 	.db 0x01
+   02BD 20 43 68 61 6E 67   337 	.ascii " Change viewport height."
+        65 20 76 69 65 77
+        70 6F 72 74 20 68
+        65 69 67 68 74 2E
+   02D5 0A                  338 	.db 0x0a
+   02D6 0D                  339 	.db 0x0d
+   02D7 00                  340 	.db 0x00
+   02D8                     341 ___str_13:
+   02D8 0F                  342 	.db 0x0f
+   02D9 02                  343 	.db 0x02
+   02DA 20 57 2C 41 2C 53   344 	.ascii " W,A,S,D "
+        2C 44 20
+   02E3 0F                  345 	.db 0x0f
+   02E4 03                  346 	.db 0x03
+   02E5 2D                  347 	.ascii "-"
+   02E6 0F                  348 	.db 0x0f
+   02E7 01                  349 	.db 0x01
+   02E8 20 4D 6F 76 65 20   350 	.ascii " Move viewport."
+        76 69 65 77 70 6F
+        72 74 2E
+   02F7 0A                  351 	.db 0x0a
+   02F8 0D                  352 	.db 0x0d
+   02F9 0A                  353 	.db 0x0a
+   02FA 0D                  354 	.db 0x0d
+   02FB 00                  355 	.db 0x00
+   02FC                     356 ___str_14:
+   02FC 20 20 20 20 20 20   357 	.ascii "       Press "
+        20 50 72 65 73 73
+        20
+   0309 0F                  358 	.db 0x0f
+   030A 02                  359 	.db 0x02
+   030B 5B                  360 	.ascii "["
+   030C 0F                  361 	.db 0x0f
+   030D 03                  362 	.db 0x03
+   030E 53 70 61 63 65      363 	.ascii "Space"
+   0313 0F                  364 	.db 0x0f
+   0314 02                  365 	.db 0x02
+   0315 5D                  366 	.ascii "]"
+   0316 0F                  367 	.db 0x0f
+   0317 01                  368 	.db 0x01
+   0318 20 74 6F 20 63 6F   369 	.ascii " to continue"
+        6E 74 69 6E 75 65
+   0324 00                  370 	.db 0x00
+                            371 ;src/main.c:122: void readKeyboardInput(TScreenTilemap *scr){
+                            372 ;	---------------------------------
+                            373 ; Function readKeyboardInput
+                            374 ; ---------------------------------
+   0325                     375 _readKeyboardInput::
+   0325 DD E5         [15]  376 	push	ix
+   0327 DD 21 00 00   [14]  377 	ld	ix,#0
+   032B DD 39         [15]  378 	add	ix,sp
+   032D 21 F3 FF      [10]  379 	ld	hl, #-13
+   0330 39            [11]  380 	add	hl, sp
+   0331 F9            [ 6]  381 	ld	sp, hl
+                            382 ;src/main.c:125: while(1) {
+   0332                     383 00149$:
+                            384 ;src/main.c:127: cpct_scanKeyboard_f(); 
+   0332 CDr00r00      [17]  385 	call	_cpct_scanKeyboard_f
+                            386 ;src/main.c:132: if (cpct_isKeyPressed(Key_CursorUp) && scr->y) {
+   0335 21 00 01      [10]  387 	ld	hl, #0x0100
+   0338 CDr00r00      [17]  388 	call	_cpct_isKeyPressed
+   033B DD 75 FF      [19]  389 	ld	-1 (ix), l
+   033E DD 7E 04      [19]  390 	ld	a, 4 (ix)
+   0341 DD 77 FD      [19]  391 	ld	-3 (ix), a
+   0344 DD 7E 05      [19]  392 	ld	a, 5 (ix)
+   0347 DD 77 FE      [19]  393 	ld	-2 (ix), a
+   034A DD 7E FD      [19]  394 	ld	a, -3 (ix)
+   034D C6 01         [ 7]  395 	add	a, #0x01
+   034F DD 77 FB      [19]  396 	ld	-5 (ix), a
+   0352 DD 7E FE      [19]  397 	ld	a, -2 (ix)
+   0355 CE 00         [ 7]  398 	adc	a, #0x00
+   0357 DD 77 FC      [19]  399 	ld	-4 (ix), a
+   035A DD 7E FF      [19]  400 	ld	a, -1 (ix)
+   035D B7            [ 4]  401 	or	a, a
+   035E 28 16         [12]  402 	jr	Z,00145$
+   0360 DD 6E FB      [19]  403 	ld	l,-5 (ix)
+   0363 DD 66 FC      [19]  404 	ld	h,-4 (ix)
+   0366 7E            [ 7]  405 	ld	a, (hl)
+   0367 B7            [ 4]  406 	or	a, a
+   0368 28 0C         [12]  407 	jr	Z,00145$
+                            408 ;src/main.c:133: scr->y -= 4;   // Move Tilemap Up (4 by 4 pixels, as it can only be placed
+   036A C6 FC         [ 7]  409 	add	a, #0xfc
+   036C DD 6E FB      [19]  410 	ld	l,-5 (ix)
+   036F DD 66 FC      [19]  411 	ld	h,-4 (ix)
+   0372 77            [ 7]  412 	ld	(hl), a
+                            413 ;src/main.c:134: return;        // ... on pixel lines 0 and 4
+   0373 C3rE7r05      [10]  414 	jp	00151$
+   0376                     415 00145$:
+                            416 ;src/main.c:135: } else if (cpct_isKeyPressed(Key_CursorDown) && scr->y < (SCR_HEIGHT - 4*MAP_HEIGHT)) {
+   0376 21 00 04      [10]  417 	ld	hl, #0x0400
+   0379 CDr00r00      [17]  418 	call	_cpct_isKeyPressed
+   037C 7D            [ 4]  419 	ld	a, l
+   037D B7            [ 4]  420 	or	a, a
+   037E 28 17         [12]  421 	jr	Z,00141$
+   0380 DD 6E FB      [19]  422 	ld	l,-5 (ix)
+   0383 DD 66 FC      [19]  423 	ld	h,-4 (ix)
+   0386 7E            [ 7]  424 	ld	a, (hl)
+   0387 FE 88         [ 7]  425 	cp	a, #0x88
+   0389 30 0C         [12]  426 	jr	NC,00141$
+                            427 ;src/main.c:136: scr->y += 4;   // Move Tilemap Down (same as moving Up, 4 by 4 pixels)
+   038B C6 04         [ 7]  428 	add	a, #0x04
+   038D DD 6E FB      [19]  429 	ld	l,-5 (ix)
+   0390 DD 66 FC      [19]  430 	ld	h,-4 (ix)
+   0393 77            [ 7]  431 	ld	(hl), a
+                            432 ;src/main.c:137: return;
+   0394 C3rE7r05      [10]  433 	jp	00151$
+   0397                     434 00141$:
+                            435 ;src/main.c:138: } else if (cpct_isKeyPressed(Key_CursorLeft) && scr->x) {
+   0397 21 01 01      [10]  436 	ld	hl, #0x0101
+   039A CDr00r00      [17]  437 	call	_cpct_isKeyPressed
+   039D 7D            [ 4]  438 	ld	a, l
+   039E B7            [ 4]  439 	or	a, a
+   039F 28 16         [12]  440 	jr	Z,00137$
+   03A1 DD 6E FD      [19]  441 	ld	l,-3 (ix)
+   03A4 DD 66 FE      [19]  442 	ld	h,-2 (ix)
+   03A7 4E            [ 7]  443 	ld	c, (hl)
+   03A8 79            [ 4]  444 	ld	a, c
+   03A9 B7            [ 4]  445 	or	a, a
+   03AA 28 0B         [12]  446 	jr	Z,00137$
+                            447 ;src/main.c:139: --scr->x;      // Move Tilemap Left 2 pixels (1 byte)
+   03AC 0D            [ 4]  448 	dec	c
+   03AD DD 6E FD      [19]  449 	ld	l,-3 (ix)
+   03B0 DD 66 FE      [19]  450 	ld	h,-2 (ix)
+   03B3 71            [ 7]  451 	ld	(hl), c
+                            452 ;src/main.c:140: return;
+   03B4 C3rE7r05      [10]  453 	jp	00151$
+   03B7                     454 00137$:
+                            455 ;src/main.c:141: } else if (cpct_isKeyPressed(Key_CursorRight) && scr->x < (SCR_WIDTH - 2*MAP_WIDTH)) {
+   03B7 21 00 02      [10]  456 	ld	hl, #0x0200
+   03BA CDr00r00      [17]  457 	call	_cpct_isKeyPressed
+   03BD 7D            [ 4]  458 	ld	a, l
+   03BE B7            [ 4]  459 	or	a, a
+   03BF 28 16         [12]  460 	jr	Z,00133$
+   03C1 DD 6E FD      [19]  461 	ld	l,-3 (ix)
+   03C4 DD 66 FE      [19]  462 	ld	h,-2 (ix)
+   03C7 7E            [ 7]  463 	ld	a, (hl)
+   03C8 FE 28         [ 7]  464 	cp	a, #0x28
+   03CA 30 0B         [12]  465 	jr	NC,00133$
+                            466 ;src/main.c:142: ++scr->x;      // Move Tilemap Right 2 pixels (1 byte)
+   03CC 3C            [ 4]  467 	inc	a
+   03CD DD 6E FD      [19]  468 	ld	l,-3 (ix)
+   03D0 DD 66 FE      [19]  469 	ld	h,-2 (ix)
+   03D3 77            [ 7]  470 	ld	(hl), a
+                            471 ;src/main.c:143: return;
+   03D4 C3rE7r05      [10]  472 	jp	00151$
+   03D7                     473 00133$:
+                            474 ;src/main.c:144: } else if (cpct_isKeyPressed(Key_2) && scr->viewport.x + scr->viewport.w < MAP_WIDTH) {
+   03D7 21 08 02      [10]  475 	ld	hl, #0x0208
+   03DA CDr00r00      [17]  476 	call	_cpct_isKeyPressed
+   03DD DD 75 FB      [19]  477 	ld	-5 (ix), l
+                            478 ;src/main.c:165: } else if (cpct_isKeyPressed(Key_D) && scr->viewport.x + scr->viewport.w < MAP_WIDTH) {
+   03E0 DD 7E FD      [19]  479 	ld	a, -3 (ix)
+   03E3 C6 02         [ 7]  480 	add	a, #0x02
+   03E5 DD 77 F5      [19]  481 	ld	-11 (ix), a
+   03E8 DD 7E FE      [19]  482 	ld	a, -2 (ix)
+   03EB CE 00         [ 7]  483 	adc	a, #0x00
+   03ED DD 77 F6      [19]  484 	ld	-10 (ix), a
+                            485 ;src/main.c:144: } else if (cpct_isKeyPressed(Key_2) && scr->viewport.x + scr->viewport.w < MAP_WIDTH) {
+   03F0 DD 7E FD      [19]  486 	ld	a, -3 (ix)
+   03F3 C6 04         [ 7]  487 	add	a, #0x04
+   03F5 DD 77 F9      [19]  488 	ld	-7 (ix), a
+   03F8 DD 7E FE      [19]  489 	ld	a, -2 (ix)
+   03FB CE 00         [ 7]  490 	adc	a, #0x00
+   03FD DD 77 FA      [19]  491 	ld	-6 (ix), a
+   0400 DD 7E FB      [19]  492 	ld	a, -5 (ix)
+   0403 B7            [ 4]  493 	or	a, a
+   0404 28 51         [12]  494 	jr	Z,00129$
+   0406 DD 6E F5      [19]  495 	ld	l,-11 (ix)
+   0409 DD 66 F6      [19]  496 	ld	h,-10 (ix)
+   040C 7E            [ 7]  497 	ld	a, (hl)
+   040D DD 77 FB      [19]  498 	ld	-5 (ix), a
+   0410 DD 77 FB      [19]  499 	ld	-5 (ix), a
+   0413 DD 36 FC 00   [19]  500 	ld	-4 (ix), #0x00
+   0417 DD 6E F9      [19]  501 	ld	l,-7 (ix)
+   041A DD 66 FA      [19]  502 	ld	h,-6 (ix)
+   041D 7E            [ 7]  503 	ld	a, (hl)
+   041E DD 77 FF      [19]  504 	ld	-1 (ix), a
+   0421 DD 77 F3      [19]  505 	ld	-13 (ix), a
+   0424 DD 36 F4 00   [19]  506 	ld	-12 (ix), #0x00
+   0428 DD 7E FB      [19]  507 	ld	a, -5 (ix)
+   042B DD 86 F3      [19]  508 	add	a, -13 (ix)
+   042E DD 77 F3      [19]  509 	ld	-13 (ix), a
+   0431 DD 7E FC      [19]  510 	ld	a, -4 (ix)
+   0434 DD 8E F4      [19]  511 	adc	a, -12 (ix)
+   0437 DD 77 F4      [19]  512 	ld	-12 (ix), a
+   043A DD 7E F3      [19]  513 	ld	a, -13 (ix)
+   043D D6 14         [ 7]  514 	sub	a, #0x14
+   043F DD 7E F4      [19]  515 	ld	a, -12 (ix)
+   0442 17            [ 4]  516 	rla
+   0443 3F            [ 4]  517 	ccf
+   0444 1F            [ 4]  518 	rra
+   0445 DE 80         [ 7]  519 	sbc	a, #0x80
+   0447 30 0E         [12]  520 	jr	NC,00129$
+                            521 ;src/main.c:145: ++scr->viewport.w;   // Enlarge viewport Horizontally
+   0449 DD 4E FF      [19]  522 	ld	c, -1 (ix)
+   044C 0C            [ 4]  523 	inc	c
+   044D DD 6E F9      [19]  524 	ld	l,-7 (ix)
+   0450 DD 66 FA      [19]  525 	ld	h,-6 (ix)
+   0453 71            [ 7]  526 	ld	(hl), c
+                            527 ;src/main.c:146: return;
+   0454 C3rE7r05      [10]  528 	jp	00151$
+   0457                     529 00129$:
+                            530 ;src/main.c:147: } else if (cpct_isKeyPressed(Key_1) && scr->viewport.w > 1) {
+   0457 21 08 01      [10]  531 	ld	hl, #0x0108
+   045A CDr00r00      [17]  532 	call	_cpct_isKeyPressed
+   045D 7D            [ 4]  533 	ld	a, l
+   045E B7            [ 4]  534 	or	a, a
+   045F 28 17         [12]  535 	jr	Z,00125$
+   0461 DD 6E F9      [19]  536 	ld	l,-7 (ix)
+   0464 DD 66 FA      [19]  537 	ld	h,-6 (ix)
+   0467 4E            [ 7]  538 	ld	c, (hl)
+   0468 3E 01         [ 7]  539 	ld	a, #0x01
+   046A 91            [ 4]  540 	sub	a, c
+   046B 30 0B         [12]  541 	jr	NC,00125$
+                            542 ;src/main.c:148: --scr->viewport.w;   // Reduce viewport Horizontally
+   046D 0D            [ 4]  543 	dec	c
+   046E DD 6E F9      [19]  544 	ld	l,-7 (ix)
+   0471 DD 66 FA      [19]  545 	ld	h,-6 (ix)
+   0474 71            [ 7]  546 	ld	(hl), c
+                            547 ;src/main.c:149: return;
+   0475 C3rE7r05      [10]  548 	jp	00151$
+   0478                     549 00125$:
+                            550 ;src/main.c:150: } else if (cpct_isKeyPressed(Key_4) && scr->viewport.y + scr->viewport.h < MAP_HEIGHT) {
+   0478 21 07 01      [10]  551 	ld	hl, #0x0107
+   047B CDr00r00      [17]  552 	call	_cpct_isKeyPressed
+   047E DD 75 F3      [19]  553 	ld	-13 (ix), l
+   0481 DD 7E FD      [19]  554 	ld	a, -3 (ix)
+   0484 C6 03         [ 7]  555 	add	a, #0x03
+   0486 DD 77 FB      [19]  556 	ld	-5 (ix), a
+   0489 DD 7E FE      [19]  557 	ld	a, -2 (ix)
+   048C CE 00         [ 7]  558 	adc	a, #0x00
+   048E DD 77 FC      [19]  559 	ld	-4 (ix), a
+   0491 DD 7E FD      [19]  560 	ld	a, -3 (ix)
+   0494 C6 05         [ 7]  561 	add	a, #0x05
+   0496 DD 77 FD      [19]  562 	ld	-3 (ix), a
+   0499 DD 7E FE      [19]  563 	ld	a, -2 (ix)
+   049C CE 00         [ 7]  564 	adc	a, #0x00
+   049E DD 77 FE      [19]  565 	ld	-2 (ix), a
+   04A1 DD 7E F3      [19]  566 	ld	a, -13 (ix)
+   04A4 B7            [ 4]  567 	or	a, a
+   04A5 28 51         [12]  568 	jr	Z,00121$
+   04A7 DD 6E FB      [19]  569 	ld	l,-5 (ix)
+   04AA DD 66 FC      [19]  570 	ld	h,-4 (ix)
+   04AD 7E            [ 7]  571 	ld	a, (hl)
+   04AE DD 77 F3      [19]  572 	ld	-13 (ix), a
+   04B1 DD 77 F3      [19]  573 	ld	-13 (ix), a
+   04B4 DD 36 F4 00   [19]  574 	ld	-12 (ix), #0x00
+   04B8 DD 6E FD      [19]  575 	ld	l,-3 (ix)
+   04BB DD 66 FE      [19]  576 	ld	h,-2 (ix)
+   04BE 7E            [ 7]  577 	ld	a, (hl)
+   04BF DD 77 FF      [19]  578 	ld	-1 (ix), a
+   04C2 DD 77 F7      [19]  579 	ld	-9 (ix), a
+   04C5 DD 36 F8 00   [19]  580 	ld	-8 (ix), #0x00
+   04C9 DD 7E F3      [19]  581 	ld	a, -13 (ix)
+   04CC DD 86 F7      [19]  582 	add	a, -9 (ix)
+   04CF DD 77 F7      [19]  583 	ld	-9 (ix), a
+   04D2 DD 7E F4      [19]  584 	ld	a, -12 (ix)
+   04D5 DD 8E F8      [19]  585 	adc	a, -8 (ix)
+   04D8 DD 77 F8      [19]  586 	ld	-8 (ix), a
+   04DB DD 7E F7      [19]  587 	ld	a, -9 (ix)
+   04DE D6 10         [ 7]  588 	sub	a, #0x10
+   04E0 DD 7E F8      [19]  589 	ld	a, -8 (ix)
+   04E3 17            [ 4]  590 	rla
+   04E4 3F            [ 4]  591 	ccf
+   04E5 1F            [ 4]  592 	rra
+   04E6 DE 80         [ 7]  593 	sbc	a, #0x80
+   04E8 30 0E         [12]  594 	jr	NC,00121$
+                            595 ;src/main.c:151: ++scr->viewport.h;   // Enlarge viewport Vertically
+   04EA DD 4E FF      [19]  596 	ld	c, -1 (ix)
+   04ED 0C            [ 4]  597 	inc	c
+   04EE DD 6E FD      [19]  598 	ld	l,-3 (ix)
+   04F1 DD 66 FE      [19]  599 	ld	h,-2 (ix)
+   04F4 71            [ 7]  600 	ld	(hl), c
+                            601 ;src/main.c:152: return;
+   04F5 C3rE7r05      [10]  602 	jp	00151$
+   04F8                     603 00121$:
+                            604 ;src/main.c:153: } else if (cpct_isKeyPressed(Key_3) && scr->viewport.h > 1) {
+   04F8 21 07 02      [10]  605 	ld	hl, #0x0207
+   04FB CDr00r00      [17]  606 	call	_cpct_isKeyPressed
+   04FE 7D            [ 4]  607 	ld	a, l
+   04FF B7            [ 4]  608 	or	a, a
+   0500 28 17         [12]  609 	jr	Z,00117$
+   0502 DD 6E FD      [19]  610 	ld	l,-3 (ix)
+   0505 DD 66 FE      [19]  611 	ld	h,-2 (ix)
+   0508 4E            [ 7]  612 	ld	c, (hl)
+   0509 3E 01         [ 7]  613 	ld	a, #0x01
+   050B 91            [ 4]  614 	sub	a, c
+   050C 30 0B         [12]  615 	jr	NC,00117$
+                            616 ;src/main.c:154: --scr->viewport.h;   // Reduce viewport Vertically
+   050E 0D            [ 4]  617 	dec	c
+   050F DD 6E FD      [19]  618 	ld	l,-3 (ix)
+   0512 DD 66 FE      [19]  619 	ld	h,-2 (ix)
+   0515 71            [ 7]  620 	ld	(hl), c
+                            621 ;src/main.c:155: return;
+   0516 C3rE7r05      [10]  622 	jp	00151$
+   0519                     623 00117$:
+                            624 ;src/main.c:156: } else if (cpct_isKeyPressed(Key_W) && scr->viewport.y) {
+   0519 21 07 08      [10]  625 	ld	hl, #0x0807
+   051C CDr00r00      [17]  626 	call	_cpct_isKeyPressed
+   051F 7D            [ 4]  627 	ld	a, l
+   0520 B7            [ 4]  628 	or	a, a
+   0521 28 16         [12]  629 	jr	Z,00113$
+   0523 DD 6E FB      [19]  630 	ld	l,-5 (ix)
+   0526 DD 66 FC      [19]  631 	ld	h,-4 (ix)
+   0529 4E            [ 7]  632 	ld	c, (hl)
+   052A 79            [ 4]  633 	ld	a, c
+   052B B7            [ 4]  634 	or	a, a
+   052C 28 0B         [12]  635 	jr	Z,00113$
+                            636 ;src/main.c:157: --scr->viewport.y;   // Move viewport Up
+   052E 0D            [ 4]  637 	dec	c
+   052F DD 6E FB      [19]  638 	ld	l,-5 (ix)
+   0532 DD 66 FC      [19]  639 	ld	h,-4 (ix)
+   0535 71            [ 7]  640 	ld	(hl), c
+                            641 ;src/main.c:158: return;
+   0536 C3rE7r05      [10]  642 	jp	00151$
+   0539                     643 00113$:
+                            644 ;src/main.c:159: } else if (cpct_isKeyPressed(Key_S) && scr->viewport.y + scr->viewport.h < MAP_HEIGHT) {
+   0539 21 07 10      [10]  645 	ld	hl, #0x1007
+   053C CDr00r00      [17]  646 	call	_cpct_isKeyPressed
+   053F 7D            [ 4]  647 	ld	a, l
+   0540 B7            [ 4]  648 	or	a, a
+   0541 28 50         [12]  649 	jr	Z,00109$
+   0543 DD 6E FB      [19]  650 	ld	l,-5 (ix)
+   0546 DD 66 FC      [19]  651 	ld	h,-4 (ix)
+   0549 7E            [ 7]  652 	ld	a, (hl)
+   054A DD 77 F7      [19]  653 	ld	-9 (ix), a
+   054D DD 77 F3      [19]  654 	ld	-13 (ix), a
+   0550 DD 36 F4 00   [19]  655 	ld	-12 (ix), #0x00
+   0554 DD 6E FD      [19]  656 	ld	l,-3 (ix)
+   0557 DD 66 FE      [19]  657 	ld	h,-2 (ix)
+   055A 7E            [ 7]  658 	ld	a, (hl)
+   055B DD 77 FD      [19]  659 	ld	-3 (ix), a
+   055E DD 77 FD      [19]  660 	ld	-3 (ix), a
+   0561 DD 36 FE 00   [19]  661 	ld	-2 (ix), #0x00
+   0565 DD 7E F3      [19]  662 	ld	a, -13 (ix)
+   0568 DD 86 FD      [19]  663 	add	a, -3 (ix)
+   056B DD 77 F3      [19]  664 	ld	-13 (ix), a
+   056E DD 7E F4      [19]  665 	ld	a, -12 (ix)
+   0571 DD 8E FE      [19]  666 	adc	a, -2 (ix)
+   0574 DD 77 F4      [19]  667 	ld	-12 (ix), a
+   0577 DD 7E F3      [19]  668 	ld	a, -13 (ix)
+   057A D6 10         [ 7]  669 	sub	a, #0x10
+   057C DD 7E F4      [19]  670 	ld	a, -12 (ix)
+   057F 17            [ 4]  671 	rla
+   0580 3F            [ 4]  672 	ccf
+   0581 1F            [ 4]  673 	rra
+   0582 DE 80         [ 7]  674 	sbc	a, #0x80
+   0584 30 0D         [12]  675 	jr	NC,00109$
+                            676 ;src/main.c:160: ++scr->viewport.y;   // Move viewport Down
+   0586 DD 4E F7      [19]  677 	ld	c, -9 (ix)
+   0589 0C            [ 4]  678 	inc	c
+   058A DD 6E FB      [19]  679 	ld	l,-5 (ix)
+   058D DD 66 FC      [19]  680 	ld	h,-4 (ix)
+   0590 71            [ 7]  681 	ld	(hl), c
+                            682 ;src/main.c:161: return;
+   0591 18 54         [12]  683 	jr	00151$
+   0593                     684 00109$:
+                            685 ;src/main.c:162: } else if (cpct_isKeyPressed(Key_A) && scr->viewport.x) {
+   0593 21 08 20      [10]  686 	ld	hl, #0x2008
+   0596 CDr00r00      [17]  687 	call	_cpct_isKeyPressed
+   0599 7D            [ 4]  688 	ld	a, l
+   059A B7            [ 4]  689 	or	a, a
+   059B 28 15         [12]  690 	jr	Z,00105$
+   059D DD 6E F5      [19]  691 	ld	l,-11 (ix)
+   05A0 DD 66 F6      [19]  692 	ld	h,-10 (ix)
+   05A3 4E            [ 7]  693 	ld	c, (hl)
+   05A4 79            [ 4]  694 	ld	a, c
+   05A5 B7            [ 4]  695 	or	a, a
+   05A6 28 0A         [12]  696 	jr	Z,00105$
+                            697 ;src/main.c:163: --scr->viewport.x;   // Move viewport Left
+   05A8 0D            [ 4]  698 	dec	c
+   05A9 DD 6E F5      [19]  699 	ld	l,-11 (ix)
+   05AC DD 66 F6      [19]  700 	ld	h,-10 (ix)
+   05AF 71            [ 7]  701 	ld	(hl), c
+                            702 ;src/main.c:164: return;
+   05B0 18 35         [12]  703 	jr	00151$
+   05B2                     704 00105$:
+                            705 ;src/main.c:165: } else if (cpct_isKeyPressed(Key_D) && scr->viewport.x + scr->viewport.w < MAP_WIDTH) {
+   05B2 21 07 20      [10]  706 	ld	hl, #0x2007
+   05B5 CDr00r00      [17]  707 	call	_cpct_isKeyPressed
+   05B8 7D            [ 4]  708 	ld	a, l
+   05B9 B7            [ 4]  709 	or	a, a
+   05BA CAr32r03      [10]  710 	jp	Z, 00149$
+                            711 ;src/main.c:144: } else if (cpct_isKeyPressed(Key_2) && scr->viewport.x + scr->viewport.w < MAP_WIDTH) {
+   05BD DD 6E F5      [19]  712 	ld	l,-11 (ix)
+   05C0 DD 66 F6      [19]  713 	ld	h,-10 (ix)
+   05C3 4E            [ 7]  714 	ld	c, (hl)
+                            715 ;src/main.c:165: } else if (cpct_isKeyPressed(Key_D) && scr->viewport.x + scr->viewport.w < MAP_WIDTH) {
+   05C4 59            [ 4]  716 	ld	e, c
+   05C5 16 00         [ 7]  717 	ld	d, #0x00
+   05C7 DD 6E F9      [19]  718 	ld	l,-7 (ix)
+   05CA DD 66 FA      [19]  719 	ld	h,-6 (ix)
+   05CD 6E            [ 7]  720 	ld	l, (hl)
+   05CE 26 00         [ 7]  721 	ld	h, #0x00
+   05D0 19            [11]  722 	add	hl, de
+   05D1 11 14 80      [10]  723 	ld	de, #0x8014
+   05D4 29            [11]  724 	add	hl, hl
+   05D5 3F            [ 4]  725 	ccf
+   05D6 CB 1C         [ 8]  726 	rr	h
+   05D8 CB 1D         [ 8]  727 	rr	l
+   05DA ED 52         [15]  728 	sbc	hl, de
+   05DC D2r32r03      [10]  729 	jp	NC, 00149$
+                            730 ;src/main.c:166: ++scr->viewport.x;   // Move viewport Right
+   05DF 0C            [ 4]  731 	inc	c
+   05E0 DD 6E F5      [19]  732 	ld	l,-11 (ix)
+   05E3 DD 66 F6      [19]  733 	ld	h,-10 (ix)
+   05E6 71            [ 7]  734 	ld	(hl), c
+                            735 ;src/main.c:167: return;
+   05E7                     736 00151$:
+   05E7 DD F9         [10]  737 	ld	sp, ix
+   05E9 DD E1         [14]  738 	pop	ix
+   05EB C9            [10]  739 	ret
+                            740 ;src/main.c:177: void drawScreenTilemap(TScreenTilemap *scr) {
+                            741 ;	---------------------------------
+                            742 ; Function drawScreenTilemap
+                            743 ; ---------------------------------
+   05EC                     744 _drawScreenTilemap::
+   05EC DD E5         [15]  745 	push	ix
+   05EE DD 21 00 00   [14]  746 	ld	ix,#0
+   05F2 DD 39         [15]  747 	add	ix,sp
+   05F4 F5            [11]  748 	push	af
+   05F5 F5            [11]  749 	push	af
+                            750 ;src/main.c:181: cpct_memset_f64(g_scrbuffers[1], 0x00, 0x4000);
+   05F6 2Ar50r00      [16]  751 	ld	hl, (#(_g_scrbuffers + 0x0002) + 0)
+   05F9 01 00 40      [10]  752 	ld	bc, #0x4000
+   05FC C5            [11]  753 	push	bc
+   05FD 01 00 00      [10]  754 	ld	bc, #0x0000
+   0600 C5            [11]  755 	push	bc
+   0601 E5            [11]  756 	push	hl
+   0602 CDr00r00      [17]  757 	call	_cpct_memset_f64
+                            758 ;src/main.c:185: ptmscr = cpct_getScreenPtr(g_scrbuffers[1], scr->x, scr->y);
+   0605 DD 4E 04      [19]  759 	ld	c,4 (ix)
+   0608 DD 46 05      [19]  760 	ld	b,5 (ix)
+   060B 69            [ 4]  761 	ld	l, c
+   060C 60            [ 4]  762 	ld	h, b
+   060D 23            [ 6]  763 	inc	hl
+   060E 56            [ 7]  764 	ld	d, (hl)
+   060F 0A            [ 7]  765 	ld	a, (bc)
+   0610 2Ar50r00      [16]  766 	ld	hl, (#(_g_scrbuffers + 0x0002) + 0)
+   0613 E5            [11]  767 	push	hl
+   0614 FD E1         [14]  768 	pop	iy
+   0616 C5            [11]  769 	push	bc
+   0617 5F            [ 4]  770 	ld	e, a
+   0618 D5            [11]  771 	push	de
+   0619 FD E5         [15]  772 	push	iy
+   061B CDr00r00      [17]  773 	call	_cpct_getScreenPtr
+   061E EB            [ 4]  774 	ex	de,hl
+   061F C1            [10]  775 	pop	bc
+                            776 ;src/main.c:190: MAP_WIDTH, ptmscr, g_tilemap);
+   0620 DD 73 FE      [19]  777 	ld	-2 (ix), e
+   0623 DD 72 FF      [19]  778 	ld	-1 (ix), d
+                            779 ;src/main.c:189: scr->viewport.w, scr->viewport.h, 
+   0626 33            [ 6]  780 	inc	sp
+   0627 33            [ 6]  781 	inc	sp
+   0628 C5            [11]  782 	push	bc
+   0629 C5            [11]  783 	push	bc
+   062A FD E1         [14]  784 	pop	iy
+   062C FD 5E 05      [19]  785 	ld	e, 5 (iy)
+   062F 69            [ 4]  786 	ld	l, c
+   0630 60            [ 4]  787 	ld	h, b
+   0631 23            [ 6]  788 	inc	hl
+   0632 23            [ 6]  789 	inc	hl
+   0633 23            [ 6]  790 	inc	hl
+   0634 23            [ 6]  791 	inc	hl
+   0635 56            [ 7]  792 	ld	d, (hl)
+                            793 ;src/main.c:188: cpct_etm_drawTileBox2x4(scr->viewport.x, scr->viewport.y, 
+   0636 69            [ 4]  794 	ld	l, c
+   0637 60            [ 4]  795 	ld	h, b
+   0638 23            [ 6]  796 	inc	hl
+   0639 23            [ 6]  797 	inc	hl
+   063A 23            [ 6]  798 	inc	hl
+   063B 4E            [ 7]  799 	ld	c, (hl)
+   063C E1            [10]  800 	pop	hl
+   063D E5            [11]  801 	push	hl
+   063E 23            [ 6]  802 	inc	hl
+   063F 23            [ 6]  803 	inc	hl
+   0640 46            [ 7]  804 	ld	b, (hl)
+   0641 21r00r00      [10]  805 	ld	hl, #_g_tilemap
+   0644 E5            [11]  806 	push	hl
+   0645 DD 6E FE      [19]  807 	ld	l,-2 (ix)
+   0648 DD 66 FF      [19]  808 	ld	h,-1 (ix)
+   064B E5            [11]  809 	push	hl
+   064C 3E 14         [ 7]  810 	ld	a, #0x14
+   064E F5            [11]  811 	push	af
+   064F 33            [ 6]  812 	inc	sp
+   0650 7B            [ 4]  813 	ld	a, e
+   0651 F5            [11]  814 	push	af
+   0652 33            [ 6]  815 	inc	sp
+   0653 59            [ 4]  816 	ld	e, c
+   0654 D5            [11]  817 	push	de
+   0655 C5            [11]  818 	push	bc
+   0656 33            [ 6]  819 	inc	sp
+   0657 CDr00r00      [17]  820 	call	_cpct_etm_drawTileBox2x4
+                            821 ;src/main.c:194: cpct_waitVSYNC();
+   065A CDr00r00      [17]  822 	call	_cpct_waitVSYNC
+                            823 ;src/main.c:195: swapBuffers(g_scrbuffers);
+   065D 21r4Er00      [10]  824 	ld	hl, #_g_scrbuffers
+   0660 E5            [11]  825 	push	hl
+   0661 CDr00r00      [17]  826 	call	_swapBuffers
+   0664 DD F9         [10]  827 	ld	sp,ix
+   0666 DD E1         [14]  828 	pop	ix
+   0668 C9            [10]  829 	ret
+                            830 ;src/main.c:202: void application(void) {
+                            831 ;	---------------------------------
+                            832 ; Function application
+                            833 ; ---------------------------------
+   0669                     834 _application::
+   0669 DD E5         [15]  835 	push	ix
+   066B 21 FA FF      [10]  836 	ld	hl, #-6
+   066E 39            [11]  837 	add	hl, sp
+   066F F9            [ 6]  838 	ld	sp, hl
+                            839 ;src/main.c:204: TScreenTilemap scr = { 0, 0, { 0, 0, MAP_WIDTH, MAP_HEIGHT} };
+   0670 21 00 00      [10]  840 	ld	hl, #0x0000
+   0673 39            [11]  841 	add	hl, sp
+   0674 36 00         [10]  842 	ld	(hl), #0x00
+   0676 21 00 00      [10]  843 	ld	hl, #0x0000
+   0679 39            [11]  844 	add	hl, sp
+   067A 4D            [ 4]  845 	ld	c, l
+   067B 44            [ 4]  846 	ld	b, h
+   067C 59            [ 4]  847 	ld	e, c
+   067D 50            [ 4]  848 	ld	d, b
+   067E 13            [ 6]  849 	inc	de
+   067F AF            [ 4]  850 	xor	a, a
+   0680 12            [ 7]  851 	ld	(de), a
+   0681 59            [ 4]  852 	ld	e, c
+   0682 50            [ 4]  853 	ld	d, b
+   0683 13            [ 6]  854 	inc	de
+   0684 13            [ 6]  855 	inc	de
+   0685 AF            [ 4]  856 	xor	a, a
+   0686 12            [ 7]  857 	ld	(de), a
+   0687 59            [ 4]  858 	ld	e, c
+   0688 50            [ 4]  859 	ld	d, b
+   0689 13            [ 6]  860 	inc	de
+   068A 13            [ 6]  861 	inc	de
+   068B 13            [ 6]  862 	inc	de
+   068C AF            [ 4]  863 	xor	a, a
+   068D 12            [ 7]  864 	ld	(de), a
+   068E 21 04 00      [10]  865 	ld	hl, #0x0004
+   0691 09            [11]  866 	add	hl, bc
+   0692 36 14         [10]  867 	ld	(hl), #0x14
+   0694 21 05 00      [10]  868 	ld	hl, #0x0005
+   0697 09            [11]  869 	add	hl, bc
+   0698 36 10         [10]  870 	ld	(hl), #0x10
+                            871 ;src/main.c:207: showMessages();
+   069A C5            [11]  872 	push	bc
+   069B CDr6Fr00      [17]  873 	call	_showMessages
+   069E CDr00r00      [17]  874 	call	_cpct_disableFirmware
+   06A1 21 10 00      [10]  875 	ld	hl, #0x0010
+   06A4 E5            [11]  876 	push	hl
+   06A5 CDr00r00      [17]  877 	call	_cpct_setPALColour
+   06A8 21 00 14      [10]  878 	ld	hl, #0x1400
+   06AB E5            [11]  879 	push	hl
+   06AC CDr00r00      [17]  880 	call	_cpct_setPALColour
+   06AF 21r00r00      [10]  881 	ld	hl, #_g_tileset
+   06B2 CDr00r00      [17]  882 	call	_cpct_etm_setTileset2x4
+   06B5 C1            [10]  883 	pop	bc
+                            884 ;src/main.c:220: while(1) {
+   06B6                     885 00102$:
+                            886 ;src/main.c:221: drawScreenTilemap(&scr);   // Redraws the tilemap
+   06B6 59            [ 4]  887 	ld	e, c
+   06B7 50            [ 4]  888 	ld	d, b
+   06B8 C5            [11]  889 	push	bc
+   06B9 D5            [11]  890 	push	de
+   06BA CDrECr05      [17]  891 	call	_drawScreenTilemap
+   06BD F1            [10]  892 	pop	af
+   06BE C1            [10]  893 	pop	bc
+                            894 ;src/main.c:222: readKeyboardInput(&scr);   // Waits for a user input and makes associated changes
+   06BF 59            [ 4]  895 	ld	e, c
+   06C0 50            [ 4]  896 	ld	d, b
+   06C1 C5            [11]  897 	push	bc
+   06C2 D5            [11]  898 	push	de
+   06C3 CDr25r03      [17]  899 	call	_readKeyboardInput
+   06C6 F1            [10]  900 	pop	af
+   06C7 C1            [10]  901 	pop	bc
+   06C8 18 EC         [12]  902 	jr	00102$
+                            903 ;src/main.c:233: void main(void) {
+                            904 ;	---------------------------------
+                            905 ; Function main
+                            906 ; ---------------------------------
+   06CA                     907 _main::
+                            908 ;src/main.c:237: cpct_setStackLocation((void*)0x8000);  
+   06CA 21 00 80      [10]  909 	ld	hl, #0x8000
+   06CD CDr00r00      [17]  910 	call	_cpct_setStackLocation
+                            911 ;src/main.c:240: application();   
+   06D0 C3r69r06      [10]  912 	jp  _application
+                            913 	.area _CODE
+                            914 	.area _INITIALIZER
+                            915 	.area _CABS (ABS)

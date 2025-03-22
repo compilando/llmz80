@@ -1,0 +1,351 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module textDrawing
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _DrawSelectionToBuffer
+                             12 	.globl _DrawInfoTextToBuffer
+                             13 	.globl _cpct_getScreenPtr
+                             14 	.globl _cpct_drawStringM1
+                             15 	.globl _cpct_setDrawCharM1
+                             16 	.globl _cpct_drawSolidBox
+                             17 	.globl _DrawInfoText
+                             18 	.globl _DrawTextSelectionSign
+                             19 ;--------------------------------------------------------
+                             20 ; special function registers
+                             21 ;--------------------------------------------------------
+                             22 ;--------------------------------------------------------
+                             23 ; ram data
+                             24 ;--------------------------------------------------------
+                             25 	.area _DATA
+                             26 ;--------------------------------------------------------
+                             27 ; ram data
+                             28 ;--------------------------------------------------------
+                             29 	.area _INITIALIZED
+                             30 ;--------------------------------------------------------
+                             31 ; absolute external ram data
+                             32 ;--------------------------------------------------------
+                             33 	.area _DABS (ABS)
+                             34 ;--------------------------------------------------------
+                             35 ; global & static initialisations
+                             36 ;--------------------------------------------------------
+                             37 	.area _HOME
+                             38 	.area _GSINIT
+                             39 	.area _GSFINAL
+                             40 	.area _GSINIT
+                             41 ;--------------------------------------------------------
+                             42 ; Home
+                             43 ;--------------------------------------------------------
+                             44 	.area _HOME
+                             45 	.area _HOME
+                             46 ;--------------------------------------------------------
+                             47 ; code
+                             48 ;--------------------------------------------------------
+                             49 	.area _CODE
+                             50 ;src/textDrawing.c:31: void DrawInfoTextToBuffer(u8* bufferPtr) {
+                             51 ;	---------------------------------
+                             52 ; Function DrawInfoTextToBuffer
+                             53 ; ---------------------------------
+   0000                      54 _DrawInfoTextToBuffer::
+   0000 DD E5         [15]   55 	push	ix
+   0002 DD 21 00 00   [14]   56 	ld	ix,#0
+   0006 DD 39         [15]   57 	add	ix,sp
+   0008 F5            [11]   58 	push	af
+   0009 3B            [ 6]   59 	dec	sp
+                             60 ;src/textDrawing.c:53: for (i = 0; i < NB_MESSAGES; ++i) {
+   000A DD 36 FF 00   [19]   61 	ld	-1 (ix), #0x00
+   000E                      62 00102$:
+                             63 ;src/textDrawing.c:55: TTextData const* t = messages + i;
+   000E DD 4E FF      [19]   64 	ld	c,-1 (ix)
+   0011 06 00         [ 7]   65 	ld	b,#0x00
+   0013 69            [ 4]   66 	ld	l, c
+   0014 60            [ 4]   67 	ld	h, b
+   0015 29            [11]   68 	add	hl, hl
+   0016 09            [11]   69 	add	hl, bc
+   0017 29            [11]   70 	add	hl, hl
+   0018 11r68r00      [10]   71 	ld	de, #_DrawInfoTextToBuffer_messages_1_135
+   001B 19            [11]   72 	add	hl, de
+                             73 ;src/textDrawing.c:59: u8* pvmem = cpct_getScreenPtr(bufferPtr, t->x, t->y);
+   001C 4D            [ 4]   74 	ld	c,l
+   001D 44            [ 4]   75 	ld	b,h
+   001E 23            [ 6]   76 	inc	hl
+   001F 5E            [ 7]   77 	ld	e, (hl)
+   0020 0A            [ 7]   78 	ld	a, (bc)
+   0021 67            [ 4]   79 	ld	h, a
+   0022 DD 6E 04      [19]   80 	ld	l, 4 (ix)
+   0025 DD 56 05      [19]   81 	ld	d, 5 (ix)
+   0028 C5            [11]   82 	push	bc
+   0029 7B            [ 4]   83 	ld	a, e
+   002A F5            [11]   84 	push	af
+   002B 33            [ 6]   85 	inc	sp
+   002C E5            [11]   86 	push	hl
+   002D 33            [ 6]   87 	inc	sp
+   002E 62            [ 4]   88 	ld	h, d
+   002F E5            [11]   89 	push	hl
+   0030 CDr00r00      [17]   90 	call	_cpct_getScreenPtr
+   0033 C1            [10]   91 	pop	bc
+   0034 33            [ 6]   92 	inc	sp
+   0035 33            [ 6]   93 	inc	sp
+   0036 E5            [11]   94 	push	hl
+                             95 ;src/textDrawing.c:60: cpct_setDrawCharM1(t->pen, t->paper);
+   0037 69            [ 4]   96 	ld	l, c
+   0038 60            [ 4]   97 	ld	h, b
+   0039 23            [ 6]   98 	inc	hl
+   003A 23            [ 6]   99 	inc	hl
+   003B 23            [ 6]  100 	inc	hl
+   003C 56            [ 7]  101 	ld	d, (hl)
+   003D 69            [ 4]  102 	ld	l, c
+   003E 60            [ 4]  103 	ld	h, b
+   003F 23            [ 6]  104 	inc	hl
+   0040 23            [ 6]  105 	inc	hl
+   0041 7E            [ 7]  106 	ld	a, (hl)
+   0042 C5            [11]  107 	push	bc
+   0043 5F            [ 4]  108 	ld	e, a
+   0044 D5            [11]  109 	push	de
+   0045 CDr00r00      [17]  110 	call	_cpct_setDrawCharM1
+   0048 C1            [10]  111 	pop	bc
+                            112 ;src/textDrawing.c:61: cpct_drawStringM1(t->text, pvmem);
+   0049 D1            [10]  113 	pop	de
+   004A D5            [11]  114 	push	de
+   004B 69            [ 4]  115 	ld	l, c
+   004C 60            [ 4]  116 	ld	h, b
+   004D 01 04 00      [10]  117 	ld	bc, #0x0004
+   0050 09            [11]  118 	add	hl, bc
+   0051 4E            [ 7]  119 	ld	c, (hl)
+   0052 23            [ 6]  120 	inc	hl
+   0053 46            [ 7]  121 	ld	b, (hl)
+   0054 D5            [11]  122 	push	de
+   0055 C5            [11]  123 	push	bc
+   0056 CDr00r00      [17]  124 	call	_cpct_drawStringM1
+                            125 ;src/textDrawing.c:53: for (i = 0; i < NB_MESSAGES; ++i) {
+   0059 DD 34 FF      [23]  126 	inc	-1 (ix)
+   005C DD 7E FF      [19]  127 	ld	a, -1 (ix)
+   005F D6 0A         [ 7]  128 	sub	a, #0x0a
+   0061 38 AB         [12]  129 	jr	C,00102$
+   0063 DD F9         [10]  130 	ld	sp, ix
+   0065 DD E1         [14]  131 	pop	ix
+   0067 C9            [10]  132 	ret
+   0068                     133 _DrawInfoTextToBuffer_messages_1_135:
+   0068 00                  134 	.db #0x00	; 0
+   0069 4B                  135 	.db #0x4b	; 75	'K'
+   006A 03                  136 	.db #0x03	; 3
+   006B 00                  137 	.db #0x00	; 0
+   006CrA4r00               138 	.dw ___str_0
+   006E 04                  139 	.db #0x04	; 4
+   006F 5F                  140 	.db #0x5f	; 95
+   0070 01                  141 	.db #0x01	; 1
+   0071 00                  142 	.db #0x00	; 0
+   0072rAAr00               143 	.dw ___str_1
+   0074 08                  144 	.db #0x08	; 8
+   0075 5F                  145 	.db #0x5f	; 95
+   0076 02                  146 	.db #0x02	; 2
+   0077 00                  147 	.db #0x00	; 0
+   0078rACr00               148 	.dw ___str_2
+   007A 08                  149 	.db #0x08	; 8
+   007B 69                  150 	.db #0x69	; 105	'i'
+   007C 01                  151 	.db #0x01	; 1
+   007D 00                  152 	.db #0x00	; 0
+   007ErBFr00               153 	.dw ___str_3
+   0080 04                  154 	.db #0x04	; 4
+   0081 78                  155 	.db #0x78	; 120	'x'
+   0082 01                  156 	.db #0x01	; 1
+   0083 00                  157 	.db #0x00	; 0
+   0084rDAr00               158 	.dw ___str_4
+   0086 08                  159 	.db #0x08	; 8
+   0087 78                  160 	.db #0x78	; 120	'x'
+   0088 02                  161 	.db #0x02	; 2
+   0089 00                  162 	.db #0x00	; 0
+   008ArDCr00               163 	.dw ___str_5
+   008C 08                  164 	.db #0x08	; 8
+   008D 82                  165 	.db #0x82	; 130
+   008E 01                  166 	.db #0x01	; 1
+   008F 00                  167 	.db #0x00	; 0
+   0090rF5r00               168 	.dw ___str_6
+   0092 04                  169 	.db #0x04	; 4
+   0093 9B                  170 	.db #0x9b	; 155
+   0094 01                  171 	.db #0x01	; 1
+   0095 00                  172 	.db #0x00	; 0
+   0096r40r01               173 	.dw ___str_7
+   0098 08                  174 	.db #0x08	; 8
+   0099 9B                  175 	.db #0x9b	; 155
+   009A 02                  176 	.db #0x02	; 2
+   009B 00                  177 	.db #0x00	; 0
+   009Cr42r01               178 	.dw ___str_8
+   009E 08                  179 	.db #0x08	; 8
+   009F A5                  180 	.db #0xa5	; 165
+   00A0 01                  181 	.db #0x01	; 1
+   00A1 00                  182 	.db #0x00	; 0
+   00A2r5Br01               183 	.dw ___str_9
+   00A4                     184 ___str_0:
+   00A4 50 72 65 73 73      185 	.ascii "Press"
+   00A9 00                  186 	.db 0x00
+   00AA                     187 ___str_1:
+   00AA 31                  188 	.ascii "1"
+   00AB 00                  189 	.db 0x00
+   00AC                     190 ___str_2:
+   00AC 3A 20 4E 6F 20 64   191 	.ascii ": No double buffer"
+        6F 75 62 6C 65 20
+        62 75 66 66 65 72
+   00BE 00                  192 	.db 0x00
+   00BF                     193 ___str_3:
+   00BF 44 69 72 65 63 74   194 	.ascii "Directly draw in video mem"
+        6C 79 20 64 72 61
+        77 20 69 6E 20 76
+        69 64 65 6F 20 6D
+        65 6D
+   00D9 00                  195 	.db 0x00
+   00DA                     196 ___str_4:
+   00DA 32                  197 	.ascii "2"
+   00DB 00                  198 	.db 0x00
+   00DC                     199 ___str_5:
+   00DC 3A 20 48 61 72 64   200 	.ascii ": Hardware double buffer"
+        77 61 72 65 20 64
+        6F 75 62 6C 65 20
+        62 75 66 66 65 72
+   00F4 00                  201 	.db 0x00
+   00F5                     202 ___str_6:
+   00F5 44 72 61 77 20 61   203 	.ascii "Draw alternatively in two video mem  (2*16384 bytes) and fli"
+        6C 74 65 72 6E 61
+        74 69 76 65 6C 79
+        20 69 6E 20 74 77
+        6F 20 76 69 64 65
+        6F 20 6D 65 6D 20
+        20 28 32 2A 31 36
+        33 38 34 20 62 79
+        74 65 73 29 20 61
+        6E 64 20 66 6C 69
+   0131 70 20 62 65 74 77   204 	.ascii "p between them"
+        65 65 6E 20 74 68
+        65 6D
+   013F 00                  205 	.db 0x00
+   0140                     206 ___str_7:
+   0140 33                  207 	.ascii "3"
+   0141 00                  208 	.db 0x00
+   0142                     209 ___str_8:
+   0142 3A 20 53 6F 66 74   210 	.ascii ": Software double buffer"
+        77 61 72 65 20 64
+        6F 75 62 6C 65 20
+        62 75 66 66 65 72
+   015A 00                  211 	.db 0x00
+   015B                     212 ___str_9:
+   015B 44 72 61 77 20 69   213 	.ascii "Draw in buffer (50*60 bytes) of size view and copy whole buf"
+        6E 20 62 75 66 66
+        65 72 20 28 35 30
+        2A 36 30 20 62 79
+        74 65 73 29 20 6F
+        66 20 73 69 7A 65
+        20 76 69 65 77 20
+        61 6E 64 20 63 6F
+        70 79 20 77 68 6F
+        6C 65 20 62 75 66
+   0197 66 65 72 20 74 6F   214 	.ascii "fer to video mem (16384 bytes)"
+        20 76 69 64 65 6F
+        20 6D 65 6D 20 28
+        31 36 33 38 34 20
+        62 79 74 65 73 29
+   01B5 00                  215 	.db 0x00
+                            216 ;src/textDrawing.c:70: void DrawInfoText() {
+                            217 ;	---------------------------------
+                            218 ; Function DrawInfoText
+                            219 ; ---------------------------------
+   01B6                     220 _DrawInfoText::
+                            221 ;src/textDrawing.c:71: DrawInfoTextToBuffer((u8*)CPCT_VMEM_START);
+   01B6 21 00 C0      [10]  222 	ld	hl, #0xc000
+   01B9 E5            [11]  223 	push	hl
+   01BA CDr00r00      [17]  224 	call	_DrawInfoTextToBuffer
+                            225 ;src/textDrawing.c:72: DrawInfoTextToBuffer((u8*)SCREEN_BUFF);
+   01BD 21 00 80      [10]  226 	ld	hl, #0x8000
+   01C0 E3            [19]  227 	ex	(sp),hl
+   01C1 CDr00r00      [17]  228 	call	_DrawInfoTextToBuffer
+   01C4 F1            [10]  229 	pop	af
+   01C5 C9            [10]  230 	ret
+                            231 ;src/textDrawing.c:82: void DrawSelectionToBuffer(u8* bufferPtr, u8 pos) {
+                            232 ;	---------------------------------
+                            233 ; Function DrawSelectionToBuffer
+                            234 ; ---------------------------------
+   01C6                     235 _DrawSelectionToBuffer::
+   01C6 DD E5         [15]  236 	push	ix
+   01C8 DD 21 00 00   [14]  237 	ld	ix,#0
+   01CC DD 39         [15]  238 	add	ix,sp
+                            239 ;src/textDrawing.c:87: pvmem = cpct_getScreenPtr(bufferPtr, 0, POS_TEXT + 15);
+   01CE DD 4E 04      [19]  240 	ld	c,4 (ix)
+   01D1 DD 46 05      [19]  241 	ld	b,5 (ix)
+   01D4 C5            [11]  242 	push	bc
+   01D5 21 00 5F      [10]  243 	ld	hl, #0x5f00
+   01D8 E5            [11]  244 	push	hl
+   01D9 C5            [11]  245 	push	bc
+   01DA CDr00r00      [17]  246 	call	_cpct_getScreenPtr
+   01DD 11 02 50      [10]  247 	ld	de, #0x5002
+   01E0 D5            [11]  248 	push	de
+   01E1 11 00 00      [10]  249 	ld	de, #0x0000
+   01E4 D5            [11]  250 	push	de
+   01E5 E5            [11]  251 	push	hl
+   01E6 CDr00r00      [17]  252 	call	_cpct_drawSolidBox
+   01E9 C1            [10]  253 	pop	bc
+                            254 ;src/textDrawing.c:91: pvmem = cpct_getScreenPtr(bufferPtr, 0, pos);
+   01EA DD 7E 06      [19]  255 	ld	a, 6 (ix)
+   01ED F5            [11]  256 	push	af
+   01EE 33            [ 6]  257 	inc	sp
+   01EF AF            [ 4]  258 	xor	a, a
+   01F0 F5            [11]  259 	push	af
+   01F1 33            [ 6]  260 	inc	sp
+   01F2 C5            [11]  261 	push	bc
+   01F3 CDr00r00      [17]  262 	call	_cpct_getScreenPtr
+                            263 ;src/textDrawing.c:92: cpct_setDrawCharM1(3, 0);
+   01F6 E5            [11]  264 	push	hl
+   01F7 01 03 00      [10]  265 	ld	bc, #0x0003
+   01FA C5            [11]  266 	push	bc
+   01FB CDr00r00      [17]  267 	call	_cpct_setDrawCharM1
+   01FE E1            [10]  268 	pop	hl
+                            269 ;src/textDrawing.c:93: cpct_drawStringM1(">", pvmem);
+   01FF 01r0Ar02      [10]  270 	ld	bc, #___str_10+0
+   0202 E5            [11]  271 	push	hl
+   0203 C5            [11]  272 	push	bc
+   0204 CDr00r00      [17]  273 	call	_cpct_drawStringM1
+   0207 DD E1         [14]  274 	pop	ix
+   0209 C9            [10]  275 	ret
+   020A                     276 ___str_10:
+   020A 3E                  277 	.ascii ">"
+   020B 00                  278 	.db 0x00
+                            279 ;src/textDrawing.c:102: void DrawTextSelectionSign(u8 sel) {
+                            280 ;	---------------------------------
+                            281 ; Function DrawTextSelectionSign
+                            282 ; ---------------------------------
+   020C                     283 _DrawTextSelectionSign::
+                            284 ;src/textDrawing.c:110: u8 pos = locations[sel-1];   // Position of the User selection
+   020C 21 02 00      [10]  285 	ld	hl, #2+0
+   020F 39            [11]  286 	add	hl, sp
+   0210 4E            [ 7]  287 	ld	c, (hl)
+   0211 0D            [ 4]  288 	dec	c
+   0212 21r30r02      [10]  289 	ld	hl, #_DrawTextSelectionSign_locations_1_142
+   0215 06 00         [ 7]  290 	ld	b, #0x00
+   0217 09            [11]  291 	add	hl, bc
+   0218 46            [ 7]  292 	ld	b, (hl)
+                            293 ;src/textDrawing.c:113: DrawSelectionToBuffer((u8*)CPCT_VMEM_START, pos);
+   0219 C5            [11]  294 	push	bc
+   021A C5            [11]  295 	push	bc
+   021B 33            [ 6]  296 	inc	sp
+   021C 21 00 C0      [10]  297 	ld	hl, #0xc000
+   021F E5            [11]  298 	push	hl
+   0220 CDrC6r01      [17]  299 	call	_DrawSelectionToBuffer
+   0223 F1            [10]  300 	pop	af
+   0224 33            [ 6]  301 	inc	sp
+   0225 33            [ 6]  302 	inc	sp
+   0226 21 00 80      [10]  303 	ld	hl, #0x8000
+   0229 E5            [11]  304 	push	hl
+   022A CDrC6r01      [17]  305 	call	_DrawSelectionToBuffer
+   022D F1            [10]  306 	pop	af
+   022E 33            [ 6]  307 	inc	sp
+   022F C9            [10]  308 	ret
+   0230                     309 _DrawTextSelectionSign_locations_1_142:
+   0230 5F                  310 	.db #0x5f	; 95
+   0231 78                  311 	.db #0x78	; 120	'x'
+   0232 9B                  312 	.db #0x9b	; 155
+                            313 	.area _CODE
+                            314 	.area _INITIALIZER
+                            315 	.area _CABS (ABS)

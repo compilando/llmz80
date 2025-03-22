@@ -1,0 +1,57 @@
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180), page 1.
+Hexadecimal [16-Bits]
+
+Symbol Table
+
+    .__.$$$.                                                    =  2710 L
+    .__.ABS.                                                    =  0000 G
+    .__.CPU.                                                    =  0000 L
+    .__.H$L.                                                    =  0000 L
+    _cpct_drawSolidBox                                             **** GX
+    _cpct_drawSprite                                               **** GX
+    _cpct_getScreenPtr                                             **** GX
+  0 _drawEntity                                                    0641 GR
+  0 _g_SCR_HEIGHT                                                  00D3 GR
+  0 _g_SCR_WIDTH                                                   00D2 GR
+  0 _g_allAnimFrames                                               0004 GR
+  0 _g_animDie                                                     00C0 GR
+  0 _g_animFist                                                    00A8 GR
+  0 _g_animHit                                                     00B4 GR
+  0 _g_animKick                                                    00AE GR
+  0 _g_animStay                                                    0090 GR
+  0 _g_animWalkLeft                                                009E GR
+  0 _g_animWalkRight                                               0094 GR
+  0 _g_animWin                                                     00BA GR
+  0 _g_persea                                                      00CB GR
+  0 _g_perseaAnimation                                             00C6 GR
+    _gc_PerseaFist                                                 **** GX
+    _gc_PerseaHit                                                  **** GX
+    _gc_PerseaKO                                                   **** GX
+    _gc_PerseaKick                                                 **** GX
+    _gc_PerseaWalk13                                               **** GX
+    _gc_PerseaWalk2                                                **** GX
+    _gc_PerseaWalk4                                                **** GX
+    _gc_PerseaWins                                                 **** GX
+  0 _getPersea                                                     0000 GR
+  0 _moveEntityX                                                   00D4 GR
+  0 _moveEntityY                                                   0258 GR
+  0 _setAnimation                                                  0591 GR
+  0 _updateAnimation                                               03BB GR
+  0 _updateEntity                                                  0468 GR
+
+
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180), page 2.
+Hexadecimal [16-Bits]
+
+Area Table
+
+   0 _CODE                                      size  692   flags    0
+   1 _DATA                                      size    0   flags    0
+   2 _INITIALIZED                               size    0   flags    0
+   3 _DABS                                      size    0   flags    8
+   4 _HOME                                      size    0   flags    0
+   5 _GSINIT                                    size    0   flags    0
+   6 _GSFINAL                                   size    0   flags    0
+   7 _INITIALIZER                               size    0   flags    0
+   8 _CABS                                      size    0   flags    8
+

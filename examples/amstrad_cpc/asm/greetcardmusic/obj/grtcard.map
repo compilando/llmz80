@@ -1,0 +1,152 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           cpct_strings
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  l___g_music                     
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     00000000  s___g_music                     
+     00000000  s___g_music0                    
+     00000028  l__DATA                         
+     000015BF  l___g_music0                    
+     0000227E  l__CODE                         
+     00004000  s__CODE                         
+     0000627E  s__DATA                         
+     000062A6  s__GSFINAL                      
+     000062A6  s__GSINIT                       
+     000062A6  s__HOME                         
+     000062A6  s__INITIALIZED                  
+     000062A6  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    0000227E =        8830. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00004000  _g_palette                         octopusjig
+     00004010  _g_octopusjig                      octopusjig
+     00005856  _main                              
+     0000587C  _cpct_setInterruptHandler          cpct_firmware
+     0000587C  cpct_setInterruptHandler_asm       cpct_firmware
+     0000588D  cpct_safeInterruptHandlerHook      cpct_firmware
+     000058A3  cpct_setPalette_asm                cpct_video
+     000058B6  cpct_setPALColour_asm              cpct_video
+     000058C0  cpct_drawStringM0_asm              cpct_strings
+     000058E6  cpct_drawCharM0_inner_asm          cpct_strings
+     00005946  dc_2pxtableM0                      cpct_strings
+     0000594A  cpct_drawSprite_asm                cpct_sprites
+     000059EA  cpct_setVideoMode_asm              cpct_video
+     000059F7  _cpct_waitVSYNC                    cpct_video
+     000059F7  cpct_waitVSYNC_asm                 cpct_video
+     000059FF  _cpct_akp_digidrumStatus           cpct_audio
+     00005A00  _cpct_akp_songLoopTimes            cpct_audio
+     00005A01  _cpct_akp_musicPlay                cpct_audio
+     00005A01  cpct_akp_musicPlay_asm             cpct_audio
+     00006104  _cpct_akp_musicInit                cpct_audio
+     0000610B  cpct_akp_musicInit_asm             cpct_audio
+     00006164  _cpct_akp_stop                     cpct_audio
+     00006164  cpct_akp_stop_asm                  cpct_audio
+     00006177  _cpct_akp_SFXGetInstrument         cpct_audio
+     0000617C  cpct_akp_SFXGetInstrument_asm      cpct_audio
+     00006190  _cpct_akp_SFXInit                  cpct_audio
+     00006197  cpct_akp_SFXInit_asm               cpct_audio
+     0000619E  _cpct_akp_SFXStopAll               cpct_audio
+     0000619E  cpct_akp_SFXStopAll_asm            cpct_audio
+     000061AB  _cpct_akp_SFXPlay                  cpct_audio
+     000061BD  cpct_akp_SFXPlay_asm               cpct_audio
+     0000620A  _cpct_akp_SFXStop                  cpct_audio
+     0000620F  cpct_akp_SFXStop_asm               cpct_audio
+     00006228  _cpct_disableFirmware              cpct_firmware
+     00006228  _cpct_removeInterruptHandler       cpct_firmware
+     00006228  cpct_disableFirmware_asm           cpct_firmware
+     00006228  cpct_removeInterruptHandler_asm    cpct_firmware
+     00006238  _cpct_mode_rom_status              cpct_firmware
+     00006239  cpct_setDrawCharM0_asm             cpct_strings
+     0000625C  cpct_getScreenPtr_asm              cpct_video
+     0000626E  dc_mode0_ct                        cpct_strings
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_DATA                               0000627E    00000028 =          40. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+__g_music0                          00000000    000015BF =        5567. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00002A41  _g_music                           
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 5.
+
+Files Linked                              [ module(s) ]
+
+obj/octopusjig.rel                        [ octopusjig ]
+obj/music.rel                             [  ]
+obj/main.rel                              [  ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPalette_asmbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPALColour_asmbindings.re ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawStringM0_asmbindings.re ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawCharM0_inner.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSprite_asmbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMode_asmbindings.re ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_waitVSYNC.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ arkostracker.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setDrawCharM0_asmbindings.r ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_getScreenPtr_asmbindings.re ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_dc_mode0_ct.rel ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 6.
+
+User Base Address Definitions
+
+_CODE = 0x4000
+_DATA = 0x0000
+
+

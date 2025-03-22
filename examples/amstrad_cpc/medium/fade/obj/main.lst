@@ -1,0 +1,247 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module main
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _main
+                             12 	.globl _wait_frames
+                             13 	.globl _setBlackPalette
+                             14 	.globl _fade_out
+                             15 	.globl _fade_in
+                             16 	.globl _cpct_getScreenPtr
+                             17 	.globl _cpct_setVideoMode
+                             18 	.globl _cpct_drawSprite
+                             19 	.globl _cpct_memset
+                             20 	.globl _cpct_disableFirmware
+                             21 ;--------------------------------------------------------
+                             22 ; special function registers
+                             23 ;--------------------------------------------------------
+                             24 ;--------------------------------------------------------
+                             25 ; ram data
+                             26 ;--------------------------------------------------------
+                             27 	.area _DATA
+                             28 ;--------------------------------------------------------
+                             29 ; ram data
+                             30 ;--------------------------------------------------------
+                             31 	.area _INITIALIZED
+                             32 ;--------------------------------------------------------
+                             33 ; absolute external ram data
+                             34 ;--------------------------------------------------------
+                             35 	.area _DABS (ABS)
+                             36 ;--------------------------------------------------------
+                             37 ; global & static initialisations
+                             38 ;--------------------------------------------------------
+                             39 	.area _HOME
+                             40 	.area _GSINIT
+                             41 	.area _GSFINAL
+                             42 	.area _GSINIT
+                             43 ;--------------------------------------------------------
+                             44 ; Home
+                             45 ;--------------------------------------------------------
+                             46 	.area _HOME
+                             47 	.area _HOME
+                             48 ;--------------------------------------------------------
+                             49 ; code
+                             50 ;--------------------------------------------------------
+                             51 	.area _CODE
+                             52 ;src/main.c:29: void main(void) {
+                             53 ;	---------------------------------
+                             54 ; Function main
+                             55 ; ---------------------------------
+   0000                      56 _main::
+   0000 DD E5         [15]   57 	push	ix
+   0002 DD 21 00 00   [14]   58 	ld	ix,#0
+   0006 DD 39         [15]   59 	add	ix,sp
+   0008 21 EB FF      [10]   60 	ld	hl, #-21
+   000B 39            [11]   61 	add	hl, sp
+   000C F9            [ 6]   62 	ld	sp, hl
+                             63 ;src/main.c:31: const TSprite img[3] = { 
+   000D 21 01 00      [10]   64 	ld	hl, #0x0001
+   0010 39            [11]   65 	add	hl, sp
+   0011 01r00r00      [10]   66 	ld	bc, #_G_Goku+0
+   0014 71            [ 7]   67 	ld	(hl), c
+   0015 23            [ 6]   68 	inc	hl
+   0016 70            [ 7]   69 	ld	(hl), b
+   0017 21 01 00      [10]   70 	ld	hl, #0x0001
+   001A 39            [11]   71 	add	hl, sp
+   001B 4D            [ 4]   72 	ld	c,l
+   001C 44            [ 4]   73 	ld	b,h
+   001D 23            [ 6]   74 	inc	hl
+   001E 23            [ 6]   75 	inc	hl
+   001F 36 1E         [10]   76 	ld	(hl), #0x1e
+   0021 69            [ 4]   77 	ld	l, c
+   0022 60            [ 4]   78 	ld	h, b
+   0023 23            [ 6]   79 	inc	hl
+   0024 23            [ 6]   80 	inc	hl
+   0025 23            [ 6]   81 	inc	hl
+   0026 36 4B         [10]   82 	ld	(hl), #0x4b
+   0028 21 04 00      [10]   83 	ld	hl, #0x0004
+   002B 09            [11]   84 	add	hl, bc
+   002C 36 14         [10]   85 	ld	(hl), #0x14
+   002E 21 05 00      [10]   86 	ld	hl, #0x0005
+   0031 09            [11]   87 	add	hl, bc
+   0032 36 31         [10]   88 	ld	(hl), #0x31
+   0034 21 06 00      [10]   89 	ld	hl, #0x0006
+   0037 09            [11]   90 	add	hl, bc
+   0038 11r00r00      [10]   91 	ld	de, #_G_Vegeta+0
+   003B 73            [ 7]   92 	ld	(hl), e
+   003C 23            [ 6]   93 	inc	hl
+   003D 72            [ 7]   94 	ld	(hl), d
+   003E 21 08 00      [10]   95 	ld	hl, #0x0008
+   0041 09            [11]   96 	add	hl, bc
+   0042 36 16         [10]   97 	ld	(hl), #0x16
+   0044 21 09 00      [10]   98 	ld	hl, #0x0009
+   0047 09            [11]   99 	add	hl, bc
+   0048 36 3C         [10]  100 	ld	(hl), #0x3c
+   004A 21 0A 00      [10]  101 	ld	hl, #0x000a
+   004D 09            [11]  102 	add	hl, bc
+   004E 36 24         [10]  103 	ld	(hl), #0x24
+   0050 21 0B 00      [10]  104 	ld	hl, #0x000b
+   0053 09            [11]  105 	add	hl, bc
+   0054 36 50         [10]  106 	ld	(hl), #0x50
+   0056 21 0C 00      [10]  107 	ld	hl, #0x000c
+   0059 09            [11]  108 	add	hl, bc
+   005A 11r00r00      [10]  109 	ld	de, #_G_No13+0
+   005D 73            [ 7]  110 	ld	(hl), e
+   005E 23            [ 6]  111 	inc	hl
+   005F 72            [ 7]  112 	ld	(hl), d
+   0060 21 0E 00      [10]  113 	ld	hl, #0x000e
+   0063 09            [11]  114 	add	hl, bc
+   0064 36 16         [10]  115 	ld	(hl), #0x16
+   0066 21 0F 00      [10]  116 	ld	hl, #0x000f
+   0069 09            [11]  117 	add	hl, bc
+   006A 36 3C         [10]  118 	ld	(hl), #0x3c
+   006C 21 10 00      [10]  119 	ld	hl, #0x0010
+   006F 09            [11]  120 	add	hl, bc
+   0070 36 24         [10]  121 	ld	(hl), #0x24
+   0072 21 11 00      [10]  122 	ld	hl, #0x0011
+   0075 09            [11]  123 	add	hl, bc
+   0076 36 50         [10]  124 	ld	(hl), #0x50
+                            125 ;src/main.c:40: cpct_disableFirmware();   // Disable firmware to prevent it from interfering
+   0078 C5            [11]  126 	push	bc
+   0079 CDr00r00      [17]  127 	call	_cpct_disableFirmware
+   007C 2E 00         [ 7]  128 	ld	l, #0x00
+   007E CDr00r00      [17]  129 	call	_cpct_setVideoMode
+   0081 21 00 10      [10]  130 	ld	hl, #0x1000
+   0084 E5            [11]  131 	push	hl
+   0085 CDr00r00      [17]  132 	call	_setBlackPalette
+   0088 F1            [10]  133 	pop	af
+   0089 C1            [10]  134 	pop	bc
+                            135 ;src/main.c:50: for(i=0; i < 3; ++i) {
+   008A                     136 00109$:
+   008A DD 36 EB 00   [19]  137 	ld	-21 (ix), #0x00
+   008E                     138 00105$:
+                            139 ;src/main.c:51: cpct_clearScreen(0x00);   // Clear the screen filling it up with 0's
+   008E C5            [11]  140 	push	bc
+   008F 21 00 40      [10]  141 	ld	hl, #0x4000
+   0092 E5            [11]  142 	push	hl
+   0093 AF            [ 4]  143 	xor	a, a
+   0094 F5            [11]  144 	push	af
+   0095 33            [ 6]  145 	inc	sp
+   0096 26 C0         [ 7]  146 	ld	h, #0xc0
+   0098 E5            [11]  147 	push	hl
+   0099 CDr00r00      [17]  148 	call	_cpct_memset
+   009C C1            [10]  149 	pop	bc
+                            150 ;src/main.c:54: pvmem = cpct_getScreenPtr(CPCT_VMEM_START, img[i].x, img[i].y);
+   009D DD 5E EB      [19]  151 	ld	e,-21 (ix)
+   00A0 16 00         [ 7]  152 	ld	d,#0x00
+   00A2 6B            [ 4]  153 	ld	l, e
+   00A3 62            [ 4]  154 	ld	h, d
+   00A4 29            [11]  155 	add	hl, hl
+   00A5 19            [11]  156 	add	hl, de
+   00A6 29            [11]  157 	add	hl, hl
+   00A7 09            [11]  158 	add	hl,bc
+   00A8 EB            [ 4]  159 	ex	de,hl
+   00A9 D5            [11]  160 	push	de
+   00AA FD E1         [14]  161 	pop	iy
+   00AC FD 7E 03      [19]  162 	ld	a, 3 (iy)
+   00AF DD 77 FF      [19]  163 	ld	-1 (ix), a
+   00B2 6B            [ 4]  164 	ld	l, e
+   00B3 62            [ 4]  165 	ld	h, d
+   00B4 23            [ 6]  166 	inc	hl
+   00B5 23            [ 6]  167 	inc	hl
+   00B6 7E            [ 7]  168 	ld	a, (hl)
+   00B7 DD 77 FE      [19]  169 	ld	-2 (ix), a
+   00BA C5            [11]  170 	push	bc
+   00BB D5            [11]  171 	push	de
+   00BC DD 66 FF      [19]  172 	ld	h, -1 (ix)
+   00BF DD 6E FE      [19]  173 	ld	l, -2 (ix)
+   00C2 E5            [11]  174 	push	hl
+   00C3 21 00 C0      [10]  175 	ld	hl, #0xc000
+   00C6 E5            [11]  176 	push	hl
+   00C7 CDr00r00      [17]  177 	call	_cpct_getScreenPtr
+   00CA D1            [10]  178 	pop	de
+   00CB C1            [10]  179 	pop	bc
+   00CC E5            [11]  180 	push	hl
+   00CD FD E1         [14]  181 	pop	iy
+                            182 ;src/main.c:55: cpct_drawSprite(img[i].sprite, pvmem, img[i].w, img[i].h);
+   00CF 6B            [ 4]  183 	ld	l, e
+   00D0 62            [ 4]  184 	ld	h, d
+   00D1 23            [ 6]  185 	inc	hl
+   00D2 23            [ 6]  186 	inc	hl
+   00D3 23            [ 6]  187 	inc	hl
+   00D4 23            [ 6]  188 	inc	hl
+   00D5 23            [ 6]  189 	inc	hl
+   00D6 7E            [ 7]  190 	ld	a, (hl)
+   00D7 DD 77 FE      [19]  191 	ld	-2 (ix), a
+   00DA 6B            [ 4]  192 	ld	l, e
+   00DB 62            [ 4]  193 	ld	h, d
+   00DC 23            [ 6]  194 	inc	hl
+   00DD 23            [ 6]  195 	inc	hl
+   00DE 23            [ 6]  196 	inc	hl
+   00DF 23            [ 6]  197 	inc	hl
+   00E0 7E            [ 7]  198 	ld	a, (hl)
+   00E1 DD 77 FF      [19]  199 	ld	-1 (ix), a
+   00E4 EB            [ 4]  200 	ex	de,hl
+   00E5 5E            [ 7]  201 	ld	e, (hl)
+   00E6 23            [ 6]  202 	inc	hl
+   00E7 56            [ 7]  203 	ld	d, (hl)
+   00E8 C5            [11]  204 	push	bc
+   00E9 DD 66 FE      [19]  205 	ld	h, -2 (ix)
+   00EC DD 6E FF      [19]  206 	ld	l, -1 (ix)
+   00EF E5            [11]  207 	push	hl
+   00F0 FD E5         [15]  208 	push	iy
+   00F2 D5            [11]  209 	push	de
+   00F3 CDr00r00      [17]  210 	call	_cpct_drawSprite
+   00F6 21 32 00      [10]  211 	ld	hl, #0x0032
+   00F9 E5            [11]  212 	push	hl
+   00FA CDr00r00      [17]  213 	call	_wait_frames
+   00FD 21 10 04      [10]  214 	ld	hl, #0x0410
+   0100 E3            [19]  215 	ex	(sp),hl
+   0101 AF            [ 4]  216 	xor	a, a
+   0102 F5            [11]  217 	push	af
+   0103 33            [ 6]  218 	inc	sp
+   0104 21r00r00      [10]  219 	ld	hl, #_G_rgb_palette
+   0107 E5            [11]  220 	push	hl
+   0108 CDr00r00      [17]  221 	call	_fade_in
+   010B F1            [10]  222 	pop	af
+   010C 33            [ 6]  223 	inc	sp
+   010D 21 64 00      [10]  224 	ld	hl,#0x0064
+   0110 E3            [19]  225 	ex	(sp),hl
+   0111 CDr00r00      [17]  226 	call	_wait_frames
+   0114 21 10 04      [10]  227 	ld	hl, #0x0410
+   0117 E3            [19]  228 	ex	(sp),hl
+   0118 AF            [ 4]  229 	xor	a, a
+   0119 F5            [11]  230 	push	af
+   011A 33            [ 6]  231 	inc	sp
+   011B 21r00r00      [10]  232 	ld	hl, #_G_rgb_palette
+   011E E5            [11]  233 	push	hl
+   011F CDr00r00      [17]  234 	call	_fade_out
+   0122 F1            [10]  235 	pop	af
+   0123 F1            [10]  236 	pop	af
+   0124 33            [ 6]  237 	inc	sp
+   0125 C1            [10]  238 	pop	bc
+                            239 ;src/main.c:50: for(i=0; i < 3; ++i) {
+   0126 DD 34 EB      [23]  240 	inc	-21 (ix)
+   0129 DD 7E EB      [19]  241 	ld	a, -21 (ix)
+   012C D6 03         [ 7]  242 	sub	a, #0x03
+   012E DAr8Er00      [10]  243 	jp	C, 00105$
+   0131 C3r8Ar00      [10]  244 	jp	00109$
+                            245 	.area _CODE
+                            246 	.area _INITIALIZER
+                            247 	.area _CABS (ABS)

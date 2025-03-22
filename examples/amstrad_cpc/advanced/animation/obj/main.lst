@@ -1,0 +1,287 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module main
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _main
+                             12 	.globl _updateUser
+                             13 	.globl _initializeCPC
+                             14 	.globl _drawEntity
+                             15 	.globl _setAnimation
+                             16 	.globl _updateEntity
+                             17 	.globl _getPersea
+                             18 	.globl _cpct_setPalette
+                             19 	.globl _cpct_fw2hw
+                             20 	.globl _cpct_waitVSYNC
+                             21 	.globl _cpct_setVideoMode
+                             22 	.globl _cpct_drawSprite
+                             23 	.globl _cpct_drawSolidBox
+                             24 	.globl _cpct_px2byteM0
+                             25 	.globl _cpct_isKeyPressed
+                             26 	.globl _cpct_scanKeyboard
+                             27 	.globl _cpct_disableFirmware
+                             28 ;--------------------------------------------------------
+                             29 ; special function registers
+                             30 ;--------------------------------------------------------
+                             31 ;--------------------------------------------------------
+                             32 ; ram data
+                             33 ;--------------------------------------------------------
+                             34 	.area _DATA
+                             35 ;--------------------------------------------------------
+                             36 ; ram data
+                             37 ;--------------------------------------------------------
+                             38 	.area _INITIALIZED
+                             39 ;--------------------------------------------------------
+                             40 ; absolute external ram data
+                             41 ;--------------------------------------------------------
+                             42 	.area _DABS (ABS)
+                             43 ;--------------------------------------------------------
+                             44 ; global & static initialisations
+                             45 ;--------------------------------------------------------
+                             46 	.area _HOME
+                             47 	.area _GSINIT
+                             48 	.area _GSFINAL
+                             49 	.area _GSINIT
+                             50 ;--------------------------------------------------------
+                             51 ; Home
+                             52 ;--------------------------------------------------------
+                             53 	.area _HOME
+                             54 	.area _HOME
+                             55 ;--------------------------------------------------------
+                             56 ; code
+                             57 ;--------------------------------------------------------
+                             58 	.area _CODE
+                             59 ;src/main.c:28: void initializeCPC() {
+                             60 ;	---------------------------------
+                             61 ; Function initializeCPC
+                             62 ; ---------------------------------
+   0000                      63 _initializeCPC::
+                             64 ;src/main.c:32: cpct_disableFirmware();
+   0000 CDr00r00      [17]   65 	call	_cpct_disableFirmware
+                             66 ;src/main.c:35: cpct_fw2hw(gc_palette, 16);
+   0003 21 10 00      [10]   67 	ld	hl, #0x0010
+   0006 E5            [11]   68 	push	hl
+   0007 21r00r00      [10]   69 	ld	hl, #_gc_palette
+   000A E5            [11]   70 	push	hl
+   000B CDr00r00      [17]   71 	call	_cpct_fw2hw
+                             72 ;src/main.c:36: cpct_setPalette(gc_palette, 16);
+   000E 21 10 00      [10]   73 	ld	hl, #0x0010
+   0011 E5            [11]   74 	push	hl
+   0012 21r00r00      [10]   75 	ld	hl, #_gc_palette
+   0015 E5            [11]   76 	push	hl
+   0016 CDr00r00      [17]   77 	call	_cpct_setPalette
+                             78 ;src/main.c:39: cpct_setVideoMode(0);
+   0019 2E 00         [ 7]   79 	ld	l, #0x00
+   001B CDr00r00      [17]   80 	call	_cpct_setVideoMode
+                             81 ;src/main.c:42: c0 = cpct_px2byteM0(4, 4);   // c0 = 2 consecutive pixels of firmware colour 4 (blue)
+   001E 21 04 04      [10]   82 	ld	hl, #0x0404
+   0021 E5            [11]   83 	push	hl
+   0022 CDr00r00      [17]   84 	call	_cpct_px2byteM0
+   0025 4D            [ 4]   85 	ld	c, l
+                             86 ;src/main.c:43: cpct_drawSolidBox(CPCT_VMEM_START, c0, 40, 60); // Boxes cannot be wider than 64 bytes,
+   0026 06 00         [ 7]   87 	ld	b, #0x00
+   0028 C5            [11]   88 	push	bc
+   0029 21 28 3C      [10]   89 	ld	hl, #0x3c28
+   002C E5            [11]   90 	push	hl
+   002D C5            [11]   91 	push	bc
+   002E 21 00 C0      [10]   92 	ld	hl, #0xc000
+   0031 E5            [11]   93 	push	hl
+   0032 CDr00r00      [17]   94 	call	_cpct_drawSolidBox
+   0035 C1            [10]   95 	pop	bc
+                             96 ;src/main.c:44: cpct_drawSolidBox((void*)0xC028, c0, 40, 60); // ... so we use 2 boxes of 40 bytes wide.
+   0036 C5            [11]   97 	push	bc
+   0037 21 28 3C      [10]   98 	ld	hl, #0x3c28
+   003A E5            [11]   99 	push	hl
+   003B C5            [11]  100 	push	bc
+   003C 26 C0         [ 7]  101 	ld	h, #0xc0
+   003E E5            [11]  102 	push	hl
+   003F CDr00r00      [17]  103 	call	_cpct_drawSolidBox
+   0042 21 37 14      [10]  104 	ld	hl, #0x1437
+   0045 E5            [11]  105 	push	hl
+   0046 21 FC C0      [10]  106 	ld	hl, #0xc0fc
+   0049 E5            [11]  107 	push	hl
+   004A 21r00r00      [10]  108 	ld	hl, #_gc_LogoFremos
+   004D E5            [11]  109 	push	hl
+   004E CDr00r00      [17]  110 	call	_cpct_drawSprite
+   0051 21 02 08      [10]  111 	ld	hl, #0x0802
+   0054 E5            [11]  112 	push	hl
+   0055 CDr00r00      [17]  113 	call	_cpct_px2byteM0
+   0058 C1            [10]  114 	pop	bc
+                            115 ;src/main.c:49: cpct_drawSolidBox((void*)0xC3C0, c1, 40, 8);
+   0059 26 00         [ 7]  116 	ld	h, #0x00
+   005B E5            [11]  117 	push	hl
+   005C C5            [11]  118 	push	bc
+   005D 11 28 08      [10]  119 	ld	de, #0x0828
+   0060 D5            [11]  120 	push	de
+   0061 E5            [11]  121 	push	hl
+   0062 11 C0 C3      [10]  122 	ld	de, #0xc3c0
+   0065 D5            [11]  123 	push	de
+   0066 CDr00r00      [17]  124 	call	_cpct_drawSolidBox
+   0069 C1            [10]  125 	pop	bc
+   006A E1            [10]  126 	pop	hl
+                            127 ;src/main.c:50: cpct_drawSolidBox((void*)0xC3E8, c1, 40, 8);
+   006B C5            [11]  128 	push	bc
+   006C 11 28 08      [10]  129 	ld	de, #0x0828
+   006F D5            [11]  130 	push	de
+   0070 E5            [11]  131 	push	hl
+   0071 21 E8 C3      [10]  132 	ld	hl, #0xc3e8
+   0074 E5            [11]  133 	push	hl
+   0075 CDr00r00      [17]  134 	call	_cpct_drawSolidBox
+   0078 C1            [10]  135 	pop	bc
+                            136 ;src/main.c:53: cpct_drawSolidBox((void*)0xC410, c0, 40, 96);
+   0079 C5            [11]  137 	push	bc
+   007A 21 28 60      [10]  138 	ld	hl, #0x6028
+   007D E5            [11]  139 	push	hl
+   007E C5            [11]  140 	push	bc
+   007F 21 10 C4      [10]  141 	ld	hl, #0xc410
+   0082 E5            [11]  142 	push	hl
+   0083 CDr00r00      [17]  143 	call	_cpct_drawSolidBox
+   0086 C1            [10]  144 	pop	bc
+                            145 ;src/main.c:54: cpct_drawSolidBox((void*)0xC438, c0, 40, 96);
+   0087 21 28 60      [10]  146 	ld	hl, #0x6028
+   008A E5            [11]  147 	push	hl
+   008B C5            [11]  148 	push	bc
+   008C 21 38 C4      [10]  149 	ld	hl, #0xc438
+   008F E5            [11]  150 	push	hl
+   0090 CDr00r00      [17]  151 	call	_cpct_drawSolidBox
+   0093 C9            [10]  152 	ret
+                            153 ;src/main.c:60: void updateUser(TEntity* user) {
+                            154 ;	---------------------------------
+                            155 ; Function updateUser
+                            156 ; ---------------------------------
+   0094                     157 _updateUser::
+                            158 ;src/main.c:62: TEntityStatus animrequest = es_stop;
+   0094 06 01         [ 7]  159 	ld	b, #0x01
+                            160 ;src/main.c:65: cpct_scanKeyboard();
+   0096 C5            [11]  161 	push	bc
+   0097 CDr00r00      [17]  162 	call	_cpct_scanKeyboard
+   009A 21 05 80      [10]  163 	ld	hl, #0x8005
+   009D CDr00r00      [17]  164 	call	_cpct_isKeyPressed
+   00A0 C1            [10]  165 	pop	bc
+   00A1 7D            [ 4]  166 	ld	a, l
+   00A2 B7            [ 4]  167 	or	a, a
+   00A3 28 04         [12]  168 	jr	Z,00119$
+   00A5 06 07         [ 7]  169 	ld	b, #0x07
+   00A7 18 5E         [12]  170 	jr	00120$
+   00A9                     171 00119$:
+                            172 ;src/main.c:69: else if ( cpct_isKeyPressed(Key_CursorUp)    ) animrequest = es_kick;
+   00A9 C5            [11]  173 	push	bc
+   00AA 21 00 01      [10]  174 	ld	hl, #0x0100
+   00AD CDr00r00      [17]  175 	call	_cpct_isKeyPressed
+   00B0 C1            [10]  176 	pop	bc
+   00B1 7D            [ 4]  177 	ld	a, l
+   00B2 B7            [ 4]  178 	or	a, a
+   00B3 28 04         [12]  179 	jr	Z,00116$
+   00B5 06 05         [ 7]  180 	ld	b, #0x05
+   00B7 18 4E         [12]  181 	jr	00120$
+   00B9                     182 00116$:
+                            183 ;src/main.c:70: else if ( cpct_isKeyPressed(Key_CursorDown)  ) animrequest = es_fist;
+   00B9 C5            [11]  184 	push	bc
+   00BA 21 00 04      [10]  185 	ld	hl, #0x0400
+   00BD CDr00r00      [17]  186 	call	_cpct_isKeyPressed
+   00C0 C1            [10]  187 	pop	bc
+   00C1 7D            [ 4]  188 	ld	a, l
+   00C2 B7            [ 4]  189 	or	a, a
+   00C3 28 04         [12]  190 	jr	Z,00113$
+   00C5 06 04         [ 7]  191 	ld	b, #0x04
+   00C7 18 3E         [12]  192 	jr	00120$
+   00C9                     193 00113$:
+                            194 ;src/main.c:71: else if ( cpct_isKeyPressed(Key_CursorRight) ) animrequest = es_walk_right;
+   00C9 C5            [11]  195 	push	bc
+   00CA 21 00 02      [10]  196 	ld	hl, #0x0200
+   00CD CDr00r00      [17]  197 	call	_cpct_isKeyPressed
+   00D0 C1            [10]  198 	pop	bc
+   00D1 7D            [ 4]  199 	ld	a, l
+   00D2 B7            [ 4]  200 	or	a, a
+   00D3 28 04         [12]  201 	jr	Z,00110$
+   00D5 06 02         [ 7]  202 	ld	b, #0x02
+   00D7 18 2E         [12]  203 	jr	00120$
+   00D9                     204 00110$:
+                            205 ;src/main.c:72: else if ( cpct_isKeyPressed(Key_CursorLeft)  ) animrequest = es_walk_left;
+   00D9 C5            [11]  206 	push	bc
+   00DA 21 01 01      [10]  207 	ld	hl, #0x0101
+   00DD CDr00r00      [17]  208 	call	_cpct_isKeyPressed
+   00E0 C1            [10]  209 	pop	bc
+   00E1 7D            [ 4]  210 	ld	a, l
+   00E2 B7            [ 4]  211 	or	a, a
+   00E3 28 04         [12]  212 	jr	Z,00107$
+   00E5 06 03         [ 7]  213 	ld	b, #0x03
+   00E7 18 1E         [12]  214 	jr	00120$
+   00E9                     215 00107$:
+                            216 ;src/main.c:73: else if ( cpct_isKeyPressed(Key_1)           ) animrequest = es_dead;
+   00E9 C5            [11]  217 	push	bc
+   00EA 21 08 01      [10]  218 	ld	hl, #0x0108
+   00ED CDr00r00      [17]  219 	call	_cpct_isKeyPressed
+   00F0 C1            [10]  220 	pop	bc
+   00F1 7D            [ 4]  221 	ld	a, l
+   00F2 B7            [ 4]  222 	or	a, a
+   00F3 28 04         [12]  223 	jr	Z,00104$
+   00F5 06 00         [ 7]  224 	ld	b, #0x00
+   00F7 18 0E         [12]  225 	jr	00120$
+   00F9                     226 00104$:
+                            227 ;src/main.c:74: else if ( cpct_isKeyPressed(Key_2)           ) animrequest = es_win;
+   00F9 C5            [11]  228 	push	bc
+   00FA 21 08 02      [10]  229 	ld	hl, #0x0208
+   00FD CDr00r00      [17]  230 	call	_cpct_isKeyPressed
+   0100 C1            [10]  231 	pop	bc
+   0101 7D            [ 4]  232 	ld	a, l
+   0102 B7            [ 4]  233 	or	a, a
+   0103 28 02         [12]  234 	jr	Z,00120$
+   0105 06 06         [ 7]  235 	ld	b, #0x06
+   0107                     236 00120$:
+                            237 ;src/main.c:77: if (animrequest != es_stop)
+   0107 78            [ 4]  238 	ld	a, b
+   0108 3D            [ 4]  239 	dec	a
+   0109 C8            [11]  240 	ret	Z
+                            241 ;src/main.c:78: setAnimation(user, animrequest);
+   010A C5            [11]  242 	push	bc
+   010B 33            [ 6]  243 	inc	sp
+   010C 21 03 00      [10]  244 	ld	hl, #3
+   010F 39            [11]  245 	add	hl, sp
+   0110 4E            [ 7]  246 	ld	c, (hl)
+   0111 23            [ 6]  247 	inc	hl
+   0112 46            [ 7]  248 	ld	b, (hl)
+   0113 C5            [11]  249 	push	bc
+   0114 CDr00r00      [17]  250 	call	_setAnimation
+   0117 F1            [10]  251 	pop	af
+   0118 33            [ 6]  252 	inc	sp
+   0119 C9            [10]  253 	ret
+                            254 ;src/main.c:91: void main(void) {
+                            255 ;	---------------------------------
+                            256 ; Function main
+                            257 ; ---------------------------------
+   011A                     258 _main::
+                            259 ;src/main.c:95: initializeCPC();
+   011A CDr00r00      [17]  260 	call	_initializeCPC
+                            261 ;src/main.c:96: persea = getPersea();
+   011D CDr00r00      [17]  262 	call	_getPersea
+                            263 ;src/main.c:99: while(1) {
+   0120                     264 00102$:
+                            265 ;src/main.c:100: updateUser(persea);
+   0120 E5            [11]  266 	push	hl
+   0121 E5            [11]  267 	push	hl
+   0122 CDr94r00      [17]  268 	call	_updateUser
+   0125 F1            [10]  269 	pop	af
+   0126 CDr00r00      [17]  270 	call	_cpct_waitVSYNC
+   0129 E1            [10]  271 	pop	hl
+                            272 ;src/main.c:102: updateEntity(persea);
+   012A E5            [11]  273 	push	hl
+   012B E5            [11]  274 	push	hl
+   012C CDr00r00      [17]  275 	call	_updateEntity
+   012F F1            [10]  276 	pop	af
+   0130 E1            [10]  277 	pop	hl
+                            278 ;src/main.c:103: drawEntity(persea);
+   0131 E5            [11]  279 	push	hl
+   0132 E5            [11]  280 	push	hl
+   0133 CDr00r00      [17]  281 	call	_drawEntity
+   0136 F1            [10]  282 	pop	af
+   0137 E1            [10]  283 	pop	hl
+   0138 18 E6         [12]  284 	jr	00102$
+                            285 	.area _CODE
+                            286 	.area _INITIALIZER
+                            287 	.area _CABS (ABS)

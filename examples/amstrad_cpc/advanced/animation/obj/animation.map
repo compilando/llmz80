@@ -1,0 +1,151 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           cpct_strings
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__DATA                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     00000100  s__CODE                         
+     00001439  l__CODE                         
+     00001539  s__DATA                         
+     00001539  s__GSFINAL                      
+     00001539  s__GSINIT                       
+     00001539  s__HOME                         
+     00001539  s__INITIALIZED                  
+     00001539  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00000100    00001439 =        5177. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000100  _initializeCPC                     main
+     00000194  _updateUser                        main
+     0000021A  _main                              main
+     0000023A  _getPersea                         entities
+     0000023E  _g_allAnimFrames                   entities
+     000002CA  _g_animStay                        entities
+     000002CE  _g_animWalkRight                   entities
+     000002D8  _g_animWalkLeft                    entities
+     000002E2  _g_animFist                        entities
+     000002E8  _g_animKick                        entities
+     000002EE  _g_animHit                         entities
+     000002F4  _g_animWin                         entities
+     000002FA  _g_animDie                         entities
+     00000300  _g_perseaAnimation                 entities
+     00000305  _g_persea                          entities
+     0000030C  _g_SCR_WIDTH                       entities
+     0000030D  _g_SCR_HEIGHT                      entities
+     0000030E  _moveEntityX                       entities
+     00000492  _moveEntityY                       entities
+     000005F5  _updateAnimation                   entities
+     000006A2  _updateEntity                      entities
+     000007CB  _setAnimation                      entities
+     0000087B  _drawEntity                        entities
+     000008CC  _gc_palette                        sprites
+     000008DC  _gc_LogoFremos                     sprites
+     00000D28  _gc_PerseaWalk13                   sprites
+     00000DE8  _gc_PerseaWalk2                    sprites
+     00000EA8  _gc_PerseaWalk4                    sprites
+     00000F68  _gc_PerseaFist                     sprites
+     00001040  _gc_PerseaKick                     sprites
+     00001118  _gc_PerseaHit                      sprites
+     000011D8  _gc_PerseaWins                     sprites
+     00001298  _gc_PerseaKO                       sprites
+     000012F8  _cpct_setPalette                   cpct_video
+     0000130F  _cpct_isKeyPressed                 cpct_keyboard
+     0000130F  cpct_isKeyPressed_asm              cpct_keyboard
+     0000131B  _cpct_drawSprite                   cpct_sprites
+     000013C0  _cpct_fw2hw                        cpct_video
+     000013D3  _cpct_keyboardStatusBuffer         cpct_keyboard
+     000013DD  cpct_firmware2hw_colour            
+     000013F8  _cpct_waitVSYNC                    cpct_video
+     000013F8  cpct_waitVSYNC_asm                 cpct_video
+     00001400  _cpct_setVideoMode                 cpct_video
+     0000140E  _cpct_px2byteM0                    cpct_sprites
+     0000142A  _cpct_disableFirmware              cpct_firmware
+     0000142A  _cpct_removeInterruptHandler       cpct_firmware
+     0000142A  cpct_disableFirmware_asm           cpct_firmware
+     0000142A  cpct_removeInterruptHandler_asm    cpct_firmware
+     0000143A  _cpct_drawSolidBox                 cpct_sprites
+     000014E1  _cpct_mode_rom_status              cpct_firmware
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00000100    00001439 =        5177. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     000014E2  _cpct_getScreenPtr                 cpct_video
+     000014F8  _cpct_scanKeyboard                 cpct_keyboard
+     000014F8  cpct_scanKeyboard_asm              cpct_keyboard
+     00001529  dc_mode0_ct                        cpct_strings
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+
+Files Linked                              [ module(s) ]
+
+obj/main.rel                              [ main ]
+obj/entities/entities.rel                 [ entities ]
+obj/entities/sprites.rel                  [ sprites ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPalette_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_isKeyPressed.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSprite_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_fw2hw_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ keyboard.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_firmware2hw_colour_table.re ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_waitVSYNC.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMode_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_px2byteM0_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSolidBox_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_getScreenPtr_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_scanKeyboard.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_dc_mode0_ct.rel ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 5.
+
+User Base Address Definitions
+
+_CODE = 0x0100
+_DATA = 0x0000
+
+

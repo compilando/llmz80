@@ -1,0 +1,19 @@
+XL2
+H 9 areas 2 global symbols
+M circle_trans
+O -mz80
+S .__.ABS. Def0000
+A _CODE size C flags 0 addr 0
+S _g_circle_trans Def0000
+A _DATA size 0 flags 0 addr 0
+A _INITIALIZED size 0 flags 0 addr 0
+A _DABS size 0 flags 8 addr 0
+A _HOME size 0 flags 0 addr 0
+A _GSINIT size 0 flags 0 addr 0
+A _GSFINAL size 0 flags 0 addr 0
+A _INITIALIZER size 0 flags 0 addr 0
+A _CABS size 0 flags 8 addr 0
+T 00 00
+R 00 00 00 00
+T 00 00 55 00 FF AA FF AA FF AA FF AA 55 00
+R 00 00 00 00

@@ -1,0 +1,178 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           cpct_video
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     00000002  l__DATA                         
+     00000BA8  l__CODE                         
+     00004000  s__CODE                         
+     00004BA8  s__DATA                         
+     00004BAA  s__GSFINAL                      
+     00004BAA  s__GSINIT                       
+     00004BAA  s__HOME                         
+     00004BAA  s__INITIALIZED                  
+     00004BAA  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    00000BA8 =        2984. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00004000  _g_frame_lr                        frame_leftright
+     00004040  _g_frame_ud                        frame_updown
+     00004094  _g_building                        building
+     00004494  _g_palette                         tileset
+     000044A4  _g_tileset_00                      tileset
+     000044C4  _g_tileset_01                      tileset
+     000044E4  _g_tileset_02                      tileset
+     00004504  _g_tileset_03                      tileset
+     00004524  _g_tileset_04                      tileset
+     00004544  _g_tileset_05                      tileset
+     00004564  _g_tileset_06                      tileset
+     00004584  _g_tileset_07                      tileset
+     000045A4  _g_tileset_08                      tileset
+     000045C4  _g_tileset_09                      tileset
+     000045E4  _g_tileset_10                      tileset
+     00004604  _g_tileset_11                      tileset
+     00004624  _g_tileset_12                      tileset
+     00004644  _g_tileset_13                      tileset
+     00004664  _g_tileset_14                      tileset
+     00004684  _g_tileset_15                      tileset
+     000046A4  _g_tileset_16                      tileset
+     000046C4  _g_tileset_17                      tileset
+     000046E4  _g_tileset_18                      tileset
+     00004704  _g_tileset_19                      tileset
+     00004724  _g_tileset_20                      tileset
+     00004744  _g_tileset_21                      tileset
+     00004764  _g_tileset_22                      tileset
+     00004784  _g_tileset_23                      tileset
+     000047A4  _g_tileset_24                      tileset
+     000047C4  _g_tileset_25                      tileset
+     000047E4  _g_tileset_26                      tileset
+     00004804  _g_tileset_27                      tileset
+     00004824  _g_tileset_28                      tileset
+     00004844  _g_tileset_29                      tileset
+     00004864  _drawBuidlingScrolled              main
+     0000488B  _drawFrame                         main
+     000048F2  _initialize                        main
+     00004928  _game                              main
+     00004996  _main                              main
+     000049A2  _video_getBackBufferPtr            video
+     000049A6  _video_switchBuffers               video
+     000049CF  _video_initBuffers                 video
+     000049E0  _cpct_setPalette                   cpct_video
+     000049F7  _cpct_isKeyPressed                 cpct_keyboard
+     000049F7  cpct_isKeyPressed_asm              cpct_keyboard
+     00004A03  _cpct_scanKeyboard_f               cpct_keyboard
+     00004A03  cpct_scanKeyboard_f_asm            cpct_keyboard
+     00004A6D  _cpct_setPALColour                 cpct_video
+     00004A79  _cpct_etm_drawTilemap4x8_ag        cpct_easytilemaps
+     00004A83  cpct_etm_dtm4x8_ag_c_widthHeight   cpct_easytilemaps
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    00000BA8 =        2984. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00004A99  cpct_etm_dtm4x8_ag_c_tilesetPtr    cpct_easytilemaps
+     00004B04  cpct_etm_dtm4x8_ag_c_restoreI      cpct_easytilemaps
+     00004B0A  cpct_etm_dtm4x8_ag_c_incrementHL   cpct_easytilemaps
+     00004B0F  cpct_etm_dtm4x8_ag_c_restoreWidt   cpct_easytilemaps
+     00004B12  cpct_etm_dtm4x8_ag_c_updateWidth   cpct_easytilemaps
+     00004B1E  _cpct_keyboardStatusBuffer         cpct_keyboard
+     00004B28  _cpct_setVideoMemoryPage           cpct_video
+     00004B28  cpct_setVideoMemoryPage_asm        cpct_video
+     00004B31  _cpct_setStackLocation             cpct_memutils
+     00004B31  cpct_setStackLocation_asm          cpct_memutils
+     00004B35  _cpct_setVideoMode                 cpct_video
+     00004B43  _cpct_memset                       cpct_memutils
+     00004B51  _cpct_disableFirmware              cpct_firmware
+     00004B51  _cpct_removeInterruptHandler       cpct_firmware
+     00004B51  cpct_disableFirmware_asm           cpct_firmware
+     00004B51  cpct_removeInterruptHandler_asm    cpct_firmware
+     00004B61  _cpct_mode_rom_status              cpct_firmware
+     00004B62  _cpct_etm_setDrawTilemap4x8_ag     cpct_easytilemaps
+     00004B92  _cpct_getScreenPtr                 cpct_video
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_DATA                               00004BA8    00000002 =           2. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00004BA8  _video_buffer                      video
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 5.
+
+Files Linked                              [ module(s) ]
+
+obj/maps/frame_leftright.rel              [ frame_leftright ]
+obj/maps/frame_updown.rel                 [ frame_updown ]
+obj/maps/building.rel                     [ building ]
+obj/maps/tileset.rel                      [ tileset ]
+obj/main.rel                              [ main ]
+obj/video.rel                             [ video ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPalette_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_isKeyPressed.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_scanKeyboard_f.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPALColour_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_etm_drawTilemap4x8_ag_cbind ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ keyboard.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMemoryPage.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setStackLocation.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMode_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_memset_cbinding.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_etm_setDrawTilemap4x8_ag_cb ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_getScreenPtr_cbindings.rel ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 6.
+
+User Base Address Definitions
+
+_CODE = 0x4000
+_DATA = 0x0000
+
+

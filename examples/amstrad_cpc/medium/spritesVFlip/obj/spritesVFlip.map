@@ -1,0 +1,112 @@
+ASxxxx Linker V03.00 + NoICE + sdld,  page 1.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+.  .ABS.                            00000000    00000000 =           0. bytes (ABS,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00000000  .__.ABS.                           cpct_video
+     00000000  l__CABS                         
+     00000000  l__DABS                         
+     00000000  l__DATA                         
+     00000000  l__GSFINAL                      
+     00000000  l__GSINIT                       
+     00000000  l__HOME                         
+     00000000  l__INITIALIZED                  
+     00000000  l__INITIALIZER                  
+     00000000  s__CABS                         
+     00000000  s__DABS                         
+     000003FB  l__CODE                         
+     00004000  s__CODE                         
+     000043FB  s__DATA                         
+     000043FB  s__GSFINAL                      
+     000043FB  s__GSINIT                       
+     000043FB  s__HOME                         
+     000043FB  s__INITIALIZED                  
+     000043FB  s__INITIALIZER                  
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 2.
+Hexadecimal  [32-Bits]
+
+Area                                    Addr        Size        Decimal Bytes (Attributes)
+--------------------------------        ----        ----        ------- ----- ------------
+_CODE                               00004000    000003FB =        1019. bytes (REL,CON)
+
+      Value  Global                              Global Defined In Module
+      -----  --------------------------------   ------------------------
+     00004000  _g_palette                         rocket
+     00004010  _g_rocket                          rocket
+     00004048  _drawRockets                       main
+     00004089  _clearRockets                      main
+     000040AB  _getUserInput                      main
+     0000410B  _initialize                        main
+     00004126  _main                              main
+     0000417C  _cpct_setPalette                   cpct_video
+     00004193  _cpct_isKeyPressed                 cpct_keyboard
+     00004193  cpct_isKeyPressed_asm              cpct_keyboard
+     0000419F  _cpct_scanKeyboard_f               cpct_keyboard
+     0000419F  cpct_scanKeyboard_f_asm            cpct_keyboard
+     00004209  _cpct_setPALColour                 cpct_video
+     00004215  _cpct_drawSprite                   cpct_sprites
+     000042BA  _cpct_keyboardStatusBuffer         cpct_keyboard
+     000042C4  _cpct_getBottomLeftPtr             cpct_sprites
+     000042EC  _cpct_drawSpriteVFlip              cpct_sprites
+     00004317  _cpct_waitVSYNC                    cpct_video
+     00004317  cpct_waitVSYNC_asm                 cpct_video
+     0000431F  _cpct_setVideoMode                 cpct_video
+     0000432D  _cpct_disableFirmware              cpct_firmware
+     0000432D  _cpct_removeInterruptHandler       cpct_firmware
+     0000432D  cpct_disableFirmware_asm           cpct_firmware
+     0000432D  cpct_removeInterruptHandler_asm    cpct_firmware
+     0000433D  _cpct_drawSolidBox                 cpct_sprites
+     000043E4  _cpct_mode_rom_status              cpct_firmware
+     000043E5  _cpct_getScreenPtr                 cpct_video
+ASxxxx Linker V03.00 + NoICE + sdld,  page 3.
+
+Files Linked                              [ module(s) ]
+
+obj/rocket.rel                            [ rocket ]
+obj/main.rel                              [ main ]
+
+
+Libraries Linked                          [ object file ]
+
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPalette_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_isKeyPressed.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_scanKeyboard_f.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setPALColour_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSprite_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ keyboard.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_getBottomLeftPtr_cbindings. ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSpriteVFlip_cbindings.r ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_waitVSYNC.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_setVideoMode_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_removeInterruptHandler.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_drawSolidBox_cbindings.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpc_mode_rom_status.rel ]
+/home/oscar/cpctelera/cpctelera/cpctelera.lib
+                                          [ cpct_getScreenPtr_cbindings.rel ]
+
+ASxxxx Linker V03.00 + NoICE + sdld,  page 4.
+
+User Base Address Definitions
+
+_CODE = 0x4000
+_DATA = 0x0000
+
+

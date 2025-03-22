@@ -1,0 +1,32 @@
+XL2
+H 9 areas 3 global symbols
+M rocket
+O -mz80
+S .__.ABS. Def0000
+A _CODE size 48 flags 0 addr 0
+S _g_palette Def0000
+S _g_rocket Def0010
+A _DATA size 0 flags 0 addr 0
+A _INITIALIZED size 0 flags 0 addr 0
+A _DABS size 0 flags 8 addr 0
+A _HOME size 0 flags 0 addr 0
+A _GSINIT size 0 flags 0 addr 0
+A _GSFINAL size 0 flags 0 addr 0
+A _INITIALIZER size 0 flags 0 addr 0
+A _CABS size 0 flags 8 addr 0
+T 00 00
+R 00 00 00 00
+T 00 00 54 44 5C 4C 4E 4A 4B 54 54 54 54 54 54 54
+R 00 00 00 00
+T 0E 00 54 54
+R 00 00 00 00
+T 10 00
+R 00 00 00 00
+T 10 00 00 50 08 00 00 A4 F0 00 00 F0 F0 00 00 40
+R 00 00 00 00
+T 1E 00 80 00 F0 14 28 F0 38 30 30 34 3C 14 28 3C
+R 00 00 00 00
+T 2C 00 3C 14 28 3C 3C 14 28 3C 3C 14 28 3C 3C 14
+R 00 00 00 00
+T 3A 00 28 3C 38 30 30 34 C0 40 80 C0 CC 44 88 CC
+R 00 00 00 00

@@ -1,0 +1,190 @@
+                              1 ;--------------------------------------------------------
+                              2 ; File Created by SDCC : free open source ANSI-C Compiler
+                              3 ; Version 3.6.8 #9946 (Linux)
+                              4 ;--------------------------------------------------------
+                              5 	.module cursor
+                              6 	.optsdcc -mz80
+                              7 	
+                              8 ;--------------------------------------------------------
+                              9 ; Public variables in this module
+                             10 ;--------------------------------------------------------
+                             11 	.globl _map_drawTile
+                             12 	.globl _map_getBaseMem
+                             13 	.globl _cpct_getScreenPtr
+                             14 	.globl _cpct_drawSpriteMasked
+                             15 	.globl _cursor_y
+                             16 	.globl _cursor_x
+                             17 	.globl _cursor_sprite
+                             18 	.globl _cursor_setLocation
+                             19 	.globl _cursor_draw
+                             20 	.globl _cursor_move
+                             21 	.globl _cursor_getX
+                             22 	.globl _cursor_getY
+                             23 ;--------------------------------------------------------
+                             24 ; special function registers
+                             25 ;--------------------------------------------------------
+                             26 ;--------------------------------------------------------
+                             27 ; ram data
+                             28 ;--------------------------------------------------------
+                             29 	.area _DATA
+   0000                      30 _cursor_x::
+   0000                      31 	.ds 1
+   0001                      32 _cursor_y::
+   0001                      33 	.ds 1
+                             34 ;--------------------------------------------------------
+                             35 ; ram data
+                             36 ;--------------------------------------------------------
+                             37 	.area _INITIALIZED
+                             38 ;--------------------------------------------------------
+                             39 ; absolute external ram data
+                             40 ;--------------------------------------------------------
+                             41 	.area _DABS (ABS)
+                             42 ;--------------------------------------------------------
+                             43 ; global & static initialisations
+                             44 ;--------------------------------------------------------
+                             45 	.area _HOME
+                             46 	.area _GSINIT
+                             47 	.area _GSFINAL
+                             48 	.area _GSINIT
+                             49 ;--------------------------------------------------------
+                             50 ; Home
+                             51 ;--------------------------------------------------------
+                             52 	.area _HOME
+                             53 	.area _HOME
+                             54 ;--------------------------------------------------------
+                             55 ; code
+                             56 ;--------------------------------------------------------
+                             57 	.area _CODE
+                             58 ;src/cursor.c:53: void cursor_setLocation(u8 x, u8 y) {
+                             59 ;	---------------------------------
+                             60 ; Function cursor_setLocation
+                             61 ; ---------------------------------
+   0000                      62 _cursor_setLocation::
+                             63 ;src/cursor.c:54: cursor_x = x; 
+   0000 21 02 00      [10]   64 	ld	hl, #2+0
+   0003 39            [11]   65 	add	hl, sp
+   0004 7E            [ 7]   66 	ld	a, (hl)
+   0005 32r00r00      [13]   67 	ld	(#_cursor_x + 0),a
+                             68 ;src/cursor.c:55: cursor_y = y;
+   0008 21 03 00      [10]   69 	ld	hl, #3+0
+   000B 39            [11]   70 	add	hl, sp
+   000C 7E            [ 7]   71 	ld	a, (hl)
+   000D 32r01r00      [13]   72 	ld	(#_cursor_y + 0),a
+   0010 C9            [10]   73 	ret
+   0011                      74 _cursor_sprite:
+   0011 00                   75 	.db #0x00	; 0
+   0012 FF                   76 	.db #0xff	; 255
+   0013 66                   77 	.db #0x66	; 102	'f'
+   0014 99                   78 	.db #0x99	; 153
+   0015 66                   79 	.db #0x66	; 102	'f'
+   0016 99                   80 	.db #0x99	; 153
+   0017 00                   81 	.db #0x00	; 0
+   0018 FF                   82 	.db #0xff	; 255
+                             83 ;src/cursor.c:64: void cursor_draw() {
+                             84 ;	---------------------------------
+                             85 ; Function cursor_draw
+                             86 ; ---------------------------------
+   0019                      87 _cursor_draw::
+                             88 ;src/cursor.c:68: map_drawTile(cursor_x, cursor_y);
+   0019 3Ar01r00      [13]   89 	ld	a, (_cursor_y)
+   001C F5            [11]   90 	push	af
+   001D 33            [ 6]   91 	inc	sp
+   001E 3Ar00r00      [13]   92 	ld	a, (_cursor_x)
+   0021 F5            [11]   93 	push	af
+   0022 33            [ 6]   94 	inc	sp
+   0023 CDr00r00      [17]   95 	call	_map_drawTile
+   0026 F1            [10]   96 	pop	af
+                             97 ;src/cursor.c:72: pmem = cpct_getScreenPtr(map_getBaseMem(), cursor_x, cursor_y*TILE_HEIGHT);
+   0027 3Ar01r00      [13]   98 	ld	a,(#_cursor_y + 0)
+   002A 87            [ 4]   99 	add	a, a
+   002B 87            [ 4]  100 	add	a, a
+   002C 57            [ 4]  101 	ld	d, a
+   002D D5            [11]  102 	push	de
+   002E CDr00r00      [17]  103 	call	_map_getBaseMem
+   0031 4D            [ 4]  104 	ld	c, l
+   0032 44            [ 4]  105 	ld	b, h
+   0033 33            [ 6]  106 	inc	sp
+   0034 3Ar00r00      [13]  107 	ld	a, (_cursor_x)
+   0037 F5            [11]  108 	push	af
+   0038 33            [ 6]  109 	inc	sp
+   0039 C5            [11]  110 	push	bc
+   003A CDr00r00      [17]  111 	call	_cpct_getScreenPtr
+                            112 ;src/cursor.c:73: cpct_drawSpriteMasked(cursor_sprite, pmem, TILE_WIDTH, TILE_HEIGHT);
+   003D 01r11r00      [10]  113 	ld	bc, #_cursor_sprite+0
+   0040 11 01 04      [10]  114 	ld	de, #0x0401
+   0043 D5            [11]  115 	push	de
+   0044 E5            [11]  116 	push	hl
+   0045 C5            [11]  117 	push	bc
+   0046 CDr00r00      [17]  118 	call	_cpct_drawSpriteMasked
+   0049 C9            [10]  119 	ret
+                            120 ;src/cursor.c:81: void cursor_move(TMoveDir dir) {
+                            121 ;	---------------------------------
+                            122 ; Function cursor_move
+                            123 ; ---------------------------------
+   004A                     124 _cursor_move::
+                            125 ;src/cursor.c:84: map_drawTile(cursor_x, cursor_y);
+   004A 3Ar01r00      [13]  126 	ld	a, (_cursor_y)
+   004D F5            [11]  127 	push	af
+   004E 33            [ 6]  128 	inc	sp
+   004F 3Ar00r00      [13]  129 	ld	a, (_cursor_x)
+   0052 F5            [11]  130 	push	af
+   0053 33            [ 6]  131 	inc	sp
+   0054 CDr00r00      [17]  132 	call	_map_drawTile
+   0057 F1            [10]  133 	pop	af
+                            134 ;src/cursor.c:87: switch(dir) {
+   0058 FD 21 02 00   [14]  135 	ld	iy, #2
+   005C FD 39         [15]  136 	add	iy, sp
+   005E FD 7E 00      [19]  137 	ld	a, 0 (iy)
+   0061 B7            [ 4]  138 	or	a, a
+   0062 28 17         [12]  139 	jr	Z,00101$
+   0064 FD 7E 00      [19]  140 	ld	a, 0 (iy)
+   0067 3D            [ 4]  141 	dec	a
+   0068 28 18         [12]  142 	jr	Z,00102$
+   006A FD 7E 00      [19]  143 	ld	a, 0 (iy)
+   006D D6 02         [ 7]  144 	sub	a, #0x02
+   006F 28 18         [12]  145 	jr	Z,00103$
+   0071 FD 7E 00      [19]  146 	ld	a, 0 (iy)
+   0074 D6 03         [ 7]  147 	sub	a, #0x03
+   0076 28 18         [12]  148 	jr	Z,00104$
+   0078 C3r19r00      [10]  149 	jp	_cursor_draw
+                            150 ;src/cursor.c:88: case DIR_LEFT:  cursor_x--; break;
+   007B                     151 00101$:
+   007B 21r00r00      [10]  152 	ld	hl, #_cursor_x+0
+   007E 35            [11]  153 	dec	(hl)
+   007F C3r19r00      [10]  154 	jp	_cursor_draw
+                            155 ;src/cursor.c:89: case DIR_RIGHT: cursor_x++; break;
+   0082                     156 00102$:
+   0082 21r00r00      [10]  157 	ld	hl, #_cursor_x+0
+   0085 34            [11]  158 	inc	(hl)
+   0086 C3r19r00      [10]  159 	jp	_cursor_draw
+                            160 ;src/cursor.c:90: case DIR_UP:    cursor_y--; break;
+   0089                     161 00103$:
+   0089 21r01r00      [10]  162 	ld	hl, #_cursor_y+0
+   008C 35            [11]  163 	dec	(hl)
+   008D C3r19r00      [10]  164 	jp	_cursor_draw
+                            165 ;src/cursor.c:91: case DIR_DOWN:  cursor_y++; break;
+   0090                     166 00104$:
+   0090 21r01r00      [10]  167 	ld	hl, #_cursor_y+0
+   0093 34            [11]  168 	inc	(hl)
+                            169 ;src/cursor.c:92: }
+                            170 ;src/cursor.c:95: cursor_draw();
+   0094 C3r19r00      [10]  171 	jp  _cursor_draw
+                            172 ;src/cursor.c:102: u8 cursor_getX() { return cursor_x; }
+                            173 ;	---------------------------------
+                            174 ; Function cursor_getX
+                            175 ; ---------------------------------
+   0097                     176 _cursor_getX::
+   0097 FD 21r00r00   [14]  177 	ld	iy, #_cursor_x
+   009B FD 6E 00      [19]  178 	ld	l, 0 (iy)
+   009E C9            [10]  179 	ret
+                            180 ;src/cursor.c:103: u8 cursor_getY() { return cursor_y; }
+                            181 ;	---------------------------------
+                            182 ; Function cursor_getY
+                            183 ; ---------------------------------
+   009F                     184 _cursor_getY::
+   009F FD 21r01r00   [14]  185 	ld	iy, #_cursor_y
+   00A3 FD 6E 00      [19]  186 	ld	l, 0 (iy)
+   00A6 C9            [10]  187 	ret
+                            188 	.area _CODE
+                            189 	.area _INITIALIZER
+                            190 	.area _CABS (ABS)

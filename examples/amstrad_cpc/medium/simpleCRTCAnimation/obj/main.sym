@@ -1,0 +1,36 @@
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180), page 1.
+Hexadecimal [16-Bits]
+
+Symbol Table
+
+    .__.$$$.                                                    =  2710 L
+    .__.ABS.                                                    =  0000 G
+    .__.CPU.                                                    =  0000 L
+    .__.H$L.                                                    =  0000 L
+    _cpct_disableFirmware                                          **** GX
+    _cpct_memset_f8                                                **** GX
+    _cpct_setCRTCReg                                               **** GX
+    _cpct_setPALColour                                             **** GX
+    _cpct_waitHalts                                                **** GX
+    _cpct_waitVSYNC                                                **** GX
+  0 _initialization                                                0000 GR
+  0 _main                                                          00BB GR
+  0 _open_close_animation                                          009A GR
+  1 _open_close_animation_v_1_129                                  0000 R
+  0 _widths                                                        001A GR
+
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180), page 2.
+Hexadecimal [16-Bits]
+
+Area Table
+
+   0 _CODE                                      size   CB   flags    0
+   1 _DATA                                      size    1   flags    0
+   2 _INITIALIZED                               size    0   flags    0
+   3 _DABS                                      size    0   flags    8
+   4 _HOME                                      size    0   flags    0
+   5 _GSINIT                                    size    0   flags    0
+   6 _GSFINAL                                   size    0   flags    0
+   7 _INITIALIZER                               size    0   flags    0
+   8 _CABS                                      size    0   flags    8
+
