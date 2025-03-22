@@ -3,19 +3,19 @@
 void main(void) {
     // Initialize CPCtelera
     cpct_disableFirmware();
+    cpct_setVideoMode(1);
     
-    // Clear screen
-    cpct_clearScreen();
+    // Clear screen (black background)
+    cpct_memset(CPCT_VMEM_START, 0x00, 0x4000);
     
-    // Set text mode
-    cpct_setVideoMode(0);
+    // Set text properties
+    cpct_setDrawCharM1(3, 0);   // White text on black background
     
-    // Set text colors (white on black)
-    cpct_setInkGphStr(3, 0);
-    
-    // Draw text
-    cpct_drawStringM1("Hello World!");
+    // Print text at coordinates (10, 10)
+    cpct_drawStringM1("Hello World!", CPCT_VMEM_START + 80*10 + 10);
     
     // Wait forever
-    while(1);
+    while(1) {
+        cpct_waitVSYNC();
+    }
 }

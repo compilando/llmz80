@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 import logging
 from termcolor import colored
+import glob
 
 class ConsoleFormatter(logging.Formatter):
     ICONS = {
@@ -109,32 +110,34 @@ class LLMZ80Generator:
         return paths
         
     def _load_examples(self):
-        """Carga y procesa los ejemplos existentes."""
+        """Carga ejemplos de código para la plataforma seleccionada"""
+        examples_dir = f"examples/{self.platform}"
         logging.info(f"📚 Cargando ejemplos de código para {self.platform.upper().replace('_', ' ')}...")
-        examples_dir = Path(f'examples/{self.platform}')
+        
         examples = []
         
-        if not examples_dir.exists():
-            logging.warning(f"Directorio de ejemplos para {self.platform} no encontrado")
-            return examples
-        
-        # Buscar solamente archivos .c en el directorio principal
-        for file in examples_dir.glob('*.c'):
-            try:
-                with open(file, 'r') as f:
-                    content = f.read()
-                    # Extraer el comentario de descripción
-                    description = ""
-                    if '/*' in content and '*/' in content:
-                        description = content.split('/*')[1].split('*/')[0].strip()
-                    examples.append({
-                        'file': str(file.relative_to(examples_dir)),
-                        'content': content,
-                        'description': description
-                    })
-                logging.debug(f"Ejemplo cargado: {file.relative_to(examples_dir)}")
-            except Exception as e:
-                logging.error(f"Error al cargar ejemplo {file}: {e}")
+        # Buscar recursivamente en todas las carpetas
+        if self.platform == "amstrad_cpc":
+            # Para Amstrad CPC, buscar en subdirectorios
+            for root, dirs, files in os.walk(examples_dir):
+                for file in files:
+                    if file.endswith(".c"):
+                        file_path = os.path.join(root, file)
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                content = f.read()
+                                examples.append({"path": file_path, "content": content})
+                        except Exception as e:
+                            logging.warning(f"Error al cargar ejemplo {file_path}: {e}")
+        else:
+            # Para otras plataformas, usar el comportamiento anterior
+            for file in glob.glob(f"{examples_dir}/*.c"):
+                try:
+                    with open(file, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        examples.append({"path": file, "content": content})
+                except Exception as e:
+                    logging.warning(f"Error al cargar ejemplo {file}: {e}")
         
         logging.info(f"✅ {len(examples)} ejemplos cargados")
         return examples
@@ -219,9 +222,7 @@ CRITICAL: Output ONLY the source code itself. No introduction, no explanation, n
         
         # Agregar ejemplos al prompt del sistema
         for example in examples_to_use:
-            system_prompt += f"\nExample '{example['file']}':\n"
-            if example['description']:
-                system_prompt += f"Description: {example['description']}\n"
+            system_prompt += f"\nExample '{example['path']}':\n"
             system_prompt += f"Code:\n{example['content']}\n"
         
         # Leer instrucciones adicionales del system prompt

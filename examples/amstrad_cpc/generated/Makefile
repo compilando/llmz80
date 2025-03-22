@@ -1,46 +1,33 @@
-# Makefile template for Amstrad CPC examples
-# This file should be copied to each example directory and modified as needed
+CPCT_PATH := $(CPCT_PATH)
+CPCT_SHARED_PATH := $(CPCT_PATH)/tools/img2tileset
+SRC := src
+OBJ := obj
 
-# Project name
-PROJECT_NAME = generated
+TARGET := generated
+OUT := $(TARGET).dsk
 
-# Source files
-SRCS = src/main.c
+SRCS := $(wildcard $(SRC)/*.c)
+OBJS := $(SRCS:$(SRC)/%.c=$(OBJ)/%.o)
 
-# Object files
-OBJS = $(SRCS:.c=.o)
+CCFLAGS := -mz80 -I$(CPCT_PATH)/src
+CCFLAGS += -O2 -Wall
+LDFLAGS := -mz80 --no-std-crt0 --code-loc 0x0400
+LDFLAGS += -Wl -b_CODE=0x0400
+LDFLAGS += -l$(CPCT_PATH)/cpctelera.lib
 
-# Compiler and flags
-CC = sdcc
-CFLAGS = -mz80 --opt-code-size -I$(CPCT_PATH)/include
-LDFLAGS = -mz80 --no-std-crt0 -Wl-z80 -D__AMSTRAD_CAP32__
+.PHONY: all clean
 
-# CPCtelera tools
-CPCT_BIN = $(CPCT_PATH)/bin
-CPCT_2CDT = $(CPCT_BIN)/2cdt
-CPCT_BIN2DSK = $(CPCT_BIN)/bin2dsk
+all: $(OUT)
 
-# Default target
-all: $(PROJECT_NAME).dsk
+$(OUT): $(TARGET)
+	$(CPCT_PATH)/tools/hex2bin/2cdt.exe -n $(TARGET) -r $(TARGET) $(TARGET).bin $(OUT)
 
-# Compile source files
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+$(TARGET): $(OBJS)
+	sdcc $(LDFLAGS) -o $(TARGET).ihx $(OBJS)
+	hex2bin -p 00 $(TARGET).ihx
 
-# Link object files
-$(PROJECT_NAME).ihx: $(OBJS)
-	$(CC) $(LDFLAGS) $(OBJS) -o $@
+$(OBJ)/%.o: $(SRC)/%.c
+	$(CC) $(CCFLAGS) -c $< -o $@
 
-# Convert to binary
-$(PROJECT_NAME).bin: $(PROJECT_NAME).ihx
-	$(CPCT_BIN)/ihx2bin $< $@
-
-# Create DSK file
-$(PROJECT_NAME).dsk: $(PROJECT_NAME).bin
-	$(CPCT_BIN2DSK) $@ $<
-
-# Clean
 clean:
-	rm -f $(OBJS) $(PROJECT_NAME).ihx $(PROJECT_NAME).bin $(PROJECT_NAME).dsk
-
-.PHONY: all clean 
+	$(RM) $(TARGET) $(OUT) $(OBJS) $(TARGET).ihx $(TARGET).bin
