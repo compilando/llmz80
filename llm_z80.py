@@ -118,56 +118,23 @@ class LLMZ80Generator:
             logging.warning(f"Directorio de ejemplos para {self.platform} no encontrado")
             return examples
         
-        # Función recursiva para buscar archivos .c en todas las subcarpetas
-        def process_directory(directory):
-            local_examples = []
-            # Procesar archivos .c en el directorio actual
-            for file in directory.glob('*.c'):
-                try:
-                    with open(file, 'r') as f:
-                        content = f.read()
-                        # Extraer el comentario de descripción
-                        description = ""
-                        if '/*' in content and '*/' in content:
-                            description = content.split('/*')[1].split('*/')[0].strip()
-                        local_examples.append({
-                            'file': str(file.relative_to(examples_dir)),
-                            'content': content,
-                            'description': description
-                        })
-                    logging.debug(f"Ejemplo cargado: {file.relative_to(examples_dir)}")
-                except Exception as e:
-                    logging.error(f"Error al cargar ejemplo {file}: {e}")
-            
-            # Procesar subdirectorios
-            for subdir in directory.glob('*/'):
-                if subdir.is_dir() and not subdir.name.startswith('.'):
-                    # Si es un directorio src, buscar archivos .c directamente
-                    if subdir.name == 'src':
-                        for file in subdir.glob('*.c'):
-                            try:
-                                with open(file, 'r') as f:
-                                    content = f.read()
-                                    # Extraer el comentario de descripción
-                                    description = ""
-                                    if '/*' in content and '*/' in content:
-                                        description = content.split('/*')[1].split('*/')[0].strip()
-                                    local_examples.append({
-                                        'file': str(file.relative_to(examples_dir)),
-                                        'content': content,
-                                        'description': description
-                                    })
-                                logging.debug(f"Ejemplo cargado: {file.relative_to(examples_dir)}")
-                            except Exception as e:
-                                logging.error(f"Error al cargar ejemplo {file}: {e}")
-                    else:
-                        # Recursivamente procesar subdirectorios
-                        local_examples.extend(process_directory(subdir))
-            
-            return local_examples
-        
-        # Iniciar el procesamiento recursivo
-        examples = process_directory(examples_dir)
+        # Buscar solamente archivos .c en el directorio principal
+        for file in examples_dir.glob('*.c'):
+            try:
+                with open(file, 'r') as f:
+                    content = f.read()
+                    # Extraer el comentario de descripción
+                    description = ""
+                    if '/*' in content and '*/' in content:
+                        description = content.split('/*')[1].split('*/')[0].strip()
+                    examples.append({
+                        'file': str(file.relative_to(examples_dir)),
+                        'content': content,
+                        'description': description
+                    })
+                logging.debug(f"Ejemplo cargado: {file.relative_to(examples_dir)}")
+            except Exception as e:
+                logging.error(f"Error al cargar ejemplo {file}: {e}")
         
         logging.info(f"✅ {len(examples)} ejemplos cargados")
         return examples
@@ -251,42 +218,16 @@ CRITICAL: Output ONLY the source code itself. No introduction, no explanation, n
         
         system_prompt += "\nHere are some example programs to guide your generation:\n"
         
-        # Agregar ejemplos al prompt del sistema (limitado a 5 ejemplos para no sobrecargar)
-        example_count = 0
+        # Limitar el número de ejemplos
         max_examples = 5
+        examples_to_use = examples[:max_examples]
         
-        # Organizar ejemplos por categorías
-        categorized_examples = {}
-        for example in examples:
-            # Extraer la categoría del path del archivo
-            path_parts = example['file'].split('/')
-            if len(path_parts) > 1:
-                category = path_parts[0]  # La primera parte del path es la categoría
-            else:
-                category = "general"
-                
-            if category not in categorized_examples:
-                categorized_examples[category] = []
-            
-            categorized_examples[category].append(example)
-        
-        # Mostrar ejemplos por categoría
-        for category, category_examples in categorized_examples.items():
-            system_prompt += f"\n## Category: {category}\n"
-            
-            # Limitar a 2 ejemplos por categoría
-            for example in category_examples[:2]:
-                if example_count >= max_examples:
-                    break
-                    
-                system_prompt += f"\nExample '{example['file']}':\n"
-                if example['description']:
-                    system_prompt += f"Description: {example['description']}\n"
-                system_prompt += f"Code:\n{example['content']}\n"
-                example_count += 1
-                
-            if example_count >= max_examples:
-                break
+        # Agregar ejemplos al prompt del sistema
+        for example in examples_to_use:
+            system_prompt += f"\nExample '{example['file']}':\n"
+            if example['description']:
+                system_prompt += f"Description: {example['description']}\n"
+            system_prompt += f"Code:\n{example['content']}\n"
         
         if self.platform == 'zx_spectrum':
             system_prompt += """
@@ -309,8 +250,8 @@ Based on these examples, generate a new program following these rules:
 - Must compile with CPCtelera
 """
         
-        system_prompt += self.read_system_prompt_extra()  
-    
+        system_prompt += self.read_system_prompt_extra()
+        
         try:
             response = self.client.chat.completions.create(
                 model="gpt-4o",
