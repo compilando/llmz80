@@ -20,6 +20,8 @@ pip-wheel-metadata/
 *.log
 *.tmp
 
+*/obj/*
+
 # Virtual environments
 .env/
 .venv/

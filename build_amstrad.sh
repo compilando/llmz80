@@ -93,12 +93,14 @@ compile_example() {
     if [ ! -d "$example_path" ]; then
         echo -e "${RED}❌ Error: El ejemplo $example no existe${NC}" >&2
         echo "Usa --list-examples para ver los ejemplos disponibles" >&2
+        read -p "Presiona Enter para continuar..." dummy
         exit 1
     fi
     
     # Verificar que existe un Makefile
     if [ ! -f "$example_path/Makefile" ]; then
         echo -e "${RED}❌ Error: No se encontró un Makefile en $example_path${NC}" >&2
+        read -p "Presiona Enter para continuar..." dummy
         exit 1
     fi
     
@@ -114,6 +116,7 @@ compile_example() {
             echo -e "${RED}❌ SDCC not found. Please install SDCC:${NC}" >&2
             echo -e "${BLUE}💡 In Ubuntu/Debian: sudo apt-get install sdcc${NC}" >&2
             echo -e "${BLUE}💡 In Arch Linux: sudo pacman -S sdcc${NC}" >&2
+            read -p "Presiona Enter para continuar..." dummy
             exit 1
         fi
     else
@@ -150,6 +153,7 @@ compile_example() {
     if [ $compile_result -ne 0 ]; then
         echo -e "${RED}❌ Error: La compilación falló. Salida detallada:${NC}" >&2
         cat "$compilation_log" >&2
+        read -p "Presiona Enter para continuar..." dummy
         exit 1
     fi
     
@@ -160,11 +164,13 @@ compile_example() {
         echo -e "${RED}❌ Error: No se encontró un archivo DSK en $example_path${NC}" >&2
         echo -e "${BLUE}📄 Contenido del directorio:${NC}" >&2
         ls -la "$example_path" >&2
+        read -p "Presiona Enter para continuar..." dummy
         exit 1
     fi
     
     echo -e "${GREEN}✨ Ejemplo compilado correctamente!${NC}" >&2
     echo -e "${GREEN}📋 Archivo DSK generado: $dsk_file${NC}" >&2
+    read -p "Presiona Enter para continuar..." dummy
     
     # Devolver SOLO la ruta del DSK, sin ningún texto adicional
     echo "$dsk_file"
@@ -284,7 +290,8 @@ show_menu() {
     echo -e "${BLUE}║${NC}  ${GREEN}1)${NC} ✨ Generate program with Prompt                                        ${BLUE}║${NC}"
     echo -e "${BLUE}║${NC}  ${GREEN}2)${NC} 📋 List available examples                                             ${BLUE}║${NC}"
     echo -e "${BLUE}║${NC}  ${GREEN}3)${NC} 🚀 Compile and run an example                                          ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}  ${GREEN}4)${NC} 👋 Exit                                                                ${BLUE}║${NC}"
+    echo -e "${BLUE}║${NC}  ${GREEN}4)${NC} 🎨 Generate sprites with Prompt                                        ${BLUE}║${NC}"
+    echo -e "${BLUE}║${NC}  ${GREEN}5)${NC} 👋 Exit                                                                ${BLUE}║${NC}"
     echo -e "${BLUE}║${NC}                                                                            ${BLUE}║${NC}"
     echo -e "${BLUE}╚════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
@@ -589,6 +596,7 @@ generate_with_prompt() {
             esac
             
             echo -e "${GREEN}✅ Program execution completed${NC}"
+            read -p "Press Enter to return to the main menu..." dummy
         else
             echo -e "${RED}❌ No main.c file found in $generated_dir${NC}"
             read -p "Press Enter to return to the main menu..." dummy
@@ -599,6 +607,48 @@ generate_with_prompt() {
         read -p "Press Enter to return to the main menu..." dummy
         return 1
     fi
+}
+
+# Función para generar sprites con LLM
+generate_sprites() {
+    # Verificar si existe el script llm_sprites.py
+    if [ ! -f "llm_sprites.py" ]; then
+        echo -e "${RED}❌ Error: llm_sprites.py script not found${NC}"
+        read -p "Press Enter to return to the main menu..." dummy
+        return 1
+    fi
+    
+    echo -e "${GREEN}Describe the sprite you want to generate:${NC}"
+    read -p "> " prompt
+    
+    if [ -z "$prompt" ]; then
+        echo -e "${RED}❌ No prompt provided. Operation cancelled.${NC}"
+        read -p "Press Enter to return to the main menu..." dummy
+        return 1
+    fi
+    
+    # Preguntar por las dimensiones
+    read -p "Width (multiple of 8, default: 16): " width
+    width=${width:-16}  # Valor por defecto: 16
+    
+    read -p "Height (multiple of 8, default: 16): " height
+    height=${height:-16}  # Valor por defecto: 16
+    
+    echo -e "${BLUE}🤖 Generating sprite with AI...${NC}"
+    
+    # Activar el entorno virtual si existe
+    source .venv/bin/activate 2>/dev/null
+    
+    # Ejecutar el script
+    python llm_sprites.py --prompt="$prompt" --width=$width --height=$height
+    result=$?
+    
+    if [ $result -ne 0 ]; then
+        echo -e "${RED}❌ Error: Failed to generate sprite. Error code: $result${NC}"
+    fi
+    
+    read -p "Press Enter to return to the main menu..." dummy
+    return $result
 }
 
 # Procesar argumentos de línea de comandos
@@ -699,6 +749,9 @@ if [ "$#" -eq 0 ]; then
                 fi
                 ;;
             4)
+                generate_sprites
+                ;;
+            5)
                 echo -e "${GREEN}👋 ¡Hasta luego!${NC}"
                 exit 0
                 ;;
