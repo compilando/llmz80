@@ -128,7 +128,7 @@ class LLMZ80Generator:
                                 content = f.read()
                                 examples.append({"path": file_path, "content": content})
                         except Exception as e:
-                            logging.warning(f"Error al cargar ejemplo {file_path}: {e}")
+                            logging.warning(f"Error loading example {file_path}: {e}")
         else:
             # Para otras plataformas, usar el comportamiento anterior
             for file in glob.glob(f"{examples_dir}/*.c"):
@@ -137,9 +137,9 @@ class LLMZ80Generator:
                         content = f.read()
                         examples.append({"path": file, "content": content})
                 except Exception as e:
-                    logging.warning(f"Error al cargar ejemplo {file}: {e}")
+                    logging.warning(f"Error loading example {file}: {e}")
         
-        logging.info(f"✅ {len(examples)} ejemplos cargados")
+        logging.info(f"✅ {len(examples)} examples loaded in RAG")
         return examples
 
     def read_system_prompt(self):
@@ -152,11 +152,11 @@ class LLMZ80Generator:
             if os.path.exists(platform_file):
                 with open(platform_file, 'r', encoding='utf-8') as f:
                     content = "\n" + f.read()
-                logging.info(f"✅ Archivo de prompt específico cargado: {platform_file}")
+                logging.info(f"✅ specific prompt loaded: {platform_file}")
         except FileNotFoundError:
-            logging.warning(f"⚠️ No se encontró {platform_file}")
+            logging.warning(f"⚠️ {platform_file} not found")
         except Exception as e:
-            logging.error(f"❌ Error leyendo archivo de prompt: {e}")
+            logging.error(f"❌ Error reading prompt: {e}")
         
         # Cargar documentación de errores desde archivos .md
         error_docs = self._load_error_documentation()
@@ -214,10 +214,10 @@ CRITICAL: Output ONLY the source code itself. No introduction, no explanation, n
 CRITICAL: Output ONLY the source code itself. No introduction, no explanation, no markdown blocks.
 """
         
-        system_prompt += "\nHere are some example programs to guide your generation:\n"
+        system_prompt += "\nHere are some example programs to guide your generation. Es estos ejemplos tienes toda la información necesaria para generar un programa, tenlos en cuenta para generar el tuyo.\n"
         
         # Limitar el número de ejemplos
-        max_examples = 5
+        max_examples = 20
         examples_to_use = examples[:max_examples]
         
         # Agregar ejemplos al prompt del sistema
@@ -250,10 +250,14 @@ Based on these examples, generate a new program following these rules:
 """
         
         # Añadir instrucciones adicionales del archivo system_prompt
+        #print(additional_instructions)
         system_prompt += additional_instructions
         
         # Crear un prompt de usuario enriquecido que incorpore el contexto
         user_prompt = f"Write {self.platform.replace('_', ' ')} C code that: {prompt}\n\nYour code should follow all the instructions and examples provided in the system prompt. Remember to output ONLY the code without any markdown or explanations."
+        
+        #print(system_prompt)
+        #print(user_prompt)
         
         try:
             response = self.client.chat.completions.create(
@@ -302,7 +306,7 @@ Based on these examples, generate a new program following these rules:
             raise
 
 def main():
-    # Configurar argumentos de línea de comandos
+    # Configurar argumentos de línea de comandosw
     parser = argparse.ArgumentParser(description='LLMZ80 Code Generator')
     parser.add_argument('--platform', type=str, default='spectrum', 
                         choices=['spectrum', 'amstrad_cpc'],
@@ -333,11 +337,6 @@ def main():
         print(colored("\n✨ Success! ✨", "green", attrs=['bold']))
         print(colored(f"📂 Files saved in: {paths['base']}", "cyan"))
         print(colored(f"📄 C code: {paths['c_file']}", "cyan"))
-        
-        if args.platform == 'spectrum':
-            print(colored("\n🚀 Continuing 'build.sh' to compile and run the program", "yellow"))
-        elif args.platform == 'amstrad_cpc':
-            print(colored("\n🚀 Continuing 'build_amstrad.sh' to compile and run the program", "yellow"))
         
     except Exception as e:
         logging.error(f"Process failed: {e}")

@@ -1,0 +1,95 @@
+SPECIFIC INSTRUCTIONS FOR AMSTRAD CPC:
+
+1. BASIC STRUCTURE:
+   - Always include necessary CPCtelera headers (cpctelera.h, etc.)
+   - Implement a main loop for games or interactive applications
+
+2. GRAPHICS:
+   - If asked for a text mode program, you won't use graphic handling functions
+   - Use CPCtelera functions for drawing: cpct_drawSprite, cpct_drawSolidBox, etc.
+   - Remember that Amstrad CPC has 3 graphic modes:
+     * Mode 0: 160x200 with 16 colors (cpct_setVideoMode(0))
+     * Mode 1: 320x200 with 4 colors (cpct_setVideoMode(1))
+     * Mode 2: 640x200 with 2 colors (cpct_setVideoMode(2))
+   - The color palette is configured with cpct_setPalette() and cpct_setPALColour()
+   - Video memory starts at 0xC000
+
+3. SOUND:
+   - Use CPCtelera audio functions for the AY-3-8912 chip
+   - Examples: cpct_akp_musicInit, cpct_akp_musicPlay, cpct_akp_SFXInit, cpct_akp_SFXPlay
+
+4. INPUT:
+   - Read keyboard with cpct_scanKeyboard() and cpct_isKeyPressed()
+   - Read joystick with cpct_readJoystick()
+
+5. OPTIMIZATION:
+   - Use __z88dk_fastcall when possible for functions with a single parameter
+   - Take advantage of CPCtelera macros for common operations
+   - Minimize floating point operations, prioritize integers
+
+6. MEMORY:
+   - Available memory for programs starts at 0x4000
+   - Avoid writing to system reserved areas (0x0000-0x3FFF)
+   - There is NO malloc or dynamic memory in Z80/CPCtelera
+   - Use static arrays and object pools to simulate dynamic memory
+
+7. COMPILATION:
+   - Code must be compatible with CPCtelera
+   - Don't use Z88DK specific features that aren't in CPCtelera
+
+8. DATA STRUCTURES:
+   - To implement linked lists, trees or other data structures, use static arrays (pools)
+   - Clearly define the structure with typedef and use pointers for connections
+   - Implement functions to "allocate" and "free" nodes from the pool
+   - Initialize all pointers to NULL before using them
+   - Example of a linked list:
+   ```c
+   // Node structure definition
+   typedef struct Node {
+       u8 value;
+       struct Node* next;
+   } Node;
+
+   // Node pool
+   #define MAX_NODES 20
+   Node nodes_pool[MAX_NODES];
+   u8 next_free_node = 0;
+
+   // "Allocate" a node
+   Node* allocate_node() {
+       if (next_free_node < MAX_NODES) {
+           return &nodes_pool[next_free_node++];
+       }
+       return NULL;
+   }
+   ```
+
+9. SOLUTIONS TO COMMON ERRORS:
+   - Don't use cpct_setPaletteEntry
+   
+10. ESTA ES UNA ESTRUCTURA BÁSICA PARA CUALQUIER PROGRAMA DE AMSTRAD CPC, TENLA MUY EN CUENTA:
+#include <cpctelera.h>
+
+//
+// Set up the Amstrad
+//
+void initialize_cpc()
+{
+   cpct_disableFirmware();   // Disable firmware to prevent it from interfering with setPalette and setVideoMode
+   cpct_setVideoMode(0);     // Set video mode 0 (160x200, 16 colours)
+   cpct_setDrawCharM0(3, 0); // Set PEN 3, PAPER 0 for Characters to be drawn using cpct_drawCharM0
+}
+
+void main(void)
+{
+   initialize_cpc(); // Initialize the CPC
+
+   //
+   // Infinite loop
+   //
+   while (1)
+   {
+       cpct_scanKeyboard_f();
+      // Aqui va el programa principal
+   }
+}
