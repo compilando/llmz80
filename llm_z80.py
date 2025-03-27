@@ -1,346 +1,176 @@
-import os
+#!/usr/bin/env python3
 import argparse
-from openai import OpenAI
-from pathlib import Path
-import yaml
-from dotenv import load_dotenv
-import re
-from datetime import datetime
 import logging
+import os
+from pathlib import Path
 from termcolor import colored
-import glob
 
-class ConsoleFormatter(logging.Formatter):
-    ICONS = {
-        'INFO': '🔵',
-        'ERROR': '🔴',
-        'WARNING': '🟡',
-        'DEBUG': '🟣'
-    }
-    
-    COLORS = {
-        'INFO': 'cyan',
-        'ERROR': 'red',
-        'WARNING': 'yellow',
-        'DEBUG': 'magenta'
-    }
+# Importación de módulos propios
+from llmz80.utils.config import load_config, load_api_key, initialize_global_vars, DEFAULT_LOG_LEVEL
+from llmz80.utils.logger import setup_logging
+from llmz80.api.generator import LLMZ80Generator
 
-    def format(self, record):
-        icon = self.ICONS.get(record.levelname, '🔵')
-        color = self.COLORS.get(record.levelname, 'white')
-        
-        if record.levelname == 'INFO':
-            return colored(f"{icon} {record.getMessage()}", color)
-        return colored(f"{icon} {record.levelname}: {record.getMessage()}", color)
-
-class LLMZ80Generator:
-    def __init__(self, platform="spectrum", config_path="config.yml"):
-        # Configure logging
-        log_dir = Path('local/logs')
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = log_dir / f"llmz80_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-        
-        # File handler with detailed logging
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s'
-        ))
-        
-        # Console handler with pretty formatting
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(ConsoleFormatter())
-        
-        # Configure root logger
-        logging.basicConfig(
-            level=logging.INFO,
-            handlers=[file_handler, console_handler]
-        )
-        
-        # Set platform (spectrum or amstrad_cpc)
-        self.platform = platform
-        logging.info(f"Starting LLMZ80 Code Generator for {self.platform.upper().replace('_', ' ')}")
-        
-        load_dotenv()
-        
-        try:
-            with open(config_path, 'r') as f:
-                self.config = yaml.safe_load(f)
-                logging.info("Configuration loaded successfully")
-        except Exception as e:
-            logging.error(f"Error loading config: {e}")
-            raise
-        
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            logging.error("OPENAI_API_KEY not found in .env file")
-            raise ValueError("OPENAI_API_KEY not found in .env file")
-        
-        self.client = OpenAI(api_key=api_key)
-        logging.info("OpenAI API key configured")
-
-    def _create_slug(self, prompt, max_length=40):
-        logging.debug(f"Creating slug from prompt: {prompt[:50]}...")
-        slug = prompt.lower()
-        slug = re.sub(r'[^a-z0-9\s-]', '', slug)
-        slug = re.sub(r'[-\s]+', '-', slug).strip('-')
-        slug = slug[:max_length]
-        logging.debug(f"Created slug: {slug}")
-        return slug
-
-    def _get_output_paths(self, prompt):
-        logging.info("Generating output paths")
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        slug = self._create_slug(prompt)
-        base_dir = Path('local') / f"{timestamp}_{slug}"
-        
-        paths = {
-            'base': base_dir,
-            'c_file': base_dir / 'main.c',
-            'prompt_file': base_dir / 'prompt.txt',
-            'platform': base_dir / 'platform.txt'
-        }
-        
-        # Añadir archivos específicos de la plataforma
-        if self.platform == 'spectrum':
-            paths['output_file'] = base_dir / 'output.tap'
-        elif self.platform == 'amstrad_cpc':
-            paths['output_file'] = base_dir / 'output.dsk'
-        
-        logging.debug(f"Generated paths: {paths}")
-        return paths
-        
-    def _load_examples(self):
-        """Carga ejemplos de código para la plataforma seleccionada"""
-        examples_dir = f"examples/{self.platform}"
-        logging.info(f"📚 Cargando ejemplos de código para {self.platform.upper().replace('_', ' ')}...")
-        
-        examples = []
-        
-        # Buscar recursivamente en todas las carpetas
-        if self.platform == "amstrad_cpc":
-            # Para Amstrad CPC, buscar en subdirectorios
-            for root, dirs, files in os.walk(examples_dir):
-                for file in files:
-                    if file.endswith(".c"):
-                        file_path = os.path.join(root, file)
-                        try:
-                            with open(file_path, 'r', encoding='utf-8') as f:
-                                content = f.read()
-                                examples.append({"path": file_path, "content": content})
-                        except Exception as e:
-                            logging.warning(f"Error loading example {file_path}: {e}")
-        else:
-            # Para otras plataformas, usar el comportamiento anterior
-            for file in glob.glob(f"{examples_dir}/*.c"):
-                try:
-                    with open(file, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        examples.append({"path": file, "content": content})
-                except Exception as e:
-                    logging.warning(f"Error loading example {file}: {e}")
-        
-        logging.info(f"✅ {len(examples)} examples loaded in RAG")
-        return examples
-
-    def read_system_prompt(self):
-        """Lee el archivo de recomendaciones adicionales para el system prompt"""
-        content = ""
-        
-        # Intentar leer archivo específico de la plataforma primero
-        platform_file = f'system_prompt_{self.platform}.txt'
-        try:
-            if os.path.exists(platform_file):
-                with open(platform_file, 'r', encoding='utf-8') as f:
-                    content = "\n" + f.read()
-                logging.info(f"✅ specific prompt loaded: {platform_file}")
-        except FileNotFoundError:
-            logging.warning(f"⚠️ {platform_file} not found")
-        except Exception as e:
-            logging.error(f"❌ Error reading prompt: {e}")
-        
-        # Cargar documentación de errores desde archivos .md
-        error_docs = self._load_error_documentation()
-        if error_docs:
-            content += "\n\n" + error_docs
-            
-        return content
-        
-    def _load_error_documentation(self):
-        """Carga la documentación de errores desde archivos .md"""
-        logging.info(f"📚 Cargando documentación de errores para {self.platform.upper().replace('_', ' ')}...")
-        
-        docs_content = ""
-        examples_dir = Path(f'examples/{self.platform}')
-        
-        if not examples_dir.exists():
-            logging.warning(f"Directorio de ejemplos para {self.platform} no encontrado")
-            return docs_content
-            
-        # Buscar archivos .md en el directorio de ejemplos
-        md_files = list(examples_dir.glob('**/*.md'))
-        
-        if not md_files:
-            logging.info("No se encontraron archivos de documentación .md")
-            return docs_content
-            
-        logging.info(f"Encontrados {len(md_files)} archivos de documentación")
-        
-        # Leer y concatenar el contenido de los archivos .md
-        for md_file in md_files:
-            try:
-                with open(md_file, 'r', encoding='utf-8') as f:
-                    file_content = f.read()
-                    docs_content += f"\n\n--- DOCUMENTACIÓN DE ERRORES: {md_file.name} ---\n\n"
-                    docs_content += file_content
-                logging.info(f"✅ Documentación cargada: {md_file.relative_to(examples_dir)}")
-            except Exception as e:
-                logging.error(f"❌ Error al cargar documentación {md_file}: {e}")
-                
-        return docs_content
-
-    def generate_c_code(self, prompt):
-        logging.info(f"🤖 Generando código Z80 para {self.platform.upper().replace('_', ' ')} basado en ejemplos existentes...")
-        
-        # Cargar ejemplos
-        examples = self._load_examples()
-        
-        # Crear el prompt del sistema con los ejemplos
-        if self.platform == 'spectrum':
-            system_prompt = """You are a Z88DK C code generator for ZX Spectrum 48K.
-CRITICAL: Output ONLY the source code itself. No introduction, no explanation, no markdown blocks.
-"""
-        elif self.platform == 'amstrad_cpc':
-            system_prompt = """You are a CPCtelera C code generator for Amstrad CPC 464.
-CRITICAL: Output ONLY the source code itself. No introduction, no explanation, no markdown blocks.
-"""
-        
-        system_prompt += "\nHere are some example programs to guide your generation. Es estos ejemplos tienes toda la información necesaria para generar un programa, tenlos en cuenta para generar el tuyo.\n"
-        
-        # Limitar el número de ejemplos
-        max_examples = 20
-        examples_to_use = examples[:max_examples]
-        
-        # Agregar ejemplos al prompt del sistema
-        for example in examples_to_use:
-            system_prompt += f"\nExample '{example['path']}':\n"
-            system_prompt += f"Code:\n{example['content']}\n"
-        
-        # Leer instrucciones adicionales del system prompt
-        additional_instructions = self.read_system_prompt()
-        
-        if self.platform == 'spectrum':
-            system_prompt += """
-Based on these examples, generate a new program following these rules:
-- Use similar structure and style to the examples
-- Include appropriate headers based on functionality needed
-- Follow ZX Spectrum and Z88DK best practices
-- Output ONLY the code, no explanations
-- No markdown blocks
-- Must compile with zcc +zx
-"""
-        elif self.platform == 'amstrad_cpc':
-            system_prompt += """
-Based on these examples, generate a new program following these rules:
-- Use similar structure and style to the examples
-- Include appropriate headers based on functionality needed
-- Follow Amstrad CPC and CPCtelera best practices
-- Output ONLY the code, no explanations
-- No markdown blocks
-- Must compile with CPCtelera
-"""
-        
-        # Añadir instrucciones adicionales del archivo system_prompt
-        #print(additional_instructions)
-        system_prompt += additional_instructions
-        
-        # Crear un prompt de usuario enriquecido que incorpore el contexto
-        user_prompt = f"Write {self.platform.replace('_', ' ')} C code that: {prompt}\n\nYour code should follow all the instructions and examples provided in the system prompt. Remember to output ONLY the code without any markdown or explanations."
-        
-        #print(system_prompt)
-        #print(user_prompt)
-        
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.7,
-                max_tokens=4096
-            )
-            
-            # Clean any possible markdown or extra text
-            code = response.choices[0].message.content.strip()
-            if code.startswith("```"):
-                code = "\n".join(code.split("\n")[1:-1])
-            code = code.replace("```c", "").replace("```", "").strip()
-            
-            logging.info("✨ Código generado exitosamente!")
-            return code
-        except Exception as e:
-            logging.error(f"Error al generar código: {e}")
-            raise
-    
-    def save_c_code(self, code, prompt, paths):
-        logging.info("💾 Saving files...")
-        try:
-            os.makedirs(paths['base'], exist_ok=True)
-            
-            with open(paths['c_file'], 'w') as f:
-                f.write(code)
-            logging.info(f"C code saved to {paths['c_file']}")
-            
-            with open(paths['prompt_file'], 'w') as f:
-                f.write(prompt)
-            logging.info(f"Prompt saved to {paths['prompt_file']}")
-            
-            with open(paths['platform'], 'w') as f:
-                f.write(self.platform)
-            logging.info(f"Platform info saved to {paths['platform']}")
-            
-            logging.info("✅ All files saved successfully!")
-            
-        except Exception as e:
-            logging.error(f"Failed to save files: {e}")
-            raise
+# Constantes
+CONFIG_FILE = "config.yml"
 
 def main():
-    # Configurar argumentos de línea de comandosw
-    parser = argparse.ArgumentParser(description='LLMZ80 Code Generator')
-    parser.add_argument('--platform', type=str, default='spectrum', 
+    """Función principal para el generador de código LLMZ80."""
+    parser = argparse.ArgumentParser(
+        description='LLMZ80 Code Generator - Genera código C para plataformas Z80 usando OpenAI.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter  # Mostrar valores por defecto en la ayuda
+    )
+    parser.add_argument('--platform', type=str, default='spectrum',
                         choices=['spectrum', 'amstrad_cpc'],
-                        help='Target platform (spectrum or amstrad_cpc)')
-    parser.add_argument('--prompt', type=str,
-                        help='Prompt for code generation (optional)')
+                        help='Plataforma objetivo.')
+    parser.add_argument('--prompt', type=str, default=None,
+                        help='Prompt para generación de código (si se omite, preguntará interactivamente).')
+    parser.add_argument('--config', type=str, default=CONFIG_FILE,
+                        help='Ruta al archivo de configuración YAML.')
+    # Añadir argumento para nivel de log
+    parser.add_argument('--log-level', type=str, default=DEFAULT_LOG_LEVEL,
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                        help='Establecer nivel de logging para consola.')
+    # Añadir argumentos para control de caché
+    parser.add_argument('--clear-cache', action='store_true',
+                        help='Limpiar el caché de embeddings antes de ejecutar.')
+    parser.add_argument('--force-truncate', action='store_true',
+                        help='Forzar truncado de todos los ejemplos, incluso los que ya están en caché.')
+    parser.add_argument('--no-embeddings', action='store_true',
+                        help='Omitir embeddings y búsqueda semántica (más rápido, pero ejemplos menos relevantes).')
+    parser.add_argument('--repair-cache', action='store_true',
+                        help='Verificar y reparar caché de embeddings corrupto.')
+    parser.add_argument('--rebuild-embeddings', action='store_true',
+                        help='Elimina y reconstruye completamente el caché de embeddings.')
+    parser.add_argument('--test-file', type=str,
+                        help='Prueba la generación de embeddings para un archivo específico.')
+    parser.add_argument('--max-chunk-size', type=int,
+                        help='Define el tamaño máximo de chunk para embeddings (reemplaza valor en config.yml).')
+
     args = parser.parse_args()
-    
+
     platform_name = args.platform.upper().replace('_', ' ')
-    
-    print(colored(f"\n🎮 {platform_name} Code Generator 🎮", "green", attrs=['bold']))
-    print(colored("=" * 40, "green"))
-    
+    print(colored(f"\n🎮 Bienvenido al Generador de Código para {platform_name} 🎮", "green", attrs=['bold']))
+    print(colored("=" * (len(platform_name) + 36), "green"))
+
     try:
-        generator = LLMZ80Generator(platform=args.platform)
+        # 1. Cargar configuración
+        config = load_config(args.config)
         
-        # Use provided prompt or request one interactively
-        prompt = args.prompt
-        if not prompt:
-            prompt = input(colored("\n📝 Enter your prompt: ", "yellow"))
+        # 2. Inicializar variables globales
+        global_vars = initialize_global_vars(config, args.platform)
+        
+        # 3. Configurar logging
+        setup_logging(global_vars['log_dir'], args.log_level)
+        
+        # 4. Cargar clave de API
+        api_key = load_api_key()
+        
+        # 5. Aplicar tamaño máximo de chunk si se especifica
+        if args.max_chunk_size:
+            global_vars['max_chunk_size'] = args.max_chunk_size
+            logging.info(f"Tamaño máximo de chunk establecido a {args.max_chunk_size} caracteres")
+        
+        # 6. Inicializar generador
+        generator = LLMZ80Generator(args.platform, global_vars, api_key)
+        
+        # 7. Aplicar opciones desde argumentos
+        
+        # Limpiar caché si se solicita
+        if args.clear_cache:
+            try:
+                generator.cache_manager.clear_cache()
+                logging.info("Caché de embeddings eliminado. Se generarán nuevos embeddings.")
+            except Exception as e:
+                logging.error(f"Error al limpiar caché de embeddings: {e}")
+                # Continuamos a pesar del error
+        
+        # Reparar caché de embeddings si se solicita
+        if args.repair_cache:
+            try:
+                generator.cache_manager.verify_and_repair_cache()
+                logging.info("Verificación y reparación de caché completada.")
+            except Exception as e:
+                logging.error(f"Error al reparar caché de embeddings: {e}")
+                # Continuamos a pesar del error
+        
+        # Reconstruir completamente el caché de embeddings si se solicita
+        if args.rebuild_embeddings:
+            try:
+                generator.rebuild_embeddings_cache()
+                logging.info("Reconstrucción completa de caché de embeddings terminada.")
+            except Exception as e:
+                logging.error(f"Error al reconstruir caché de embeddings: {e}")
+                # Continuamos a pesar del error
+        
+        # Probar un archivo específico si se solicita
+        if args.test_file:
+            try:
+                generator.test_file_embedding(args.test_file)
+                logging.info(f"Prueba de embedding para {args.test_file} completada.")
+                # Si solo se solicitó esta operación, terminar
+                if not args.prompt:
+                    return
+            except Exception as e:
+                logging.error(f"Error al probar embedding para {args.test_file}: {e}")
+                # Continuamos a pesar del error
+        
+        # Habilitar el modo de truncado forzado si se solicita
+        if args.force_truncate:
+            generator.set_force_truncate(True)
+        
+        # Si se solicita, deshabilitar uso de embeddings
+        if args.no_embeddings:
+            generator.set_use_embeddings(False)
+
+        # Obtener prompt del usuario
+        user_prompt = args.prompt
+        if not user_prompt:
+            try:
+                user_prompt = input(colored("\n📝 Ingrese su prompt para generación de código: ", "yellow"))
+            except EOFError:
+                print(colored("\n❌ No se proporcionó prompt. Saliendo.", "red"))
+                return  # Salir elegantemente si se interrumpe la entrada
+
+        if not user_prompt:  # Verificar de nuevo si la entrada estaba vacía
+             print(colored("\n❌ El prompt no puede estar vacío. Saliendo.", "red"))
+             return
+
+        logging.info("🏁 Iniciando proceso de generación de código...")
+
+        try:
+            # Generar código
+            generated_code = generator.generate_c_code(user_prompt)
             
-        logging.info("Starting code generation process")
-        
-        paths = generator._get_output_paths(prompt)
-        c_code = generator.generate_c_code(prompt)
-        generator.save_c_code(c_code, prompt, paths)
-        
-        print(colored("\n✨ Success! ✨", "green", attrs=['bold']))
-        print(colored(f"📂 Files saved in: {paths['base']}", "cyan"))
-        print(colored(f"📄 C code: {paths['c_file']}", "cyan"))
-        
+            # Guardar archivos generados
+            paths = generator.save_generated_files(generated_code, user_prompt)
+            
+            print(colored("\n✨ ¡Éxito! ✨", "green", attrs=['bold']))
+            print(colored(f"📂 Archivos guardados en: {paths['base'].resolve()}", "cyan"))
+            
+        except Exception as e:
+            logging.error(f"Error durante generación o guardado de código: {e}")
+            print(colored(f"\n❌ Error: {e}", "red"))
+            # Intento de emergencia para guardar código parcial si existe
+            if 'generated_code' in locals() and generated_code:
+                try:
+                    emergency_dir = Path("local/emergency_output")
+                    emergency_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    with open(emergency_dir / "emergency_code.c", "w") as f:
+                        f.write(generated_code)
+                    with open(emergency_dir / "emergency_prompt.txt", "w") as f:
+                        f.write(user_prompt)
+                        
+                    print(colored(f"📂 Archivos de emergencia guardados en: {emergency_dir.resolve()}", "yellow"))
+                except Exception as e2:
+                    print(colored(f"❌ Error al guardar archivos de emergencia: {e2}", "red"))
+
+    except ValueError as e:  # Capturar errores específicos esperados como clave de API faltante
+        logging.error(f"Error de Configuración: {e}")
+        print(colored(f"❌ Error de Configuración: {e}", "red"))
     except Exception as e:
-        logging.error(f"Process failed: {e}")
-        raise
+        logging.exception(f"Ocurrió un error inesperado: {e}")  # Registrar traceback completo para errores inesperados
+        print(colored(f"❌ Ocurrió un error inesperado. Revisar logs en {global_vars['log_dir'] if 'global_vars' in locals() else 'logs'} para detalles.", "red"))
 
 if __name__ == "__main__":
-    main()
+    main() 

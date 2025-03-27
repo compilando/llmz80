@@ -1,12 +1,54 @@
+openai:
+  model: gpt-4o
+  temperature: 0.3
+  max_tokens: 8096
+  embedding_model: text-embedding-3-small
+
+examples:
+  max_examples: 15
+  truncate_size: 50000  # Reducido: Tamaño máximo para ejemplos (caracteres)
+
+embeddings:
+  cache_dir: "local/embeddings"
+  max_chunk_size: 15000  # Reducido: Tamaño máximo de chunk para procesamiento de embeddings (caracteres)
+  token_limit: 8000  # Límite de tokens para embeddings
+  safety_margin: 0.8  # Factor de seguridad para evitar llegar al límite
+
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  log_dir: "local/logs"
+
+output:
+  base_dir: "local"
+  slug_max_length: 40  # Longitud máxima para el slug en nombres de carpetas
+
 paths:
-  c_output: "output/main.c"
-  asm_output: "output/main.asm"
-  binary_output: "output/program.tap"
+  # Rutas para archivos de plataformas
+  spectrum:
+    output_artifact: "output.tap"
+  amstrad_cpc:
+    output_artifact: "output.dsk"
 
+prompt_files:
+  spectrum: "system_prompt_spectrum.txt"
+  amstrad_cpc: "system_prompt_amstrad_cpc.txt"
+
+# Configuración del compilador (por plataforma)
 compiler:
-  c_compiler: "zcc"
-  asm_compiler: "z80asm"
+  spectrum:
+    c_compiler: "zcc"
+    asm_compiler: "z80asm"
+    params: "+zx -vn -O3 -clib=sdcc_iy"
+  amstrad_cpc:
+    c_compiler: "sdcc"
+    asm_compiler: "z80asm"
+    params: "-mz80 --no-std-crt0"
 
+# Configuración del emulador (por plataforma)
 emulator:
-  name: "fuse"
-  params: "--machine 48 --no-sound"
+  spectrum:
+    name: "fuse"
+    params: "--machine 48 --no-sound"
+  amstrad_cpc:
+    name: "cap32"
+    params: "--machine 6128"
