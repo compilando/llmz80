@@ -39,6 +39,8 @@ def main():
                         help='Omitir embeddings y búsqueda semántica (más rápido, pero ejemplos menos relevantes).')
     parser.add_argument('--repair-cache', action='store_true',
                         help='Verificar y reparar caché de embeddings corrupto.')
+    parser.add_argument('--fix-embeddings', action='store_true',
+                        help='Buscar y reparar específicamente embeddings inválidos o escalares.')
     parser.add_argument('--rebuild-embeddings', action='store_true',
                         help='Elimina y reconstruye completamente el caché de embeddings.')
     parser.add_argument('--test-file', type=str,
@@ -91,6 +93,17 @@ def main():
                 logging.info("Verificación y reparación de caché completada.")
             except Exception as e:
                 logging.error(f"Error al reparar caché de embeddings: {e}")
+                # Continuamos a pesar del error
+
+        # Reparar embeddings inválidos específicamente si se solicita
+        if args.fix_embeddings:
+            try:
+                if generator.cache_manager.repair_invalid_embeddings():
+                    logging.info("Reparación de embeddings inválidos completada.")
+                else:
+                    logging.info("No se encontraron embeddings inválidos para reparar.")
+            except Exception as e:
+                logging.error(f"Error al reparar embeddings inválidos: {e}")
                 # Continuamos a pesar del error
         
         # Reconstruir completamente el caché de embeddings si se solicita

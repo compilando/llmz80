@@ -58,7 +58,7 @@ def get_output_paths(prompt: str, platform: str, base_output_dir: Path, slug_max
     logging.debug(f"Rutas generadas: {paths}")
     return paths
 
-def estimate_tokens(text: str) -> int:
+def estimate_tokens(text: str) -> int:    
     """Estima de manera sencilla el número de tokens en un texto.
     
     Aproximación: 1 token ≈ 3.5 caracteres en inglés/código.
@@ -70,7 +70,7 @@ def estimate_tokens(text: str) -> int:
         Número estimado de tokens
     """
     # Estimación conservadora: 1 token por cada 3.5 caracteres
-    return int(len(text) / 3.5)
+    return int(len(str(text)) / 3.5)
 
 def clean_api_response(raw_response: str) -> str:
     """Intenta extraer solo el código C de la respuesta de la API.

@@ -128,17 +128,49 @@ class ExamplesLoader:
                         else:
                             # Para archivos de tamaño normal, generar embedding directamente
                             new_embedding = self.embedding_manager.get_embedding(content)
+                        
+                        # VALIDACIÓN AGREGADA: Verificar explícitamente que el embedding es un array y no un escalar
+                        if isinstance(new_embedding, (int, float)):
+                            logging.error(f"❌ Error crítico: Embedding para {rel_path} es un escalar ({type(new_embedding)})")
+                            # Reemplazar con un array vacío para evitar el error 'int' has no len()
+                            new_embedding = np.zeros((1536,), dtype=float)
+                            logging.warning(f"Reemplazando embedding escalar con array vacío para evitar errores")
+                        
+                        # Verificación adicional para asegurar que es un array numpy
+                        if not isinstance(new_embedding, np.ndarray):
+                            logging.error(f"❌ Embedding para {rel_path} no es un array numpy ({type(new_embedding)})")
+                            new_embedding = np.zeros((1536,), dtype=float)
                             
                         self.embeddings_cache[rel_path] = (content, new_embedding)
                         success_count += 1
                     except Exception as e:
                         logging.error(f"Error al generar embedding para {rel_path}: {e}")
+                        # Asegurarse de que no hay valores escalares en la caché
+                        self.embeddings_cache[rel_path] = (content, np.zeros((1536,), dtype=float))
                         error_count += 1
             
             logging.info(f"Embeddings generados: {success_count} exitosos, {error_count} con error")
             
             # Guardar el caché actualizado
-            self.cache_manager.save_cache(self.embeddings_cache)
+            try:
+                self.cache_manager.save_cache(self.embeddings_cache)
+            except Exception as e:
+                logging.error(f"Error al guardar caché de embeddings: {e}")
+                logging.info("Intentando corregir caché antes de guardar...")
+                # Intento de corrección: verificar y corregir cada entrada
+                corrected_cache = {}
+                for path, (content, emb) in self.embeddings_cache.items():
+                    if isinstance(emb, (int, float)):
+                        corrected_cache[path] = (content, np.zeros((1536,), dtype=float))
+                    else:
+                        corrected_cache[path] = (content, emb)
+                self.embeddings_cache = corrected_cache
+                # Intentar guardar nuevamente
+                try:
+                    self.cache_manager.save_cache(self.embeddings_cache)
+                    logging.info("Caché corregido y guardado exitosamente.")
+                except Exception as e2:
+                    logging.error(f"No se pudo guardar el caché corregido: {e2}")
         
         logging.info(f"✅ {len(examples)} ejemplos cargados.")
         return examples
@@ -250,15 +282,43 @@ class ExamplesLoader:
         invalid_embeddings_count = 0
         
         for rel_path, (content, embedding) in self.embeddings_cache.items():
+            # VERIFICACIÓN CRÍTICA: Detección de embeddings escalares (int/float)
+            # Esta es la fuente potencial del error "object of type 'int' has no len()"
+            if isinstance(embedding, (int, float)):
+                logging.error(f"⚠️ ERROR CRÍTICO: Se detectó un embedding escalar ({type(embedding)}) para {rel_path}")
+                logging.error(f"📍 CAUSA DEL ERROR 'object of type int has no len()' en llmz80/core/examples_loader.py:get_relevant_examples")
+                # Crear un embedding vacío para evitar que falle el algoritmo
+                embedding = np.zeros((1536,), dtype=float)
+                # Actualizar el caché con el embedding corregido
+                self.embeddings_cache[rel_path] = (content, embedding)
+                invalid_embeddings_count += 1
+            
             # Verificar que el embedding sea válido
             if (embedding is not None and 
                 isinstance(embedding, np.ndarray) and 
                 embedding.size > 0 and 
                 not np.all(embedding == 0)):
                 try:
-                    similarity = self.embedding_manager.cosine_similarity(query_embedding, embedding)
-                    similarities.append((rel_path, content, similarity))
-                    valid_embeddings_count += 1
+                    # PROTECCIÓN ADICIONAL: Verificar explícitamente ambos argumentos
+                    if not isinstance(query_embedding, np.ndarray):
+                        logging.error(f"⚠️ Error en cosine_similarity: query_embedding no es numpy array: {type(query_embedding)}")
+                        continue
+                    if not isinstance(embedding, np.ndarray):
+                        logging.error(f"⚠️ Error en cosine_similarity: embedding para {rel_path} no es numpy array: {type(embedding)}")
+                        continue
+                        
+                    # Intentar calcular similitud con manejo de errores explícito
+                    try:
+                        similarity = self.embedding_manager.cosine_similarity(query_embedding, embedding)
+                        similarities.append((rel_path, content, similarity))
+                        valid_embeddings_count += 1
+                    except TypeError as e:
+                        if "object of type 'int' has no len()" in str(e):
+                            logging.error(f"⚠️ ERROR 'int' has no len() al calcular similitud para {rel_path}")
+                            logging.error(f"📍 Tipos: query_embedding={type(query_embedding)}, embedding={type(embedding)}")
+                            invalid_embeddings_count += 1
+                        else:
+                            raise
                 except Exception as e:
                     logging.warning(f"Error al calcular similitud para {rel_path}: {e}")
                     invalid_embeddings_count += 1
@@ -266,8 +326,15 @@ class ExamplesLoader:
                 invalid_embeddings_count += 1
                 # No lo incluimos para cálculo de similitud
         
+        # Si se detectaron problemas con los embeddings, intentar reparar el caché
         if invalid_embeddings_count > 0:
             logging.warning(f"Se ignoraron {invalid_embeddings_count} embeddings inválidos o nulos.")
+            # Intentar guardar el caché corregido
+            try:
+                self.cache_manager.save_cache(self.embeddings_cache)
+                logging.info("✅ Caché corregido guardado automáticamente.")
+            except Exception as e:
+                logging.error(f"Error al guardar caché corregido: {e}")
         
         if not similarities:
             logging.warning("❌ No se encontraron embeddings válidos para comparar. Usando ejemplos aleatorios.")

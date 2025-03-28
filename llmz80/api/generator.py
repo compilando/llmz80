@@ -324,21 +324,11 @@ Prioritize clarity, efficiency for the Z80, static memory management, and correc
                 # Obtener ejemplos relevantes para la solicitud del usuario
                 relevant_examples = self.examples_loader.get_relevant_examples(user_request)
                 logging.info(f"Usando búsqueda semántica con embeddings para seleccionar ejemplos.")
-            except TypeError as e:
-                # Error específico para cuando se intenta usar len() en un objeto que no lo soporta
-                if "object of type 'int' has no len()" in str(e):
-                    logging.error(f"Error en la búsqueda semántica: {e}")
-                    logging.warning("Error típico con embeddings mal formados. Cambiando a modo sin embeddings.")
-                    # Deshabilitar embeddings para futuras llamadas
-                    self.set_use_embeddings(False)
-                    # Fallback a modo sin embeddings
-                    all_examples = self.examples_loader.load_code_examples_basic()
-                    relevant_examples = all_examples[:self.max_examples]
-                else:
-                    # Otro tipo de TypeError
-                    raise
+                
             except Exception as e:
-                logging.error(f"Error en la búsqueda semántica: {e}")
+                import traceback
+                print(traceback.format_exc())
+                
                 logging.warning("Fallback a modo sin embeddings debido a error.")
                 # Si hay error, fallback a modo sin embeddings
                 all_examples = self.examples_loader.load_code_examples_basic()
@@ -429,4 +419,4 @@ Prioritize clarity, efficiency for the Z80, static memory management, and correc
             return paths
         except Exception as e:
             logging.error(f"❌ Error al guardar archivos: {e}")
-            raise  # Re-raise para indicar fallo 
+            raise 

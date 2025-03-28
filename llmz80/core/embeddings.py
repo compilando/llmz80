@@ -60,6 +60,11 @@ class EmbeddingsManager:
                     )
                     embedding_data = response.data[0].embedding
                     
+                    # CORRECCIÓN: Verificar que embedding_data no sea un escalar
+                    if isinstance(embedding_data, (int, float)):
+                        logging.error(f"⚠️ API devolvió un escalar: {embedding_data}")
+                        return np.zeros((1536,), dtype=float)  # Devolver array por defecto
+                    
                     # Verificar que embedding_data sea una lista antes de convertirlo
                     if not isinstance(embedding_data, list):
                         logging.error(f"API devolvió un embedding inválido, tipo: {type(embedding_data)}")
@@ -68,9 +73,15 @@ class EmbeddingsManager:
                     # Verificar que todos los elementos sean números
                     if not all(isinstance(x, (int, float)) for x in embedding_data):
                         logging.error("API devolvió elementos no numéricos en el embedding")
+                        return np.zeros((1536,), dtype=float)  # Devolver array por defecto
+                        
+                    # VALIDACIÓN ADICIONAL: Asegurarse que el resultado sea un array numpy
+                    result = np.array(embedding_data, dtype=float)
+                    if not isinstance(result, np.ndarray):
+                        logging.error(f"La conversión a numpy array falló: {type(result)}")
                         return np.zeros((1536,), dtype=float)
                         
-                    return np.array(embedding_data, dtype=float)
+                    return result
                 except Exception as e:
                     if "maximum context length" in str(e):
                         logging.warning(f"La estimación de tokens falló, el texto es demasiado largo. Dividiendo...")
@@ -142,6 +153,11 @@ class EmbeddingsManager:
                     )
                     chunk_embedding_data = response.data[0].embedding
                     
+                    # CORRECCIÓN: Verificar que no sea un escalar
+                    if isinstance(chunk_embedding_data, (int, float)):
+                        logging.warning(f"Chunk {i+1}: API devolvió un escalar: {chunk_embedding_data}")
+                        continue
+                    
                     # Verificar que sea una lista y contenga solo números
                     if not isinstance(chunk_embedding_data, list):
                         logging.warning(f"Chunk {i+1}: API devolvió un embedding inválido, tipo: {type(chunk_embedding_data)}")
@@ -151,8 +167,16 @@ class EmbeddingsManager:
                         logging.warning(f"Chunk {i+1}: API devolvió elementos no numéricos en el embedding")
                         continue
                     
-                    chunk_embedding = np.array(chunk_embedding_data, dtype=float)
-                    embeddings.append(chunk_embedding)
+                    # Asegurar que sea un numpy array
+                    try:
+                        chunk_embedding = np.array(chunk_embedding_data, dtype=float)
+                        if not isinstance(chunk_embedding, np.ndarray):
+                            raise TypeError(f"No se pudo convertir a numpy array: {type(chunk_embedding)}")
+                        embeddings.append(chunk_embedding)
+                    except Exception as e:
+                        logging.error(f"Error al convertir chunk {i+1} a numpy array: {e}")
+                        continue
+                        
                 except Exception as e:
                     if "maximum context length" in str(e):
                         logging.error(f"Chunk {i+1} sigue siendo demasiado grande: {str(e)}")
@@ -171,6 +195,11 @@ class EmbeddingsManager:
                     # Normalizar para mantener las propiedades del espacio de embeddings
                     if norm(combined_embedding) > 0:
                         combined_embedding = combined_embedding / norm(combined_embedding)
+                    # VALIDACIÓN FINAL: Asegurar que el resultado sea un array numpy
+                    if not isinstance(combined_embedding, np.ndarray):
+                        logging.error(f"Resultado combinado no es numpy array: {type(combined_embedding)}")
+                        return np.zeros((1536,), dtype=float)
+                    
                     logging.info(f"Embedding combinado generado con éxito a partir de {len(embeddings)} chunks (de {len(chunks)} intentados).")
                     return combined_embedding
                 except Exception as e:
@@ -224,12 +253,13 @@ class EmbeddingsManager:
         samples_attempted += 1
         try:
             start_embedding = self.get_embedding(start_content)
+            # Verificar que el embedding es un array numpy válido
             if isinstance(start_embedding, np.ndarray) and start_embedding.size > 0 and not np.all(start_embedding == 0):
                 embeddings_to_combine.append(start_embedding)
                 samples_successful += 1
                 logging.debug(f"✅ Muestra de inicio procesada correctamente")
             else:
-                logging.warning(f"⚠️ La muestra de inicio no generó un embedding válido")
+                logging.warning(f"⚠️ La muestra de inicio no generó un embedding válido: {type(start_embedding)}")
         except Exception as e:
             logging.error(f"Error al procesar muestra de inicio: {e}")
         
@@ -238,12 +268,13 @@ class EmbeddingsManager:
             samples_attempted += 1
             try:
                 mid_embedding = self.get_embedding(mid_sample)
+                # Verificar que el embedding es un array numpy válido
                 if isinstance(mid_embedding, np.ndarray) and mid_embedding.size > 0 and not np.all(mid_embedding == 0):
                     embeddings_to_combine.append(mid_embedding)
                     samples_successful += 1
                     logging.debug(f"✅ Muestra intermedia {i+1} procesada correctamente")
                 else:
-                    logging.warning(f"⚠️ La muestra intermedia {i+1} no generó un embedding válido")
+                    logging.warning(f"⚠️ La muestra intermedia {i+1} no generó un embedding válido: {type(mid_embedding)}")
             except Exception as e:
                 logging.error(f"Error al procesar muestra intermedia {i+1}: {e}")
         
@@ -252,22 +283,36 @@ class EmbeddingsManager:
             samples_attempted += 1
             try:
                 end_embedding = self.get_embedding(end_content)
+                # Verificar que el embedding es un array numpy válido
                 if isinstance(end_embedding, np.ndarray) and end_embedding.size > 0 and not np.all(end_embedding == 0):
                     embeddings_to_combine.append(end_embedding)
                     samples_successful += 1
                     logging.debug(f"✅ Muestra de final procesada correctamente")
                 else:
-                    logging.warning(f"⚠️ La muestra de final no generó un embedding válido")
+                    logging.warning(f"⚠️ La muestra de final no generó un embedding válido: {type(end_embedding)}")
             except Exception as e:
                 logging.error(f"Error al procesar muestra de final: {e}")
         
         # 3. Combinar los embeddings si hay al menos uno válido
         if embeddings_to_combine:
             try:
+                # Verificar cada elemento antes de combinar
+                for i, emb in enumerate(embeddings_to_combine):
+                    if not isinstance(emb, np.ndarray):
+                        logging.error(f"Embedding {i+1} no es un array numpy: {type(emb)}")
+                        embeddings_to_combine[i] = np.zeros((1536,), dtype=float)
+                
                 combined_embedding = np.mean(embeddings_to_combine, axis=0)
+                
                 # Normalizar para mantener las propiedades del espacio de embeddings
                 if norm(combined_embedding) > 0:
                     combined_embedding = combined_embedding / norm(combined_embedding)
+                
+                # Verificación final del resultado
+                if not isinstance(combined_embedding, np.ndarray):
+                    logging.error(f"Embedding combinado no es un array numpy: {type(combined_embedding)}")
+                    return np.zeros((1536,), dtype=float)
+                
                 logging.info(f"✅ Embedding combinado generado de {samples_successful}/{samples_attempted} muestras exitosas")
                 return combined_embedding
             except Exception as e:
@@ -290,26 +335,43 @@ class EmbeddingsManager:
         try:
             # Verificar que ambos vectores son arrays numpy y no están vacíos
             if not isinstance(a, np.ndarray) or not isinstance(b, np.ndarray):
-                logging.warning(f"Tipos no válidos para similitud coseno: {type(a)}, {type(b)}")
-                return 0.0
+                logging.warning(f"⚠️ Tipos no válidos para similitud coseno: {type(a)}, {type(b)}")
+                # Si alguno es un escalar, convertirlo a array vacío
+                if isinstance(a, (int, float)):
+                    logging.error(f"⚠️ Primer vector para similitud coseno es un escalar: {a}")
+                    a = np.zeros((1536,), dtype=float)
+                if isinstance(b, (int, float)):
+                    logging.error(f"⚠️ Segundo vector para similitud coseno es un escalar: {b}")
+                    b = np.zeros((1536,), dtype=float)
+                
+                # Si después de convertir todavía no son arrays, retornar 0
+                if not isinstance(a, np.ndarray) or not isinstance(b, np.ndarray):
+                    return 0.0
             
             if a.size == 0 or b.size == 0:
-                logging.warning("Uno de los vectores para similitud coseno está vacío")
+                logging.warning("⚠️ Uno de los vectores para similitud coseno está vacío")
                 return 0.0
                 
             # Verificar que los vectores tienen la misma longitud
             if a.shape != b.shape:
-                logging.warning(f"Los vectores tienen formas diferentes: {a.shape} vs {b.shape}")
+                logging.warning(f"⚠️ Los vectores tienen formas diferentes: {a.shape} vs {b.shape}")
                 return 0.0
                 
             a_norm = norm(a)
             b_norm = norm(b)
             
             if a_norm == 0 or b_norm == 0:
-                logging.warning("Uno de los vectores tiene norma cero, no se puede calcular similitud coseno")
+                logging.warning("⚠️ Uno de los vectores tiene norma cero, no se puede calcular similitud coseno")
                 return 0.0
                 
-            return np.dot(a, b) / (a_norm * b_norm)
+            similarity = np.dot(a, b) / (a_norm * b_norm)
+            
+            # Verificar que el resultado es un float válido
+            if not isinstance(similarity, (int, float)) or np.isnan(similarity) or np.isinf(similarity):
+                logging.warning(f"⚠️ Resultado de similitud no válido: {similarity}")
+                return 0.0
+            
+            return float(similarity)  # Asegurar que devolvemos un float estándar
         except Exception as e:
-            logging.error(f"Error en cálculo de similitud coseno: {e}")
+            logging.error(f"❌ Error en cálculo de similitud coseno: {e}")
             return 0.0 

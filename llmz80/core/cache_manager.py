@@ -35,70 +35,54 @@ class EmbeddingsCacheManager:
             with open(self.cache_file, 'r') as f:
                 cache_data = json.load(f)
             
-            # Convertir las listas de embeddings en numpy arrays
             embeddings_cache = {}
             valid_count = 0
             invalid_count = 0
             
-            # Verificar que cache_data sea un diccionario
             if not isinstance(cache_data, dict):
-                logging.error(f"Caché corrupto: El formato no es un diccionario. Regenerando caché.")
+                logging.error("⚠️ Caché corrupto: El formato no es un diccionario")
                 return {}
             
-            for file_path, data_tuple in cache_data.items():
-                # Verificar que data_tuple sea una tupla o lista con 2 elementos
-                if not isinstance(data_tuple, (list, tuple)) or len(data_tuple) != 2:
-                    logging.warning(f"Formato incorrecto para {file_path} en caché. Será regenerado.")
+            for file_path, data in cache_data.items():
+                if not isinstance(file_path, str):
                     invalid_count += 1
                     continue
                 
-                # Extraer contenido y embedding
-                content, embedding_data = data_tuple
+                if not isinstance(data, (list, tuple)) or len(data) != 2:
+                    invalid_count += 1
+                    continue
                 
-                # Verificar que el contenido sea un string
+                content, embedding_data = data
                 if not isinstance(content, str):
-                    logging.warning(f"Contenido no es string para {file_path}. Será ignorado.")
-                    invalid_count += 1
-                    continue
+                    content = str(content) if content is not None else ""
                 
-                # Procesar el embedding si existe
-                if embedding_data is not None:
-                    # Verificar que embedding_data sea una lista de números
-                    if isinstance(embedding_data, list) and all(isinstance(x, (int, float)) for x in embedding_data):
-                        try:
-                            # Convertir a array numpy
-                            embedding_array = np.array(embedding_data, dtype=float)
-                            # Solo añadir si el array no está vacío
-                            if embedding_array.size > 0:
-                                embeddings_cache[file_path] = (content, embedding_array)
-                                valid_count += 1
-                            else:
-                                embeddings_cache[file_path] = (content, None)
-                                invalid_count += 1
-                                logging.warning(f"Embedding vacío para {file_path}. Será regenerado.")
-                        except Exception as e:
-                            logging.warning(f"Error al convertir embedding para {file_path}: {e}. Será regenerado.")
+                if embedding_data is not None and isinstance(embedding_data, list):
+                    try:
+                        embedding_array = np.array(embedding_data, dtype=float)
+                        if embedding_array.size > 0:
+                            embeddings_cache[file_path] = (content, embedding_array)
+                            valid_count += 1
+                        else:
                             embeddings_cache[file_path] = (content, None)
                             invalid_count += 1
-                    else:
-                        logging.warning(f"Embedding inválido para {file_path}: tipo {type(embedding_data)}. Será regenerado.")
+                    except Exception:
                         embeddings_cache[file_path] = (content, None)
                         invalid_count += 1
                 else:
-                    # Si el embedding es None, mantenerlo como None para regenerarlo
                     embeddings_cache[file_path] = (content, None)
                     invalid_count += 1
             
-            logging.info(f"✅ Caché cargado: {valid_count} embeddings válidos, {invalid_count} a regenerar.")
-            
-            # Si todos los embeddings son inválidos, podríamos tener un problema con el formato del caché
-            if valid_count == 0 and invalid_count > 0:
-                logging.warning(f"⚠️ Todos los embeddings ({invalid_count}) necesitan regeneración.")
-            
+            logging.info(f"✅ Caché cargado: {valid_count} embeddings válidos, {invalid_count} a regenerar")
             return embeddings_cache
             
         except json.JSONDecodeError:
-            logging.error(f"El archivo de caché {self.cache_file} no es un JSON válido. Se ignorará.")
+            logging.error(f"El archivo de caché {self.cache_file} no es un JSON válido")
+            try:
+                corrupted_backup = self.cache_dir / f"{self.platform}_embeddings_corrupted_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                shutil.copy2(self.cache_file, corrupted_backup)
+                logging.info(f"Backup del caché corrupto guardado en {corrupted_backup}")
+            except:
+                pass
             return {}
         except Exception as e:
             logging.error(f"Error al cargar el caché de embeddings: {e}")
@@ -113,48 +97,44 @@ class EmbeddingsCacheManager:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
         try:
-            # Convertir numpy arrays a listas para serialización JSON
             serializable_cache = {}
             valid_count = 0
             invalid_count = 0
             
-            for file_path, (content, embedding_array) in embeddings_cache.items():
+            for file_path, data in embeddings_cache.items():
+                if not isinstance(data, (tuple, list)) or len(data) != 2:
+                    invalid_count += 1
+                    continue
+                
+                content, embedding_array = data
+                if not isinstance(content, str):
+                    content = str(content) if content is not None else ""
+                
                 if embedding_array is not None and isinstance(embedding_array, np.ndarray) and embedding_array.size > 0:
                     try:
-                        # Verificar que el embedding es válido para serializar
-                        embedding_list = embedding_array.tolist()
-                        serializable_cache[file_path] = (content, embedding_list)
+                        serializable_cache[file_path] = (content, embedding_array.tolist())
                         valid_count += 1
-                    except Exception as e:
-                        logging.warning(f"Error al serializar embedding para {file_path}: {e}")
-                        # Guardar con embedding None para regenerar en la próxima ejecución
+                    except Exception:
                         serializable_cache[file_path] = (content, None)
                         invalid_count += 1
                 else:
-                    # Guardar con embedding None para regenerar en la próxima ejecución
                     serializable_cache[file_path] = (content, None)
                     invalid_count += 1
             
             with open(self.cache_file, 'w') as f:
                 json.dump(serializable_cache, f)
             
-            logging.info(f"✅ Caché de embeddings guardado en {self.cache_file}")
-            logging.info(f"   Embeddings guardados: {valid_count} válidos, {invalid_count} inválidos o nulos")
+            logging.info(f"✅ Caché guardado: {valid_count} embeddings válidos, {invalid_count} inválidos")
+            
         except Exception as e:
             logging.error(f"Error al guardar el caché de embeddings: {e}")
-            # Intentar guardar un archivo de emergencia para recuperar al menos los contenidos
             try:
                 emergency_file = self.cache_dir / f"{self.platform}_embeddings_emergency.json"
-                emergency_cache = {}
-                
-                for file_path, (content, _) in embeddings_cache.items():
-                    # Guardar solo los contenidos sin embeddings
-                    emergency_cache[file_path] = (content, None)
-                
+                emergency_cache = {k: (v[0] if isinstance(v, (tuple, list)) and len(v) > 0 else "", None) 
+                                 for k, v in embeddings_cache.items()}
                 with open(emergency_file, 'w') as f:
                     json.dump(emergency_cache, f)
-                
-                logging.info(f"✅ Caché de emergencia guardado en {emergency_file} (sin embeddings)")
+                logging.info(f"✅ Caché de emergencia guardado en {emergency_file}")
             except Exception as e2:
                 logging.error(f"Error al guardar el caché de emergencia: {e2}")
                 
@@ -169,6 +149,122 @@ class EmbeddingsCacheManager:
         except Exception as e:
             logging.error(f"Error al eliminar el caché de embeddings: {e}")
             
+    def repair_invalid_embeddings(self) -> bool:
+        """Busca y repara especificamente valores escalares en el caché de embeddings.
+        
+        Returns:
+            bool: True si se realizaron reparaciones, False si no
+        """
+        if not self.cache_file.exists():
+            logging.info(f"No hay caché para reparar: {self.cache_file}")
+            return False
+        
+        try:
+            # Cargar el caché actual
+            with open(self.cache_file, 'r') as f:
+                cache_data = json.load(f)
+                
+            if not isinstance(cache_data, dict):
+                logging.error(f"⚠️ El caché no es un diccionario. No se puede reparar.")
+                return False
+                
+            # Hacer una copia para modificar
+            fixed_cache = {}
+            scalar_count = 0
+            other_invalid_count = 0
+            valid_count = 0
+            
+            # Revisar cada entrada buscando escalares
+            for file_path, data_tuple in cache_data.items():
+                if not isinstance(file_path, str):
+                    other_invalid_count += 1
+                    continue  # Ignorar entradas con claves no válidas
+                
+                # Verificar si es una tupla/lista válida
+                if not isinstance(data_tuple, (tuple, list)):
+                    logging.warning(f"⚠️ Entrada inválida para {file_path}: {type(data_tuple)}")
+                    # Si es un string, asumir que es contenido
+                    if isinstance(data_tuple, str):
+                        fixed_cache[file_path] = (data_tuple, None)
+                    else:
+                        fixed_cache[file_path] = ("", None)
+                    other_invalid_count += 1
+                    continue
+                    
+                # Verificar longitud
+                if len(data_tuple) != 2:
+                    logging.warning(f"⚠️ Formato inválido para {file_path}: {len(data_tuple)} elementos")
+                    # Intentar rescatar el primer elemento si es string
+                    if len(data_tuple) > 0 and isinstance(data_tuple[0], str):
+                        fixed_cache[file_path] = (data_tuple[0], None)
+                    else:
+                        fixed_cache[file_path] = ("", None)
+                    other_invalid_count += 1
+                    continue
+                
+                # Extraer valores
+                content, embedding = data_tuple
+                
+                # Verificar que el contenido sea un string
+                if not isinstance(content, str):
+                    content = str(content) if content is not None else ""
+                    logging.warning(f"⚠️ Contenido no string para {file_path}, convertido a: '{content}'")
+                
+                # CASO CRÍTICO: detectar valores escalares (int o float)
+                if isinstance(embedding, (int, float)):
+                    logging.error(f"⚠️ ¡ENCONTRADO! Embedding escalar ({type(embedding)}) en {file_path}: {embedding}")
+                    # Reemplazar con None para regenerar
+                    fixed_cache[file_path] = (content, None)
+                    scalar_count += 1
+                    continue
+                
+                # Verificar otros casos inválidos
+                if embedding is None:
+                    # Mantener como None para regenerar
+                    fixed_cache[file_path] = (content, None)
+                    other_invalid_count += 1
+                elif not isinstance(embedding, list):
+                    logging.warning(f"⚠️ Embedding de tipo inválido en {file_path}: {type(embedding)}")
+                    fixed_cache[file_path] = (content, None)
+                    other_invalid_count += 1
+                else:
+                    # Verificar que la lista contenga números
+                    if all(isinstance(x, (int, float)) for x in embedding):
+                        # Parece un embedding válido
+                        fixed_cache[file_path] = (content, embedding)
+                        valid_count += 1
+                    else:
+                        logging.warning(f"⚠️ Embedding con elementos no numéricos en {file_path}")
+                        fixed_cache[file_path] = (content, None)
+                        other_invalid_count += 1
+            
+            # Si no se encontraron problemas, no hay que guardar
+            if scalar_count == 0 and other_invalid_count == 0:
+                logging.info("✅ No se encontraron valores escalares ni otros problemas en el caché.")
+                return False
+                
+            # Guardar caché reparado
+            # Primero hacer backup
+            backup_file = self.cache_dir / f"{self.platform}_embeddings_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            try:
+                shutil.copy2(self.cache_file, backup_file)
+                logging.info(f"Backup del caché original guardado en {backup_file}")
+            except Exception as e:
+                logging.warning(f"No se pudo crear backup: {e}")
+            
+            # Guardar caché reparado
+            with open(self.cache_file, 'w') as f:
+                json.dump(fixed_cache, f)
+                
+            logging.info(f"✅ Caché reparado guardado en {self.cache_file}")
+            logging.info(f"   Reparados: {scalar_count} escalares, {other_invalid_count} otros problemas, {valid_count} entradas válidas")
+            
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error al reparar el caché: {e}")
+            return False
+            
     def verify_and_repair_cache(self) -> None:
         """Verifica el estado del caché de embeddings y lo repara si es necesario."""
         backup_file = self.cache_dir / f"{self.platform}_embeddings_backup.json"
@@ -176,6 +272,12 @@ class EmbeddingsCacheManager:
         if not self.cache_file.exists():
             logging.info(f"No hay caché para verificar: {self.cache_file}")
             return
+        
+        # Primero intentar reparar valores escalares y otros problemas críticos
+        if self.repair_invalid_embeddings():
+            logging.info("✅ Reparación de valores escalares y otros problemas completada.")
+        else:
+            logging.info("✅ No se encontraron valores escalares ni otros problemas críticos.")
             
         try:
             # Intentar cargar el caché para verificarlo
