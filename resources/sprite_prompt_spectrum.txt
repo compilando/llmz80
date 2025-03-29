@@ -1,0 +1,21 @@
+Task: Generate a pixel art sprite in text format.
+
+Detailed Instructions:
+
+    Content: The sprite must represent: {prompt}.
+    Output Format: A image.
+    Style and Constraints:
+        ZX Spectrum inspired style (simple, iconic).
+        Strictly monochrome
+        Important: No borders
+        No additional lines, with a completely white background.
+        Sharp, blocky pixels.
+        Absolutely NO text
+        Absolutely NO anti-aliasing, NO shades of gray, NO intermediate characters.
+        Clear and recognizable silhouette. No rulers, no elements extern to the requested image.
+        Simple design, like an icon or 8-bit retro game asset.
+        IMPORTANT: NO border, NO outline, NO outer stroke around the main figure (the figure is defined solely by the '0's against the '1's background).
+
+Expected Output: A image block with {height} rows and {width} columns, representing the requested sprite. WIll be a monochrome image in order to facilitated posterior conversion to '0's and '1's. Verify the dimensions before finishing.
+
+Create a 1-bit pixel art sprite of {prompt}, {width}x{height} pixels, ZX Spectrum style, strictly monochrome (black and white), blocky, sharp pixels, no anti-aliasing, no grays, clear silhouette, simple design, 8-bit retro game asset, no border, no outline, no stroke, pure white background (RGB 255,255,255), black foreground, high contrast between background and foreground 

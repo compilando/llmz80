@@ -1,0 +1,19 @@
+Generate a pixel art sprite image for Amstrad CPC Mode 2.
+
+Content: {prompt}
+Dimensions: {width}x{height} pixels (high resolution aspect for 8-bit)
+Output Format: PNG image (monochrome)
+
+Style and Constraints:
+- Amstrad CPC Mode 2 style (high resolution monochrome).
+- Strictly monochrome (2 colors, e.g., black figure on white background, or specify foreground/background colors).
+- Sharp, blocky pixels. High contrast is essential.
+- Absolutely NO anti-aliasing, NO shades of gray, NO intermediate colors.
+- Clear and recognizable silhouette.
+- Resembles a detailed 8-bit monochrome game asset.
+- Background: Solid contrasting color (e.g., pure white background RGB 255,255,255 if figure is black).
+- IMPORTANT: NO border, NO outline, NO outer stroke around the main figure unless specifically part of the {prompt} design.
+- NO text, NO letters, NO signatures, NO watermarks, NO rulers.
+
+Example Keywords: 2-color pixel art, monochrome pixel art, Amstrad CPC Mode 2 graphics, high resolution 8-bit, retro game sprite, {prompt}, {width}x{height}, black and white, high contrast, sharp pixels, blocky.
+Negative Keywords: photorealistic, 3D render, smooth shading, gradients, grayscale (allow only pure black/white), text, signature, blurry, color, anti-aliasing, multiple colors.

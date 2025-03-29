@@ -1,0 +1,9 @@
+{
+  "platform": "amstrad_cpc",
+  "mode": "mode0",
+  "width": 16,
+  "height": 16,
+  "timestamp": "2025-03-29T18:00:29.313214",
+  "prompt": "shapiens software",
+  "negative_prompt": ""
+}

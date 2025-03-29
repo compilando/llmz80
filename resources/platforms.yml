@@ -1,0 +1,24 @@
+spectrum:
+  name: ZX Spectrum
+  modes:
+    - default
+  colors: 2 # Black and white
+  max_width: 256
+  max_height: 192
+  default_width: 16
+  default_height: 16
+
+amstrad_cpc:
+  name: Amstrad CPC
+  modes:
+    - mode0
+    - mode1
+    - mode2
+  colors:
+    mode0: 16 # 4 colors
+    mode1: 4 # 4 colors
+    mode2: 2 # 2 colors
+  max_width: 640
+  max_height: 400
+  default_width: 16
+  default_height: 16
