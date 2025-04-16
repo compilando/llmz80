@@ -247,23 +247,23 @@ run_emulator() {
     esac
 }
 
-# Función para mostrar el menú interactivo
-show_menu() {
+# Function to display the main menu
+display_menu() {
     clear
-    echo -e "${BLUE}╔════════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║${NC}                                                                            ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}  ${GREEN}AI (LLM) ZX Spectrum Program Builder${NC}                                      ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}                                                                            ${BLUE}║${NC}"
-    echo -e "${BLUE}╠════════════════════════════════════════════════════════════════════════════╣${NC}"
-    echo -e "${BLUE}║${NC}                                                                            ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}  ${GREEN}1)${NC} ✨ Generate program with Prompt                                        ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}  ${GREEN}2)${NC} 📋 List available examples                                             ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}  ${GREEN}3)${NC} 🚀 Compile and run an example                                          ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}  ${GREEN}4)${NC} 👋 Exit                                                                ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}                                                                            ${BLUE}║${NC}"
-    echo -e "${BLUE}╚════════════════════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    read -p "Select an option: " choice
+    echo "╔════════════════════════════════════════════════════════════════════════════╗"
+    echo "║                                                                            ║"
+    echo "║  AI (LLM) ZX Spectrum Program Builder                                      ║"
+    echo "║                                                                            ║"
+    echo "╠════════════════════════════════════════════════════════════════════════════╣"
+    echo "║                                                                            ║"
+    echo "║  1) ✨ Generate program with Prompt                                        ║"
+    echo "║  2) 📋 List available examples                                             ║"
+    echo "║  3) 🚀 Compile and run an example                                          ║"
+    echo "║  4) 🎨 Generate sprites with Prompt                                        ║"
+    echo "║  5) 📊 Populate Vector DB with Examples                                    ║"
+    echo "║  6) 👋 Exit                                                                ║"
+    echo "║                                                                            ║"
+    echo "╚════════════════════════════════════════════════════════════════════════════╝"
 }
 
 # Función para seleccionar ejemplo interactivamente
@@ -436,20 +436,29 @@ EOL
     return 0
 }
 
+# Function to populate vector database
+# Placeholder function - Will call the python script later
+populate_vector_db() {
+    echo "📊 Populating Vector DB for ZX Spectrum examples..."
+    # Corrected Python script name
+    if python llm_z80.py --populate-db --platform spectrum; then
+        echo "✅ Vector DB population process finished."
+    else
+        echo "❌ Error during Vector DB population."
+    fi
+    read -p "Press Enter to return to the main menu..."
+}
+
 # Procesar argumentos
 if [ $# -eq 0 ]; then
     while true; do
-        show_menu
+        display_menu
+        read -p "Select an option: " choice
+
         case $choice in
-            1)
-                generate_with_prompt
-                ;;
-            2)
-                list_examples
-                read -p "Press Enter to continue..."
-                ;;
-            3)
-                select_example
+            1) generate_with_prompt ;;
+            2) list_examples ;;
+            3) select_example
                 if [ -n "$EXAMPLE" ]; then
                     select_emulator
                     example_path="examples/spectrum"
@@ -532,13 +541,10 @@ EOL
                     fi
                 fi
                 ;;
-            4)
-                echo "Goodbye!"
-                exit 0
-                ;;
-            *)
-                echo -e "${RED}Invalid option${NC}"
-                ;;
+            4) generate_with_prompt ;;
+            5) populate_vector_db ;;
+            6) echo "👋 Exiting..."; exit 0 ;;
+            *) echo "❌ Invalid option. Please try again."; sleep 2 ;;
         esac
     done
 else
@@ -546,6 +552,7 @@ else
     NO_EMULATOR=false
     EMULATOR=$DEFAULT_EMULATOR
     DEBUG_MODE=false
+    POPULATE_DB=0
 
     for arg in "$@"; do
         case $arg in
@@ -572,6 +579,9 @@ else
             --help)
                 show_help
                 exit 0
+                ;;
+            --populate)
+                POPULATE_DB=1
                 ;;
             *)
                 echo -e "${RED}❌ Error: Unknown option: $arg${NC}"
@@ -670,5 +680,11 @@ EOL
             run_emulator "$tap_file" "$EMULATOR"
             exit 0
         fi
+    fi
+
+    # Si se especificó la opción para poblar la base de datos
+    if [ "$POPULATE_DB" -eq 1 ]; then
+        populate_vector_db
+        exit 0
     fi
 fi

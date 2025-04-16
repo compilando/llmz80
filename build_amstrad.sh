@@ -278,24 +278,23 @@ run_emulator() {
     esac
 }
 
-# Función para mostrar el menú interactivo
-show_menu() {
+# Function to display the main menu
+display_menu() {
     clear
-    echo -e "${BLUE}╔════════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║${NC}                                                                            ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}  ${GREEN}AI (LLM) Amstrad CPC Program Builder${NC}                                      ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}                                                                            ${BLUE}║${NC}"
-    echo -e "${BLUE}╠════════════════════════════════════════════════════════════════════════════╣${NC}"
-    echo -e "${BLUE}║${NC}                                                                            ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}  ${GREEN}1)${NC} ✨ Generate program with Prompt                                        ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}  ${GREEN}2)${NC} 📋 List available examples                                             ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}  ${GREEN}3)${NC} 🚀 Compile and run an example                                          ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}  ${GREEN}4)${NC} 🎨 Generate sprites with Prompt                                        ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}  ${GREEN}5)${NC} 👋 Exit                                                                ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}                                                                            ${BLUE}║${NC}"
-    echo -e "${BLUE}╚════════════════════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    read -p "Select an option: " choice
+    echo "╔════════════════════════════════════════════════════════════════════════════╗"
+    echo "║                                                                            ║"
+    echo "║  AI (LLM) Amstrad CPC Program Builder                                      ║"
+    echo "║                                                                            ║"
+    echo "╠════════════════════════════════════════════════════════════════════════════╣"
+    echo "║                                                                            ║"
+    echo "║  1) ✨ Generate program with Prompt                                        ║"
+    echo "║  2) 📋 List available examples                                             ║"
+    echo "║  3) 🚀 Compile and run an example                                          ║"
+    echo "║  4) 🎨 Generate sprites with Prompt                                        ║"
+    echo "║  5) 📊 Populate Vector DB with Examples                                    ║"
+    echo "║  6) 👋 Exit                                                                ║"
+    echo "║                                                                            ║"
+    echo "╚════════════════════════════════════════════════════════════════════════════╝"
 }
 
 # Función para seleccionar ejemplo interactivamente
@@ -651,10 +650,24 @@ generate_sprites() {
     return $result
 }
 
+# Function to populate vector database
+# Placeholder function - Will call the python script later
+populate_vector_db() {
+    echo "📊 Populating Vector DB for Amstrad CPC examples..."
+    # Corrected Python script name
+    if python llm_z80.py --populate-db --platform amstrad_cpc; then
+        echo "✅ Vector DB population process finished."
+    else
+        echo "❌ Error during Vector DB population."
+    fi
+    read -p "Press Enter to return to the main menu..."
+}
+
 # Procesar argumentos de línea de comandos
 execute_emulator=true
 specified_example=""
 specified_emulator=""
+POPULATE_DB=0
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -702,6 +715,9 @@ while [ "$#" -gt 0 ]; do
             show_help
             exit 0
             ;;
+        --populate)
+            POPULATE_DB=1
+            ;;
         *)
             echo -e "${RED}❌ Error: Unknown option: $1${NC}"
             show_help
@@ -729,36 +745,23 @@ fi
 # Si no se especificó ningún argumento, mostrar el menú interactivo
 if [ "$#" -eq 0 ]; then
     while true; do
-        show_menu
+        display_menu
+        read -p "Select an option: " choice
+
         case $choice in
-            1)
-                generate_with_prompt
-                ;;
-            2)
-                list_examples
-                read -p "Presiona Enter para continuar..." dummy
-                ;;
-            3)
-                select_example
-                if [ -n "$EXAMPLE" ]; then
-                    DSK_FILE=$(compile_example "$EXAMPLE")
-                    if [ $? -eq 0 ]; then
-                        select_emulator
-                        run_emulator "$DSK_FILE" "$EMULATOR"
-                    fi
-                fi
-                ;;
-            4)
-                generate_sprites
-                ;;
-            5)
-                echo -e "${GREEN}👋 ¡Hasta luego!${NC}"
-                exit 0
-                ;;
-            *)
-                echo -e "${RED}❌ Opción inválida${NC}"
-                sleep 1
-                ;;
+            1) generate_with_prompt ;;
+            2) list_examples ;;
+            3) compile_and_run_example ;;
+            4) generate_sprites ;;
+            5) populate_vector_db ;;
+            6) echo "👋 Exiting..."; exit 0 ;;
+            *) echo "❌ Invalid option. Please try again."; sleep 2 ;;
         esac
     done
+fi
+
+# Si se especificó la opción --populate, llamar directamente a la función
+if [[ "$POPULATE_DB" -eq 1 ]]; then
+    populate_vector_db
+    exit 0
 fi 

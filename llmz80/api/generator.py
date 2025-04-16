@@ -3,11 +3,13 @@ import os
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from openai import OpenAI
+import numpy as np
 
 from ..core.embeddings import EmbeddingsManager
 from ..core.cache_manager import EmbeddingsCacheManager
 from ..core.examples_loader import ExamplesLoader
 from ..utils.helpers import clean_api_response, get_output_paths
+from vector_db import get_qdrant_client, search_similar
 
 class LLMZ80Generator:
     """Generador de código Z80 utilizando LLMs."""
@@ -150,7 +152,6 @@ class LLMZ80Generator:
                 
                 if isinstance(large_embedding, np.ndarray) and large_embedding.size > 0 and not np.all(large_embedding == 0):
                     logging.info(f"✅ Embedding generado correctamente con método para archivos grandes en {elapsed:.2f} segundos")
-                    import numpy as np
                     from numpy.linalg import norm
                     logging.info(f"   Dimensiones: {large_embedding.shape}, Norma: {norm(large_embedding):.4f}")
                 else:
@@ -313,34 +314,77 @@ Prioritize clarity, efficiency for the Z80, static memory management, and correc
         """
         logging.info(f"🤖 Generando código para: '{user_request[:100]}...'")
 
-        # Obtener ejemplos según el modo de operación (con o sin embeddings)
+        relevant_examples_content = []
+        
         if self.use_embeddings:
-            # Modo con embeddings (búsqueda semántica)
+            logging.info("🔍 Buscando ejemplos relevantes en la base de datos vectorial...")
             try:
-                # Cargar ejemplos de código si aún no se han cargado
-                if not hasattr(self.examples_loader, 'embeddings_cache') or not self.examples_loader.embeddings_cache:
-                    self.examples_loader.load_code_examples()
-                
-                # Obtener ejemplos relevantes para la solicitud del usuario
-                relevant_examples = self.examples_loader.get_relevant_examples(user_request)
-                logging.info(f"Usando búsqueda semántica con embeddings para seleccionar ejemplos.")
-                
+                # 1. Obtener cliente Qdrant
+                qdrant_client = get_qdrant_client()
+                if not qdrant_client:
+                    raise ConnectionError("No se pudo conectar a Qdrant.")
+
+                # 2. Generar embedding para el prompt del usuario
+                prompt_embedding = self.embedding_manager.get_embedding(user_request)
+                if prompt_embedding is None or not isinstance(prompt_embedding, np.ndarray) or prompt_embedding.size == 0:
+                     raise ValueError("No se pudo generar un embedding válido para el prompt.")
+
+                # 3. Buscar en Qdrant
+                search_results = search_similar(
+                    client=qdrant_client,
+                    platform=self.platform,
+                    vector=prompt_embedding.tolist(), # Qdrant espera una lista
+                    limit=self.max_examples
+                )
+
+                # 4. Cargar contenido de los archivos encontrados
+                if search_results:
+                    logging.info(f"✅ Se encontraron {len(search_results)} ejemplos relevantes en Qdrant.")
+                    examples_dir = Path(self.global_vars['example_dir_template'].format(platform=self.platform))
+                    loaded_paths = set() # Para evitar cargar el mismo archivo múltiples veces si tiene varios chunks
+                    
+                    for payload, score in search_results:
+                        relative_path_str = payload.get("file_path")
+                        if relative_path_str and relative_path_str not in loaded_paths:
+                            file_path = examples_dir / relative_path_str
+                            if file_path.exists():
+                                try:
+                                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                        content = f.read()
+                                        # Truncar si es necesario (usando la lógica existente si aplica)
+                                        if len(content) > self.global_vars['max_example_size']:
+                                            content = content[:self.global_vars['max_example_size']]
+                                            logging.debug(f"Truncando ejemplo de Qdrant: {relative_path_str}")
+                                            
+                                        relevant_examples_content.append({
+                                            'path': relative_path_str,
+                                            'content': content,
+                                            'score': score # Guardar score por si es útil
+                                        })
+                                        loaded_paths.add(relative_path_str)
+                                except Exception as read_exc:
+                                    logging.warning(f"⚠️ Error leyendo archivo de ejemplo {file_path} desde Qdrant: {read_exc}")
+                            else:
+                                logging.warning(f"⚠️ Archivo de ejemplo referenciado en Qdrant no encontrado: {file_path}")
+                else:
+                    logging.warning("⚠️ No se encontraron ejemplos relevantes en Qdrant.")
+
             except Exception as e:
-                import traceback
-                print(traceback.format_exc())
-                
-                logging.warning("Fallback a modo sin embeddings debido a error.")
-                # Si hay error, fallback a modo sin embeddings
+                logging.error(f"❌ Error durante la búsqueda en Qdrant: {e}")
+                logging.warning("⬇️ Recurriendo a la carga básica de ejemplos (sin búsqueda semántica).")
+                # Fallback: Cargar ejemplos básicos si falla Qdrant
                 all_examples = self.examples_loader.load_code_examples_basic()
-                relevant_examples = all_examples[:self.max_examples]
-        else:
-            # Modo sin embeddings (más simple y directo)
-            logging.info(f"Usando selección básica de ejemplos (sin búsqueda semántica).")
-            all_examples = self.examples_loader.load_code_examples_basic()
-            relevant_examples = all_examples[:self.max_examples]
+                relevant_examples_content = all_examples[:self.max_examples]
+        
+        # Si no se usan embeddings o si Qdrant falló y no se cargaron ejemplos en el fallback
+        if not self.use_embeddings or not relevant_examples_content:
+            if not relevant_examples_content: # Asegurar que cargamos algo si Qdrant falló
+                 logging.info(f"⚙️ Usando selección básica de ejemplos (sin búsqueda semántica).")
+                 all_examples = self.examples_loader.load_code_examples_basic()
+                 relevant_examples_content = all_examples[:self.max_examples]
         
         # Construir el prompt del sistema con los ejemplos seleccionados
-        system_prompt = self._build_system_prompt(relevant_examples)
+        system_prompt = self._build_system_prompt(relevant_examples_content)
         user_prompt = self._build_user_prompt(user_request)
 
         # Log prompts for debugging (optional, consider security/privacy)

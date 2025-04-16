@@ -4,3 +4,6 @@ Pillow>=9.0.0
 numpy>=1.21.0
 PyYAML>=6.0.0
 requests>=2.26.0
+qdrant-client==1.13.3
+
+termcolor==3.0.1

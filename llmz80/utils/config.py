@@ -13,6 +13,9 @@ DEFAULT_MAX_TOKENS = 4096
 DEFAULT_MAX_EXAMPLES = 10
 DEFAULT_LOG_LEVEL = "INFO"
 
+# Obtener logger para este módulo
+logger = logging.getLogger(__name__)
+
 def load_config(config_path: str) -> Dict[str, Any]:
     """Carga la configuración desde un archivo YAML.
     
@@ -25,13 +28,13 @@ def load_config(config_path: str) -> Dict[str, Any]:
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             config_data = yaml.safe_load(f)
-            print(f"✅ Configuración cargada correctamente desde {config_path}")
+            logger.info(f"Configuración cargada correctamente desde {config_path}")
             return config_data if config_data else {}
     except FileNotFoundError:
-        print(f"⚠️ Archivo de configuración {config_path} no encontrado. Usando valores por defecto.")
+        logger.warning(f"Archivo de configuración {config_path} no encontrado. Usando valores por defecto.")
         return {}
     except Exception as e:
-        print(f"❌ Error al cargar la configuración desde {config_path}: {e}")
+        logger.error(f"Error al cargar la configuración desde {config_path}: {e}")
         raise
 
 def load_api_key() -> str:
