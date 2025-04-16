@@ -1,3 +1,4 @@
+// Description: Defines a constant 4x16 tilemap layer for the Amstrad CPC, where each tile is represented by an 8-bit value in a 64-byte array.
 //
 // File img/frame_leftright.tmx converted to csv using cpct_tmx2data [Tue Mar 11 12:30:59 2025]
 //   * Visible Layers:  1

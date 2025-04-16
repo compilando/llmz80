@@ -1,3 +1,4 @@
+// Description: Defines a color palette and data arrays for rendering interlaced frames of a UFO sprite on the Amstrad CPC platform.
 #include "ufo.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Palette uses hardware values.

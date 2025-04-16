@@ -1,3 +1,4 @@
+// Description: Generates a simple melody on the ZX Spectrum by playing a sequence of musical notes with specified frequencies and durations using the beeper.
 #include <arch/zx.h>
 #include <sound.h>
 #include <stdint.h>

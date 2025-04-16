@@ -1,3 +1,4 @@
+// Description: Defines color palettes and pixel data for rendering a CPCtelera banner and logo on an Amstrad CPC in various graphics modes.
 //-----------------------------LICENSE NOTICE------------------------------------
 //  This file is part of CPCtelera: An Amstrad CPC Game Engine 
 //  Copyright (C) 2015 ronaldo / Fremos / Cheesetea / ByteRealms (@FranGallegoBR)

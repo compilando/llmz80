@@ -1,3 +1,4 @@
+// Description: Defines a constant array of unsigned characters representing the pixel data for a sprite on the Amstrad CPC platform.
 // File src/sprite.bin converted using cpct_bin2c
 
 #include <cpctelera.h>

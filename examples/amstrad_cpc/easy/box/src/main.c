@@ -1,3 +1,4 @@
+// Description: Draws a series of patterned and solid color boxes on the screen in Mode 1 using the CPCtelera library for the Amstrad CPC.
 //-----------------------------LICENSE NOTICE------------------------------------
 //  This file is part of CPCtelera: An Amstrad CPC Game Engine
 //  Copyright (C) 2015 ronaldo / Fremos / Cheesetea / ByteRealms (@FranGallegoBR)

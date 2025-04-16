@@ -1,3 +1,4 @@
+// Description: Defines a color palette and a sprite graphic for a 46x54 pixel image using 8 colors on the Amstrad CPC platform.
 #include "spirit.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Palette uses hardware values.

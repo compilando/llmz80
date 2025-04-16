@@ -1,3 +1,4 @@
+// Description: Calculates and displays the product, larger, and smaller of two user-input numbers between 0 and 99 on a ZX Spectrum, with a flashing border effect until the space key is pressed to exit.
 #include <arch/zx.h> // Funciones específicas del Spectrum
 #include <stdio.h>
 #include <stdint.h>

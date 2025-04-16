@@ -1,3 +1,4 @@
+// Description: Defines a constant array `g_scifi_bg_0` containing pixel data for an 80x128 tile background image, intended for use on the Amstrad CPC platform.
 #include "scifi_bg.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Tile g_scifi_bg_0: 80x128 pixels, 40x128 bytes.

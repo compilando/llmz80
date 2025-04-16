@@ -1,3 +1,4 @@
+// Description: Allows a user to move a cursor around the ZX Spectrum screen using the QAOP keys, drawing a pixel at the cursor's position.
 #include <arch/zx.h>
 #include <input.h>
 #include <stdio.h>

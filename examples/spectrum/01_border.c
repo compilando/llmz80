@@ -1,3 +1,4 @@
+// Description: Changes the ZX Spectrum screen border color to red and keeps it that way indefinitely.
 #include <arch/zx.h>
 
 /*

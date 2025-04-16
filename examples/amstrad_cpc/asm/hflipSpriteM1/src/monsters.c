@@ -1,3 +1,4 @@
+// Description: Defines two 20x24 pixel sprite tiles and a 4-color palette for rendering monster graphics on the Amstrad CPC.
 #include "monsters.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Palette uses hardware values.

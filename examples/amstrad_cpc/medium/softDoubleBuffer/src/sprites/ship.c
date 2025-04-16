@@ -1,3 +1,4 @@
+// Description: Defines a 20x10 pixel ship sprite with interlaced mask and data bytes for rendering on the Amstrad CPC platform.
 #include "ship.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Tile g_ship: 20x10 pixels, 5x10x2 bytes.

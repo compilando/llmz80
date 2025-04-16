@@ -1,3 +1,4 @@
+// Description: Defines a constant array containing pixel data for a 62x54 cloud image, formatted for display on an Amstrad CPC.
 #include "cloud.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Tile g_cloud: 62x54 pixels, 31x54 bytes.

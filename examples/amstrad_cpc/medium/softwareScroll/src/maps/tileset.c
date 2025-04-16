@@ -1,3 +1,4 @@
+// Description: Defines a color palette and a collection of 8x8 pixel tiles for graphical rendering on the Amstrad CPC platform.
 #include "tileset.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Palette uses hardware values.

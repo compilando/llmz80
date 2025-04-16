@@ -269,8 +269,19 @@ Prioritize clarity, efficiency for the Z80, static memory management, and correc
 
         # Añadir ejemplos al prompt
         for i, example in enumerate(examples_to_use):
-            examples_prompt_part += f"\nExample {i+1} ('{example['path']}'):\n"
-            examples_prompt_part += f"```c\n{example['content']}\n```\n"
+            # Recuperar path, contenido (source_code) y la descripción
+            path = example.get('path', 'unknown_path')
+            content = example.get('content', '#error: content not found') # 'content' ahora tiene el source_code
+            description = example.get('description', '') # Obtener la descripción del payload
+            score = example.get('score', 0.0) # Opcional: mostrar score
+
+            # Añadir score al encabezado del ejemplo
+            examples_prompt_part += f"\n--- Example {i+1} (Retrieved from: '{path}' - Relevance: {score:.4f}) ---"
+            # Añadir la descripción si existe
+            if description:
+                examples_prompt_part += f"\nDescription: {description}\n"
+            # Añadir el código fuente
+            examples_prompt_part += f"\nCode:\n```c\n{content}\n```\n"
         
         # 4. Documentación de Errores
         error_docs = self._load_error_documentation()
@@ -291,17 +302,19 @@ Prioritize clarity, efficiency for the Z80, static memory management, and correc
         return full_system_prompt
         
     def _build_user_prompt(self, user_request: str) -> str:
-        """Construye el prompt del usuario.
+        """Builds the user prompt.
         
         Args:
-            user_request: Solicitud del usuario
+            user_request: The user's request
             
         Returns:
-            Prompt formateado para el usuario
+            Formatted user prompt string
         """
-        # Mantenerlo simple, ya que la mayor parte del contexto está en el prompt del sistema
         platform_name = self.platform.replace('_', ' ')
-        return f"Generate {platform_name} C code according to the system instructions that does the following: {user_request}"
+        # Keep it direct and clear
+        return f"""Generate {platform_name} C code according to the system instructions that fulfills the following request: {user_request}
+
+Please provide specific details about desired behaviors, controls, graphics mode (if applicable), and any other relevant technical requirements."""
         
     def generate_c_code(self, user_request: str) -> str:
         """Genera código C utilizando la API de OpenAI basado en la solicitud del usuario y el contexto.

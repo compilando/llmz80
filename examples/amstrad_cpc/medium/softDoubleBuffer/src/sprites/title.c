@@ -1,3 +1,4 @@
+// Description: Defines a constant array `g_title` containing pixel data for an 80x16 image tile, likely used for displaying a title graphic on an Amstrad CPC.
 #include "title.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Tile g_title: 80x16 pixels, 20x16 bytes.

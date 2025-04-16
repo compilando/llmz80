@@ -1,3 +1,4 @@
+// Description: Defines a color palette and pixel data for rendering an 8x14 rocket sprite on the Amstrad CPC platform.
 #include "rocket.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Palette uses hardware values.

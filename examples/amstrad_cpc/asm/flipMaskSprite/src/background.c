@@ -1,3 +1,4 @@
+// Description: Defines a color palette and initializes an array of 16 background tiles, each represented by pixel data arrays, for use in an Amstrad CPC application.
 #include "background.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Palette uses hardware values.

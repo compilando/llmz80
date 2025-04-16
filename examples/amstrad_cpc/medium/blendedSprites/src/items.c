@@ -1,3 +1,4 @@
+// Description: Defines four 8x8 pixel graphical tiles as arrays of bytes for use on the Amstrad CPC platform.
 #include "items.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Tile g_items_0: 8x8 pixels, 4x8 bytes.

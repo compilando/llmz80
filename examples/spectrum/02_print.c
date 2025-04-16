@@ -1,3 +1,4 @@
+// Description: Clears the screen with a black background and white text, then displays a series of messages on a ZX Spectrum, keeping them visible indefinitely.
 #include <arch/zx.h>
 #include <stdio.h>
 

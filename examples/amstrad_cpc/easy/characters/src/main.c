@@ -1,3 +1,4 @@
+// Description: Displays all 256 characters repeatedly on an Amstrad CPC screen in different video modes and color combinations, cycling through foreground and background colors.
 //-----------------------------LICENSE NOTICE------------------------------------
 //  This file is part of CPCtelera: An Amstrad CPC Game Engine
 //  Copyright (C) 2014-2015 ronaldo / Fremos / Cheesetea / ByteRealms (@FranGallegoBR)

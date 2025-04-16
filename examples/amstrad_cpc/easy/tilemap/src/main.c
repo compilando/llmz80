@@ -1,3 +1,4 @@
+// Description: Draws a tile-based court map on the Amstrad CPC screen using CPCtelera, initializing the system and configuring video settings before entering an infinite loop.
 //-----------------------------LICENSE NOTICE------------------------------------
 //  This file is part of CPCtelera: An Amstrad CPC Game Engine
 //  Copyright (C) 2018 ronaldo / Fremos / Cheesetea / ByteRealms (@FranGallegoBR)

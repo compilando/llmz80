@@ -1,3 +1,4 @@
+// Description: Defines a 4x6 pixel graphical tile pattern named `g_star_trans` using an array of bytes for display on the Amstrad CPC.
 #include "star_trans.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Tile g_star_trans: 4x6 pixels, 2x6 bytes.

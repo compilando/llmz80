@@ -1,3 +1,4 @@
+// Description: Generates and displays a series of pseudo-random numbers on an Amstrad CPC, using keypress timing to seed the random number generator.
 //-----------------------------LICENSE NOTICE------------------------------------
 //  This file is part of CPCtelera: An Amstrad CPC Game Engine
 //  Copyright (C) 2016 ronaldo / Fremos / Cheesetea / ByteRealms (@FranGallegoBR)

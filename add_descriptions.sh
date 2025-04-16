@@ -13,7 +13,7 @@ VENV_PATH="venv"          # Ruta al entorno virtual
 EXAMPLE_BASE_DIR="examples"
 PLATFORMS=("spectrum" "amstrad_cpc")
 DESCRIPTION_PREFIX="// Description:"
-SKIP_EXISTING=true # Poner a false para regenerar descripciones existentes
+SKIP_EXISTING=false # Poner a false para regenerar descripciones existentes
 
 # --- Funciones ---
 log_info() {
@@ -76,8 +76,8 @@ for platform in "${PLATFORMS[@]}"; do
         continue
     fi
 
-    # Buscar archivos .c excluyendo directorios 'common' y 'build'
-    find "$platform_dir" -name "*.c" -type f -not \( -path "*/common/*" -o -path "*/build/*" \) | while read -r c_file; do
+    # Buscar archivos .c usando process substitution para evitar subshell
+    while IFS= read -r c_file; do
         relative_path="${c_file#$EXAMPLE_BASE_DIR/}"
         log_info "  Verificando archivo: $relative_path"
 
@@ -177,7 +177,8 @@ for platform in "${PLATFORMS[@]}"; do
         log_success "    -> Descripción añadida/actualizada correctamente."
         processed_count=$((processed_count + 1))
 
-    done # Fin del bucle while read
+    done < <(find "$platform_dir" -name "*.c" -type f -not \( -path "*/common/*" -o -path "*/build/*" \))
+    # --- Fin del bucle while usando process substitution ---
 
 done # Fin del bucle for platform
 

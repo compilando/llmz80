@@ -1,3 +1,4 @@
+// Description: Initializes the Amstrad CPC by disabling firmware, setting video mode 0, configuring character drawing colors, and then enters an infinite loop for further execution.
 #include <cpctelera.h>
 
 //

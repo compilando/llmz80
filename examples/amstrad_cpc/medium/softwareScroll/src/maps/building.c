@@ -1,3 +1,4 @@
+// Description: Defines a constant array `g_building` that represents a 32x32 tilemap for rendering a building graphic on an Amstrad CPC using the cpctelera library.
 //
 // File img/building.tmx converted to csv using cpct_tmx2data [Tue Mar 11 12:30:59 2025]
 //   * Visible Layers:  1

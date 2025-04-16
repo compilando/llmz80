@@ -1,3 +1,4 @@
+// Description: Draws basic graphics on the ZX Spectrum screen using Bresenham's algorithm for lines and provides functions to manipulate drawing positions and render shapes like rectangles and diagonal lines.
 #include <arch/zx.h>
 #include <stdio.h>
 #include <stdint.h>

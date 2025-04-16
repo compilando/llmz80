@@ -1,3 +1,4 @@
+// Description: Moves a sprite on the Amstrad CPC screen based on keyboard input, ensuring it stays within the screen boundaries.
 //-----------------------------LICENSE NOTICE------------------------------------
 //  This file is part of CPCtelera: An Amstrad CPC Game Engine 
 //  Copyright (C) 2014-2015 ronaldo / Fremos / Cheesetea / ByteRealms (@FranGallegoBR)

@@ -1,3 +1,4 @@
+// Description: Defines a color palette and a collection of 15 graphical tiles, each represented as a byte array, for use in rendering graphics on the Amstrad CPC platform.
 #include "back.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Palette uses hardware values.

@@ -1,3 +1,4 @@
+// Description: Displays a table on the Amstrad CPC screen comparing firmware color values to hardware color values using the CPCtelera library.
 //-----------------------------LICENSE NOTICE------------------------------------
 //  This file is part of CPCtelera: An Amstrad CPC Game Engine
 //  Copyright (C) 2015 ronaldo / Fremos / Cheesetea / ByteRealms (@FranGallegoBR)

@@ -1,3 +1,4 @@
+// Description: Defines a constant array containing the pixel data for a 42x81 sprite of Ryu, designed for rendering on the Amstrad CPC platform.
 #include "ryu.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Tile g_sprite_ryu: 42x81 pixels, 21x81 bytes.

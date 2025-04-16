@@ -1,3 +1,4 @@
+// Description: Defines a constant array `g_building_2` containing pixel data for a 14x103 tile graphic, representing a building, for use on the Amstrad CPC platform.
 #include "building_2.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Tile g_building_2: 14x103 pixels, 7x103 bytes.

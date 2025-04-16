@@ -1,3 +1,4 @@
+// Description: Detects keypresses on an Amstrad CPC and continuously displays their ASCII values on the screen in video mode 0.
 //-----------------------------LICENSE NOTICE------------------------------------
 //  This file is part of CPCtelera: An Amstrad CPC Game Engine 
 //  Copyright (C) 2023 ronaldo / Fremos / Cheesetea / ByteRealms (@FranGallegoBR)

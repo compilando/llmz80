@@ -1,3 +1,4 @@
+// Description: Defines a constant array representing a 21x4 tilemap layer with a specific pattern for graphical rendering on the Amstrad CPC platform.
 //
 // File img/frame_updown.tmx converted to csv using cpct_tmx2data [Tue Mar 11 12:30:59 2025]
 //   * Visible Layers:  1

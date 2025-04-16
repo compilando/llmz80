@@ -1,3 +1,4 @@
+// Description: Displays "Hello World!" and "Proyecto LLMZ80" on a ZX Spectrum screen with a white border and black background, maintaining the display indefinitely.
 #include <arch/zx.h>
 #include <stdio.h>
 #include <string.h>

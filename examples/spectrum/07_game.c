@@ -1,3 +1,4 @@
+// Description: Implements a number guessing game on the ZX Spectrum where the player has five attempts to guess a randomly chosen number between 1 and 20, with input debouncing and feedback after each guess.
 #include <arch/zx.h>
 #include <input.h>
 #include <stdlib.h>

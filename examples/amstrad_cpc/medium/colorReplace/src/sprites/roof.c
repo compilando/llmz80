@@ -1,3 +1,4 @@
+// Description: Defines a constant array `g_roof` containing pixel data for an 80x20 pixel tile image, intended for graphical use on the Amstrad CPC platform.
 #include "roof.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Tile g_roof: 80x20 pixels, 40x20 bytes.

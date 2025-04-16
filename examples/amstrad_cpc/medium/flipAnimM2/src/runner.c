@@ -1,3 +1,4 @@
+// Description: Defines three arrays containing pixel data for 80x94 tiles representing different frames of a runner animation on the Amstrad CPC platform.
 #include "runner.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Tile g_runner_0: 80x94 pixels, 10x94 bytes.

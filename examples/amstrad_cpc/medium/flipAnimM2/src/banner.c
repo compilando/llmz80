@@ -1,3 +1,4 @@
+// Description: Defines two arrays of unsigned 8-bit integers representing pixel data for two 320x52 pixel banner images on the Amstrad CPC platform.
 #include "banner.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Tile g_banner_0: 320x52 pixels, 40x52 bytes.

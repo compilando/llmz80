@@ -1,3 +1,4 @@
+// Description: Defines a constant array containing pixel data for a 20x34 balloon graphic, formatted for rendering on the Amstrad CPC.
 #include "balloon.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Tile g_balloon: 20x34 pixels, 10x34 bytes.

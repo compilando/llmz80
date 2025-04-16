@@ -1,3 +1,4 @@
+// Description: Defines a color palette and a large array of pixel data for rendering a 90x133 pixel image on the Amstrad CPC platform.
 #include "octopusjig.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Palette uses hardware values.

@@ -1,3 +1,4 @@
+// Description: Defines two 4x6 pixel fire animation tiles for the Amstrad CPC using hexadecimal byte arrays.
 #include "fire.h"
 // Data created with Img2CPC - (c) Retroworks - 2007-2017
 // Tile g_fire_0: 4x6 pixels, 1x6 bytes.

@@ -1,69 +1,48 @@
-# Recommendations for ZX Spectrum Development
+# Z88DK C Code Generation Guidelines for ZX Spectrum 48K
 
-<z80_programming>
-1. Always use uint8_t and uint16_t types for variables
-2. Avoid floating point operations
-3. Minimize stack usage
-4. Prefer simple loops for delays instead of complex functions
-5. Use Z88DK constants for colors (INK_*, PAPER_*)
-</z80_programming>
+## CRITICAL INSTRUCTIONS
+- Output ONLY the raw C source code. No introductory text, no explanations, no markdown fences (```), just the code itself.
+- Ensure the code is complete, directly compilable with 'zcc +zx', and functional on a ZX Spectrum 48K.
+- Adhere strictly to Z88DK's C dialect and library functions suitable for the Spectrum.
 
-<zx_spectrum_hardware>
-1. Video memory at 0x4000-0x5AFF
-2. Color attributes at 0x5800-0x5AFF
-3. Port 254 for border and speaker
-4. Screen refresh at 50Hz (PAL)
-5. Z80 CPU at 3.5MHz
-</zx_spectrum_hardware>
+## General Style and Best Practices
+- Use `uint8_t` and `uint16_t` for integer types (from `<stdint.h>` which is implicitly included).
+- Avoid floating-point math; use fixed-point if necessary.
+- Minimize stack usage, especially in interrupt routines. Declare large buffers/arrays globally or statically.
+- Use Z88DK constants for hardware access (e.g., `INK_BLACK`, `PAPER_WHITE`).
+- Prefer simple loops (`for(volatile uint16_t i=0; i<DELAY; ++i);`) for short delays instead of complex timer functions.
+- Comment your code clearly, especially complex logic or hardware interactions.
+- Always include `<spectrum.h>` for platform-specific functions and types.
+- Do NOT include `<stdio.h>` unless absolutely necessary for formatted output (rare on Spectrum).
 
-<keyboard_handling>
-1. Use in_key_pressed() for specific keys
-2. Use in_inkey() for character input
-3. Implement manual debounce (delay between readings)
-4. Remember last key to avoid repetitions
-5. BREAK = 12, ENTER = 13 in ASCII
-6. Never use:
-    #include <stdin.h>
-   Or:
-    #include <stdint.h>
-   Instead use this:
-   #include <stdio.h>
-</keyboard_handling>
+## Hardware Interaction
+- Video Memory (Pixels): Starts at 0x4000. Screen layout is non-linear.
+- Video Memory (Attributes): Starts at 0x5800 (1 byte per 8x8 cell: INK + PAPER + BRIGHT + FLASH).
+- Keyboard: Use `in_key_pressed(SCANCODE)` for specific keys or `in_inkey()` for ASCII character input. Implement debouncing if needed.
+- Beeper Sound: Use port 254, bit 4. Precise timing is needed for frequencies. Use `zx_beep()` for simple sounds.
+- Border Color: Use `zx_border(color)`. Useful for visual debugging.
 
-<graphics_best_practices>
-1. Use zx_cls() with combined parameters (PAPER_* | INK_*)
-2. Calculate screen offsets for plot() using shifts
-3. Avoid rewriting the entire screen each frame
-4. Use attributes for quick color changes
-5. Consider TV interlacing
-</graphics_best_practices>
+## Common Pitfalls & Warnings
+- Contended Memory: Accessing ULA memory (0x4000-0x7FFF) is slower when the ULA is drawing the screen. Be mindful in performance-critical loops.
+- Stack Overflow: Ensure the stack (typically grows down from top of RAM) doesn't collide with your code or data.
+- Infinite Loops: Ensure `while(1)` loops have exit conditions or handle interrupts/input correctly.
+- ROM Calls: Avoid calling ROM routines directly unless you know what you are doing; prefer Z88DK library functions.
 
-<sound_guidelines>
-1. Port 254 bit 4 for beeper
-2. Use precise delays for frequencies
-3. Avoid sound during critical operations
-4. Consider interrupt routines for music
-</sound_guidelines>
+## Optimization Tips
+- Use bit shifts (`<<`, `>>`) instead of multiplication/division by powers of 2.
+- Use bitwise operations (`&`, `|`, `^`) for masking and flags.
+- Precalculate values whenever possible.
+- Optimize critical loops (e.g., drawing routines) - unrolling might help sometimes.
 
-<optimization_tips>
-1. Avoid divisions and multiplications when possible
-2. Use bit shifts and masks
-3. Keep critical loops in a single memory page
-4. Precalculate values when possible
-5. Use global variables for frequently accessed data
-</optimization_tips>
+## Example API Usage Snippet (Plotting a Pixel)
+```c
+#include <spectrum.h>
+#include <stdint.h>
 
-<debugging_tips>
-1. Use border for visual debugging (zx_border)
-2. Implement frame counters
-3. Display values on screen in unused areas
-4. Use recognizable patterns to detect corruptions
-</debugging_tips>
+void plot_pixel(uint8_t x, uint8_t y) {
+  // Simple plot ignoring attributes
+  *zx_pxy2saddr(x, y) |= zx_px2bitmask(x);
+}
+```
 
-<memory_management>
-1. Code below 0x4000
-2. Avoid writing to ROM (0x0000-0x3FFF)
-3. Respect attributes area
-4. Use bank 5 for additional data
-5. Consider stack at the end of RAM
-</memory_management>
+Remember: Focus on generating functional, readable, and reasonably efficient C code specifically for the ZX Spectrum using Z88DK.

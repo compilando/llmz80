@@ -1,3 +1,4 @@
+// Description: Displays strings in various colors across different video modes on an Amstrad CPC, cycling through modes 0, 1, and 2 with delays for visual effect.
 //-----------------------------LICENSE NOTICE------------------------------------
 //  This file is part of CPCtelera: An Amstrad CPC Game Engine
 //  Copyright (C) 2015 ronaldo / Fremos / Cheesetea / ByteRealms (@FranGallegoBR)

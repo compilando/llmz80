@@ -1,3 +1,4 @@
+// Description: Alternately displays CPCtelera's logo and banner on an Amstrad CPC by switching graphics modes and palettes in an infinite loop.
 //-----------------------------LICENSE NOTICE------------------------------------
 //  This file is part of CPCtelera: An Amstrad CPC Game Engine
 //  Copyright (C) 2014-2015 ronaldo / Fremos / Cheesetea / ByteRealms (@FranGallegoBR)
