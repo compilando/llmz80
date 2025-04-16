@@ -1,9 +1,23 @@
 # Z88DK C Code Generation Guidelines for ZX Spectrum 48K
 
 ## CRITICAL INSTRUCTIONS
-- Output ONLY the raw C source code. No introductory text, no explanations, no markdown fences (```), just the code itself.
+- **ULTRA CRITICAL: Output ONLY the raw C source code.** Absolutely NO introductory text, NO explanations, NO comments *about* the code generation itself, NO markdown fences (like ```c ... ``` or ```). JUST THE C CODE.
 - Ensure the code is complete, directly compilable with 'zcc +zx', and functional on a ZX Spectrum 48K.
 - Adhere strictly to Z88DK's C dialect and library functions suitable for the Spectrum.
+
+## Basic Structure and Essential Includes
+- Every program needs a `main` function: `int main() { /* your code here */ return 0; }`
+- **Always include `<spectrum.h>`:** It contains most platform-specific functions.
+- Include `<stdio.h>` ONLY if you use `printf` or other standard I/O functions.
+- Include `<stdlib.h>` if you use functions like `rand()`.
+- The compiler often implicitly includes `<stdint.h>` for types like `uint8_t`.
+
+## Common Basic Functions (from `<spectrum.h>` and `<stdio.h>`)
+- `clg()`: Clears the main screen area (pixels and attributes).
+- `printf(const char *format, ...)`: Formatted output to the screen (requires `<stdio.h>`). Use sparingly.
+- `zx_border(uint8_t color)`: Sets the border color (0-7).
+- `zx_setcursorpos(uint8_t row, uint8_t col)`: Moves the print cursor (for `printf`).
+- `getchar()`: Waits for and reads a single key press (requires `<stdio.h>`).
 
 ## General Style and Best Practices
 - Use `uint8_t` and `uint16_t` for integer types (from `<stdint.h>` which is implicitly included).
@@ -12,8 +26,8 @@
 - Use Z88DK constants for hardware access (e.g., `INK_BLACK`, `PAPER_WHITE`).
 - Prefer simple loops (`for(volatile uint16_t i=0; i<DELAY; ++i);`) for short delays instead of complex timer functions.
 - Comment your code clearly, especially complex logic or hardware interactions.
-- Always include `<spectrum.h>` for platform-specific functions and types.
-- Do NOT include `<stdio.h>` unless absolutely necessary for formatted output (rare on Spectrum).
+- ~~Always include `<spectrum.h>` for platform-specific functions and types.~~ (Moved to Essential Includes)
+- ~~Do NOT include `<stdio.h>` unless absolutely necessary for formatted output (rare on Spectrum).~~ (Clarified in Essential Includes)
 
 ## Hardware Interaction
 - Video Memory (Pixels): Starts at 0x4000. Screen layout is non-linear.
@@ -45,4 +59,4 @@ void plot_pixel(uint8_t x, uint8_t y) {
 }
 ```
 
-Remember: Focus on generating functional, readable, and reasonably efficient C code specifically for the ZX Spectrum using Z88DK.
+Remember: Focus on generating functional, readable, and reasonably efficient C code specifically for the ZX Spectrum using Z88DK. **And AGAIN: ONLY output the raw C code.**

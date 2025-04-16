@@ -244,7 +244,11 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
 
     compiler_cmd = compiler_config['c_compiler']
     compiler_params = compiler_config.get('params', '').split() # Dividir params en lista
-    output_artifact_name = config.get('paths', {}).get(platform, {}).get('output_artifact', f'program_{platform}')
+    output_artifact_name = config.get('paths', {}).get(platform, {}).get('output_artifact', f'program_{platform}.tap')
+
+    # Asegurarse de que la salida es un .tap
+    if not str(output_artifact_name).lower().endswith('.tap'):
+        output_artifact_name = output_artifact_name.with_suffix('.tap')
 
     # Construir comando completo. Asumimos que el comando se ejecuta desde el directorio de salida.
     # Ejemplo para spectrum: zcc +zx -vn -O3 -clib=sdcc_iy main.c -o program_spectrum -create-app
@@ -257,9 +261,9 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
             compiler_cmd
         ] + compiler_params + [
             str(main_c_file.name), # main.c
-            "-o", output_artifact_name,
-            "-create-app" # Esto es específico de zcc, ¿sdcc?
-            # Añadir --subtype=tap para spectrum zcc? Depende.
+            "-o", str(output_artifact_name.name), # Nombre del archivo de salida .tap
+            "-create-app",
+            "--subtype=tap" # Generar un archivo TAP estándar
         ]
     elif compiler_cmd == "sdcc":
          # Comando específico para sdcc (más complejo, necesita linkear, etc.)
