@@ -116,38 +116,59 @@ def search_similar(client: QdrantClient, platform: str, vector: list[float], lim
 
 # Example Usage (for testing purposes)
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    logger.info("Testing vector_db module...")
+    # Configurar logging básico para ver la salida de este script
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+    
+    TARGET_PLATFORM = "amstrad_cpc" # Cambia a "spectrum" si quieres probar esa
+    
+    logger.info(f"--- Checking Qdrant Collection: {get_collection_name(TARGET_PLATFORM)} ---")
     
     qdrant = get_qdrant_client()
     
     if qdrant:
-        test_platform = "test_platform"
-        logger.info(f"Ensuring collection for '{test_platform}' exists...")
-        if ensure_collection_exists(qdrant, test_platform):
+        collection_name = get_collection_name(TARGET_PLATFORM)
+        try:
+            # 1. Obtener información de la colección
+            collection_info = qdrant.get_collection(collection_name=collection_name)
+            logger.info(f"Collection Info: {collection_info}")
             
-            # Test upsert
-            logger.info("Testing upsert...")
-            points_to_upsert = [
-                PointStruct(id=1, vector=[0.1] * OPENAI_EMBEDDING_DIM, payload={"file": "example1.asm", "chunk": 0}),
-                PointStruct(id=2, vector=[0.9] * OPENAI_EMBEDDING_DIM, payload={"file": "example2.c", "chunk": 0}),
-            ]
-            upsert_embeddings(qdrant, test_platform, points_to_upsert)
-            
-            # Test search
-            logger.info("Testing search...")
-            results = search_similar(qdrant, test_platform, vector=[0.15] * OPENAI_EMBEDDING_DIM, limit=1)
-            logger.info(f"Search results: {results}")
+            # 2. Contar puntos (si la info no lo incluye directamente)
+            # Usar count() que es más directo que scroll
+            count_result = qdrant.count(collection_name=collection_name, exact=True)
+            logger.info(f"Point Count: {count_result.count}")
 
-            # Clean up (optional)
-            # try:
-            #    logger.warning(f"Deleting test collection '{get_collection_name(test_platform)}'...")
-            #    qdrant.delete_collection(collection_name=get_collection_name(test_platform))
-            # except Exception as del_exc:
-            #    logger.error(f"Failed to delete test collection: {del_exc}")
-        else:
-            logger.error("Could not ensure test collection exists. Aborting tests.")
+            # 3. Recuperar un punto de ejemplo (si hay alguno)
+            if count_result.count > 0:
+                logger.info("Retrieving one sample point...")
+                # Usar scroll con límite 1 para obtener un punto
+                sample_points, _ = qdrant.scroll(
+                    collection_name=collection_name, 
+                    limit=1, 
+                    with_payload=True, 
+                    with_vectors=False # No necesitamos el vector aquí
+                )
+                if sample_points:
+                    logger.info(f"Sample Point Payload: {sample_points[0].payload}")
+                else:
+                    logger.warning("Count reported >0 but could not retrieve a sample point.")
+            else:
+                logger.info("Collection is empty, cannot retrieve sample point.")
+
+        except (UnexpectedResponse, ValueError) as e:
+            # Comprobar si es error "Not Found"
+            is_not_found_error = False
+            if isinstance(e, UnexpectedResponse) and e.status_code == 404:
+                is_not_found_error = True
+            elif isinstance(e, ValueError) and "not found" in str(e).lower():
+                 is_not_found_error = True
+                 
+            if is_not_found_error:
+                logger.error(f"Collection '{collection_name}' does NOT exist.")
+            else:
+                logger.error(f"Error accessing collection '{collection_name}': {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error accessing collection '{collection_name}': {e}")
     else:
-        logger.error("Could not connect to Qdrant. Aborting tests.")
+        logger.error("Could not connect to Qdrant. Cannot check collection.")
 
-    logger.info("Finished testing vector_db module.") 
+    logger.info("--- Check finished ---") 

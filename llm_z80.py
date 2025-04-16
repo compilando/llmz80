@@ -7,6 +7,7 @@ from termcolor import colored
 import numpy as np
 import re # Necesario para extraer la descripción
 import sys # Añadido para sys.exit()
+import subprocess # Añadido para ejecutar el compilador
 
 # Importación de módulos propios
 from llmz80.utils.config import load_config, load_api_key, initialize_global_vars, DEFAULT_LOG_LEVEL
@@ -124,10 +125,24 @@ def populate_vector_db(platform: str, generator: LLMZ80Generator):
             failed_files += 1
 
     # Upsert final
-    # ... (sin cambios) ...
-    
+    if all_points_to_upsert:
+        logger.info(f"Iniciando upsert final de {len(all_points_to_upsert)} puntos a Qdrant...")
+        try:
+            # Asegurarse de que el cliente Qdrant está disponible
+            qdrant_client = get_qdrant_client() # Asumiendo que existe una función para obtener el cliente
+            if qdrant_client:
+                 upsert_embeddings(qdrant_client, platform, all_points_to_upsert)
+                 logger.info("✅ Upsert final completado.")
+            else:
+                logger.error("❌ No se pudo obtener el cliente Qdrant para el upsert final.")
+        except Exception as e:
+            logger.error(f"❌ Error durante el upsert final a Qdrant: {e}")
+            # Considerar si se debe reintentar o manejar el error de otra forma
+    else:
+        logger.warning("⚠️ No se generaron puntos para hacer upsert.")
+
     logger.info("🏁 Población de la base de datos vectorial completada.")
-    logger.info(f"📊 Resumen: {processed_files} archivos procesados y añadidos, {failed_files} archivos con errores.")
+    logger.info(f"📊 Resumen: {processed_files} archivos procesados, {failed_files} archivos con errores.")
 
 def describe_code_file(platform: str, file_path: str, generator: LLMZ80Generator):
     """Genera una descripción para un archivo de código C usando el LLM."""
@@ -212,6 +227,122 @@ Generate a concise, one-sentence description of what this code does."""
         # import sys
         # print(f"Error: {e}", file=sys.stderr)
         raise # Re-lanzar la excepción para que main() la capture si es necesario
+
+def attempt_compilation_and_correction(platform: str, output_dir: Path, config: dict, generator: LLMZ80Generator):
+    """Intenta compilar el código C generado y, si falla, llama al LLM para obtener una sugerencia de corrección."""
+    logger.info("🔨 Iniciando compilación...")
+    main_c_file = output_dir / "main.c"
+    if not main_c_file.exists():
+        logger.error(f"❌ No se encontró el archivo {main_c_file} para compilar.")
+        return
+
+    # Obtener configuración del compilador desde el config cargado
+    compiler_config = config.get('compiler', {}).get(platform)
+    if not compiler_config or not compiler_config.get('c_compiler'):
+        logger.warning(f"⚠️ No se encontró configuración de compilador para la plataforma '{platform}'. Omitiendo compilación.")
+        return
+
+    compiler_cmd = compiler_config['c_compiler']
+    compiler_params = compiler_config.get('params', '').split() # Dividir params en lista
+    output_artifact_name = config.get('paths', {}).get(platform, {}).get('output_artifact', f'program_{platform}')
+
+    # Construir comando completo. Asumimos que el comando se ejecuta desde el directorio de salida.
+    # Ejemplo para spectrum: zcc +zx -vn -O3 -clib=sdcc_iy main.c -o program_spectrum -create-app
+    # Necesitamos añadir main.c, la salida y -create-app (o equivalente)
+    # TODO: Refinar esto, puede variar mucho entre compiladores (sdcc vs zcc)
+    #       Por ahora, un intento genérico basado en el ejemplo de zcc
+    if compiler_cmd == "zcc":
+        # Comando específico para zcc (del ejemplo)
+        compile_command = [
+            compiler_cmd
+        ] + compiler_params + [
+            str(main_c_file.name), # main.c
+            "-o", output_artifact_name,
+            "-create-app" # Esto es específico de zcc, ¿sdcc?
+            # Añadir --subtype=tap para spectrum zcc? Depende.
+        ]
+    elif compiler_cmd == "sdcc":
+         # Comando específico para sdcc (más complejo, necesita linkear, etc.)
+         # Ejemplo: sdcc -mz80 --no-std-crt0 main.c -o output/program.rel
+         # Luego: z80asm -ooutput/program.bin output/program.rel ???
+         logger.warning(f"⚠️ Compilación automática para SDCC no implementada completamente. Intentando paso simple.")
+         compile_command = [
+            compiler_cmd
+         ] + compiler_params + [
+            str(main_c_file.name),
+            "-o", f"{output_artifact_name}.rel" # sdcc suele generar .rel
+         ]
+    else:
+        logger.error(f"❌ Compilador '{compiler_cmd}' no soportado para compilación automática.")
+        return
+
+
+    logger.info(f"Ejecutando comando: {' '.join(compile_command)} en {output_dir}")
+
+    try:
+        # Ejecutar el compilador desde el directorio de salida
+        process = subprocess.run(
+            compile_command,
+            cwd=output_dir, # Ejecutar en el directorio donde está main.c
+            capture_output=True,
+            text=True,
+            check=False # No lanzar excepción automáticamente si falla
+        )
+
+        if process.returncode == 0:
+            logger.info("✅ Compilación exitosa.")
+            # Podríamos añadir aquí la ejecución del emulador si quisiéramos
+        else:
+            logger.error(f"❌ Compilación fallida (Código de retorno: {process.returncode}).")
+            error_output = process.stdout + "\n" + process.stderr
+            logger.debug(f"Salida del compilador:\n{error_output}")
+
+            # Guardar el error
+            error_log_path = output_dir / "compilation_error.log"
+            try:
+                with open(error_log_path, "w") as f:
+                    f.write(f"Comando: {' '.join(compile_command)}\n")
+                    f.write(f"Código de retorno: {process.returncode}\n\n")
+                    f.write(error_output)
+                logger.info(f"📝 Error de compilación guardado en: {error_log_path}")
+            except Exception as e:
+                logger.error(f"❌ No se pudo guardar el log de error de compilación: {e}")
+
+            # Leer el código fuente original que falló
+            try:
+                 with open(main_c_file, 'r') as f:
+                    failed_code = f.read()
+            except Exception as e:
+                logger.error(f"❌ No se pudo leer el archivo {main_c_file} para corrección: {e}")
+                return # No podemos continuar sin el código
+
+            # Llamar al LLM para obtener una sugerencia de corrección
+            logger.info("🤖 Solicitando sugerencia de corrección al LLM...")
+            try:
+                # Usar una función del generador (que crearemos)
+                correction_suggestion = generator.suggest_code_correction(failed_code, error_output, platform)
+
+                if correction_suggestion:
+                    suggestion_path = output_dir / "proposed_fix.c"
+                    try:
+                        with open(suggestion_path, "w") as f:
+                            f.write("// Sugerencia de corrección basada en el error:\n")
+                            f.write(f"// Comando fallido: {' '.join(compile_command)}\n")
+                            f.write(f"// Error original guardado en: compilation_error.log\n\n")
+                            f.write(correction_suggestion)
+                        logger.info(f"💡 Sugerencia de corrección guardada en: {suggestion_path}")
+                    except Exception as e:
+                        logger.error(f"❌ No se pudo guardar la sugerencia de corrección: {e}")
+                else:
+                    logger.warning("⚠️ El LLM no proporcionó una sugerencia de corrección.")
+
+            except Exception as e:
+                logger.error(f"❌ Error al obtener sugerencia de corrección del LLM: {e}")
+
+    except FileNotFoundError:
+        logger.error(f"❌ Comando del compilador '{compiler_cmd}' no encontrado. Asegúrate de que esté en el PATH.")
+    except Exception as e:
+        logger.error(f"❌ Error inesperado durante la compilación: {e}")
 
 def main():
     """Función principal para el generador de código LLMZ80."""
@@ -447,12 +578,19 @@ def main():
                 
                 # Guardar archivos generados
                 paths = generator.save_generated_files(generated_code, user_prompt)
-                
-                print(colored("\n✨ ¡Éxito! ✨", "green", attrs=['bold']))
-                print(colored(f"📂 Archivos guardados en: {paths['base'].resolve()}", "cyan"))
-                
+                output_dir = paths['base'] # Directorio donde se guardó main.c
+
+                print(colored("\n✨ ¡Éxito en generación! ✨", "green", attrs=['bold']))
+                print(colored(f"📂 Archivos generados guardados en: {output_dir.resolve()}", "cyan"))
+
+                # ---> ¡NUEVO! Intentar compilar y corregir <---
+                if output_dir and output_dir.exists():
+                     attempt_compilation_and_correction(args.platform, output_dir, config, generator)
+                else:
+                    logger.error("No se pudo determinar el directorio de salida para la compilación.")
+
             except Exception as e:
-                logging.error(f"Error durante generación o guardado de código: {e}")
+                logging.error(f"Error durante la generación de código: {e}", exc_info=True)
                 print(colored(f"\n❌ Error: {e}", "red"))
                 # Intento de emergencia para guardar código parcial si existe
                 if 'generated_code' in locals() and generated_code:
@@ -470,10 +608,10 @@ def main():
                         print(colored(f"❌ Error al guardar archivos de emergencia: {e2}", "red"))
 
         except ValueError as e:  # Capturar errores específicos esperados como clave de API faltante
-            logging.error(f"Error de Configuración: {e}")
+            logging.error(f"Error de Configuración: {e}", exc_info=True)
             print(colored(f"❌ Error de Configuración: {e}", "red"))
         except Exception as e:
-            logging.exception(f"Ocurrió un error inesperado: {e}")  # Registrar traceback completo para errores inesperados
+            logging.exception(f"Ocurrió un error inesperado en main: {e}")
             print(colored(f"❌ Ocurrió un error inesperado. Revisar logs en {global_vars['log_dir'] if 'global_vars' in locals() else 'logs'} para detalles.", "red"))
 
 if __name__ == "__main__":

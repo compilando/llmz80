@@ -5,6 +5,9 @@ from typing import Dict, List, Any, Optional
 from openai import OpenAI
 import numpy as np
 
+# Obtener instancia del logger para este módulo
+logger = logging.getLogger(__name__)
+
 from ..core.embeddings import EmbeddingsManager
 from ..core.cache_manager import EmbeddingsCacheManager
 from ..core.examples_loader import ExamplesLoader
@@ -341,6 +344,10 @@ Please provide specific details about desired behaviors, controls, graphics mode
                 prompt_embedding = self.embedding_manager.get_embedding(user_request)
                 if prompt_embedding is None or not isinstance(prompt_embedding, np.ndarray) or prompt_embedding.size == 0:
                      raise ValueError("No se pudo generar un embedding válido para el prompt.")
+                # --- DEBUG: Log prompt embedding --- 
+                logger.debug(f"Embedding del Prompt (primeros 5 dims): {prompt_embedding[:5]}")
+                logger.debug(f"Norma del Embedding del Prompt: {np.linalg.norm(prompt_embedding):.4f}")
+                # ----------------------------------
 
                 # 3. Buscar en Qdrant
                 search_results = search_similar(
@@ -349,6 +356,11 @@ Please provide specific details about desired behaviors, controls, graphics mode
                     vector=prompt_embedding.tolist(), # Qdrant espera una lista
                     limit=self.max_examples
                 )
+                # --- DEBUG: Log search results --- 
+                logger.debug(f"Resultados crudos de Qdrant ({len(search_results)} encontrados):")
+                for i, (payload, score) in enumerate(search_results):
+                    logger.debug(f"  {i+1}. Score: {score:.4f}, Path: {payload.get('file_path', 'N/A')}, Desc: '{payload.get('description', 'N/A')[:50]}...'")
+                # --------------------------------
 
                 # 4. Cargar contenido de los archivos encontrados
                 if search_results:
@@ -477,3 +489,80 @@ Please provide specific details about desired behaviors, controls, graphics mode
         except Exception as e:
             logging.error(f"❌ Error al guardar archivos: {e}")
             raise 
+
+    def suggest_code_correction(self, failed_code: str, error_output: str, platform: str) -> str | None:
+        """Solicita al LLM una sugerencia para corregir el código C basado en un error de compilación.
+        
+        Args:
+            failed_code: Código C con errores
+            error_output: Mensaje de error de compilación
+            platform: Plataforma objetivo
+            
+        Returns:
+            Sugerencia de corrección o None si no se pudo obtener una sugerencia
+        """
+        logger.info("🧠 Construyendo prompt para sugerencia de corrección...")
+
+        system_prompt = f"""You are an expert C programmer specialized in Z80 development for retro platforms like {platform}.
+Your task is to analyze the provided C code and the compiler error message, then provide a corrected version of the C code.
+
+IMPORTANT RULES:
+- Output ONLY the complete, corrected C code.
+- Do NOT include explanations, apologies, or any text other than the C code itself.
+- Do NOT use markdown code fences (like ```c ... ```).
+- Aim to fix the specific error(s) reported by the compiler while preserving the original logic.
+- Ensure the corrected code is syntactically valid C for the {platform} target (likely using z80 specific libraries or SDCC/ZCC quirks).
+"""
+
+        user_prompt = f"""Platform: {platform}
+
+Compiler Error Output:
+```
+{error_output}
+```
+
+C Code with Errors:
+```c
+{failed_code}
+```
+
+Provide the corrected C code below:
+"""
+
+        try:
+            logger.info("📞 Llamando a la API de OpenAI para obtener sugerencia de corrección...")
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                # Usar una temperatura un poco más alta puede ayudar a encontrar soluciones creativas a errores,
+                # pero también puede inventar más. 0.4 es un punto medio.
+                temperature=0.4,
+                max_tokens=max(len(failed_code.split('\\n')) * 20, 2048) # Estimar tokens necesarios, mínimo 2048
+            )
+            
+            suggestion = response.choices[0].message.content
+
+            if suggestion:
+                # Limpieza básica: eliminar espacios en blanco al inicio/final
+                cleaned_suggestion = suggestion.strip()
+                
+                # Intentar eliminar bloques de código markdown si el LLM los añade a pesar de las instrucciones
+                if cleaned_suggestion.startswith("```c"):
+                    cleaned_suggestion = cleaned_suggestion[4:]
+                if cleaned_suggestion.startswith("```"):
+                     cleaned_suggestion = cleaned_suggestion[3:]
+                if cleaned_suggestion.endswith("```"):
+                    cleaned_suggestion = cleaned_suggestion[:-3]
+                    
+                logger.info("✅ Sugerencia de corrección recibida del LLM.")
+                return cleaned_suggestion.strip()
+            else:
+                logger.warning("⚠️ El LLM devolvió una sugerencia vacía.")
+                return None
+
+        except Exception as api_error:
+            logger.error(f"❌ Error durante la llamada a la API de OpenAI para corrección: {api_error}", exc_info=True)
+            return None 
