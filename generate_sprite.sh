@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Only for VertexAi
+export GCP_PROJECT_ID=rossetamltest
+export GCP_LOCATION=europe-southwest1
+
 # Colores para mensajes
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -27,8 +31,8 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  --prompt=\"TEXT\"        Descripción del sprite a generar"
-    echo "  --width=N              Ancho del sprite (default: 16)"
-    echo "  --height=N             Alto del sprite (default: 16)"
+    echo "  --width=N              Ancho del sprite (default: 32)"
+    echo "  --height=N             Alto del sprite (default: 32)"
     echo "  --platform=NAME        Plataforma objetivo (spectrum, amstrad_cpc)"
     echo "  --mode=NAME            Modo de video (solo para amstrad_cpc)"
     echo "  --negative-prompt=\"TEXT\"  Prompt negativo para evitar ciertas características"
@@ -38,7 +42,7 @@ show_help() {
     echo "Examples:"
     echo "  $0 --prompt=\"running knight\""
     echo "  $0 --interactive"
-    echo "  $0 --platform=spectrum --prompt=\"space ship\" --width=32 --height=16"
+    echo "  $0 --platform=spectrum --prompt=\"space ship\" --width=32 --height=32"
     echo "  $0 --platform=amstrad_cpc --mode=mode0 --prompt=\"dragon\" --negative-prompt=\"details, shading\""
     echo ""
 }
@@ -66,38 +70,44 @@ fi
 source venv/bin/activate
 
 # Verificar que el archivo Python externo existe
-if [ ! -f "generate_sprite.py" ]; then
-    echo -e "${RED}❌ Error: No se encontró el archivo generate_sprite.py${NC}"
+if [ ! -f "llm_sprites.py" ]; then
+    echo -e "${RED}❌ Error: No se encontró el archivo llm_sprites.py${NC}"
     cleanup
     exit 1
 fi
 
 # Hacer ejecutable el script Python
-chmod +x generate_sprite.py
+chmod +x llm_sprites.py
 
 # Construir argumentos para el script de Python
 ARGS=()
+# Flag to track if any core arguments were provided via command line
+CORE_ARG_PROVIDED=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --prompt=*)
             PROMPT="${1#*=}"
             ARGS+=("--prompt" "$PROMPT")
+            CORE_ARG_PROVIDED=true # Mark as provided
             shift
             ;;
         --width=*)
             WIDTH="${1#*=}"
             ARGS+=("--width" "$WIDTH")
+            CORE_ARG_PROVIDED=true # Mark as provided
             shift
             ;;
         --height=*)
             HEIGHT="${1#*=}"
             ARGS+=("--height" "$HEIGHT")
+            CORE_ARG_PROVIDED=true # Mark as provided
             shift
             ;;
         --platform=*)
             PLATFORM="${1#*=}"
             ARGS+=("--platform" "$PLATFORM")
+            CORE_ARG_PROVIDED=true # Mark as provided
             shift
             ;;
         --mode=*)
@@ -112,6 +122,8 @@ while [[ $# -gt 0 ]]; do
             ;;
         --interactive)
             ARGS+=("--interactive")
+            # If --interactive is explicitly passed, we don't need to force it later
+            CORE_ARG_PROVIDED=true 
             shift
             ;;
         --help)
@@ -128,9 +140,24 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# If no core arguments were provided (and not asking for help),
+# force interactive mode in the python script
+help_requested=false
+for arg in "${ARGS[@]}"; do
+    if [[ "$arg" == "--help" ]]; then
+        help_requested=true
+        break
+    fi
+done
+
+if ! $CORE_ARG_PROVIDED && ! $help_requested; then
+    echo -e "${BLUE}ℹ️ No se proporcionaron argumentos principales, iniciando modo interactivo...${NC}"
+    ARGS+=("--interactive")
+fi
+
 # Ejecutar el script Python con los argumentos correctamente
 echo -e "${BLUE}🔄 Ejecutando script generador...${NC}"
-eval python3 "generate_sprite.py" "${ARGS[@]}" || EXIT_CODE=$?
+eval python3 "llm_sprites.py" "${ARGS[@]}" || EXIT_CODE=$?
 
 # Desactivar entorno virtual si está activo
 if [ -n "$VIRTUAL_ENV" ]; then

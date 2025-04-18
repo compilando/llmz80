@@ -1,0 +1,38 @@
+Pixel Art Sprite Generation Protocol
+Objective: Create a SINGLE retro-style pixel art sprite of dragón escupe fuego in strict isolation on pure white background (RGB 255,255,255).
+
+Specifications
+    Dimensions:
+        Core sprite design: 1024x1024px (conceptual bounding box)
+        Output resolution: 4x upscaled (e.g. 128x128px for 32x32 design)
+
+    Background:
+        100% solid white (NO gradients/textures/patterns)
+        Full-frame white coverage except occupied by sprite
+
+    Style:
+        Authentic 8/16-bit aesthetic with visible pixel grid
+        Defined black/dark outline (1px thickness)
+        Flat color zones with <8 colors total
+        Optional: Subtle dithering (max 2-color transitions)
+
+    Technical Requirements:
+        No anti-aliasing
+        No blended pixels
+        No sub-pixel positioning
+        Axis-aligned edges
+        No grid or lines
+
+Prohibited Elements (STRICT):
+× Secondary objects × Partial transparency × Drop shadows
+× Texture overlays × Gradient fills × Annotations
+× Stylized borders × UI elements × Environmental context
+× 
+
+Execution Priority:
+
+    Silhouette First: Immediately recognizable shape at 64x64px
+    Color Fidelity: Use era-appropriate colors (NES/GB/GBA palettes preferred)
+    Detail Optimization: Simplify complex features to essential pixels
+
+Validation: Final image must pass "magic wand test" - white background should be 100% selectable as single contiguous area.

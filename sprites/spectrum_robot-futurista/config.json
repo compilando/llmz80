@@ -1,0 +1,10 @@
+{
+  "generator": "vertexai",
+  "platform": "spectrum",
+  "mode": null,
+  "width": 64,
+  "height": 64,
+  "timestamp": "2025-04-18T16:21:56.520984",
+  "user_prompt": "Robot futurista",
+  "negative_prompt": ""
+}

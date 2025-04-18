@@ -1,0 +1,10 @@
+{
+  "generator": "vertexai",
+  "platform": "amstrad_cpc",
+  "mode": "mode0",
+  "width": 16,
+  "height": 16,
+  "timestamp": "2025-04-18T16:19:03.793563",
+  "user_prompt": "explosi\u00f3n",
+  "negative_prompt": ""
+}

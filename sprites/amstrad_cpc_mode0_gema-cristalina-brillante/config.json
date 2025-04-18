@@ -1,0 +1,10 @@
+{
+  "generator": "vertexai",
+  "platform": "amstrad_cpc",
+  "mode": "mode0",
+  "width": 64,
+  "height": 64,
+  "timestamp": "2025-04-18T16:21:13.708475",
+  "user_prompt": "Gema cristalina brillante",
+  "negative_prompt": ""
+}

@@ -1,0 +1,10 @@
+{
+  "generator": "vertexai",
+  "platform": "amstrad_cpc",
+  "mode": "mode1",
+  "width": 32,
+  "height": 32,
+  "timestamp": "2025-04-18T16:21:31.089186",
+  "user_prompt": "Cofre del tesoro abierto",
+  "negative_prompt": ""
+}

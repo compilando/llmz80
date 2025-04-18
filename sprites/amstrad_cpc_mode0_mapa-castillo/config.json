@@ -1,0 +1,10 @@
+{
+  "generator": "vertexai",
+  "platform": "amstrad_cpc",
+  "mode": "mode0",
+  "width": 320,
+  "height": 320,
+  "timestamp": "2025-04-18T16:24:34.899698",
+  "user_prompt": "mapa castillo",
+  "negative_prompt": ""
+}

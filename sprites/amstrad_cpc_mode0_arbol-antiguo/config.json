@@ -1,0 +1,10 @@
+{
+  "generator": "vertexai",
+  "platform": "amstrad_cpc",
+  "mode": "mode0",
+  "width": 16,
+  "height": 16,
+  "timestamp": "2025-04-18T16:12:36.925165",
+  "user_prompt": "arbol antiguo",
+  "negative_prompt": ""
+}
