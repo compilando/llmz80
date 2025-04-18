@@ -1,0 +1,19 @@
+Generate a pixel art sprite image for Amstrad CPC Mode 1.
+
+Content: {prompt}
+Dimensions: {width}x{height} pixels (medium resolution aspect)
+Output Format: PNG image
+
+Style and Constraints:
+- Amstrad CPC Mode 1 style (distinctive limited color look).
+- Strictly uses a 4-color palette typical of Amstrad CPC (e.g., specify common palettes like [black, cyan, magenta, white] if desired, otherwise let the AI choose 4 contrasting colors).
+- Sharp pixels, very clear silhouette is crucial due to color limits.
+- Heavy use of dithering patterns (checkerboard, dots) is expected to simulate intermediate colors/shades/textures.
+- Resembles an 8-bit retro game asset designed under heavy constraints.
+- Background: Simple or transparent (specify preference, e.g., transparent background).
+- NO text, NO letters, NO signatures, NO watermarks.
+- NO photographic elements, NO gradients, NO anti-aliasing (unless simulated via dithering).
+- NO colors beyond the specified 4.
+
+Example Keywords: 4-color pixel art, Amstrad CPC Mode 1 graphics, limited palette, dithered shading, retro game sprite, {prompt}, {width}x{height}, high contrast, sharp pixels.
+Negative Keywords: photorealistic, 3D render, smooth shading, gradients, grayscale, monochrome, text, signature, blurry, many colors, 16 colors, anti-aliasing.

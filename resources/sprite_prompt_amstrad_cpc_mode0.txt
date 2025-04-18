@@ -1,0 +1,20 @@
+Generate a pixel art sprite image for Amstrad CPC Mode 0.
+
+Content: {prompt}
+Dimensions: {width}x{height} pixels (low resolution aspect)
+Output Format: PNG image
+
+Style and Constraints:
+- Amstrad CPC Mode 0 style (blocky but detailed, vibrant colors)
+- Strictly uses a 16-color palette typical of Amstrad CPC.
+- Sharp pixels, clear silhouette.
+- Limited shading/highlights using only the available 16 colors.
+- Resembles an 8-bit retro game asset.
+- Only unitary items, not multiple
+- Background: None
+- NO text, NO letters, NO signatures, NO watermarks.
+- NO photographic elements, NO realistic lighting, NO complex gradients.
+- Optional: Subtle dithering patterns if needed for texture, but prioritize solid colors.
+
+Example Keywords: 16-color pixel art, Amstrad CPC graphics, retro game sprite, {prompt}, {width}x{height}, vibrant palette, limited shading, sharp pixels.
+Negative Keywords: photorealistic, 3D render, smooth gradients, grayscale, monochrome, text, signature, blurry, high resolution photography.
