@@ -1,3 +1,4 @@
+// Description: Displays and animates an 8x8 pixel sprite moving diagonally across the ZX Spectrum screen by plotting and unplotting pixels in a loop.
 #include <arch/zx.h>
 #include <stdint.h>
 #include <stdio.h>

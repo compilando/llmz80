@@ -37,9 +37,11 @@ def populate_vector_db(platform: str, generator: LLMZ80Generator):
         return
 
     examples_dir = Path(generator.global_vars['example_dir_template'].format(platform=platform))
-    example_file_pattern = "**/*.c" 
+    example_file_pattern = "**/*.c"
     excluded_dirs = {examples_dir / "common", examples_dir / "build"}
-    description_pattern = re.compile(r"^//\s*Description:\s*(.*)", re.IGNORECASE)
+    # Patrones para buscar ambas descripciones
+    desc_en_pattern = re.compile(r"^//\s*Description:\s*(.*)", re.IGNORECASE)
+    desc_es_pattern = re.compile(r"^//\s*Descripcion:\s*(.*)", re.IGNORECASE) # Sin tilde por simplicidad regex/compatibilidad
 
     logger.info(f"🔍 Buscando archivos de ejemplo ({example_file_pattern}) en: {examples_dir}")
     
@@ -54,46 +56,70 @@ def populate_vector_db(platform: str, generator: LLMZ80Generator):
             
         logger.info(f"📄 Procesando archivo: {file_path.relative_to(examples_dir)}")
         try:
+            # Leer las primeras líneas para buscar descripciones y luego todo el contenido
+            content = ""
+            first_lines = []
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                # Leer todo el contenido para guardarlo
+                # Leer máximo 5 líneas para buscar descripciones
+                for i in range(5):
+                    line = f.readline()
+                    if not line:
+                        break
+                    first_lines.append(line.strip())
+                # Leer el resto del contenido
+                f.seek(0) # Volver al inicio para leer todo
                 content = f.read()
-                # Volver al inicio para leer la primera línea
-                f.seek(0)
-                first_line = f.readline().strip()
 
             if not content.strip():
                 logger.warning(f"⚠️ Archivo vacío, omitiendo: {file_path}")
                 continue
 
-            # --- Extraer Descripción --- 
-            description = ""
-            match = description_pattern.match(first_line)
-            if match:
-                description = match.group(1).strip()
-                logger.debug(f"  -> Descripción encontrada: '{description}'")
-            else:
-                # Si no hay descripción, usar nombre de archivo como fallback (o omitir?)
-                # Por ahora usamos nombre de archivo
-                description = file_path.stem.replace('_', ' ') # Usar nombre base sin extensión
-                logger.warning(f"⚠️ No se encontró descripción '{description_pattern.pattern}' en {file_path}. Usando nombre de archivo: '{description}'")
+            # --- Extraer Descripciones (Inglés y Español) --- 
+            desc_en = ""
+            desc_es = ""
+            for line in first_lines:
+                match_en = desc_en_pattern.match(line)
+                if match_en:
+                    desc_en = match_en.group(1).strip()
+                    logger.debug(f"  -> Descripción EN encontrada: '{desc_en}'")
+                    continue # Buscar ES en otra línea
                 
-            if not description:
-                logger.error(f"❌ No se pudo obtener una descripción válida para {file_path}. Omitiendo.")
+                match_es = desc_es_pattern.match(line)
+                if match_es:
+                    desc_es = match_es.group(1).strip()
+                    logger.debug(f"  -> Descripción ES encontrada: '{desc_es}'")
+
+            # Fallback si no se encuentra ninguna descripción
+            text_for_embedding = ""
+            if desc_en and desc_es:
+                text_for_embedding = f"{desc_en}. {desc_es}" # Combinar ambas
+            elif desc_en:
+                text_for_embedding = desc_en
+            elif desc_es:
+                text_for_embedding = desc_es # Usar español si solo existe esa
+            else:
+                fallback_desc = file_path.stem.replace('_', ' ') # Usar nombre base sin extensión
+                text_for_embedding = fallback_desc
+                desc_en = fallback_desc # Guardar fallback como EN por defecto
+                logger.warning(f"⚠️ No se encontró descripción EN ({desc_en_pattern.pattern}) ni ES ({desc_es_pattern.pattern}) en {file_path}. Usando nombre de archivo: '{fallback_desc}'")
+                
+            if not text_for_embedding: # Doble chequeo por si acaso
+                logger.error(f"❌ No se pudo obtener texto para embedding en {file_path}. Omitiendo.")
                 failed_files += 1
                 continue
 
-            # --- Generar Embedding de la Descripción --- 
-            # (Las descripciones deben ser cortas, no se necesita chunking)
-            embedding_vector = generator.embedding_manager.get_embedding(description)
-            
+            # --- Generar Embedding del Texto Combinado (o individual) ---
+            logger.debug(f"  -> Texto para embedding: '{text_for_embedding}'")
+            embedding_vector = generator.embedding_manager.get_embedding(text_for_embedding)
+
             if embedding_vector is None or not isinstance(embedding_vector, np.ndarray) or embedding_vector.size == 0:
-                 logger.warning(f"⚠️ No se pudo generar embedding para la descripción de: {file_path}")
+                 logger.warning(f"⚠️ No se pudo generar embedding para: {file_path}")
                  failed_files += 1
                  continue
 
             # --- Crear Punto para Qdrant --- 
-            point_id = str(uuid.uuid4()) 
-            
+            point_id = str(uuid.uuid4())
+
             # Limitar tamaño del código fuente si es necesario (raro, pero por seguridad)
             max_payload_code_size = 500 * 1024 # Límite ejemplo: 500KB por seguridad
             if len(content) > max_payload_code_size:
@@ -101,20 +127,20 @@ def populate_vector_db(platform: str, generator: LLMZ80Generator):
                 source_code_payload = content[:max_payload_code_size] + "\n//... TRUNCATED ..."
             else:
                 source_code_payload = content
-                
+
             point = PointStruct(
-                     id=point_id, 
-                     vector=embedding_vector.tolist(), 
+                     id=point_id,
+                     vector=embedding_vector.tolist(),
                      payload={
                          "file_path": str(file_path.relative_to(examples_dir)),
-                         "description": description,
+                         "description": desc_en, # Guardar descripción EN
+                         "descripcion_es": desc_es, # Guardar descripción ES (puede ser vacía)
                          "source_code": source_code_payload # Guardar código fuente
-                         # Ya no necesitamos chunk_index porque generamos un solo vector por archivo
                      }
                  )
-                 
+
             all_points_to_upsert.append(point)
-            logger.info(f"  -> Generado 1 punto de embedding para descripción.")
+            logger.info(f"  -> Generado 1 punto de embedding.")
             processed_files += 1
             
             # Upsert en batches (opcional)

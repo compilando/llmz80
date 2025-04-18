@@ -25,6 +25,7 @@ show_help() {
     echo "  --no-emulator        Compila pero no ejecuta el emulador"
     echo "  --emulator=EMULADOR  Especifica el emulador a usar (cap32, retrovirtualmachine, xroar)"
     echo "  --prompt             Genera un programa usando IA basado en tu descripción"
+    echo "  --clean              Removes all temporary files and folders in ./local"
     echo "  --help               Muestra esta ayuda"
     echo ""
     echo "Ejemplos:"
@@ -93,15 +94,13 @@ compile_example() {
     if [ ! -d "$example_path" ]; then
         echo -e "${RED}❌ Error: El ejemplo $example no existe${NC}" >&2
         echo "Usa --list-examples para ver los ejemplos disponibles" >&2
-        read -p "Presiona Enter para continuar..." dummy
-        exit 1
+        return 1
     fi
     
     # Verificar que existe un Makefile
     if [ ! -f "$example_path/Makefile" ]; then
         echo -e "${RED}❌ Error: No se encontró un Makefile en $example_path${NC}" >&2
-        read -p "Presiona Enter para continuar..." dummy
-        exit 1
+        return 1
     fi
     
     # Verificar si SDCC está instalado
@@ -116,8 +115,7 @@ compile_example() {
             echo -e "${RED}❌ SDCC not found. Please install SDCC:${NC}" >&2
             echo -e "${BLUE}💡 In Ubuntu/Debian: sudo apt-get install sdcc${NC}" >&2
             echo -e "${BLUE}💡 In Arch Linux: sudo pacman -S sdcc${NC}" >&2
-            read -p "Presiona Enter para continuar..." dummy
-            exit 1
+            return 1
         fi
     else
         echo -e "${GREEN}✅ Using system SDCC: $sdcc_path${NC}" >&2
@@ -138,7 +136,7 @@ compile_example() {
     current_dir="$PWD"
     
     # Cambiar al directorio del ejemplo
-    cd "$example_path" || exit 1
+    cd "$example_path" || return 1
     
     # Archivo para capturar la salida de compilación
     compilation_log="/tmp/amstrad_compile_output.log"
@@ -153,8 +151,7 @@ compile_example() {
     if [ $compile_result -ne 0 ]; then
         echo -e "${RED}❌ Error: La compilación falló. Salida detallada:${NC}" >&2
         cat "$compilation_log" >&2
-        read -p "Presiona Enter para continuar..." dummy
-        exit 1
+        return 1
     fi
     
     # Obtener la ruta completa del archivo DSK
@@ -164,16 +161,15 @@ compile_example() {
         echo -e "${RED}❌ Error: No se encontró un archivo DSK en $example_path${NC}" >&2
         echo -e "${BLUE}📄 Contenido del directorio:${NC}" >&2
         ls -la "$example_path" >&2
-        read -p "Presiona Enter para continuar..." dummy
-        exit 1
+        return 1
     fi
     
     echo -e "${GREEN}✨ Ejemplo compilado correctamente!${NC}" >&2
     echo -e "${GREEN}📋 Archivo DSK generado: $dsk_file${NC}" >&2
-    read -p "Presiona Enter para continuar..." dummy
     
     # Devolver SOLO la ruta del DSK, sin ningún texto adicional
     echo "$dsk_file"
+    return 0
 }
 
 # Function to run the emulator
@@ -292,7 +288,8 @@ display_menu() {
     echo "║  3) 🚀 Compile and run an example                                          ║"
     echo "║  4) 🎨 Generate sprites with Prompt                                        ║"
     echo "║  5) 📊 Populate Vector DB with Examples                                    ║"
-    echo "║  6) 👋 Exit                                                                ║"
+    echo "║  6) 🧹 Clean temporary files (./local)                                     ║"
+    echo "║  7) 👋 Exit                                                                ║"
     echo "║                                                                            ║"
     echo "╚════════════════════════════════════════════════════════════════════════════╝"
 }
@@ -328,8 +325,7 @@ select_example() {
         EXAMPLE="${examples[$((example_num-1))]}"
     else
         echo -e "${RED}Invalid selection${NC}"
-        read -p "Press Enter to continue..."
-        EXAMPLE=""
+        return 1
     fi
 }
 
@@ -381,7 +377,6 @@ generate_with_prompt() {
         
         if [ $result -ne 0 ]; then
             echo -e "${RED}❌ Error: Failed to generate code. Error code: $result${NC}"
-            read -p "Press Enter to return to the main menu..." dummy
             return 1
         fi
         
@@ -390,7 +385,6 @@ generate_with_prompt() {
         
         if [ -z "$generated_dir" ] || [ ! -d "$generated_dir" ]; then
             echo -e "${RED}❌ Could not find the generated directory in local/folder${NC}"
-            read -p "Press Enter to return to the main menu..." dummy
             return 1
         fi
         
@@ -403,11 +397,7 @@ generate_with_prompt() {
         if [ -f "$generated_dir/main.c" ]; then
             # Navigate to the directory and compile
             original_dir="$PWD"
-            cd "$generated_dir" || { 
-                echo -e "${RED}❌ Failed to change to directory $generated_dir${NC}"; 
-                read -p "Press Enter to return to the main menu..." dummy; 
-                return 1; 
-            }
+            cd "$generated_dir" || return 1
             
             # Create proper directory structure
             mkdir -p src
@@ -430,7 +420,6 @@ generate_with_prompt() {
                     echo -e "${BLUE}💡 In Ubuntu/Debian: sudo apt-get install sdcc${NC}"
                     echo -e "${BLUE}💡 In Arch Linux: sudo pacman -S sdcc${NC}"
                     cd "$original_dir"
-                    read -p "Press Enter to return to the main menu..." dummy
                     return 1
                 fi
             else
@@ -465,7 +454,6 @@ generate_with_prompt() {
                     echo -e "${RED}❌ Template Makefile not found: $template_makefile${NC}"
                     echo -e "${YELLOW}⚠️ Please create it at: $template_makefile${NC}"
                     cd "$original_dir"
-                    read -p "Press Enter to return to the main menu..." dummy
                     return 1
                 fi
             fi
@@ -512,7 +500,6 @@ generate_with_prompt() {
                 grep -i "error" "$compilation_log" || echo "No specific error message found"
                 
                 cd "$original_dir"
-                read -p "Press Enter to return to the main menu..." dummy
                 return 1
             else
                 echo -e "${GREEN}✅ Compilation successful!${NC}"
@@ -524,7 +511,6 @@ generate_with_prompt() {
             if [ ! -f "$dsk_file" ]; then
                 echo -e "${RED}❌ No DSK file found after compilation${NC}"
                 cd "$original_dir"
-                read -p "Press Enter to return to the main menu..." dummy
                 return 1
             fi
             
@@ -559,7 +545,6 @@ generate_with_prompt() {
                         echo -e "${GREEN}✅ Caprice32 exited successfully${NC}"
                     else
                         echo -e "${RED}❌ Caprice32 not found. Please install it.${NC}"
-                        read -p "Press Enter to return to the main menu..." dummy
                         return 1
                     fi
                     ;;
@@ -571,7 +556,6 @@ generate_with_prompt() {
                         retrovirtualmachine -autostart "$dsk_file"
                     else
                         echo -e "${RED}❌ Error: RetroVirtualMachine not found${NC}"
-                        read -p "Press Enter to return to the main menu..." dummy
                         return 1
                     fi
                     ;;
@@ -583,27 +567,23 @@ generate_with_prompt() {
                         xroar -autostart "$dsk_file" -machine cpc
                     else
                         echo -e "${RED}❌ Error: XRoar not found${NC}"
-                        read -p "Press Enter to return to the main menu..." dummy
                         return 1
                     fi
                     ;;
                 *)
                     echo -e "${RED}❌ Error: Emulator $EMULATOR not supported${NC}"
-                    read -p "Press Enter to return to the main menu..." dummy
                     return 1
                     ;;
             esac
             
             echo -e "${GREEN}✅ Program execution completed${NC}"
-            read -p "Press Enter to return to the main menu..." dummy
+            return 0
         else
             echo -e "${RED}❌ No main.c file found in $generated_dir${NC}"
-            read -p "Press Enter to return to the main menu..." dummy
             return 1
         fi
     else
         echo -e "${RED}❌ No prompt provided. Operation cancelled.${NC}"
-        read -p "Press Enter to return to the main menu..." dummy
         return 1
     fi
 }
@@ -613,7 +593,6 @@ generate_sprites() {
     # Verificar si existe el script llm_sprites.py
     if [ ! -f "llm_sprites.py" ]; then
         echo -e "${RED}❌ Error: llm_sprites.py script not found${NC}"
-        read -p "Press Enter to return to the main menu..." dummy
         return 1
     fi
     
@@ -622,7 +601,6 @@ generate_sprites() {
     
     if [ -z "$prompt" ]; then
         echo -e "${RED}❌ No prompt provided. Operation cancelled.${NC}"
-        read -p "Press Enter to return to the main menu..." dummy
         return 1
     fi
     
@@ -646,7 +624,6 @@ generate_sprites() {
         echo -e "${RED}❌ Error: Failed to generate sprite. Error code: $result${NC}"
     fi
     
-    read -p "Press Enter to return to the main menu..." dummy
     return $result
 }
 
@@ -660,7 +637,27 @@ populate_vector_db() {
     else
         echo "❌ Error during Vector DB population."
     fi
-    read -p "Press Enter to return to the main menu..."
+}
+
+# --- Nueva función para limpiar ./local ---
+clean_local_directory() {
+    echo -e "${BLUE}🧹 Limpiando archivos temporales...${NC}"
+    if [ -d "./local" ]; then
+        echo "   Eliminando contenido de ./local/" 
+        # Usar find para más seguridad que rm -rf *, y manejar si local está vacío
+        find ./local -mindepth 1 -delete
+        local exit_code=$?
+        if [ $exit_code -eq 0 ]; then
+            echo -e "${GREEN}✅ Archivos temporales en ./local eliminados.${NC}"
+        else
+            echo -e "${RED}❌ Error limpiando archivos temporales en ./local (Code: $exit_code).${NC}"
+            # Devolver el código de error para que el menú sepa si falló
+            return $exit_code
+        fi
+    else
+        echo -e "${BLUE}ℹ️ Directorio ./local no encontrado, nada que limpiar.${NC}"
+    fi
+    return 0
 }
 
 # Procesar argumentos de línea de comandos
@@ -668,6 +665,7 @@ execute_emulator=true
 specified_example=""
 specified_emulator=""
 POPULATE_DB=0
+CLEAN_LOCAL=false
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -711,6 +709,9 @@ while [ "$#" -gt 0 ]; do
             generate_with_prompt
             exit $?
             ;;
+        --clean)
+            CLEAN_LOCAL=true
+            ;;
         --help)
             show_help
             exit 0
@@ -750,11 +751,29 @@ if [ "$#" -eq 0 ]; then
 
         case $choice in
             1) generate_with_prompt ;;
-            2) list_examples ;;
-            3) compile_and_run_example ;;
+            2) 
+                list_examples 
+                read -p "Press Enter to continue..." # Pausa para ver la lista
+                ;;
+            3)
+                select_example # Pregunta interactivamente por el ejemplo
+                if [ -n "$EXAMPLE" ]; then # EXAMPLE es la variable que setea select_example
+                    select_emulator # Pregunta interactivamente por el emulador
+                    dsk_file_result=$(compile_example "$EXAMPLE") # Llama a la función de compilación
+                    compile_exit_code=$?
+                    dsk_file=$(echo "$dsk_file_result" | tail -n 1)
+                    if [ $compile_exit_code -eq 0 ]; then
+                         run_emulator "$dsk_file" "$EMULATOR"
+                    else
+                         # El error ya se mostró en compile_example (o debería)
+                         read -p "Compilation failed. Press Enter to continue..."
+                    fi
+                fi
+                ;;
             4) generate_sprites ;;
             5) populate_vector_db ;;
-            6) echo "👋 Exiting..."; exit 0 ;;
+            6) clean_local_directory ;;
+            7) echo "👋 Exiting..."; exit 0 ;;
             *) echo "❌ Invalid option. Please try again."; sleep 2 ;;
         esac
     done
@@ -764,4 +783,92 @@ fi
 if [[ "$POPULATE_DB" -eq 1 ]]; then
     populate_vector_db
     exit 0
+fi
+
+# Si se especificó la opción --clean, limpiar el directorio local
+if [ "$CLEAN_LOCAL" = true ]; then
+    clean_local_directory # Llamar a la función
+    clean_exit_code=$?
+    # Después de limpiar, salir si era la única acción.
+    if [ -z "$specified_example" ] && [ "$execute_emulator" = true ] && [ "$POPULATE_DB" -eq 0 ]; then
+        exit $clean_exit_code
+    fi
+fi
+
+# --- Execute Clean Action --- 
+# ... (bloque --clean como antes) ...
+
+# --- Determine Action --- 
+# Si se pasó un argumento de acción específico, no mostrar menú
+ACTION_REQUESTED=false
+if [ -n "$EXAMPLE_NAME" ] || [ "$LIST_EXAMPLES" = true ] || [ "$SHOW_ERRORS" = true ] || [ "$GENERATE_PROMPT" = true ]; then
+    ACTION_REQUESTED=true
+fi
+
+# --- Execute Actions OR Show Menu --- 
+if [ "$ACTION_REQUESTED" = true ]; then
+    # Ejecutar acciones basadas en flags
+    if [ "$LIST_EXAMPLES" = true ]; then
+        list_examples
+    elif [ "$SHOW_ERRORS" = true ]; then
+        show_errors
+    elif [ "$GENERATE_PROMPT" = true ]; then
+        generate_with_prompt # Asumiendo que esta es la función correcta
+    elif [ -n "$EXAMPLE_NAME" ]; then
+        # Compilar el ejemplo
+        dsk_file_result=$(compile_example "$EXAMPLE_NAME")
+        compile_exit_code=$?
+        
+        # Extraer solo la ruta del DSK (última línea)
+        dsk_file=$(echo "$dsk_file_result" | tail -n 1)
+
+        # Ejecutar emulador si la compilación fue exitosa y no se indicó lo contrario
+        if [ $compile_exit_code -eq 0 ] && [ "$RUN_EMULATOR" = true ]; then
+            if [ -f "$dsk_file" ]; then
+                run_emulator "$dsk_file" "$EMULATOR"
+            else
+                echo -e "${RED}❌ Error: DSK file '$dsk_file' not found after successful compilation report?${NC}"
+            fi
+        elif [ $compile_exit_code -ne 0 ]; then
+             echo -e "${RED}❌ Compilation failed, emulator skipped.${NC}"
+        fi
+    fi
+else
+    # No se solicitaron acciones por argumentos, mostrar menú interactivo
+    # (Aquí va el bucle while true con display_menu y case)
+    while true; do
+        display_menu
+        read -p "Select an option: " choice
+
+        case $choice in
+            1) generate_with_prompt ;; 
+            2) 
+                list_examples 
+                read -p "Press Enter to continue..." # Pausa para ver la lista
+                ;; 
+            3) 
+                select_example # Pregunta interactivamente
+                if [ -n "$EXAMPLE" ]; then # EXAMPLE es la variable que setea select_example
+                    select_emulator # Pregunta interactivamente
+                    dsk_file_result=$(compile_example "$EXAMPLE")
+                    compile_exit_code=$?
+                    dsk_file=$(echo "$dsk_file_result" | tail -n 1)
+                    if [ $compile_exit_code -eq 0 ]; then
+                         run_emulator "$dsk_file" "$EMULATOR"
+                    else
+                         # El error ya se mostró en compile_example
+                         read -p "Compilation failed. Press Enter to continue..."
+                    fi
+                fi
+                ;; 
+            4) 
+                generate_sprites # Llamar a la función para generar sprites
+                read -p "Press Enter to continue..."
+                ;; 
+            5) populate_vector_db ;; # Asegúrate que esta función existe
+            6) clean_local_directory ;; # Nueva opción para limpiar
+            7) echo "👋 Exiting..."; exit 0 ;; # Ahora la opción de salir es la 7
+            *) echo "❌ Invalid option. Please try again."; sleep 2 ;; 
+        esac
+    done
 fi 

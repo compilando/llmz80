@@ -21,6 +21,7 @@ show_help() {
     echo "  --show-errors        Shows solutions to common errors"
     echo "  --no-emulator        Compiles but doesn't run the emulator"
     echo "  --emulator=EMULATOR  Specifies the emulator to use (fuse, zesarux, zxspin)"
+    echo "  --clean              Removes all temporary files and folders in ./local"
     echo "  --help               Shows this help"
     echo ""
     echo "Examples:"
@@ -39,8 +40,12 @@ list_examples() {
     echo ""
     
     echo -e "${BLUE}Examples:${NC}"
-    find examples/spectrum -maxdepth 1 -type f -name "*.c" | sort | sed 's|examples/spectrum/||' | while read -r example; do
-        echo "  - ${example%.c}"
+    # Buscar archivos .c recursivamente, quitar el prefijo y la extensión
+    find examples/spectrum -type f -name "*.c" | sed 's|^examples/spectrum/||; s|\.c$||' | sort | while read -r example_path; do
+        # Omitir archivos en un posible directorio 'common' si existe
+        if [[ "$example_path" != "common" && "$example_path" != common/* ]]; then
+             echo "  - $example_path"
+        fi
     done
 }
 
@@ -261,7 +266,8 @@ display_menu() {
     echo "║  3) 🚀 Compile and run an example                                          ║"
     echo "║  4) 🎨 Generate sprites with Prompt                                        ║"
     echo "║  5) 📊 Populate Vector DB with Examples                                    ║"
-    echo "║  6) 👋 Exit                                                                ║"
+    echo "║  6) 🧹 Clean temporary files (./local)                                     ║"
+    echo "║  7) 👋 Exit                                                                ║"
     echo "║                                                                            ║"
     echo "╚════════════════════════════════════════════════════════════════════════════╝"
 }
@@ -270,9 +276,9 @@ display_menu() {
 select_example() {
     clear
     echo -e "${BLUE}╔════════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║${NC}                                                                                ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}  ${GREEN}Available Examples${NC}                                               ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}                                                                                ${BLUE}║${NC}"
+    echo -e "${BLUE}║${NC}                                                                            ${BLUE}║${NC}"
+    echo -e "${BLUE}║${NC}  ${GREEN}Available Examples${NC}                                                        ${BLUE}║${NC}"
+    echo -e "${BLUE}║${NC}                                                                            ${BLUE}║${NC}"
     echo -e "${BLUE}╠════════════════════════════════════════════════════════════════════════════╣${NC}"
     echo -e "${BLUE}║${NC}                                                                            ${BLUE}║${NC}"
     find examples/spectrum -maxdepth 1 -type f -name "*.c" | sort | sed 's|examples/spectrum/||' | nl | while read -r line; do
@@ -449,242 +455,135 @@ populate_vector_db() {
     read -p "Press Enter to return to the main menu..."
 }
 
-# Procesar argumentos
-if [ $# -eq 0 ]; then
+# --- Nueva función para limpiar ./local ---
+clean_local_directory() {
+    echo -e "${BLUE}🧹 Cleaning temporary files...${NC}"
+    if [ -d "./local" ]; then
+        echo "   Removing contents of ./local/" 
+        # Usar find para más seguridad que rm -rf *, y manejar si local está vacío
+        find ./local -mindepth 1 -delete
+        local exit_code=$?
+        if [ $exit_code -eq 0 ]; then
+            echo -e "${GREEN}✅ Temporary files in ./local cleaned successfully.${NC}"
+        else
+            echo -e "${RED}❌ Error cleaning temporary files in ./local (Code: $exit_code).${NC}"
+            # Devolver el código de error para que el menú sepa si falló
+            return $exit_code
+        fi
+    else
+        echo -e "${BLUE}ℹ️ Directory ./local not found, nothing to clean.${NC}"
+    fi
+    return 0
+}
+
+# Parse command-line arguments
+EXAMPLE_NAME=""
+LIST_EXAMPLES=false
+SHOW_ERRORS=false
+RUN_EMULATOR=true
+EMULATOR=$DEFAULT_EMULATOR
+CLEAN_LOCAL=false
+
+while [[ $# -gt 0 ]]; do
+    key="$1"
+    case $key in
+        --example=*) EXAMPLE_NAME="${key#*=}"; shift ;; 
+        --list-examples) LIST_EXAMPLES=true; shift ;; 
+        --show-errors) SHOW_ERRORS=true; shift ;; 
+        --no-emulator) RUN_EMULATOR=false; shift ;; 
+        --emulator=*) EMULATOR="${key#*=}"; shift ;; 
+        --clean) CLEAN_LOCAL=true; shift ;;
+        --help) show_help; exit 0 ;; 
+        *) echo -e "${RED}❌ Error: Unknown option: $key${NC}"; show_help; exit 1 ;; 
+    esac
+done
+
+# --- Execute Clean Action (si se usó --clean) --- 
+if [ "$CLEAN_LOCAL" = true ]; then
+    clean_local_directory # Llamar a la función
+    clean_exit_code=$?
+    # Salir si la única acción era limpiar (independientemente del éxito? O solo si éxito?)
+    # Por ahora, salimos si la única acción era limpiar.
+    if [ -z "$EXAMPLE_NAME" ] && [ "$LIST_EXAMPLES" = false ] && [ "$SHOW_ERRORS" = false ]; then
+        exit $clean_exit_code
+    fi
+fi
+
+# --- Determine Action --- 
+# Si se pasó un argumento de acción específico, no mostrar menú
+ACTION_REQUESTED=false
+if [ -n "$EXAMPLE_NAME" ] || [ "$LIST_EXAMPLES" = true ] || [ "$SHOW_ERRORS" = true ]; then
+    ACTION_REQUESTED=true
+fi
+
+# --- Execute Actions OR Show Menu --- 
+if [ "$ACTION_REQUESTED" = true ]; then
+    # Ejecutar acciones basadas en flags
+    if [ "$LIST_EXAMPLES" = true ]; then
+        list_examples
+    elif [ "$SHOW_ERRORS" = true ]; then
+        show_errors
+    elif [ -n "$EXAMPLE_NAME" ]; then
+        # Compilar el ejemplo
+        tap_file_result=$(compile_example "$EXAMPLE_NAME")
+        compile_exit_code=$?
+        
+        # Extraer solo la ruta del TAP (última línea)
+        tap_file=$(echo "$tap_file_result" | tail -n 1)
+
+        # Ejecutar emulador si la compilación fue exitosa y no se indicó lo contrario
+        if [ $compile_exit_code -eq 0 ] && [ "$RUN_EMULATOR" = true ]; then
+            if [ -f "$tap_file" ]; then
+                run_emulator "$tap_file" "$EMULATOR"
+            else
+                # El error ya debería haberse mostrado en compile_example o run_emulator
+                # pero añadimos un log extra por si acaso.
+                echo -e "${RED}❌ Error: TAP file '$tap_file' not found after successful compilation report?${NC}"
+            fi
+        elif [ $compile_exit_code -ne 0 ]; then
+             echo -e "${RED}❌ Compilation failed, emulator skipped.${NC}"
+        fi
+    fi
+else
+    # No se solicitaron acciones por argumentos, mostrar menú interactivo
+    # (Aquí va el bucle while true con display_menu y case)
     while true; do
         display_menu
         read -p "Select an option: " choice
 
         case $choice in
-            1) generate_with_prompt ;;
-            2) list_examples ;;
-            3) select_example
-                if [ -n "$EXAMPLE" ]; then
-                    select_emulator
-                    example_path="examples/spectrum"
-                    example_file="${example_path}/${EXAMPLE}.c"
-                    build_dir="build/spectrum/${EXAMPLE}"
-                    
-                    # Verificar que el archivo del ejemplo existe
-                    if [ ! -f "$example_file" ]; then
-                        echo -e "${RED}❌ Error: Example file $example_file does not exist${NC}"
-                        echo "Use --list-examples to see available examples"
-                        read -p "Press Enter to continue..."
-                        continue
-                    fi
-                    
-                    # Crear el directorio de construcción
-                    mkdir -p "$build_dir"
-                    
-                    # Copiar el archivo .c al directorio de construcción
-                    cp "$example_file" "$build_dir/main.c"
-                    
-                    # Crear un Makefile para el ejemplo
-                    cat > "$build_dir/Makefile" << EOL
-CC=zcc
-CFLAGS=+zx -vn -O3 -clib=sdcc_iy -I.
-LDFLAGS=-create-app
-SUBTYPE=--subtype=tap
-
-TARGET=program
-SOURCES=main.c
-OBJECTS=\$(SOURCES:.c=.o)
-
-.PHONY: all clean
-
-all: \$(TARGET)
-
-\$(TARGET): \$(OBJECTS)
-	\$(CC) \$(CFLAGS) \$(OBJECTS) -o \$@ \$(LDFLAGS) \$(SUBTYPE)
-
-%.o: %.c
-	\$(CC) \$(CFLAGS) -c \$< -o \$@
-
-clean:
-	rm -f \$(OBJECTS) \$(TARGET) \$(TARGET).tap
-EOL
-                    
-                    # Compilar el ejemplo
-                    cd "$build_dir" && make
+            1) generate_with_prompt ;; # Asegúrate que esta función existe y es correcta
+            2) 
+                list_examples 
+                read -p "Press Enter to continue..." # Pausa para ver la lista
+                ;; 
+            3) 
+                select_example # Pregunta interactivamente
+                if [ -n "$EXAMPLE" ]; then # EXAMPLE es la variable que setea select_example
+                    select_emulator # Pregunta interactivamente
+                    tap_file_result=$(compile_example "$EXAMPLE")
                     compile_exit_code=$?
-                    
-                    # Volver al directorio original
-                    cd - > /dev/null
-                    
-                    # Verificar si la compilación fue exitosa
-                    if [ $compile_exit_code -ne 0 ]; then
-                        echo -e "${RED}❌ Error: Compilation failed. Please check the error messages above.${NC}"
-                        read -p "Press Enter to continue..."
-                        continue
-                    fi
-                    
-                    # Obtener la ruta completa del archivo TAP
-                    tap_file=$(find "$build_dir" -name "*.tap" | head -1)
-                    
-                    if [ -z "$tap_file" ]; then
-                        echo -e "${RED}❌ Error: No TAP file found in $build_dir${NC}"
-                        read -p "Press Enter to continue..."
-                        continue
-                    fi
-                    
-                    echo -e "Full TAP path: $tap_file"
-                    echo -e "${GREEN}✨ Example compiled successfully!${NC}"
-                    echo -e "TAP file generated: $tap_file"
-                    
-                    # Ejecutar el emulador con el archivo TAP
-                    if [ -f "$tap_file" ]; then
-                        run_emulator "$tap_file" "$EMULATOR"
-                        exit 0
+                    tap_file=$(echo "$tap_file_result" | tail -n 1)
+                    if [ $compile_exit_code -eq 0 ]; then
+                         run_emulator "$tap_file" "$EMULATOR"
                     else
-                        echo -e "${RED}❌ Error: TAP file not found.${NC}"
-                        read -p "Press Enter to continue..."
+                         read -p "Compilation failed. Press Enter to continue..."
                     fi
                 fi
+                ;; 
+            4) 
+                # Llamar a la función para generar sprites (si existe)
+                # generate_sprites_prompt 
+                echo "Sprite generation not implemented in this menu yet."
+                read -p "Press Enter to continue..." 
+                ;; 
+            5) populate_vector_db ;; # Asegúrate que esta función existe
+            6) # Nueva opción para limpiar
+                clean_local_directory
+                read -p "Press Enter to continue..." # Pausa para ver el mensaje
                 ;;
-            4) generate_with_prompt ;;
-            5) populate_vector_db ;;
-            6) echo "👋 Exiting..."; exit 0 ;;
-            *) echo "❌ Invalid option. Please try again."; sleep 2 ;;
+            7) echo "👋 Exiting..."; exit 0 ;; # Ahora la opción de salir es la 7
+            *) echo "❌ Invalid option. Please try again."; sleep 2 ;; 
         esac
     done
-else
-    EXAMPLE=""
-    NO_EMULATOR=false
-    EMULATOR=$DEFAULT_EMULATOR
-    DEBUG_MODE=false
-    POPULATE_DB=0
-
-    for arg in "$@"; do
-        case $arg in
-            --example=*)
-                EXAMPLE="${arg#*=}"
-                ;;
-            --list-examples)
-                list_examples
-                exit 0
-                ;;
-            --show-errors)
-                show_errors
-                exit 0
-                ;;
-            --no-emulator)
-                NO_EMULATOR=true
-                ;;
-            --emulator=*)
-                EMULATOR="${arg#*=}"
-                ;;
-            --debug)
-                DEBUG_MODE=true
-                ;;
-            --help)
-                show_help
-                exit 0
-                ;;
-            --populate)
-                POPULATE_DB=1
-                ;;
-            *)
-                echo -e "${RED}❌ Error: Unknown option: $arg${NC}"
-                show_help
-                exit 1
-                ;;
-        esac
-    done
-
-    # Si se especificó un ejemplo, compilarlo y ejecutarlo
-    if [ -n "$EXAMPLE" ]; then
-        example_path="examples/spectrum"
-        example_file="${example_path}/${EXAMPLE}.c"
-        build_dir="build/spectrum/${EXAMPLE}"
-        
-        # Verificar que el archivo del ejemplo existe
-        if [ ! -f "$example_file" ]; then
-            echo -e "${RED}❌ Error: Example file $example_file does not exist${NC}"
-            echo "Use --list-examples to see available examples"
-            exit 1
-        fi
-        
-        # Crear el directorio de construcción
-        mkdir -p "$build_dir"
-        
-        # Copiar el archivo .c al directorio de construcción
-        cp "$example_file" "$build_dir/main.c"
-        
-        # Crear un Makefile para el ejemplo
-        cat > "$build_dir/Makefile" << EOL
-CC=zcc
-CFLAGS=+zx -vn -O3 -clib=sdcc_iy -I.
-LDFLAGS=-create-app
-SUBTYPE=--subtype=tap
-
-TARGET=program
-SOURCES=main.c
-OBJECTS=\$(SOURCES:.c=.o)
-
-.PHONY: all clean
-
-all: \$(TARGET)
-
-\$(TARGET): \$(OBJECTS)
-	\$(CC) \$(CFLAGS) \$(OBJECTS) -o \$@ \$(LDFLAGS) \$(SUBTYPE)
-
-%.o: %.c
-	\$(CC) \$(CFLAGS) -c \$< -o \$@
-
-clean:
-	rm -f \$(OBJECTS) \$(TARGET) \$(TARGET).tap
-EOL
-        
-        # Compilar el ejemplo
-        cd "$build_dir" && make
-        compile_exit_code=$?
-        
-        # Volver al directorio original
-        cd - > /dev/null
-        
-        # Verificar si la compilación fue exitosa
-        if [ $compile_exit_code -ne 0 ]; then
-            echo -e "${RED}❌ Error: Compilation failed. Please check the error messages above.${NC}"
-            exit 1
-        fi
-        
-        # Obtener la ruta completa del archivo TAP
-        tap_file=$(find "$build_dir" -name "*.tap" | head -1)
-        
-        if [ -z "$tap_file" ]; then
-            echo -e "${RED}❌ Error: No TAP file found in $build_dir${NC}"
-            exit 1
-        fi
-        
-        echo -e "Full TAP path: $tap_file"
-        echo -e "${GREEN}✨ Example compiled successfully!${NC}"
-        echo -e "TAP file generated: $tap_file"
-        
-        # Modo de depuración
-        if [ "$DEBUG_MODE" = true ]; then
-            echo -e "${BLUE}🔍 Debug Mode${NC}"
-            echo -e "Example: $EXAMPLE"
-            echo -e "TAP_FILE: $tap_file"
-            echo -e "NO_EMULATOR: $NO_EMULATOR"
-            echo -e "EMULATOR: $EMULATOR"
-            echo -e "File exists: $([ -f "$tap_file" ] && echo 'Yes' || echo 'No')"
-            echo -e "Check emulators:"
-            echo -e "fuse: $(command -v fuse)"
-            echo -e "zesarux: $(command -v zesarux)"
-            echo -e "zxspin: $(command -v zxspin)"
-            exit 0
-        fi
-        
-        # Ejecutar el emulador con el archivo TAP
-        if [ -f "$tap_file" ] && [ "$NO_EMULATOR" = false ]; then
-            run_emulator "$tap_file" "$EMULATOR"
-            exit 0
-        fi
-    fi
-
-    # Si se especificó la opción para poblar la base de datos
-    if [ "$POPULATE_DB" -eq 1 ]; then
-        populate_vector_db
-        exit 0
-    fi
 fi
