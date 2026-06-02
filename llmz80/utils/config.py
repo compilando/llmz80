@@ -104,6 +104,7 @@ def initialize_global_vars(config: Dict[str, Any], platform: str) -> Dict[str, A
     model = config.get('openai', {}).get('model', DEFAULT_MODEL)
     temperature = config.get('openai', {}).get('temperature', DEFAULT_TEMPERATURE)
     max_tokens = config.get('openai', {}).get('max_tokens', DEFAULT_MAX_TOKENS)
+    reasoning_effort = config.get('openai', {}).get('reasoning_effort')
     max_examples = config.get('examples', {}).get('max_examples', DEFAULT_MAX_EXAMPLES)
     embedding_model = config.get('openai', {}).get('embedding_model', DEFAULT_EMBEDDING_MODEL)
     
@@ -122,6 +123,7 @@ def initialize_global_vars(config: Dict[str, Any], platform: str) -> Dict[str, A
         'model': model,
         'temperature': temperature,
         'max_tokens': max_tokens,
+        'reasoning_effort': reasoning_effort,
         'max_examples': max_examples,
         'embedding_model': embedding_model,
         'error_doc_glob_pattern': '**/*.md'

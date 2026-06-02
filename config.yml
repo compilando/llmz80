@@ -1,7 +1,11 @@
 openai:
-  model: gpt-4o
+  model: gpt-5
+  # temperature ignored for reasoning models (gpt-5, o-series); kept for fallback to classic models
   temperature: 0.3
-  max_tokens: 8096
+  # For reasoning models this maps to max_completion_tokens (includes reasoning tokens)
+  max_tokens: 16384
+  # Reasoning effort: minimal | low | medium | high | xhigh (only used by reasoning models)
+  reasoning_effort: medium
   embedding_model: text-embedding-3-small
 
 examples:
@@ -30,8 +34,8 @@ paths:
     output_artifact: "output.dsk"
 
 prompt_files:
-  spectrum: "system_prompt_spectrum.txt"
-  amstrad_cpc: "system_prompt_amstrad_cpc.txt"
+  spectrum: "resources/system_prompt_spectrum.txt"
+  amstrad_cpc: "resources/system_prompt_amstrad_cpc.txt"
 
 # Configuración del compilador (por plataforma)
 compiler:

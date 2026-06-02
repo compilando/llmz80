@@ -6,8 +6,8 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Ruta a CPCtelera (ajusta esto según tu instalación)
-CPCT_PATH="/home/oscar/cpctelera/cpctelera/"
+# Ruta a CPCtelera. Respeta CPCT_PATH si ya está definido en el entorno.
+CPCT_PATH="${CPCT_PATH:-/home/oscar/cpctelera/cpctelera/}"
 
 # Emulador por defecto
 DEFAULT_EMULATOR="cap32"
@@ -220,13 +220,14 @@ run_emulator() {
             fi
             ;;
         "retrovirtualmachine")
-            if command -v retrovirtualmachine &> /dev/null; then
+            # El ejecutable se llama RetroVirtualMachine (con mayúsculas)
+            if command -v RetroVirtualMachine &> /dev/null; then
                 echo -e "${GREEN}✅ Found RetroVirtualMachine emulator${NC}"
                 echo -e "${BLUE}🚀 Starting RetroVirtualMachine with auto-execute...${NC}"
-                echo -e "${BLUE}⚙️  Command: retrovirtualmachine -autostart \"$dsk_file\"${NC}"
+                echo -e "${BLUE}⚙️  Command: RetroVirtualMachine \"$dsk_file\"${NC}"
                 
                 # Ejecutar en primer plano para ver los logs
-                retrovirtualmachine -autostart "$dsk_file"
+                RetroVirtualMachine "$dsk_file"
                 
                 # Verificar el código de retorno
                 if [ $? -eq 0 ]; then
@@ -360,233 +361,30 @@ generate_with_prompt() {
         echo -e "${RED}❌ Error: llm_z80.py script not found${NC}"
         return 1
     fi
-    
+
     echo -e "${GREEN}Describe the program you want to generate:${NC}"
     read -p "> " prompt
-    
-    if [ -n "$prompt" ]; then
-        echo -e "${BLUE}🤖 Generating program with AI...${NC}"
-        
-        echo -e "${BLUE}📝 Calling LLM to generate code...${NC}"
-        echo -e "${YELLOW}This may take a moment...${NC}"
-        
-        # Run the Python script with the prompt
-        source .venv/bin/activate 2>/dev/null
-        python llm_z80.py --platform=amstrad_cpc --prompt="$prompt"
-        result=$?
-        
-        if [ $result -ne 0 ]; then
-            echo -e "${RED}❌ Error: Failed to generate code. Error code: $result${NC}"
-            return 1
-        fi
-        
-        # Find the most recently modified directory in local/
-        generated_dir=$(find "local/" -maxdepth 1 -type d -name "*_*" -printf "%T@ %p\n" | sort -n | tail -1 | cut -f2- -d" ")
-        
-        if [ -z "$generated_dir" ] || [ ! -d "$generated_dir" ]; then
-            echo -e "${RED}❌ Could not find the generated directory in local/folder${NC}"
-            return 1
-        fi
-        
-        echo -e "${GREEN}✨ Code generated successfully in: $generated_dir${NC}"
-        
-        # Now compile the program
-        echo -e "${BLUE}🔨 Compiling program...${NC}"
-        
-        # Check if there's a main.c file
-        if [ -f "$generated_dir/main.c" ]; then
-            # Navigate to the directory and compile
-            original_dir="$PWD"
-            cd "$generated_dir" || return 1
-            
-            # Create proper directory structure
-            mkdir -p src
-            
-            # Move main.c to src directory
-            if [ -f "main.c" ]; then
-                mv main.c src/
-            fi
-            
-            # Verificar si SDCC está instalado
-            sdcc_path=$(which sdcc 2>/dev/null)
-            
-            if [ -z "$sdcc_path" ]; then
-                # Si no está en el PATH, verificar en la ruta de CPCtelera
-                if [ -f "$CPCT_PATH/tools/sdcc-3.6.8-r9946/bin/sdcc" ]; then
-                    sdcc_path="$CPCT_PATH/tools/sdcc-3.6.8-r9946/bin/sdcc"
-                    echo -e "${GREEN}✅ Using CPCtelera SDCC: $sdcc_path${NC}"
-                else
-                    echo -e "${RED}❌ SDCC not found. Please install SDCC:${NC}"
-                    echo -e "${BLUE}💡 In Ubuntu/Debian: sudo apt-get install sdcc${NC}"
-                    echo -e "${BLUE}💡 In Arch Linux: sudo pacman -S sdcc${NC}"
-                    cd "$original_dir"
-                    return 1
-                fi
-            else
-                echo -e "${GREEN}✅ Using system SDCC: $sdcc_path${NC}"
-            fi
-            
-            # Copiar los archivos necesarios del template
-            template_dir="$original_dir/templates/amstrad_cpc"
-            template_makefile="$template_dir/Makefile"
-            config_dir="$template_dir/cfg"
-            
-            # Copiar Makefile si no existe
-            if [ ! -f "Makefile" ]; then
-                if [ -f "$template_makefile" ]; then
-                    echo -e "${BLUE}📋 Copying Makefile template...${NC}"
-                    cp "$template_makefile" "Makefile"
-                    
-                    # Modificar el nombre del proyecto en el Makefile
-                    project_name=$(basename "$generated_dir")
-                    sed -i "s/example_name/$project_name/" "Makefile"
-                    
-                    # Verificar y copiar el directorio cfg
-                    if [ -d "$config_dir" ]; then
-                        echo -e "${BLUE}📁 Copying configuration files...${NC}"
-                        mkdir -p "cfg"
-                        cp -r "$config_dir"/* "cfg/"
-                    else
-                        echo -e "${YELLOW}⚠️ Configuration directory not found: $config_dir${NC}"
-                        echo -e "${YELLOW}⚠️ Make sure it exists to ensure proper compilation${NC}"
-                    fi
-                else
-                    echo -e "${RED}❌ Template Makefile not found: $template_makefile${NC}"
-                    echo -e "${YELLOW}⚠️ Please create it at: $template_makefile${NC}"
-                    cd "$original_dir"
-                    return 1
-                fi
-            fi
-            
-            # Modificar temporalmente el Makefile para usar el SDCC encontrado
-            if [ -f "cfg/build_config.mk" ]; then
-                echo -e "${BLUE}🔧 Adjusting build_config.mk to use SDCC...${NC}"
-                # Hacer una copia de seguridad
-                cp cfg/build_config.mk cfg/build_config.mk.bak
-                
-                # Reemplazar la ruta de SDCC
-                sed -i "s|Z80CCPATH.*|Z80CCPATH := $(dirname $sdcc_path)|g" cfg/build_config.mk
-                echo -e "${GREEN}✅ Updated SDCC path in configuration${NC}"
-            fi
-            
-            # Crear un script simple para la compilación
-            env_setup="/tmp/amstrad_build_env.sh"
-            echo "#!/bin/bash" > "$env_setup"
-            echo "export PATH=$(dirname $sdcc_path):\$PATH" >> "$env_setup"
-            echo "export Z80CCPATH=$(dirname $sdcc_path)" >> "$env_setup"
-            echo "make CPCT_PATH=$CPCT_PATH" >> "$env_setup"
-            chmod +x "$env_setup"
-            
-            # Crear un archivo para capturar la salida
-            compilation_log="/tmp/amstrad_compile_detailed.log"
-            
-            # Ejecutar la compilación
-            echo -e "${BLUE}🔨 Compiling with SDCC...${NC}"
-            bash "$env_setup" > "$compilation_log" 2>&1
-            compile_result=$?
-            
-            if [ $compile_result -ne 0 ]; then
-                echo -e "${RED}❌ Compilation failed. Detailed diagnostic:${NC}"
-                echo -e "${YELLOW}═════════════════ COMPILATION ERRORS ═════════════════${NC}"
-                # Mostrar el log de compilación
-                cat "$compilation_log"
-                echo -e "${YELLOW}═════════════════════════════════════════════════════${NC}"
-                
-                # Información adicional de diagnóstico
-                echo -e "${BLUE}🔍 Environment variables:${NC}"
-                echo "CPCT_PATH=$CPCT_PATH"
-                
-                echo -e "${BLUE}🔍 Searching for specific error patterns:${NC}"
-                grep -i "error" "$compilation_log" || echo "No specific error message found"
-                
-                cd "$original_dir"
-                return 1
-            else
-                echo -e "${GREEN}✅ Compilation successful!${NC}"
-            fi
-            
-            # Find the generated DSK file (absolute path)
-            dsk_file="$PWD/$(find . -name "*.dsk" | head -1)"
-            
-            if [ ! -f "$dsk_file" ]; then
-                echo -e "${RED}❌ No DSK file found after compilation${NC}"
-                cd "$original_dir"
-                return 1
-            fi
-            
-            echo -e "${GREEN}📋 DSK file created: $dsk_file${NC}"
-            
-            # Return to original directory
-            cd "$original_dir"
-            
-            # Select emulator if not already set
-            if [ -z "$EMULATOR" ]; then
-                select_emulator
-            else
-                EMULATOR=$DEFAULT_EMULATOR
-            fi
-            
-            # Run the emulator
-            echo -e "${BLUE}🚀 Running the program with emulator...${NC}"
-            echo -e "${BLUE}📂 Using DSK file: $dsk_file${NC}"
-            
-            # Extract the name base of the DSK file and convert to uppercase
-            local disk_basename=$(basename "$dsk_file" .dsk)
-            local disk_name=$(echo "$disk_basename" | tr '[:lower:]' '[:upper:]')
-            
-            # Run the specified emulator
-            case $EMULATOR in
-                "cap32")
-                    if command -v cap32 >/dev/null 2>&1; then
-                        echo -e "${GREEN}✅ Found Caprice32 emulator${NC}"
-                        echo -e "${BLUE}🚀 Starting Caprice32 with auto-execute...${NC}"
-                        echo -e "${BLUE}⚙️  Command: cap32 \"$dsk_file\" -a \"run \\\"$disk_name\\\"\"${NC}"
-                        cap32 "$dsk_file" -a "run \"$disk_name\""
-                        echo -e "${GREEN}✅ Caprice32 exited successfully${NC}"
-                    else
-                        echo -e "${RED}❌ Caprice32 not found. Please install it.${NC}"
-                        return 1
-                    fi
-                    ;;
-                "retrovirtualmachine")
-                    if command -v retrovirtualmachine >/dev/null 2>&1; then
-                        echo -e "${GREEN}✅ Found RetroVirtualMachine emulator${NC}"
-                        echo -e "${BLUE}🚀 Starting RetroVirtualMachine with auto-execute...${NC}"
-                        echo -e "${BLUE}⚙️  Command: retrovirtualmachine -autostart \"$dsk_file\"${NC}"
-                        retrovirtualmachine -autostart "$dsk_file"
-                    else
-                        echo -e "${RED}❌ Error: RetroVirtualMachine not found${NC}"
-                        return 1
-                    fi
-                    ;;
-                "xroar")
-                    if command -v xroar >/dev/null 2>&1; then
-                        echo -e "${GREEN}✅ Found XRoar emulator${NC}"
-                        echo -e "${BLUE}🚀 Starting XRoar...${NC}"
-                        echo -e "${BLUE}⚙️  Command: xroar -autostart \"$dsk_file\" -machine cpc${NC}"
-                        xroar -autostart "$dsk_file" -machine cpc
-                    else
-                        echo -e "${RED}❌ Error: XRoar not found${NC}"
-                        return 1
-                    fi
-                    ;;
-                *)
-                    echo -e "${RED}❌ Error: Emulator $EMULATOR not supported${NC}"
-                    return 1
-                    ;;
-            esac
-            
-            echo -e "${GREEN}✅ Program execution completed${NC}"
-            return 0
-        else
-            echo -e "${RED}❌ No main.c file found in $generated_dir${NC}"
-            return 1
-        fi
-    else
+
+    if [ -z "$prompt" ]; then
         echo -e "${RED}❌ No prompt provided. Operation cancelled.${NC}"
         return 1
     fi
+
+    echo -e "${BLUE}🤖 Generating program with AI...${NC}"
+    echo -e "${BLUE}📝 Calling LLM (generate + validate + compile + auto-correct + emulator)${NC}"
+    echo -e "${YELLOW}This may take a moment...${NC}"
+
+    # Delegate the full pipeline to llm_z80.py so that:
+    #  - pre-compilation validator runs (catches arity / unknown cpct_ funcs)
+    #  - correction loop runs on SDCC failure (up to 3 attempts)
+    #  - learning system records errors/successes
+    #  - emulator launches on success
+    # Previous flow used --no-compile then re-compiled here, which BYPASSED all of that.
+    source .venv/bin/activate 2>/dev/null
+    python llm_z80.py --platform=amstrad_cpc --prompt="$prompt" --launch-emulator
+    return $?
 }
+
 
 # Función para generar sprites con LLM
 generate_sprites() {
@@ -871,4 +669,4 @@ else
             *) echo "❌ Invalid option. Please try again."; sleep 2 ;; 
         esac
     done
-fi 
+fi

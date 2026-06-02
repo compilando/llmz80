@@ -175,6 +175,10 @@ class EmbeddingsManager:
                 logging.error(f"Error al combinar embeddings: {e}")
                 return np.zeros((1536,), dtype=float)
 
+    def get_embedding_for_large_file(self, text: str) -> np.ndarray:
+        """Compatibility wrapper for callers that explicitly flag large files."""
+        return self.get_embedding(text)
+
     def cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
         """Calcula la similitud coseno entre dos vectores.
         

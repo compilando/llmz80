@@ -11,10 +11,10 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_URL = os.getenv("QDRANT_URL", "http://127.0.0.1:6333")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 QDRANT_COLLECTION_PREFIX = os.getenv("QDRANT_COLLECTION_PREFIX", "llmz80_")
-OPENAI_EMBEDDING_DIM = 1536 # Dimension for text-embedding-ada-002
+OPENAI_EMBEDDING_DIM = 1536  # Dimension for text-embedding-3-small
 
 def get_qdrant_client():
     """Initializes and returns a Qdrant client based on .env configuration."""
@@ -60,7 +60,7 @@ def ensure_collection_exists(client: QdrantClient, platform: str):
         if is_not_found_error:
             logger.info(f"Collection '{collection_name}' not found. Creating...")
             try:
-                client.recreate_collection(
+                client.create_collection(
                     collection_name=collection_name,
                     vectors_config=VectorParams(size=OPENAI_EMBEDDING_DIM, distance=Distance.COSINE)
                 )
@@ -101,12 +101,25 @@ def search_similar(client: QdrantClient, platform: str, vector: list[float], lim
     """Searches for vectors similar to the given vector in the specified collection."""
     collection_name = get_collection_name(platform)
     logger.debug(f"Searching for {limit} similar vectors in '{collection_name}'...")
+    if not ensure_collection_exists(client, platform):
+        logger.warning(f"Collection '{collection_name}' no disponible para búsqueda.")
+        return []
     try:
-        search_result = client.search(
-            collection_name=collection_name,
-            query_vector=vector,
-            limit=limit
-        )
+        if hasattr(client, "search"):
+            search_result = client.search(
+                collection_name=collection_name,
+                query_vector=vector,
+                limit=limit
+            )
+        else:
+            query_response = client.query_points(
+                collection_name=collection_name,
+                query=vector,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+            search_result = query_response.points
         logger.info(f"✅ Found {len(search_result)} similar results.")
         # Return only the payload and score for simplicity
         return [(hit.payload, hit.score) for hit in search_result]

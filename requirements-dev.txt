@@ -1,0 +1,31 @@
+# Development Dependencies for LLMZ80
+
+# Testing
+pytest==8.3.4
+pytest-cov==6.0.0
+pytest-mock==3.14.0
+pytest-asyncio==0.24.0
+
+# Code Quality
+black==24.10.0
+flake8==7.1.1
+mypy==1.13.0
+pylint==3.3.2
+isort==5.13.2
+
+# Pre-commit hooks
+pre-commit==4.0.1
+
+# Type stubs
+types-PyYAML==6.0.12.20240917
+types-requests==2.32.0.20241016
+types-Pillow==10.2.0.20240822
+
+# Documentation
+sphinx==8.1.3
+sphinx-rtd-theme==3.0.2
+myst-parser==4.0.0
+
+# Development tools
+ipython==8.29.0
+ipdb==0.13.13

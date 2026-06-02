@@ -1,0 +1,349 @@
+# Cursor Rules for LLMZ80 Project
+
+## Project Overview
+LLMZ80 is an intelligent C code generator for classic Z80 microcomputers (ZX Spectrum and Amstrad CPC) using Large Language Models, embeddings, and RAG (Retrieval Augmented Generation).
+
+## Core Technologies
+- **Python 3.10+**: Main language
+- **OpenAI GPT-4**: Code generation
+- **Qdrant**: Vector database for semantic search
+- **Z88DK/SDCC**: Z80 C compilers
+- **CPCtelera**: Amstrad CPC development framework
+
+## Code Style Guidelines
+
+### Python
+- Follow PEP 8 strictly
+- Use type hints for all function signatures
+- Prefer f-strings over .format() or %
+- Use pathlib.Path over os.path for file operations
+- Maximum line length: 100 characters
+- Use Google-style docstrings
+
+Example:
+```python
+def generate_code(platform: str, prompt: str) -> str:
+    """Generates C code for the specified platform.
+    
+    Args:
+        platform: Target platform (spectrum or amstrad_cpc)
+        prompt: User's code generation request
+        
+    Returns:
+        Generated C source code
+        
+    Raises:
+        ValueError: If platform is not supported
+    """
+    pass
+```
+
+### Logging
+- NEVER use print() in main code (only in shell scripts)
+- Always use the configured logger:
+```python
+import logging
+logger = logging.getLogger(__name__)
+logger.info("Message")
+logger.debug("Debug info")
+logger.error("Error message")
+```
+
+### Error Handling
+- Be specific with exception types
+- Always log exceptions with context
+- Use try-except blocks for external API calls
+- Provide meaningful error messages to users
+
+Example:
+```python
+try:
+    response = client.chat.completions.create(...)
+except openai.APIError as e:
+    logger.error(f"OpenAI API error: {e}")
+    raise
+except Exception as e:
+    logger.exception(f"Unexpected error during code generation: {e}")
+    raise
+```
+
+## Architecture Patterns
+
+### Module Organization
+```
+llmz80/
+├── api/          # External-facing API (generator.py)
+├── core/         # Core functionality (embeddings, cache, examples)
+└── utils/        # Utilities (config, logger, helpers)
+```
+
+### Configuration
+- All configuration in `config.yml`
+- Environment variables in `.env` (never commit!)
+- Use `llmz80/utils/config.py` for loading config
+- Platform-specific config in `resources/platforms.yml`
+
+### Caching Strategy
+- Cache embeddings locally: `local/embeddings/{platform}/`
+- Use `EmbeddingsCacheManager` for cache operations
+- Invalidate cache when examples change
+- Use Qdrant for persistent vector storage
+
+## Platform-Specific Guidelines
+
+### ZX Spectrum
+- Use Z88DK library functions only
+- Target: ZX Spectrum 48K (32KB RAM)
+- Screen: 256×192 pixels, 8 colors
+- Output: .tap files
+- Compiler: `zcc +zx -vn -O3 -clib=sdcc_iy`
+
+### Amstrad CPC
+- Use CPCtelera API exclusively
+- Target: CPC 464/6128
+- Screen modes: Mode 0 (16 colors), Mode 1 (4 colors), Mode 2 (2 colors)
+- Output: .dsk files
+- Compiler: SDCC + CPCtelera toolchain
+
+## Code Generation Rules
+
+### System Prompts
+- Located in `resources/`
+- Platform-specific instructions crucial
+- Include relevant code examples from `examples/`
+- Use RAG to find semantically similar examples
+
+### Example Code Standards
+- Must compile without errors
+- Include `// Description:` comment (English)
+- Include `// Descripcion:` comment (Spanish, no accent)
+- Self-contained and functional
+- Follow platform conventions
+
+### Generated Code Quality
+- Must be directly compilable
+- No markdown fences in output
+- No explanatory text, only code
+- Efficient Z80 assembly generation
+- Proper hardware interaction
+
+## Vector Database (Qdrant)
+
+### Collections
+- `spectrum`: ZX Spectrum examples
+- `amstrad_cpc`: Amstrad CPC examples
+
+### Point Structure
+```python
+{
+    "id": "uuid",
+    "vector": [...],  # 1536 dimensions for text-embedding-3-small
+    "payload": {
+        "file_path": "relative/path/to/example.c",
+        "description": "English description",
+        "descripcion_es": "Descripción en español",
+        "source_code": "Full C source code"
+    }
+}
+```
+
+### Search Strategy
+- Generate embedding for user prompt
+- Search top N similar examples (default: 15)
+- Include in system prompt for context
+- Fallback to basic examples if search fails
+
+## Testing Guidelines
+
+### When Adding Features
+- Add unit tests in `tests/` directory
+- Use pytest framework
+- Mock external API calls
+- Test both platforms
+
+### Manual Testing
+```bash
+# Test code generation
+python llm_z80.py --platform spectrum --prompt "test prompt"
+
+# Test with debug logging
+python llm_z80.py --platform spectrum --log-level DEBUG --prompt "test"
+
+# Test compilation
+./build_spectrum.sh --example=test --no-emulator
+```
+
+## Common Patterns
+
+### Loading Configuration
+```python
+from llmz80.utils.config import load_config, load_api_key, initialize_global_vars
+
+config = load_config("config.yml")
+global_vars = initialize_global_vars(config, platform)
+api_key = load_api_key()
+```
+
+### Using the Generator
+```python
+from llmz80.api.generator import LLMZ80Generator
+
+generator = LLMZ80Generator(platform, global_vars, api_key)
+code = generator.generate_c_code(user_prompt)
+paths = generator.save_generated_files(code, user_prompt)
+```
+
+### Working with Qdrant
+```python
+from vector_db import get_qdrant_client, search_similar, upsert_embeddings
+
+client = get_qdrant_client()
+results = search_similar(client, platform, vector, limit=15)
+```
+
+## File Naming Conventions
+
+### Generated Output
+- Directory: `local/YYYY-MM-DD_HHMMSS_{slug}/`
+- Main file: `main.c`
+- Metadata: `prompt.txt`, `platform.txt`
+- Build: `obj/` subdirectory
+
+### Examples
+- Pattern: `{number}_{descriptive_name}.c`
+- Example: `01_border.c`, `02_print.c`, `07_game.c`
+
+### Sprites
+- Directory: `sprites/{platform}_{description}/`
+- Files: `original.png`, `sprite.png`, `sprite.txt`, `config.json`
+
+## Dependencies Management
+
+### Production Dependencies
+- Keep `requirements.txt` updated
+- Pin major versions for stability
+- Regular security updates
+- Test compatibility before updating
+
+### Development Dependencies
+- Use separate `requirements-dev.txt`
+- Include: pytest, black, flake8, mypy, pre-commit
+
+## Git Workflow
+
+### Commits
+- Use conventional commits format
+- Types: feat, fix, docs, refactor, test, chore
+- Example: `feat: add support for Mode 2 graphics`
+
+### Branches
+- `main`: Stable production code
+- `develop`: Development branch
+- `feature/*`: New features
+- `fix/*`: Bug fixes
+- `docs/*`: Documentation only
+
+### Pull Requests
+- Reference issue number
+- Include description of changes
+- Update documentation
+- Add/update tests
+- Ensure CI passes
+
+## Security Considerations
+
+### API Keys
+- NEVER commit .env file
+- Use environment variables
+- Rotate keys periodically
+- Limit API key permissions
+
+### User Input
+- Validate all user prompts
+- Sanitize file paths
+- Limit output file sizes
+- Prevent code injection
+
+## Performance Optimization
+
+### Embeddings
+- Cache aggressively
+- Use batch processing when possible
+- Implement chunk-based processing for large files
+- Monitor API usage and costs
+
+### Compilation
+- Cache compiled artifacts when possible
+- Use incremental compilation
+- Optimize for Z80 target with appropriate flags
+
+## Documentation
+
+### When to Update Docs
+- New features: Update README and .cline/cline_docs.md
+- API changes: Update docstrings
+- Configuration changes: Update config.yml comments
+- Bug fixes: Update CHANGELOG.md
+
+### Documentation Files
+- `README.md`: User-facing documentation
+- `.cline/cline_docs.md`: Developer/AI assistant reference
+- `CONTRIBUTING.md`: Contribution guidelines
+- Code docstrings: API documentation
+
+## Debugging Tips
+
+### Enable Debug Logging
+```bash
+python llm_z80.py --log-level DEBUG --platform spectrum --prompt "test"
+```
+
+### Check Cache
+```bash
+# Verify cache
+python llm_z80.py --platform spectrum --repair-cache
+
+# Clear cache
+python llm_z80.py --platform spectrum --clear-cache
+
+# Rebuild completely
+python llm_z80.py --platform spectrum --rebuild-embeddings
+```
+
+### Qdrant Issues
+```bash
+# Start Qdrant
+docker run -p 6333:6333 qdrant/qdrant
+
+# Repopulate database
+python llm_z80.py --platform spectrum --populate-db
+```
+
+## AI Assistant Specific Notes
+
+### When Generating Code
+1. Always check platform (spectrum vs amstrad_cpc)
+2. Use appropriate API (Z88DK vs CPCtelera)
+3. Include proper headers
+4. Ensure code is compilable
+5. Add English and Spanish descriptions
+
+### When Modifying Architecture
+1. Maintain separation of concerns
+2. Keep platform-agnostic code in core/
+3. Platform-specific code in examples/
+4. Update both .cline/cline_docs.md and README.md
+
+### When Adding Examples
+1. Place in appropriate platform directory
+2. Add description comments
+3. Test compilation
+4. Repopulate Qdrant database
+5. Update examples count in documentation
+
+### When Fixing Bugs
+1. Identify if platform-specific
+2. Add logging for debugging
+3. Write test to prevent regression
+4. Update CHANGELOG.md
+5. Consider if cache needs invalidation

@@ -6,6 +6,7 @@ from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
 
 from ..utils.helpers import estimate_tokens
+from .code_context import build_embedding_text, build_example_context, discover_support_files
 
 class ExamplesLoader:
     """Cargador de ejemplos de código para diferentes plataformas."""
@@ -71,8 +72,7 @@ class ExamplesLoader:
             if rel_path not in self.embeddings_cache or self.force_truncate:
                 # Cargar el archivo fresco
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
+                    content = build_example_context(file_path, examples_dir, self.max_example_size)
                     
                     # Truncar ejemplos extremadamente grandes
                     original_size = len(content)
@@ -127,7 +127,13 @@ class ExamplesLoader:
                             new_embedding = self.embedding_manager.get_embedding_for_large_file(content)
                         else:
                             # Para archivos de tamaño normal, generar embedding directamente
-                            new_embedding = self.embedding_manager.get_embedding(content)
+                            source_path = examples_dir / rel_path
+                            support_files = discover_support_files(
+                                source_path,
+                                source_path.parent.parent if source_path.parent.name == "src" else source_path.parent,
+                            )
+                            embedding_text = build_embedding_text(rel_path, content, support_files)
+                            new_embedding = self.embedding_manager.get_embedding(embedding_text)
                         
                         # VALIDACIÓN AGREGADA: Verificar explícitamente que el embedding es un array y no un escalar
                         if isinstance(new_embedding, (int, float)):
@@ -202,8 +208,7 @@ class ExamplesLoader:
             rel_path = str(file_path.relative_to(examples_dir))
             
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
+                content = build_example_context(file_path, examples_dir, self.max_example_size)
                 
                 # Truncar ejemplos extremadamente grandes
                 original_size = len(content)

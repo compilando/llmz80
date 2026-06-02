@@ -4,44 +4,87 @@ __pycache__/
 *.swp
 .Python
 */gcp_credentials.json
-env/
-venv/
-.venv/
-pip-wheel-metadata/
 *.egg-info/
 *.egg
 *.pyd
 *.pyc
 *.pyo
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Virtual environments
+env/
+venv/
+.venv/
+ENV/
+pip-wheel-metadata/
+
+# Build artifacts
+build/
+dist/
+*.so
+*.dylib
+*.dll
+
+# Z80 specific
 *.tap
 *.bin
-
-# Mac / Linux system files
-.DS_Store
-*.log
-*.tmp
-
+*.dsk
+*.rom
 **/obj/**
 */obj/*
 
-# Virtual environments
-.env/
-.venv/
-venv/
-ENV/
+# IDEs
+.vscode/
+.idea/
+*.sublime-*
+*.code-workspace
 
-local/
-
-# Jupyter notebooks checkpoints
-.ipynb_checkpoints/
+# OS specific
+.DS_Store
+*.swp
+*.swo
+*~
+Thumbs.db
 
 # Logs
 logs/
 *.log
+*.tmp
 
-# dotenv files (keys, secrets)
+# Local files
+local/
+qdrant_storage/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Environment files (secrets)
 .env
+.env.local
+.env.*.local
 
+# Documentation builds
+docs/_build/
+docs/_static/
+docs/_templates/
+site/
 
-# VSCode
-.vscode/
+# Temporary files
+tmp/
+temp/
+*.bak
+*.backup
+
+# Package manager
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Pre-commit
+.pre-commit-config.yaml.bak
