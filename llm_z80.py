@@ -9,6 +9,7 @@ import re # Necesario para extraer la descripción
 import sys # Añadido para sys.exit()
 import subprocess # Añadido para ejecutar el compilador
 import shutil
+import json
 
 # Importación de módulos propios
 from llmz80.utils.config import load_config, load_api_key, initialize_global_vars, DEFAULT_LOG_LEVEL
@@ -16,6 +17,7 @@ from llmz80.utils.logger import setup_logging
 from llmz80.api.generator import LLMZ80Generator
 from llmz80.utils.helpers import (
     apply_deterministic_cpc_fixes,
+    apply_deterministic_spectrum_fixes,
     build_completion_kwargs,
     filter_compiler_output,
     hash_error_signature,
@@ -28,6 +30,18 @@ from llmz80.core.code_context import (
     discover_support_files,
     extract_descriptions,
 )
+from llmz80.core.build_quality import (
+    build_report,
+    quality_rejection_diagnostics,
+    select_fresh_artifact,
+    write_build_report,
+)
+from llmz80.quality.emulator_smoke import (
+    runtime_rejection_diagnostics,
+    smoke_test,
+    write_smoke_report,
+)
+from llmz80.quality.candidates import select_candidate, write_selection
 # Importar módulo de Vector DB
 from vector_db import get_qdrant_client, ensure_collection_exists, upsert_embeddings, PointStruct
 import uuid # Para generar IDs únicos para Qdrant
@@ -60,13 +74,18 @@ def launch_emulator_for_platform(platform: str, output_dir: Path, config: dict, 
         logging.error(f"❌ Plataforma no soportada para emulador: {platform}")
         return
     
-    # Buscar el archivo
-    artifact_files = list(output_dir.glob(artifact_pattern))
-    if not artifact_files:
+    # Prefer the canonical artifact instead of whichever glob entry the filesystem returns first.
+    configured_artifact = config.get("paths", {}).get(platform, {}).get("output_artifact")
+    canonical_artifact = output_dir / configured_artifact if configured_artifact else None
+    artifact_files = sorted(output_dir.glob(artifact_pattern))
+    if canonical_artifact and canonical_artifact.is_file():
+        artifact_file = canonical_artifact.resolve()
+    elif artifact_files:
+        artifact_file = artifact_files[0].resolve()
+    else:
         logging.error(f"❌ No se encontró archivo {artifact_pattern} en {output_dir}")
         return
-    
-    artifact_file = artifact_files[0].resolve()  # Tomar el primero y convertir a ruta absoluta
+
     logging.info(f"📂 Archivo encontrado: {artifact_file}")
     
     # Construir comando del emulador según la plataforma
@@ -81,12 +100,26 @@ def launch_emulator_for_platform(platform: str, output_dir: Path, config: dict, 
     
     elif platform == 'amstrad_cpc':
         if emulator_name == 'cap32':
-            cmd = ['cap32', str(artifact_file)]
+            # Mounting a DSK alone leaves Caprice32 at the BASIC prompt. Its
+            # autocmd queue starts after the configured firmware boot delay and
+            # types the explicit AMSDOS filename before handing the GUI to the
+            # user.
+            cmd = [
+                'cap32',
+                '-O', 'system.boot_time=75',
+                '-a', 'run"program.bin"',
+                str(artifact_file),
+            ]
         elif emulator_name == 'cpcec':
             cmd = ['cpcec', str(artifact_file)]
         else:
             logging.warning(f"⚠️ Emulador {emulator_name} no configurado, intentando con cap32")
-            cmd = ['cap32', str(artifact_file)]
+            cmd = [
+                'cap32',
+                '-O', 'system.boot_time=75',
+                '-a', 'run"program.bin"',
+                str(artifact_file),
+            ]
     
     # Verificar que el emulador existe
     try:
@@ -124,38 +157,34 @@ def launch_emulator_for_platform(platform: str, output_dir: Path, config: dict, 
         logging.error(f"❌ Error al lanzar emulador: {e}")
         print(colored(f"❌ Error al lanzar emulador: {e}", "red"))
 
-def populate_vector_db(platform: str, generator: LLMZ80Generator):
+def populate_vector_db(platform: str, generator: LLMZ80Generator) -> bool:
     """Extrae descripciones, genera embeddings de ellas y sube a Qdrant junto con el código fuente."""
     logging.info(f"🚀 Iniciando población de la base de datos vectorial para la plataforma: {platform}")
     
     qdrant_client = get_qdrant_client()
     if not qdrant_client:
         logging.error("❌ No se pudo conectar a Qdrant. Abortando población.")
-        return
+        return False
 
     if not ensure_collection_exists(qdrant_client, platform):
         logging.error("❌ No se pudo asegurar la existencia de la colección en Qdrant. Abortando población.")
-        return
+        return False
 
-    examples_dir = Path(generator.global_vars['example_dir_template'].format(platform=platform))
-    example_file_pattern = "**/*.c"
-    excluded_dirs = {examples_dir / "common", examples_dir / "build"}
     # Patrones para buscar ambas descripciones
     desc_en_pattern = re.compile(r"^//\s*Description:\s*(.*)", re.IGNORECASE)
     desc_es_pattern = re.compile(r"^//\s*Descripcion:\s*(.*)", re.IGNORECASE) # Sin tilde por simplicidad regex/compatibilidad
 
-    logging.info(f"🔍 Buscando archivos de ejemplo ({example_file_pattern}) en: {examples_dir}")
+    logging.info("🔍 Buscando programas compilables en las raíces configuradas")
     
     all_points_to_upsert = []
     processed_files = 0
     failed_files = 0
 
-    for file_path in examples_dir.rglob(example_file_pattern):
-        if any(excluded in file_path.parents for excluded in excluded_dirs):
-            logging.debug(f"Omitiendo archivo en directorio excluido: {file_path}")
-            continue
+    for catalog_entry in generator.example_catalog.discover():
+        file_path = catalog_entry["file_path"]
+        examples_dir = catalog_entry["examples_dir"]
             
-        logging.info(f"📄 Procesando archivo: {file_path.relative_to(examples_dir)}")
+        logging.info(f"📄 Procesando archivo: {catalog_entry['path']}")
         try:
             content = file_path.read_text(encoding='utf-8', errors='ignore')
 
@@ -169,7 +198,7 @@ def populate_vector_db(platform: str, generator: LLMZ80Generator):
             # Fallback si no se encuentra ninguna descripción
             project_dir = file_path.parent.parent if file_path.parent.name == "src" else file_path.parent
             support_files = discover_support_files(file_path, project_dir)
-            rel_path = str(file_path.relative_to(examples_dir))
+            rel_path = catalog_entry["path"]
             text_for_embedding = build_embedding_text(rel_path, content, support_files)
             if desc_en and desc_es:
                 logging.debug(f"  -> Descripciones encontradas: '{desc_en}' / '{desc_es}'")
@@ -213,7 +242,8 @@ def populate_vector_db(platform: str, generator: LLMZ80Generator):
                          "file_path": rel_path,
                          "description": desc_en, # Guardar descripción EN
                          "descripcion_es": desc_es, # Guardar descripción ES (puede ser vacía)
-                         "source_code": source_code_payload # Guardar código fuente
+                         "source_code": source_code_payload, # Guardar código fuente
+                         "source": "curated",
                      }
                  )
 
@@ -229,14 +259,18 @@ def populate_vector_db(platform: str, generator: LLMZ80Generator):
             failed_files += 1
 
     # Upsert final
+    upsert_ok = False
     if all_points_to_upsert:
         logging.info(f"Iniciando upsert final de {len(all_points_to_upsert)} puntos a Qdrant...")
         try:
             # Asegurarse de que el cliente Qdrant está disponible
             qdrant_client = get_qdrant_client() # Asumiendo que existe una función para obtener el cliente
             if qdrant_client:
-                 upsert_embeddings(qdrant_client, platform, all_points_to_upsert)
-                 logging.info("✅ Upsert final completado.")
+                 upsert_ok = upsert_embeddings(qdrant_client, platform, all_points_to_upsert)
+                 if upsert_ok:
+                     logging.info("✅ Upsert final completado.")
+                 else:
+                     logging.error("❌ El upsert final no se completó.")
             else:
                 logging.error("❌ No se pudo obtener el cliente Qdrant para el upsert final.")
         except Exception as e:
@@ -247,6 +281,7 @@ def populate_vector_db(platform: str, generator: LLMZ80Generator):
 
     logging.info("🏁 Población de la base de datos vectorial completada.")
     logging.info(f"📊 Resumen: {processed_files} archivos procesados, {failed_files} archivos con errores.")
+    return upsert_ok and processed_files > 0 and failed_files == 0
 
 def describe_code_file(platform: str, file_path: str, generator: LLMZ80Generator):
     """Genera una descripción para un archivo de código C usando el LLM."""
@@ -335,16 +370,52 @@ Generate a concise, one-sentence description of what this code does."""
         # print(f"Error: {e}", file=sys.stderr)
         raise # Re-lanzar la excepción para que main() la capture si es necesario
 
-def prepare_amstrad_cpc_build_project(output_dir: Path) -> bool:
-    """Prepara el directorio generado como proyecto CPCtelera compilable."""
-    cpct_path = os.environ.get("CPCT_PATH", "/home/oscar/cpctelera/cpctelera/")
-    if not cpct_path.endswith("/"):
-        cpct_path += "/"
+def resolve_cpct_path(config: dict | None = None) -> Path | None:
+    """Resolve CPCtelera portably from env, config, or conventional locations."""
+    configured = (config or {}).get("compiler", {}).get("amstrad_cpc", {}).get("cpct_path")
+    candidates = [
+        os.environ.get("CPCT_PATH"),
+        configured,
+        str(Path.home() / "cpctelera" / "cpctelera"),
+        str(Path.home() / "cpctelera"),
+        "/opt/cpctelera",
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate).expanduser().resolve()
+        if (path / "src" / "cpctelera.h").exists() and (
+            path / "cfg" / "global_main_makefile.mk"
+        ).exists():
+            return path
+    return None
 
-    cpct_dir = Path(cpct_path)
+
+def validate_toolchain_environment(platform: str, config: dict) -> tuple[bool, str]:
+    """Fail before an API call when the requested real build cannot run."""
+    if platform == "spectrum":
+        compiler = config.get("compiler", {}).get(platform, {}).get("c_compiler", "zcc")
+        if not shutil.which(compiler):
+            return False, f"No se encontró el compilador Spectrum '{compiler}' en PATH"
+        return True, ""
+
+    if platform == "amstrad_cpc":
+        if not shutil.which("make"):
+            return False, "No se encontró 'make' en PATH"
+        cpct_path = resolve_cpct_path(config)
+        if cpct_path is None:
+            return False, "No se encontró CPCtelera; configura CPCT_PATH o compiler.amstrad_cpc.cpct_path"
+        return True, ""
+
+    return False, f"Plataforma no soportada: {platform}"
+
+
+def prepare_amstrad_cpc_build_project(output_dir: Path, cpct_dir: Path) -> bool:
+    """Prepara el directorio generado como proyecto CPCtelera compilable."""
     if not (cpct_dir / "src" / "cpctelera.h").exists():
-        logging.error(f"❌ No se encontró CPCtelera en CPCT_PATH={cpct_path}")
+        logging.error(f"❌ No se encontró CPCtelera en {cpct_dir}")
         return False
+    cpct_path = str(cpct_dir.resolve()) + "/"
 
     template_dir = Path("templates/amstrad_cpc")
     template_makefile = template_dir / "Makefile"
@@ -384,23 +455,28 @@ def _run_version_command(command: list[str]) -> str:
     return output[0][:300]
 
 
-def save_build_environment_report(platform: str, output_dir: Path, compile_command: list[str]) -> None:
+def save_build_environment_report(
+    platform: str,
+    output_dir: Path,
+    compile_command: list[str],
+    cpct_path: Path | None = None,
+) -> None:
     """Persist the exact local build context used for this generation."""
     report_path = output_dir / "build_environment.txt"
-    cpct_path = os.environ.get("CPCT_PATH", "/home/oscar/cpctelera/cpctelera/")
+    cpct_path_text = str(cpct_path) if cpct_path else os.environ.get("CPCT_PATH", "not applicable")
     lines = [
         "BUILD ENVIRONMENT",
         "=" * 50,
         f"platform: {platform}",
         f"output_dir: {output_dir.resolve()}",
         f"compile_command: {' '.join(compile_command)}",
-        f"CPCT_PATH: {cpct_path}",
+        f"CPCT_PATH: {cpct_path_text}",
         f"sdcc: {_run_version_command(['sdcc', '--version'])}",
         f"make: {_run_version_command(['make', '--version'])}",
     ]
 
-    cpct_dir = Path(cpct_path)
-    if (cpct_dir / ".git").exists():
+    cpct_dir = Path(cpct_path_text)
+    if cpct_path and (cpct_dir / ".git").exists():
         lines.append(f"CPCtelera git: {_run_version_command(['git', '-C', str(cpct_dir), 'rev-parse', '--short', 'HEAD'])}")
     lines.append("")
 
@@ -428,8 +504,9 @@ def find_platform_artifacts(platform: str, output_dir: Path) -> list[Path]:
 
 
 def attempt_compilation_and_correction(platform: str, output_dir: Path, config: dict, generator: LLMZ80Generator, 
-                                      user_prompt: str, max_attempts: int = 3, enable_validation: bool = True,
-                                      learning_system: LearningSystem = None):
+                                      user_prompt: str, max_attempts: int = 4, enable_validation: bool = True,
+                                      learning_system: LearningSystem = None,
+                                      runtime_check: bool = False):
     """Intenta compilar el código C generado y, si falla, aplica correcciones automáticas con retry.
     
     Args:
@@ -441,6 +518,7 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
         max_attempts: Número máximo de intentos de corrección (default: 3)
         enable_validation: Habilitar validación pre-compilación (default: True)
         learning_system: Sistema de aprendizaje (opcional)
+        runtime_check: Exigir evidencia real del emulador antes de aceptar el resultado
     
     Returns:
         bool: True si la compilación fue exitosa, False si falló después de todos los intentos
@@ -456,7 +534,13 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
     validator = None
     if enable_validation:
         try:
-            validator = CodeValidator(platform)
+            spec = {}
+            try:
+                spec = json.loads((output_dir / "generation_spec.json").read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                pass
+            output_mode = "project" if (output_dir / "project_manifest.json").exists() else "single"
+            validator = CodeValidator(platform, spec=spec, output_mode=output_mode)
             logging.info("✅ Validador pre-compilación inicializado")
         except Exception as e:
             logging.warning(f"⚠️ No se pudo inicializar validador: {e}")
@@ -473,25 +557,31 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
     output_artifact_name = config.get('paths', {}).get(platform, {}).get('output_artifact', f'program_{platform}.tap')
 
     # Construir comando de compilación según el compilador
+    cpct_path: Path | None = None
     if compiler_cmd == "zcc":
+        spectrum_sources = (
+            [str(path.relative_to(output_dir)) for path in sorted((output_dir / "src").glob("*.c"))]
+            if (output_dir / "project_manifest.json").exists()
+            else ["main.c"]
+        )
         compile_command = [
             compiler_cmd
-        ] + compiler_params + [
-            "main.c",
+        ] + compiler_params + spectrum_sources + [
             "-o", str(Path(output_artifact_name).stem),
             "-create-app",
-            "--subtype=tap"
+            "-subtype=default"
         ]
     elif compiler_cmd == "sdcc":
         if platform == "amstrad_cpc":
-            if not prepare_amstrad_cpc_build_project(output_dir):
+            cpct_path = resolve_cpct_path(config)
+            if cpct_path is None:
+                logging.error("❌ No se encontró una instalación válida de CPCtelera")
                 return False
-            cpct_path = os.environ.get("CPCT_PATH", "/home/oscar/cpctelera/cpctelera/")
-            if not cpct_path.endswith("/"):
-                cpct_path += "/"
+            if not prepare_amstrad_cpc_build_project(output_dir, cpct_path):
+                return False
             compile_command = [
                 "make",
-                f"CPCT_PATH={cpct_path}"
+                f"CPCT_PATH={cpct_path}/"
             ]
         else:
             compile_command = [
@@ -520,6 +610,11 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
     for attempt in range(1, max_attempts + 1):
         logging.info(f"📍 Intento {attempt}/{max_attempts}...")
 
+        project_mode = (output_dir / "project_manifest.json").exists()
+        if project_mode:
+            (output_dir / "src").mkdir(exist_ok=True)
+            shutil.copy2(main_c_file, output_dir / "src" / "main.c")
+
         # === VALIDACIÓN PRE-COMPILACIÓN === (en CADA intento, no solo el 1º)
         if validator:
             logging.info("🔍 Ejecutando validación pre-compilación...")
@@ -529,30 +624,43 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                 with open(main_c_file, 'r') as f:
                     code_to_validate = f.read()
 
+                deterministic_fixes = []
+                fixed_code = code_to_validate
                 if platform == "amstrad_cpc":
                     fixed_code, deterministic_fixes = apply_deterministic_cpc_fixes(code_to_validate)
-                    if deterministic_fixes and fixed_code != code_to_validate:
-                        deterministic_log = output_dir / f"deterministic_fixes_attempt_{attempt}.txt"
-                        try:
-                            deterministic_log.write_text(
-                                "\n".join(f"- {fix}" for fix in deterministic_fixes) + "\n",
-                                encoding="utf-8",
-                            )
-                            (output_dir / f"main_before_deterministic_fixes_attempt_{attempt}.c").write_text(
-                                code_to_validate,
-                                encoding="utf-8",
-                            )
-                            main_c_file.write_text(fixed_code, encoding="utf-8")
-                            logging.info(
-                                "🔧 Correcciones deterministas aplicadas: "
-                                + "; ".join(deterministic_fixes)
-                            )
-                            code_to_validate = fixed_code
-                        except Exception as e:
-                            logging.warning(f"⚠️ No se pudieron aplicar correcciones deterministas: {e}")
+                elif platform == "spectrum":
+                    fixed_code, deterministic_fixes = apply_deterministic_spectrum_fixes(code_to_validate)
+
+                if deterministic_fixes and fixed_code != code_to_validate:
+                    deterministic_log = output_dir / f"deterministic_fixes_attempt_{attempt}.txt"
+                    try:
+                        deterministic_log.write_text(
+                            "\n".join(f"- {fix}" for fix in deterministic_fixes) + "\n",
+                            encoding="utf-8",
+                        )
+                        (output_dir / f"main_before_deterministic_fixes_attempt_{attempt}.c").write_text(
+                            code_to_validate,
+                            encoding="utf-8",
+                        )
+                        main_c_file.write_text(fixed_code, encoding="utf-8")
+                        logging.info(
+                            "🔧 Correcciones deterministas aplicadas: "
+                            + "; ".join(deterministic_fixes)
+                        )
+                        code_to_validate = fixed_code
+                    except Exception as e:
+                        logging.warning(f"⚠️ No se pudieron aplicar correcciones deterministas: {e}")
                 
                 # Validar y generar reporte
                 is_valid, validation_report = validator.validate_and_report(code_to_validate)
+
+                try:
+                    (output_dir / "semantic_report.json").write_text(
+                        json.dumps(validator.last_semantic_report, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8",
+                    )
+                except Exception as e:
+                    logging.warning(f"⚠️ No se pudo guardar semantic_report.json: {e}")
                 
                 # Guardar reporte de validación
                 validation_report_path = output_dir / "validation_report.txt"
@@ -574,6 +682,7 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                     # Construir mensaje de error para el LLM
                     validation_errors = "\n".join([f"- {err}" for err in validator.validate(code_to_validate).errors])
                     error_message = f"PRE-COMPILATION VALIDATION ERRORS:\n{validation_errors}"
+                    validation_sig = hash_error_signature(error_message)
                     
                     try:
                         corrected_code = generator.suggest_code_correction(
@@ -585,8 +694,17 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                         )
                         
                         if corrected_code:
+                            generator.save_generation_metrics(output_dir)
+                            prior_attempts.append({
+                                "code": code_to_validate,
+                                "error_summary": error_message[:600],
+                                "error_hash": validation_sig,
+                            })
+                            if corrected_code.strip() == code_to_validate.strip():
+                                logging.error("⛔ El LLM devolvió el mismo código inválido")
+                                return False
                             # Guardar código original
-                            backup_validation = output_dir / "main_before_validation_fix.c"
+                            backup_validation = output_dir / f"main_before_validation_fix_attempt_{attempt}.c"
                             try:
                                 with open(backup_validation, "w") as f:
                                     f.write(code_to_validate)
@@ -599,6 +717,25 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                                 with open(main_c_file, "w") as f:
                                     f.write(corrected_code)
                                 logging.info("✨ Código corregido por validación aplicado")
+
+                                # Never compile against semantic evidence produced for
+                                # the previous source revision.
+                                post_valid, post_report = validator.validate_and_report(corrected_code)
+                                (output_dir / "semantic_report.json").write_text(
+                                    json.dumps(
+                                        validator.last_semantic_report,
+                                        indent=2,
+                                        sort_keys=True,
+                                    ) + "\n",
+                                    encoding="utf-8",
+                                )
+                                validation_report_path.write_text(post_report, encoding="utf-8")
+                                if not post_valid:
+                                    logging.warning(
+                                        "⚠️ La corrección sigue sin superar la validación; "
+                                        "se omite una compilación inútil"
+                                    )
+                                    continue
                             except Exception as e:
                                 logging.error(f"❌ No se pudo aplicar corrección: {e}")
                                 return False
@@ -621,9 +758,10 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
         
         try:
             if platform == "amstrad_cpc":
-                prepare_amstrad_cpc_build_project(output_dir)
+                if cpct_path is None or not prepare_amstrad_cpc_build_project(output_dir, cpct_path):
+                    return False
 
-            save_build_environment_report(platform, output_dir, compile_command)
+            save_build_environment_report(platform, output_dir, compile_command, cpct_path)
 
             # Ejecutar compilador
             process = subprocess.run(
@@ -634,23 +772,85 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                 check=False
             )
 
-            if process.returncode == 0:
-                artifacts = find_platform_artifacts(platform, output_dir)
+            artifacts = find_platform_artifacts(platform, output_dir)
+            if process.returncode == 0 and platform == "amstrad_cpc" and artifacts:
+                canonical_artifact = output_dir / "output.dsk"
+                fresh_dsk = select_fresh_artifact(canonical_artifact, artifacts)
+                if fresh_dsk and fresh_dsk.resolve() != canonical_artifact.resolve():
+                    try:
+                        shutil.copy2(fresh_dsk, canonical_artifact)
+                        logging.info(f"📦 DSK canónico creado: {canonical_artifact}")
+                        artifacts = find_platform_artifacts(platform, output_dir)
+                    except Exception as exc:
+                        logging.warning(f"⚠️ No se pudo crear output.dsk canónico: {exc}")
+
+            structured_report = build_report(
+                platform=platform,
+                output_dir=output_dir,
+                command=compile_command,
+                return_code=process.returncode,
+                stdout=process.stdout,
+                stderr=process.stderr,
+                artifacts=artifacts,
+                cpct_path=cpct_path,
+            )
+            try:
+                write_build_report(
+                    structured_report,
+                    output_dir / f"build_report_attempt_{attempt}.json",
+                )
+                write_build_report(structured_report, output_dir / "build_report.json")
+            except Exception as exc:
+                logging.warning(f"⚠️ No se pudo guardar build_report.json: {exc}")
+
+            structural_warnings = structured_report["warnings"]["structural"]
+            if process.returncode == 0 and structural_warnings:
+                logging.error(
+                    "❌ La toolchain ignoró o no reconoció opciones del contrato de build: "
+                    + "; ".join(structural_warnings)
+                )
+                return False
+
+            quality_rejection = process.returncode == 0 and not structured_report["quality_pass"]
+            if quality_rejection:
+                quality_reasons = []
+                if structured_report["unexpected_warning_count"]:
+                    quality_reasons.append(
+                        f"{structured_report['unexpected_warning_count']} unexpected warnings"
+                    )
+                quality_reasons.extend(structured_report["resources"]["errors"])
+                if not structured_report["semantic_quality_pass"]:
+                    quality_reasons.append("semantic validation failed")
+                logging.error("❌ Build rejected by quality policy: " + "; ".join(quality_reasons))
+
+            runtime_rejection = False
+            smoke_report = {}
+            if process.returncode == 0 and not quality_rejection:
                 if not artifacts:
                     logging.error("❌ El compilador terminó con éxito pero no se encontró artefacto final")
                     print(colored("\n❌ Build sin artefacto final (.tap/.dsk)", "red", attrs=['bold']))
                     return False
 
-                if platform == "amstrad_cpc":
-                    canonical_artifact = output_dir / "output.dsk"
-                    first_dsk = artifacts[0]
-                    if first_dsk.resolve() != canonical_artifact.resolve():
-                        try:
-                            shutil.copy2(first_dsk, canonical_artifact)
-                            logging.info(f"📦 DSK canónico creado: {canonical_artifact}")
-                        except Exception as exc:
-                            logging.warning(f"⚠️ No se pudo crear output.dsk canónico: {exc}")
+                try:
+                    smoke_report = smoke_test(output_dir, platform, full=runtime_check)
+                    write_smoke_report(smoke_report, output_dir / "emulator_report.json")
+                except Exception as exc:
+                    logging.warning(f"⚠️ No se pudo guardar emulator_report.json: {exc}")
+                    smoke_report = {
+                        "requested_full": runtime_check,
+                        "runtime_verified": False,
+                        "quality_pass": False,
+                        "emulator_error": str(exc),
+                    }
 
+                if runtime_check and not smoke_report.get("quality_pass", False):
+                    reason = smoke_report.get("emulator_error") or (
+                        "boot/output/state-transition contract was not satisfied"
+                    )
+                    logging.error(f"❌ Runtime verification failed: {reason}")
+                    runtime_rejection = True
+
+            if process.returncode == 0 and not quality_rejection and not runtime_rejection:
                 logging.info(f"✅ Compilación exitosa en el intento {attempt}!")
                 
                 # Guardar log de éxito
@@ -668,6 +868,16 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                         if process.stderr:
                             f.write("\nSTDERR:\n")
                             f.write(process.stderr)
+                        f.write("\nQUALITY:\n")
+                        f.write(
+                            f"- unexpected warnings: "
+                            f"{structured_report['unexpected_warning_count']}\n"
+                        )
+                        if structured_report["program_binary"]:
+                            f.write(
+                                "- program binary: "
+                                f"{structured_report['program_binary']['size_bytes']} bytes\n"
+                            )
                     logging.info(f"📝 Log de éxito guardado en: {success_log}")
                 except Exception as e:
                     logging.warning(f"⚠️ No se pudo guardar log de éxito: {e}")
@@ -677,18 +887,29 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                     try:
                         with open(main_c_file, 'r') as f:
                             final_code = f.read()
-                        learning_system.add_successful_example(
+                        evidence = {
+                            "build_quality_pass": structured_report["quality_pass"],
+                            "semantic_quality_pass": structured_report["semantic_quality_pass"],
+                            "unexpected_warning_count": structured_report["unexpected_warning_count"],
+                            "resources": structured_report["resources"],
+                            "emulator": smoke_report if 'smoke_report' in locals() else {},
+                        }
+                        promoted_id = learning_system.add_successful_example(
                             prompt=user_prompt,
                             code=final_code,
-                            compilation_attempts=attempt
+                            compilation_attempts=attempt,
+                            evidence=evidence,
                         )
                         # Indexar también en Qdrant para que retrieval RAG futuro
                         # use este éxito (con boost por compilation_attempts bajos).
                         try:
+                            if not promoted_id:
+                                raise ValueError("generation was recorded but not promoted")
                             generator.index_successful_generation(
                                 user_prompt=user_prompt,
                                 code=final_code,
                                 compilation_attempts=attempt,
+                                quality_evidence=evidence,
                             )
                         except Exception as e:
                             logging.debug(f"No se pudo indexar éxito en Qdrant: {e}")
@@ -713,15 +934,25 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                 
                 return True
             
-            # Compilación falló
-            logging.error(f"❌ Compilación fallida en el intento {attempt} (código: {process.returncode})")
-            raw_error_output = process.stdout + "\n" + process.stderr
-            # Filtrar ruido (make[1], Entering directory, etc.) — solo señal a LLM
-            error_output = filter_compiler_output(raw_error_output, max_lines=40)
+            # La compilación falló o produjo un binario rechazado por calidad.
+            if quality_rejection:
+                logging.error(f"❌ Calidad de build rechazada en el intento {attempt}")
+                error_output = "\n".join(quality_rejection_diagnostics(structured_report))
+                failure_label = "Calidad de build rechazada"
+            elif runtime_rejection:
+                logging.error(f"❌ Calidad de ejecución rechazada en el intento {attempt}")
+                error_output = "\n".join(runtime_rejection_diagnostics(smoke_report))
+                failure_label = "Calidad de ejecución rechazada"
+            else:
+                logging.error(f"❌ Compilación fallida en el intento {attempt} (código: {process.returncode})")
+                raw_error_output = process.stdout + "\n" + process.stderr
+                # Filtrar ruido (make[1], Entering directory, etc.) — solo señal a LLM
+                error_output = filter_compiler_output(raw_error_output, max_lines=40)
+                failure_label = "Compilación fallida"
             error_sig = hash_error_signature(error_output)
 
             # Mostrar error en consola para el usuario (versión filtrada)
-            print(colored(f"\n❌ Compilación fallida en intento {attempt}/{max_attempts}", "red"))
+            print(colored(f"\n❌ {failure_label} en intento {attempt}/{max_attempts}", "red"))
             print(colored("=" * 60, "red"))
             for line in error_output.splitlines()[-15:]:
                 if 'error' in line.lower() or 'fatal' in line.lower():
@@ -732,16 +963,6 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                     print(colored(f"  {line}", "white"))
             print(colored("=" * 60, "red"))
 
-            # Dedupe: si el mismo error firma ya falló antes, no quemamos otro intento
-            prior_sigs = {a.get('error_hash') for a in prior_attempts}
-            if error_sig and error_sig in prior_sigs:
-                logging.error(
-                    f"⛔ Mismo error que intento previo (sig={error_sig[:40]}...). "
-                    "El LLM no puede corregir; abortando retries."
-                )
-                print(colored("⛔ Error repetido — abortando ciclo de corrección.", "red", attrs=['bold']))
-                return False
-            
             # Dar sugerencias específicas según el tipo de error
             if platform == "amstrad_cpc" and "cpctelera.h" in error_output:
                 print(colored("\n💡 Sugerencia: Para compilar código Amstrad CPC, usa:", "cyan"))
@@ -754,11 +975,31 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                 with open(error_log_path, "w") as f:
                     f.write(f"Intento {attempt}/{max_attempts}\n")
                     f.write(f"Comando: {' '.join(compile_command)}\n")
+                    f.write(f"Resultado: {failure_label}\n")
                     f.write(f"Código de retorno: {process.returncode}\n\n")
                     f.write(error_output)
                 logging.info(f"📝 Error del intento {attempt} guardado en: {error_log_path}")
             except Exception as e:
                 logging.error(f"❌ No se pudo guardar log de error: {e}")
+
+            # Dedupe after persisting diagnostics: repeated failures are useful
+            # evidence even though another identical LLM correction is not.
+            prior_sigs = {a.get('error_hash') for a in prior_attempts}
+            if error_sig and error_sig in prior_sigs:
+                logging.error(
+                    f"⛔ Mismo error que intento previo (sig={error_sig[:40]}...). "
+                    "Abortando retries para no repetir una corrección ineficaz."
+                )
+                print(colored("⛔ Error repetido — abortando ciclo de corrección.", "red", attrs=['bold']))
+                if learning_system:
+                    try:
+                        learning_system.record_run(
+                            user_prompt, max_attempts, "failure",
+                            {"reason": "repeated_compiler_error"},
+                        )
+                    except Exception as exc:
+                        logging.debug(f"No se pudo registrar generación fallida: {exc}")
+                return False
 
             # Si no es el último intento, intentar corrección
             if attempt < max_attempts:
@@ -809,6 +1050,10 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                             logging.debug(f"No se pudo registrar error en aprendizaje: {e}")
                     
                     if corrected_code:
+                        generator.save_generation_metrics(output_dir)
+                        if corrected_code.strip() == failed_code.strip():
+                            logging.error("⛔ El LLM devolvió el mismo código fallido; abortando retries")
+                            return False
                         # Guardar versión anterior
                         backup_path = output_dir / f"main_attempt_{attempt}.c"
                         try:
@@ -862,7 +1107,15 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                     logging.info(f"📄 Resumen guardado en: {summary_path}")
                 except Exception as e:
                     logging.error(f"❌ No se pudo guardar resumen: {e}")
-                
+
+                if learning_system:
+                    try:
+                        learning_system.record_run(
+                            user_prompt, max_attempts, "failure",
+                            {"reason": "compilation_attempts_exhausted"},
+                        )
+                    except Exception as exc:
+                        logging.debug(f"No se pudo registrar generación fallida: {exc}")
                 return False
 
         except FileNotFoundError:
@@ -897,7 +1150,7 @@ def main():
     parser.add_argument('--force-truncate', action='store_true',
                         help='Forzar truncado de todos los ejemplos, incluso los que ya están en caché.')
     parser.add_argument('--no-embeddings', action='store_true',
-                        help='Omitir embeddings y búsqueda semántica (más rápido, pero ejemplos menos relevantes).')
+                        help='Omitir Qdrant/embeddings; mantiene el catálogo local determinista.')
     parser.add_argument('--repair-cache', action='store_true',
                         help='Verificar y reparar caché de embeddings corrupto.')
     parser.add_argument('--fix-embeddings', action='store_true',
@@ -922,6 +1175,16 @@ def main():
                         help='Especifica el emulador a usar (fuse, zesarux, etc.). Por defecto usa el configurado.')
     parser.add_argument('--no-compile', action='store_true',
                         help='Solo genera el código sin compilar. Útil cuando se usará build_amstrad.sh.')
+    parser.add_argument('--max-attempts', type=int, default=None,
+                        help='Máximo de compilaciones/correcciones antes de fallar.')
+    parser.add_argument('--output-mode', choices=['single', 'project'], default='single',
+                        help='Contrato de salida: main.c único o proyecto fijo con assets.')
+    parser.add_argument('--asset', action='append', default=[], type=Path,
+                        help='Imagen para convertir en modo proyecto; se puede repetir.')
+    parser.add_argument('--candidates', type=int, default=1,
+                        help='Genera, compila y puntúa entre 1 y 3 candidatos.')
+    parser.add_argument('--runtime-check', action='store_true',
+                        help='Exige arranque, framebuffer no vacío y transición real en emulador.')
 
     args = parser.parse_args()
 
@@ -937,6 +1200,15 @@ def main():
     # Permitir --file solo con --describe-code o --test-file
     if args.file and not (args.describe_code or args.test_file):
          parser.error("--file solo es válido con --describe-code o --test-file")
+    if args.asset and args.output_mode != 'project':
+        parser.error("--asset requiere --output-mode project")
+    missing_assets = [str(path) for path in args.asset if not path.is_file()]
+    if missing_assets:
+        parser.error("Assets no encontrados: " + ", ".join(missing_assets))
+    if not 1 <= args.candidates <= 3:
+        parser.error("--candidates debe estar entre 1 y 3")
+    if args.no_compile and args.candidates > 1:
+        parser.error("--candidates > 1 requiere compilación para poder puntuar")
 
     # --- Comprobar si se solicita poblar la BD --- 
     if args.populate_db:
@@ -953,16 +1225,21 @@ def main():
                 logging.info(f"Tamaño máximo de chunk establecido a {args.max_chunk_size} caracteres")
             
             generator = LLMZ80Generator(args.platform, global_vars, api_key)
-            populate_vector_db(args.platform, generator)
+            generator.output_mode = args.output_mode
+            generator.asset_paths = [path.resolve() for path in args.asset]
+            if not populate_vector_db(args.platform, generator):
+                raise RuntimeError("La indexación de Qdrant no se completó correctamente")
         except ValueError as e:
             logging.error(f"Error de Configuración durante población: {e}")
             print(colored(f"❌ Error de Configuración: {e}", "red"))
+            return 1
         except Exception as e:
             logging.exception(f"Error inesperado durante población: {e}")
             print(colored(f"❌ Error inesperado. Revisar logs.", "red"))
+            return 1
         finally:
-            print(colored("✅ Proceso de población finalizado.", "blue"))
-        return # Salir después de poblar la BD
+            print(colored("Proceso de población finalizado.", "blue"))
+        return 0 # Salir después de poblar la BD
     # --- Fin de la comprobación para poblar la BD ---
 
     # --- Comprobar si se solicita describir código --- 
@@ -1120,7 +1397,84 @@ def main():
 
             logging.info("🏁 Iniciando proceso de generación de código...")
 
+            if not args.no_compile:
+                toolchain_ok, toolchain_error = validate_toolchain_environment(args.platform, config)
+                if not toolchain_ok:
+                    raise RuntimeError(
+                        f"Toolchain no disponible antes de generar: {toolchain_error}"
+                    )
+
             try:
+                if args.candidates > 1:
+                    candidate_dirs = []
+                    candidate_success = {}
+                    max_attempts = (
+                        args.max_attempts
+                        or config.get('generation', {}).get('max_attempts', 4)
+                    )
+                    logging.info(f"🧪 Generando y evaluando {args.candidates} candidatos")
+                    for candidate_number in range(1, args.candidates + 1):
+                        logging.info(f"🧪 Candidato {candidate_number}/{args.candidates}")
+                        generated_code = generator.generate_c_code(user_prompt)
+                        candidate_paths = generator.save_generated_files(generated_code, user_prompt)
+                        candidate_dir = candidate_paths['base']
+                        candidate_dirs.append(candidate_dir)
+                        candidate_success[str(candidate_dir)] = attempt_compilation_and_correction(
+                            args.platform, candidate_dir, config, generator, user_prompt,
+                            max_attempts=max_attempts, learning_system=None,
+                            runtime_check=args.runtime_check,
+                        )
+
+                    selection = select_candidate(candidate_dirs)
+                    output_dir = Path(selection["selected"]["run_dir"])
+                    write_selection(selection, output_dir / "candidate_selection.json")
+                    compilation_success = bool(
+                        candidate_success.get(str(output_dir))
+                        and selection["selected"]["quality_pass"]
+                    )
+                    learning_system = generator.learning_system
+                    if learning_system:
+                        for candidate in selection["candidates"]:
+                            run_dir = Path(candidate["run_dir"])
+                            build = json.loads((run_dir / "build_report.json").read_text(encoding="utf-8"))
+                            semantic_path = run_dir / "semantic_report.json"
+                            emulator_path = run_dir / "emulator_report.json"
+                            semantic = json.loads(semantic_path.read_text()) if semantic_path.exists() else {}
+                            emulator = json.loads(emulator_path.read_text()) if emulator_path.exists() else {}
+                            evidence = {
+                                "build_quality_pass": build.get("quality_pass", False),
+                                "semantic_quality_pass": semantic.get("quality_pass", False),
+                                "unexpected_warning_count": build.get("unexpected_warning_count", 0),
+                                "resources": build.get("resources", {}), "emulator": emulator,
+                                "candidate_score": candidate["score"],
+                            }
+                            if run_dir == output_dir and compilation_success:
+                                final_code = (run_dir / "main.c").read_text(encoding="utf-8")
+                                promoted_id = learning_system.add_successful_example(
+                                    user_prompt, final_code,
+                                    compilation_attempts=len(list(run_dir.glob("build_report_attempt_*.json"))) or 1,
+                                    evidence=evidence,
+                                )
+                                if promoted_id:
+                                    generator.index_successful_generation(
+                                        user_prompt, final_code, quality_evidence=evidence
+                                    )
+                            else:
+                                learning_system.record_run(
+                                    user_prompt, 1,
+                                    "success" if candidate["quality_pass"] else "failure",
+                                    {**evidence, "selected": False},
+                                )
+                        learning_system.export_report(output_dir / "learning_stats.txt")
+
+                    print(colored(
+                        f"\n🏆 Candidato seleccionado: {output_dir.resolve()} "
+                        f"(score {selection['selected']['score']:.1f})", "green", attrs=['bold']
+                    ))
+                    if args.launch_emulator and compilation_success:
+                        launch_emulator_for_platform(args.platform, output_dir, config, args.emulator)
+                    return 0 if compilation_success else 1
+
                 # Generar código
                 generated_code = generator.generate_c_code(user_prompt)
                 
@@ -1147,7 +1501,13 @@ def main():
                     if output_dir and output_dir.exists():
                          compilation_success = attempt_compilation_and_correction(
                              args.platform, output_dir, config, generator, 
-                             user_prompt, learning_system=learning_system
+                             user_prompt,
+                             max_attempts=(
+                                 args.max_attempts
+                                 or config.get('generation', {}).get('max_attempts', 4)
+                             ),
+                             learning_system=learning_system,
+                             runtime_check=args.runtime_check,
                          )
                          
                          # Generar reporte de aprendizaje si está disponible
@@ -1191,4 +1551,4 @@ def main():
             print(colored(f"❌ Ocurrió un error inesperado. Revisar logs en {global_vars['log_dir'] if 'global_vars' in locals() else 'logs'} para detalles.", "red"))
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,9 +1,31 @@
 import os
 import logging
+from dataclasses import dataclass
+from typing import Any
 from dotenv import load_dotenv
-from qdrant_client import QdrantClient, models
-from qdrant_client.http.models import Distance, VectorParams, PointStruct
-from qdrant_client.http.exceptions import UnexpectedResponse
+
+try:
+    from qdrant_client import QdrantClient
+    from qdrant_client.http.models import Distance, VectorParams, PointStruct
+    from qdrant_client.http.exceptions import UnexpectedResponse
+    QDRANT_AVAILABLE = True
+except ImportError:  # Qdrant is optional for generation and compilation.
+    QdrantClient = Any
+    Distance = VectorParams = None
+    QDRANT_AVAILABLE = False
+
+    class UnexpectedResponse(Exception):
+        """Compatibility placeholder used only while Qdrant is unavailable."""
+
+        status_code = None
+
+    @dataclass
+    class PointStruct:
+        """Payload-compatible placeholder; never sent without qdrant-client."""
+
+        id: str
+        vector: list[float]
+        payload: dict[str, Any]
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -18,6 +40,9 @@ OPENAI_EMBEDDING_DIM = 1536  # Dimension for text-embedding-3-small
 
 def get_qdrant_client():
     """Initializes and returns a Qdrant client based on .env configuration."""
+    if not QDRANT_AVAILABLE:
+        logger.info("qdrant-client no instalado; RAG vectorial desactivado")
+        return None
     logger.debug(f"Connecting to Qdrant at {QDRANT_URL}")
     try:
         if QDRANT_API_KEY:
@@ -42,6 +67,8 @@ def get_collection_name(platform):
 
 def ensure_collection_exists(client: QdrantClient, platform: str):
     """Checks if a collection exists for the platform, creates it if not."""
+    if not QDRANT_AVAILABLE or client is None:
+        return False
     collection_name = get_collection_name(platform)
     logger.debug(f"Ensuring collection '{collection_name}' exists...")
     try:
@@ -80,6 +107,8 @@ def ensure_collection_exists(client: QdrantClient, platform: str):
 
 def upsert_embeddings(client: QdrantClient, platform: str, points: list[PointStruct]):
     """Upserts (inserts or updates) embedding points into the specified collection."""
+    if not QDRANT_AVAILABLE or client is None:
+        return False
     collection_name = get_collection_name(platform)
     if not points:
         logger.warning("No points provided for upsert.")
@@ -99,6 +128,8 @@ def upsert_embeddings(client: QdrantClient, platform: str, points: list[PointStr
 
 def search_similar(client: QdrantClient, platform: str, vector: list[float], limit: int = 10):
     """Searches for vectors similar to the given vector in the specified collection."""
+    if not QDRANT_AVAILABLE or client is None:
+        return []
     collection_name = get_collection_name(platform)
     logger.debug(f"Searching for {limit} similar vectors in '{collection_name}'...")
     if not ensure_collection_exists(client, platform):

@@ -36,6 +36,7 @@ dist/
 *.bin
 *.dsk
 *.rom
+zesarux_index_menu.idx
 **/obj/**
 */obj/*
 

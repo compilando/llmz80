@@ -133,15 +133,23 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
         fixes.append("Sustituido zx_cls() por cpct_clearScreen(0x00)")
 
     before_drawchar = fixed
+    pointer_variables = set(re.findall(
+        r"\b(?:const\s+)?(?:u8|char|void)\s*\*\s*([A-Za-z_]\w*)\b", fixed
+    ))
+
+    def fix_drawchar_args(match: re.Match) -> str:
+        first = match.group(2).strip()
+        second = match.group(3).strip()
+        first_is_literal = first.startswith(("'", '"'))
+        second_is_pointer = second in pointer_variables
+        first_is_pointer = first in pointer_variables
+        if first_is_literal or (second_is_pointer and not first_is_pointer):
+            return f"{match.group(1)}({second}, {first})"
+        return match.group(0)
+
     fixed = re.sub(
         r'\b(cpct_drawCharM[012])\s*\(\s*([^,\n]+?)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)',
-        lambda m: f"{m.group(1)}({m.group(3)}, {m.group(2).strip()})"
-        if (
-            m.group(2).strip().startswith("'")
-            or m.group(2).strip().startswith('"')
-            or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', m.group(2).strip())
-        )
-        else m.group(0),
+        fix_drawchar_args,
         fixed,
     )
     if fixed != before_drawchar:
@@ -153,7 +161,106 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
     if fixed != before_random:
         fixes.append("Corregido uso de random LCG inexistente/sin entropía")
 
+    before_ascii = fixed
+    fixed = re.sub(r'\bcpct_getKeyASCII\s*\(\s*\)', 'cpct_getKeypressedAsASCII()', fixed)
+    if fixed != before_ascii:
+        fixes.append("Corregido cpct_getKeyASCII() por cpct_getKeypressedAsASCII()")
+
+    fixed, cast_count = _cast_high_byte_constants(fixed, macro_type="u8")
+    if cast_count:
+        fixes.append(f"Añadidos casts explícitos a {cast_count} constantes byte altas")
+
     return fixed, fixes
+
+
+def apply_deterministic_spectrum_fixes(code: str) -> tuple[str, list[str]]:
+    """Apply only semantics-preserving fixes verified against Z88DK headers."""
+    fixed = code
+    fixes: list[str] = []
+
+    for upper, lower in (("Q", "q"), ("A", "a"), ("O", "o"), ("P", "p")):
+        before = fixed
+        fixed = re.sub(
+            rf'\bIN_KEY_SCANCODE_{upper}\b',
+            f'IN_KEY_SCANCODE_{lower}',
+            fixed,
+        )
+        if fixed != before:
+            fixes.append(
+                f"Corregido IN_KEY_SCANCODE_{upper} por IN_KEY_SCANCODE_{lower}"
+            )
+
+    fixed, cast_count = _cast_high_byte_constants(fixed, macro_type="uint8_t")
+    if cast_count:
+        fixes.append(f"Added explicit casts to {cast_count} high byte constants")
+
+    return fixed, fixes
+
+
+def _cast_high_byte_constants(code: str, macro_type: str) -> tuple[str, int]:
+    """Silence SDCC warning 158 for checked 128..255 byte constants."""
+    count = 0
+
+    def cast_macro(match: re.Match) -> str:
+        nonlocal count
+        value = int(match.group("value"), 0)
+        if not 128 <= value <= 255:
+            return match.group(0)
+        count += 1
+        return f"{match.group('prefix')}(({macro_type}){match.group('value')}){match.group('suffix')}"
+
+    fixed = re.sub(
+        r"^(?P<prefix>\s*#define\s+[A-Za-z_]\w*\s+)"
+        r"(?P<value>0[xX][0-9A-Fa-f]+|\d+)"
+        r"(?P<suffix>\s*(?://[^\n]*|/\*[^\n]*\*/)?$)",
+        cast_macro,
+        code,
+        flags=re.MULTILINE,
+    )
+
+    def cast_declaration(match: re.Match) -> str:
+        nonlocal count
+        value = int(match.group("value"), 0)
+        if not 128 <= value <= 255:
+            return match.group(0)
+        count += 1
+        return f"{match.group('prefix')}({match.group('type')}){match.group('value')}{match.group('suffix')}"
+
+    fixed = re.sub(
+        r"(?P<prefix>\b(?P<type>u8|uint8_t|unsigned\s+char)\s+[A-Za-z_]\w*\s*=\s*)"
+        r"(?P<value>0[xX][0-9A-Fa-f]+|\d+)(?P<suffix>\s*;)",
+        cast_declaration,
+        fixed,
+    )
+
+    byte_variables = {
+        name: re.sub(r"\s+", " ", type_name)
+        for type_name, name in re.findall(
+            r"\b(u8|uint8_t|unsigned\s+char)\s+([A-Za-z_]\w*)\b", fixed
+        )
+    }
+    if byte_variables:
+        names = "|".join(re.escape(name) for name in sorted(byte_variables, key=len, reverse=True))
+
+        def cast_assignment(match: re.Match) -> str:
+            nonlocal count
+            value = int(match.group("value"), 0)
+            if not 128 <= value <= 255:
+                return match.group(0)
+            count += 1
+            type_name = byte_variables[match.group("name")]
+            return (
+                f"{match.group('prefix')}({type_name}){match.group('value')}"
+                f"{match.group('suffix')}"
+            )
+
+        fixed = re.sub(
+            rf"(?P<prefix>\b(?P<name>{names})\s*=\s*)"
+            r"(?P<value>0[xX][0-9A-Fa-f]+|\d+)(?P<suffix>\s*;)",
+            cast_assignment,
+            fixed,
+        )
+    return fixed, count
 
 
 def _find_main_first_statement_offset(code: str, main_body_start: int) -> int:
@@ -216,6 +323,11 @@ def get_output_paths(prompt: str, platform: str, base_output_dir: Path, slug_max
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     slug = create_slug(prompt, slug_max_length)
     base_dir = base_output_dir / f"{timestamp}_{slug}"
+    if base_dir.exists():
+        suffix = 2
+        while (base_output_dir / f"{timestamp}_{slug}-{suffix}").exists():
+            suffix += 1
+        base_dir = base_output_dir / f"{timestamp}_{slug}-{suffix}"
 
     paths = {
         'base': base_dir,
@@ -263,26 +375,20 @@ def clean_api_response(raw_response: str) -> str:
     code = raw_response.strip()
 
     # Intento 1: Regex para bloques de código markdown (non-greedy)
-    match = re.search(r'```(?:c)?\n(.*?)\n```', code, re.DOTALL | re.IGNORECASE)
+    match = re.search(r'```\s*(?:c|C)?\s*\n?(.*?)```', code, re.DOTALL)
     if match:
         extracted_code = match.group(1).strip()
         logging.info("✅ Código extraído usando regex de markdown.")
         return extracted_code
 
-    # Intento 2: Si no hay markdown, asumir que toda la respuesta podría ser código,
-    # pero intentar eliminar frases introductorias/de cierre comunes.
-    # Esto es menos confiable.
-    logging.warning("⚠️ No se encontró bloque de código markdown. Intentando limpieza básica.")
-    lines = code.splitlines()
-    # Eliminar posibles líneas de explicación iniciales/finales (heurística)
-    if lines:
-        if "here is the c code" in lines[0].lower() or "```" in lines[0]:
-            lines.pop(0)
-    if lines:
-        if "```" in lines[-1]:
-            lines.pop(-1)
+    # If the model prefixed an explanation, start at the first preprocessor
+    # directive.  Do not trim after main(): valid C may define functions later.
+    include_match = re.search(r'^\s*#\s*include\b', code, re.MULTILINE)
+    if include_match and include_match.start() > 0:
+        logging.info("Eliminando texto previo al primer #include de la respuesta.")
+        code = code[include_match.start():]
 
-    cleaned_code = "\n".join(lines).strip()
+    cleaned_code = code.replace("```c", "").replace("```C", "").replace("```", "").strip()
     if len(cleaned_code) < 0.5 * len(raw_response):  # Umbral arbitrario
         logging.warning("⚠️ La limpieza básica redujo significativamente la longitud del contenido. El resultado podría estar incompleto.")
     elif not cleaned_code:

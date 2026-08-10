@@ -1,0 +1,23 @@
+schema_version: 1
+archetypes:
+  static_display:
+    loop: Draw once; wait for an input edge or update only the animated region.
+    required_primitives: [text]
+  animation:
+    loop: Erase the previous sprite, update bounded position, wait for one frame, draw once.
+    required_primitives: [frame_pacing, sprite, bounds]
+  collect_game:
+    loop: Scan input, update player, resolve one collision, update HUD only when changed, draw, wait.
+    required_primitives: [frame_pacing, input, sprite, collision, hud, state]
+  platform_movement:
+    loop: Scan input, apply platform-safe fixed-point velocity/gravity (10.6 in CPC i16), resolve axes separately, draw, wait.
+    required_primitives: [frame_pacing, input, sprite, collision, gravity]
+  board_game:
+    loop: Wait for input edges; update one cell and check the finite end state.
+    required_primitives: [input_edges, board, state, end_state]
+  scrolling_scene:
+    loop: Update a bounded strip or tile column per frame; never repaint expensive content without pacing.
+    required_primitives: [frame_pacing, input, animation]
+  arcade:
+    loop: Scan input, update actors, resolve collisions, update score/state, draw, wait.
+    required_primitives: [frame_pacing, input, collision, hud, state]

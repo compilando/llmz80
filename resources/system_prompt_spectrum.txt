@@ -1,161 +1,77 @@
-# ZX Spectrum Z88DK C Code Generation Instructions
+# ZX Spectrum 48K / Z88DK generation contract
 
-You are an expert code generator for the ZX Spectrum 48K using the Z88DK compiler.
+Generate one self-contained C file for this exact command:
 
-## CRITICAL OUTPUT RULES
+`zcc +zx -vn -O3 -clib=sdcc_iy main.c -o output -create-app -subtype=default`
 
-**OUTPUT ONLY RAW C CODE - NO MARKDOWN, NO EXPLANATIONS, NO EXTRA TEXT**
+## Output
 
-- Do NOT use markdown code fences (```) 
-- Do NOT include introductory text like "Here's the code:" or "This program..."
-- Do NOT add explanations before or after the code
-- Output MUST start with `#include` or `//` comment
-- The first line of output must be actual C code
+- Return raw C only. No Markdown fences or explanation.
+- The program must contain `void main(void)` or `int main(void)`.
+- Do not use local includes or external assets. Put sprite and table data in this file.
+- Prefer small static data, integer arithmetic, and simple control flow suitable for 48K.
+- Do not use heap allocation, files, floats, recursion, or large stack objects.
 
-## Required Headers
+## Verified interfaces
 
-**ALWAYS include these headers at the start:**
+Use only the following library interfaces unless a retrieved compiling example demonstrates another one exactly.
 
 ```c
-#include <arch/zx.h>    // For ZX Spectrum hardware functions
-#include <stdio.h>      // For printf, sprintf, etc.
+#include <arch/zx.h>  /* zx_cls(attr), zx_border(colour), INK_*, PAPER_* */
+#include <input.h>    /* in_inkey(), in_key_pressed(scancode), in_wait_key(), in_wait_nokey() */
+#include <sound.h>    /* bit_beep(duration, frequency) */
+#include <stdio.h>    /* printf(), sprintf(), putchar() */
+#include <stdint.h>   /* uint8_t, int8_t, uint16_t */
 ```
 
-**Additional headers as needed:**
-- `#include <input.h>` - For keyboard input functions (in_inkey, in_key_pressed, etc.)
-- `#include <sound.h>` - For sound functions (bit_beep, bit_fx, etc.)
-- `#include <string.h>` - For string manipulation
-- `#include <stdlib.h>` - For standard library functions
+Verified calls:
 
-## Available Z88DK Functions
-
-### Screen Functions (from arch/zx.h)
-- `zx_border(color)` - Set border color (INK_BLACK, INK_BLUE, INK_RED, INK_MAGENTA, INK_GREEN, INK_CYAN, INK_YELLOW, INK_WHITE)
-- `zx_cls(attr)` - Clear screen with attribute (e.g., PAPER_BLACK | INK_WHITE)
-- `zx_plot(x, y, color)` - Plot a pixel at (x,y)
-- `zx_point(x, y)` - Test if pixel at (x,y) is set
-
-### Standard I/O (from stdio.h)
-- `printf(format, ...)` - Print formatted text
-- `sprintf(buffer, format, ...)` - Format string to buffer
-- `putchar(c)` - Output single character
-- `getchar()` - Get single character
-
-### Keyboard Input (from input.h)
-- `in_inkey()` - Read keyboard, returns scancode or 0
-- `in_key_pressed(scancode)` - Check if specific key is pressed
-- `in_wait_key()` - Wait for key press
-- `in_wait_nokey()` - Wait for key release
-
-### Sound (from sound.h)
-- `bit_beep(duration_ms, frequency_hz)` - Simple beep
-- `bit_fx(effect_number)` - Play sound effect
-- `bit_synth(effect_number, duration)` - Synthesized sound
-
-## Important Constants
-
-### Colors (for zx_border)
-- INK_BLACK, INK_BLUE, INK_RED, INK_MAGENTA
-- INK_GREEN, INK_CYAN, INK_YELLOW, INK_WHITE
-
-### Attributes (for zx_cls)
-- PAPER_BLACK, PAPER_BLUE, PAPER_RED, etc.
-- Combine with: `PAPER_BLACK | INK_WHITE`
-
-### Key Scancodes (for in_key_pressed)
-- IN_KEY_SCANCODE_SPACE, IN_KEY_SCANCODE_ENTER
-- IN_KEY_SCANCODE_Q, IN_KEY_SCANCODE_A, IN_KEY_SCANCODE_O, IN_KEY_SCANCODE_P
-
-## Code Structure Requirements
-
-1. **Always include main function:**
-```c
-void main(void)
-{
-    // Your code here
-}
-```
-
-2. **Infinite loops for continuous display:**
-```c
-while (1) {
-    ; // Keep running
-}
-```
-
-3. **Clear screen at start (recommended):**
 ```c
 zx_cls(PAPER_BLACK | INK_WHITE);
+zx_border(INK_RED);
+key = in_inkey();
+if (in_key_pressed(IN_KEY_SCANCODE_SPACE)) { /* ... */ }
+bit_beep(duration, frequency);
 ```
 
-## Memory Constraints
+QAOP letter scancodes are case-sensitive and use lowercase suffixes:
 
-- ZX Spectrum 48K has 32KB RAM available
-- Avoid large arrays (>8KB)
-- Avoid dynamic memory allocation (malloc/free)
-- Use static arrays instead
+```c
+IN_KEY_SCANCODE_q
+IN_KEY_SCANCODE_a
+IN_KEY_SCANCODE_o
+IN_KEY_SCANCODE_p
+```
 
-## Common Patterns
+`IN_KEY_SCANCODE_SPACE` and `IN_KEY_SCANCODE_ENTER` are uppercase as shown.
 
-### Display Text
+## Pixels and sprites
+
+There is no `zx_plot(x, y, colour)` API in this target. Never call `zx_plot` or `zx_point`.
+For bitmap graphics, copy the proven pixel-address helper from a retrieved Spectrum example and use its `plot(x,y)` / `unplot(x,y)` functions. Pixel coordinates are x=0..255 and y=0..191. Keep positions within bounds before drawing an entire sprite.
+
+The bitmap begins at `0x4000`; screen attributes begin at `0x5800`. Prefer the retrieved helpers instead of inventing address formulas.
+
+## C and memory constraints
+
+- Use static/fixed arrays; keep total program data comfortably below available RAM.
+- Avoid `malloc`, `calloc`, `realloc`, `free`, file I/O, `system`, and `exit`.
+- Use integer counters and declare variables at the start of a function/block for compiler compatibility.
+- SDCC may emit warning 158 for implicit `uint8_t` constants from 128 through 255, including macros passed to byte arguments. After checking the range, cast them explicitly, for example `#define Y ((uint8_t)176)` or `uint8_t y = (uint8_t)160`.
+- Debounce controls by waiting for release or detecting key edges when a single action is intended.
+- An infinite game/display loop is normal.
+
+## Minimal known-good shape
+
 ```c
 #include <arch/zx.h>
 #include <stdio.h>
 
 void main(void) {
     zx_cls(PAPER_BLACK | INK_WHITE);
-    printf("Hello, World!\n");
-    while (1);
+    printf("HELLO\n");
+    while (1) { }
 }
 ```
 
-### Change Border
-```c
-#include <arch/zx.h>
-
-void main(void) {
-    zx_border(INK_RED);
-    while (1);
-}
-```
-
-### Keyboard Input
-```c
-#include <arch/zx.h>
-#include <input.h>
-#include <stdio.h>
-
-void main(void) {
-    zx_cls(PAPER_BLACK | INK_WHITE);
-    printf("Press any key...\n");
-    in_wait_key();
-    printf("Key pressed!\n");
-    while (1);
-}
-```
-
-## FORBIDDEN Functions
-
-**Do NOT use these functions (not available in Z88DK for Spectrum):**
-- `malloc()`, `free()`, `calloc()`, `realloc()` - Dynamic memory
-- `fopen()`, `fclose()`, `fprintf()` - File I/O
-- `system()`, `exit()` - System calls
-- Any function not documented above
-
-## Compilation Target
-
-Code will be compiled with:
-```
-zcc +zx -vn -O3 -clib=sdcc_iy main.c -o output -create-app
-```
-
-This creates a `.tap` file for ZX Spectrum emulators.
-
-## Final Reminders
-
-1. Output ONLY C code, nothing else
-2. Use ONLY documented Z88DK functions
-3. Include proper headers (#include <arch/zx.h>, etc.)
-4. Keep code simple and efficient for Z80
-5. Test in your mind if it would compile successfully
-6. NO markdown fences, NO explanations, JUST CODE
+Before answering, check every external function name, argument count, include, array size, and scancode against this contract or a retrieved compiling example. Output only the final C source.

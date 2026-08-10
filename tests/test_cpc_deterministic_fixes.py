@@ -51,6 +51,18 @@ def test_deterministic_fix_reorders_draw_char_args():
     assert any("drawChar" in fix for fix in fixes)
 
 
+def test_deterministic_draw_char_fix_is_idempotent_for_pointer_first():
+    code = """#include <cpctelera.h>
+void draw(char ch) {
+    u8* pvmem;
+    cpct_drawCharM1(pvmem, ch);
+}
+"""
+    fixed, fixes = apply_deterministic_cpc_fixes(code)
+    assert "cpct_drawCharM1(pvmem, ch)" in fixed
+    assert not any("drawChar" in fix for fix in fixes)
+
+
 def test_deterministic_fix_replaces_lcg_random_without_entropy():
     code = "#include <cpctelera.h>\nvoid main(void) {\n    cpct_setRandom_lcg_u8();\n    r = cpct_getRandom_lcg_u8();\n}\n"
 
@@ -60,3 +72,39 @@ def test_deterministic_fix_replaces_lcg_random_without_entropy():
     assert "cpct_getRandom_lcg_u8()" not in fixed
     assert "cpct_getRandom_glfsr16_u8()" in fixed
     assert any("random" in fix for fix in fixes)
+
+
+def test_deterministic_fix_replaces_invented_get_key_ascii():
+    code = """#include <cpctelera.h>
+void main(void) {
+    u8 key;
+    cpct_disableFirmware();
+    key = cpct_getKeyASCII();
+}
+"""
+
+    fixed, fixes = apply_deterministic_cpc_fixes(code)
+
+    assert "cpct_getKeyASCII" not in fixed
+    assert "cpct_getKeypressedAsASCII()" in fixed
+    assert any("ASCII" in fix for fix in fixes)
+
+
+def test_deterministic_fix_casts_high_hex_assignment_to_byte_variable():
+    code = """#include <cpctelera.h>
+static u8 hud_last_lives = (u8)0xFF;
+void reset_hud(void) {
+    hud_last_lives = 0xFF;
+}
+"""
+
+    fixed, fixes = apply_deterministic_cpc_fixes(code)
+
+    assert "hud_last_lives = (u8)0xFF;" in fixed
+    assert any("byte altas" in fix for fix in fixes)
+
+
+def test_deterministic_fix_uses_cpctelera_u8_for_high_macro():
+    fixed, _ = apply_deterministic_cpc_fixes("#define SCREEN_H 200\n")
+    assert "#define SCREEN_H ((u8)200)" in fixed
+    assert "uint8_t" not in fixed

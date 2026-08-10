@@ -21,11 +21,19 @@ El flujo principal actual genera **C**:
 
 El soporte para **ASM Z80 standalone** todavía no está implementado como flujo de primera clase. La configuración ya contempla ensambladores (`z80asm`) y el repositorio contiene ejemplos con ensamblador dentro de la colección CPCtelera, pero el generador principal, los prompts y la validación están orientados a C. Ver [Informe: Retro Vibe-Coding ASM Z80](docs/RETRO_VIBE_CODING_GAP_REPORT.md) para el análisis de gaps y el plan de mejora.
 
+La revisión más reciente del flujo C, sus causas raíz y evidencia de compilación
+está en [Auditoría fundacional 2026-08-09](docs/FOUNDATIONAL_AUDIT_2026-08-09.md).
+El trabajo y la evidencia de mejora se registran en
+[Generation quality roadmap](docs/GENERATION_QUALITY_ROADMAP.md).
+
 ## ✨ Características Principales
 
 - 🤖 **Generación de código con IA**: Usa modelos OpenAI configurables para crear código C orientado a Z80
-- 🔍 **Búsqueda semántica**: Sistema RAG con Qdrant para encontrar ejemplos relevantes
+- 🔍 **RAG fiable**: catálogo local determinista de programas compilables, ampliable con Qdrant
 - 🎯 **Compilación automática**: Compila y verifica el código generado automáticamente
+- 📊 **Contrato de build verificable**: Cada ejecución guarda `build_report.json`
+  con advertencias clasificadas, artefactos y tamaño del programa; una opción
+  ignorada o un artefacto vacío ya no cuentan como éxito
 - 🔧 **Corrección inteligente**: Si la compilación falla, el LLM sugiere correcciones
 - 🧪 **Validación previa**: Reglas locales detectan errores comunes antes de compilar
 - 🧱 **Contrato CPCtelera**: En Amstrad CPC se fuerza `main.c` autocontenido y APIs CPCtelera conocidas
@@ -55,7 +63,7 @@ El soporte para **ASM Z80 standalone** todavía no está implementado como flujo
 | Componente | Descripción | Instalación |
 |------------|-------------|-------------|
 | **Python 3.10+** | Lenguaje principal | [python.org](https://www.python.org/downloads/) |
-| **Docker** | Para Qdrant (base de datos vectorial) | [docker.com](https://www.docker.com/) |
+| **Docker** | Opcional, sólo para ampliar el RAG con Qdrant | [docker.com](https://www.docker.com/) |
 | **Git** | Control de versiones | `sudo pacman -S git` |
 
 ### Herramientas de Desarrollo Z80
@@ -95,22 +103,19 @@ git clone https://github.com/compilando/llmz80.git
 cd llmz80
 ```
 
-### 2. Crear Entorno Virtual
+### 2. Preparar el entorno Python
 
 ```bash
-python -m venv venv
-source venv/bin/activate  # En Linux/Mac
-# o
-venv\Scripts\activate  # En Windows
+# Crea .venv e instala las dependencias sin modificar el Python del sistema
+make setup
 ```
 
-### 3. Instalar Dependencias Python
+No es necesario activar el entorno: los targets del Makefile utilizan
+`.venv/bin/python` directamente. El proyecto admite Python 3.10–3.13; si el
+`python3` del sistema es más nuevo, el Makefile busca automáticamente una
+versión compatible instalada.
 
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Instalar Herramientas de Desarrollo
+### 3. Instalar Herramientas de Desarrollo
 
 #### Instalación de Z88DK (ZX Spectrum)
 
@@ -146,13 +151,15 @@ echo 'export CPCT_PATH=~/cpctelera' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### 5. Iniciar Qdrant (Base de Datos Vectorial)
+### 5. Iniciar Qdrant (opcional)
+
+La generación funciona sin Qdrant: siempre usa el catálogo local de entrypoints compilables. Qdrant añade búsqueda vectorial y memoria semántica, pero no es una dependencia del flujo base.
 
 ```bash
 # Con Docker (recomendado)
 docker run -p 6333:6333 -p 6334:6334 \
   -v $(pwd)/local/qdrant_storage:/qdrant/storage \
-  qdrant/qdrant
+  qdrant/qdrant:v1.18.3
 
 # O instalar localmente
 # Ver: https://qdrant.tech/documentation/guides/installation/
@@ -193,8 +200,11 @@ openai:
   embedding_model: text-embedding-3-small
 
 examples:
-  max_examples: 15           # Ejemplos en el prompt
+  max_examples: 8            # Programas completos en el prompt
   truncate_size: 50000       # Tamaño máximo por ejemplo
+
+generation:
+  max_attempts: 4            # Build inicial + correcciones con diagnóstico real
 
 embeddings:
   cache_dir: "local/embeddings"
@@ -246,7 +256,7 @@ python llm_z80.py --platform amstrad_cpc \
 python llm_z80.py --platform spectrum --log-level DEBUG \
   --prompt "Your prompt here"
 
-# Sin usar búsqueda semántica (más rápido pero menos preciso)
+# Sin Qdrant/embeddings; conserva el catálogo local determinista
 python llm_z80.py --platform spectrum --no-embeddings \
   --prompt "Your prompt here"
 
@@ -345,6 +355,7 @@ llmz80/
 │   ├── api/                 # API de generación
 │   │   └── generator.py     # LLMZ80Generator (clase principal)
 │   ├── core/                # Módulos core
+│   │   ├── example_catalog.py # RAG local centrado en programas compilables
 │   │   ├── embeddings.py    # Gestión de embeddings
 │   │   ├── cache_manager.py # Caché de embeddings
 │   │   └── examples_loader.py # Carga de ejemplos
@@ -358,7 +369,8 @@ llmz80/
 │   └── vertexai_generator.py # Vertex AI
 ├── examples/                # Ejemplos de código
 │   ├── spectrum/            # ZX Spectrum (Z88DK)
-│   └── amstrad_cpc/         # Amstrad CPC (CPCtelera)
+│   ├── amstrad_cpc/         # Base Amstrad CPC (CPCtelera)
+│   └── amstrad_cpc_level2/  # Proyectos CPC medium/advanced también indexados
 ├── resources/               # Recursos
 │   ├── platforms.yml        # Configuración de plataformas
 │   └── system_prompt_*.txt  # Prompts del sistema
@@ -378,21 +390,21 @@ llmz80/
 ```
 1. Usuario ingresa prompt
    ↓
-2. Sistema genera embedding del prompt
+2. Se crea y valida un GenerationSpec con comportamiento y presupuestos
    ↓
-3. Búsqueda semántica en Qdrant
+3. Catálogo local selecciona evidencia por capacidades (Qdrant es opcional)
    ↓
-4. Recupera ejemplos relevantes (RAG)
+4. Compone entrypoints completos, runtime y arquetipo sin truncar C
    ↓
-5. Construye prompt completo para el modelo configurado
+5. El modelo genera main.c o un proyecto controlado
    ↓
-6. El modelo genera código C
+6. Validación sintáctica, de APIs, semántica y memoria
    ↓
-7. Compilación automática (SDCC/ZCC)
+7. Compilación estricta (SDCC/ZCC) e informe de recursos
    ↓
-8. Si falla: el modelo sugiere corrección
+8. Smoke test portable o headless y selección opcional de candidatos
    ↓
-9. Archivo .tap/.dsk listo para emulador
+9. Sólo los resultados con evidencia de calidad entran al aprendizaje/RAG
 ```
 
 ### Tecnologías Utilizadas
@@ -405,7 +417,86 @@ llmz80/
 - **Python 3.10+**: Lenguaje principal
 - **Docker**: Contenedorización de Qdrant
 
+### Verificación del catálogo
+
+Antes de aceptar cambios en ejemplos o toolchains, compila exactamente todos los programas que el RAG puede recuperar:
+
+```bash
+make audit-examples
+```
+
+Las pruebas de integración también compilan contratos mínimos reales y se omiten automáticamente si una toolchain no está instalada.
+Un proyecto incompatible con la toolchain soportada puede incluir
+`.llmz80-rag-exclude` con el motivo; seguirá en la biblioteca, pero no podrá
+contaminar el contexto de generación hasta que vuelva a compilar.
+
+El gate determinista completo ejecuta las pruebas, compila los 53 entrypoints y
+genera el scorecard offline sin consumir API:
+
+```bash
+make install-dev
+make quality-gate
+```
+
+Para evaluar ejecuciones guardadas o lanzar de forma deliberada una muestra live:
+
+```bash
+make benchmark
+.venv/bin/python scripts/evaluate_generation.py --live --allow-api --limit 2 \
+  --output local/quality/live-sample
+```
+
+La ejecución live nunca se activa implícitamente ni reemplaza el baseline.
+
 ## Uso
+
+### Calidad, candidatos y assets
+
+El modo normal conserva un único `main.c`. Para prompts complejos se pueden
+generar hasta tres candidatos; todos se compilan y validan, y se selecciona el
+mejor por evidencia, no por opinión del modelo:
+
+```bash
+make generate-spectrum PROMPT="Un juego de plataformas con marcador" \
+  GENERATOR_ARGS="--candidates 3"
+```
+
+El modo proyecto acepta imágenes, genera `src/assets.c`, `src/assets.h` y el
+runtime fijo, y convierte los píxeles al formato nativo de forma determinista:
+
+```bash
+make generate-cpc PROMPT="Mueve el héroe por la pantalla" \
+  GENERATOR_ARGS="--output-mode project --asset art/hero.png"
+```
+
+Cada directorio de salida incluye, según corresponda,
+`generation_spec.json`, `prompt_context.json`, `generation_metrics.json`,
+`semantic_report.json`, `build_report.json`, `emulator_report.json` y
+`candidate_selection.json`.
+
+La comprobación estática sólo valida la estructura de TAP/DSK y nunca cuenta
+como evidencia de ejecución. Para arrancar el programa, capturar framebuffers e
+inyectar un control real en ZEsarUX o Caprice32:
+
+```bash
+make smoke RUN_DIR=local/MI_EJECUCION SMOKE_ARGS=--full
+```
+
+El comando falla si el binario no llega a cargar, la pantalla útil queda vacía o,
+cuando el código declara controles/actualizaciones, no existe una transición
+observable. Las capturas y `emulator_report.json` se guardan dentro del
+directorio de la ejecución.
+
+También puede exigirse durante una generación. Los objetivos `make run-spectrum`
+y `make run-cpc` ya lo hacen automáticamente antes de abrir el emulador:
+
+```bash
+make generate-cpc PROMPT="Una pulga que salta" GENERATOR_ARGS="--runtime-check"
+```
+
+Tras superar esa comprobación, `make run-cpc` monta `output.dsk` en Caprice32 e
+inyecta `run"program.bin"` después del arranque del firmware; no es necesario
+escribir el comando manualmente en BASIC.
 
 ### Compilación y Ejecución
 
@@ -456,6 +547,8 @@ llmz80/
 ## 🔧 Solución de Problemas
 
 ### Error: No se puede conectar a Qdrant
+
+No bloquea la generación. Usa `--no-embeddings` para trabajar únicamente con el catálogo local, o inicia Qdrant si quieres búsqueda vectorial:
 
 ```bash
 # Verificar que Qdrant está corriendo

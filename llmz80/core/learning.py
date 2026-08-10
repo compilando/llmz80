@@ -6,6 +6,7 @@ Guarda ejemplos exitosos, errores comunes y permite mejorar con el tiempo.
 import logging
 import json
 import hashlib
+import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -25,10 +26,15 @@ class SuccessfulExample:
     compilation_attempts: int
     rating: Optional[int] = None  # 1-5 estrellas, None si no ha sido calificado
     tags: Optional[List[str]] = None  # Tags para búsqueda (e.g., "game", "graphics", "sound")
+    promoted: bool = False
+    evidence: Optional[Dict[str, Any]] = None
+    run_id: Optional[str] = None
     
     def __post_init__(self):
         if self.tags is None:
             self.tags = []
+        if self.evidence is None:
+            self.evidence = {}
     
     def to_dict(self) -> Dict[str, Any]:
         """Convierte a diccionario para JSON."""
@@ -72,6 +78,17 @@ class CommonError:
         return hashlib.md5(content.encode()).hexdigest()
 
 
+@dataclass(frozen=True)
+class GenerationRun:
+    run_id: str
+    prompt: str
+    platform: str
+    timestamp: str
+    compilation_attempts: int
+    outcome: str
+    evidence: Dict[str, Any]
+
+
 class LearningSystem:
     """Sistema de aprendizaje principal."""
     
@@ -89,11 +106,13 @@ class LearningSystem:
         self.successful_examples_file = self.learning_dir / f"{self.platform}_successful_examples.json"
         self.common_errors_file = self.learning_dir / f"{self.platform}_common_errors.json"
         self.stats_file = self.learning_dir / f"{self.platform}_stats.json"
+        self.runs_file = self.learning_dir / f"{self.platform}_runs.jsonl"
         
         # Cargar datos existentes
         self.successful_examples: Dict[str, SuccessfulExample] = {}
         self.common_errors: Dict[str, CommonError] = {}
         self.stats: Dict[str, Any] = {}
+        self.runs: List[GenerationRun] = []
         
         self._load_data()
         
@@ -135,6 +154,15 @@ class LearningSystem:
                 self.stats = self._init_stats()
         else:
             self.stats = self._init_stats()
+
+        if self.runs_file.exists():
+            try:
+                for line in self.runs_file.read_text(encoding="utf-8").splitlines():
+                    if line.strip():
+                        self.runs.append(GenerationRun(**json.loads(line)))
+                self._recalculate_stats()
+            except Exception as e:
+                logger.error(f"Error cargando historial inmutable: {e}")
     
     def _init_stats(self) -> Dict[str, Any]:
         """Inicializa estructura de estadísticas."""
@@ -169,9 +197,51 @@ class LearningSystem:
             logger.debug("Datos de aprendizaje guardados correctamente")
         except Exception as e:
             logger.error(f"Error guardando datos de aprendizaje: {e}")
+
+    def _recalculate_stats(self) -> None:
+        """Derive honest denominators from immutable generation outcomes."""
+        total = len(self.runs)
+        successful = sum(run.outcome == "success" for run in self.runs)
+        attempts = [run.compilation_attempts for run in self.runs if run.outcome == "success"]
+        self.stats.update({
+            "total_generations": total,
+            "successful_compilations": successful,
+            "failed_compilations": total - successful,
+            "average_attempts": sum(attempts) / len(attempts) if attempts else 0.0,
+        })
+
+    def record_run(self, prompt: str, compilation_attempts: int, outcome: str,
+                   evidence: Optional[Dict[str, Any]] = None) -> GenerationRun:
+        if outcome not in {"success", "failure"}:
+            raise ValueError("outcome must be success or failure")
+        run = GenerationRun(
+            run_id=str(uuid.uuid4()), prompt=prompt, platform=self.platform,
+            timestamp=datetime.now().isoformat(), compilation_attempts=compilation_attempts,
+            outcome=outcome, evidence=evidence or {},
+        )
+        with open(self.runs_file, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(asdict(run), ensure_ascii=False, sort_keys=True) + "\n")
+        self.runs.append(run)
+        self._recalculate_stats()
+        self._save_data()
+        return run
+
+    @staticmethod
+    def should_promote(evidence: Dict[str, Any], rating: Optional[int] = None) -> bool:
+        if rating is not None and rating >= 4:
+            return True
+        build_ok = evidence.get("build_quality_pass") is True
+        semantic_ok = evidence.get("semantic_quality_pass") is True
+        emulator = evidence.get("emulator", {})
+        runtime_ok = (
+            emulator.get("runtime_verified") is True
+            and emulator.get("quality_pass") is True
+        )
+        return build_ok and semantic_ok and runtime_ok
     
-    def add_successful_example(self, prompt: str, code: str, compilation_attempts: int = 1, 
-                              tags: Optional[List[str]] = None) -> str:
+    def add_successful_example(self, prompt: str, code: str, compilation_attempts: int = 1,
+                              tags: Optional[List[str]] = None,
+                              evidence: Optional[Dict[str, Any]] = None) -> Optional[str]:
         """
         Añade un ejemplo exitoso a la base de datos.
         
@@ -184,13 +254,18 @@ class LearningSystem:
         Returns:
             Hash del ejemplo añadido
         """
+        quality_evidence = evidence or {}
+        run = self.record_run(prompt, compilation_attempts, "success", quality_evidence)
+        if not self.should_promote(quality_evidence):
+            logger.info("Compilación registrada, pero no promocionada por falta de evidencia de calidad")
+            return None
         example = SuccessfulExample(
             prompt=prompt,
             code=code,
             platform=self.platform,
             timestamp=datetime.now().isoformat(),
             compilation_attempts=compilation_attempts,
-            tags=tags or []
+            tags=tags or [], promoted=True, evidence=quality_evidence, run_id=run.run_id,
         )
         
         hash_key = example.get_hash()
@@ -206,14 +281,6 @@ class LearningSystem:
             logger.info(f"✨ Nuevo ejemplo exitoso añadido: {hash_key[:8]}")
         
         self.successful_examples[hash_key] = example
-        
-        # Actualizar estadísticas
-        self.stats['total_generations'] += 1
-        self.stats['successful_compilations'] += 1
-        
-        # Actualizar promedio de intentos
-        total_attempts = sum(e.compilation_attempts for e in self.successful_examples.values())
-        self.stats['average_attempts'] = total_attempts / len(self.successful_examples)
         
         self._save_data()
         return hash_key
@@ -264,10 +331,6 @@ class LearningSystem:
             # Nuevo error
             self.common_errors[hash_key] = temp_error
             logger.info(f"✨ Nuevo error común registrado: {hash_key[:8]}")
-        
-        # Actualizar estadísticas
-        if not success:
-            self.stats['failed_compilations'] += 1
         
         self._save_data()
     

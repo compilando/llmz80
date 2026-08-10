@@ -95,7 +95,7 @@ compile_example() {
 CC=zcc
 CFLAGS=+zx -vn -O3 -clib=sdcc_iy -I.
 LDFLAGS=-create-app
-SUBTYPE=--subtype=tap
+SUBTYPE=-subtype=default
 
 TARGET=program
 SOURCES=main.c
@@ -377,7 +377,7 @@ generate_with_prompt() {
                 cat > Makefile << 'EOL'
 CC=zcc
 CFLAGS=+zx -vn -O3 -clib=sdcc_iy
-LDFLAGS=-create-app --subtype=tap
+LDFLAGS=-create-app -subtype=default
 
 all: program
 

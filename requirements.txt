@@ -14,7 +14,7 @@ google-cloud-aiplatform==1.89.0
 requests>=2.32.3
 
 # Vector database
-qdrant-client==1.13.3
+qdrant-client==1.18.0
 
 # CLI utilities
 termcolor==2.5.0

@@ -2,7 +2,7 @@
 
 ## Problem Summary
 
-When compilation failed in the interactive mode (`make interactive-cpc`), the system showed:
+When compilation failed in the interactive run mode (`make run-cpc`), the system showed:
 1. A generic warning about SDCC compilation not being fully implemented
 2. No actual error details visible to the user
 3. Users had to manually check log files to understand what went wrong
@@ -146,7 +146,7 @@ if platform == "amstrad_cpc":
 
 Tested with:
 ```bash
-echo "hola mundo" | make interactive-cpc
+echo "hola mundo" | make run-cpc
 ```
 
 **Results:**

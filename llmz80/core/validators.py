@@ -8,6 +8,7 @@ import os
 import re
 from typing import List, Dict, Tuple, Optional
 from pathlib import Path
+from .semantic_validation import SemanticValidator
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,10 @@ class BaseValidator:
 
 class SyntaxValidator(BaseValidator):
     """Valida sintaxis básica de C."""
+
+    def __init__(self, platform: str, allowed_local_includes: Optional[set[str]] = None):
+        super().__init__(platform)
+        self.allowed_local_includes = allowed_local_includes or set()
 
     @staticmethod
     def _strip_comments(code: str) -> str:
@@ -144,6 +149,8 @@ class SyntaxValidator(BaseValidator):
 
         local_includes = re.findall(r'#include\s+"([^"]+)"', code)
         for include_name in local_includes:
+            if include_name in self.allowed_local_includes:
+                continue
             errors.append(
                 f"Include local prohibido en modo main.c autocontenido: #include \"{include_name}\". "
                 "Embebe los datos en main.c o cambia explícitamente a modo proyecto multiarchivo."
@@ -158,7 +165,7 @@ class SpectrumValidator(BaseValidator):
     
     # Funciones comunes de Z88DK
     Z88DK_FUNCTIONS = [
-        'zx_border', 'zx_cls', 'zx_plot', 'zx_point',
+        'zx_border', 'zx_cls',
         'in_inkey', 'in_key_pressed', 'in_wait_key', 'in_wait_nokey',
         'bit_beep', 'bit_fx', 'bit_synth',
         'sprintf', 'printf', 'putchar', 'getchar'
@@ -188,7 +195,7 @@ class SpectrumValidator(BaseValidator):
             has_sound_h = bool(re.search(r'#include\s*[<"]sound\.h[>"]', code))
             
             # Funciones que requieren arch/zx.h
-            zx_funcs = ['zx_border', 'zx_cls', 'zx_plot', 'zx_point']
+            zx_funcs = ['zx_border', 'zx_cls']
             if any(f in used_z88dk_functions for f in zx_funcs) and not has_arch_zx_h:
                 errors.append("Usa funciones de arch/zx.h pero falta #include <arch/zx.h>")
             
@@ -201,6 +208,24 @@ class SpectrumValidator(BaseValidator):
             sound_funcs = ['bit_beep', 'bit_fx', 'bit_synth']
             if any(f in used_z88dk_functions for f in sound_funcs) and not has_sound_h:
                 errors.append("Usa funciones de sound.h pero falta #include <sound.h>")
+
+        for invented_graphics_func in ('zx_plot', 'zx_point'):
+            if re.search(rf'\b{invented_graphics_func}\s*\(', code):
+                errors.append(
+                    f"'{invented_graphics_func}()' no existe para este target Z88DK; "
+                    "usa el helper plot()/unplot() probado de los ejemplos Spectrum"
+                )
+
+        for letter in ('Q', 'A', 'O', 'P'):
+            bad_symbol = f"IN_KEY_SCANCODE_{letter}"
+            if re.search(rf'\b{bad_symbol}\b', code):
+                errors.append(
+                    f"Scancode inexistente '{bad_symbol}'; las letras QAOP usan "
+                    f"IN_KEY_SCANCODE_{letter.lower()} (sufijo minúsculo)"
+                )
+
+        if re.search(r'\bcpct_[A-Za-z0-9_]+\s*\(', code):
+            errors.append("Usa funciones CPCtelera cpct_* en un programa ZX Spectrum")
         
         # Detectar uso de funciones estándar que pueden no estar disponibles
         problematic_functions = [
@@ -239,7 +264,7 @@ class AmstradCPCValidator(BaseValidator):
         'cpct_drawSprite', 'cpct_drawSpriteMasked', 'cpct_drawSpriteBlended', 'cpct_drawSolidBox',
         'cpct_setPalette', 'cpct_setPALColour', 'cpct_getHWColour',
         'cpct_scanKeyboard', 'cpct_scanKeyboard_f', 'cpct_isKeyPressed',
-        'cpct_waitUntilKeyPressed', 'cpct_waitUntilKeyReleased', 'cpct_getKeyASCII',
+        'cpct_isAnyKeyPressed', 'cpct_isAnyKeyPressed_f', 'cpct_getKeypressedAsASCII',
         'cpct_getScreenPtr', 'cpct_setDrawCharM0', 'cpct_setDrawCharM1',
         'cpct_setDrawCharM2', 'cpct_drawStringM0', 'cpct_drawStringM1',
         'cpct_drawStringM2', 'cpct_drawCharM0', 'cpct_drawCharM1', 'cpct_drawCharM2',
@@ -268,10 +293,10 @@ class AmstradCPCValidator(BaseValidator):
         'cpct_clearScreen_f64': 1,
         'cpct_scanKeyboard': 0,
         'cpct_scanKeyboard_f': 0,
-        'cpct_waitUntilKeyPressed': 1,
-        'cpct_waitUntilKeyReleased': 1,
         'cpct_isKeyPressed': 1,
-        'cpct_getKeyASCII': 0,
+        'cpct_isAnyKeyPressed': 0,
+        'cpct_isAnyKeyPressed_f': 0,
+        'cpct_getKeypressedAsASCII': 0,
         'cpct_getScreenPtr': 3,
         'cpct_getHWColour': 1,
         'cpct_setPALColour': 2,
@@ -297,7 +322,7 @@ class AmstradCPCValidator(BaseValidator):
         'cpct_memcpy': 3,
         'cpct_hflipSpriteM0': 3,
         'cpct_hflipSpriteM1': 3,
-        'cpct_vflipSprite': 3,
+        'cpct_vflipSprite': 4,
         'cpct_akp_musicInit': 1,
         'cpct_akp_musicPlay': 0,
         'cpct_akp_stop': 0,
@@ -336,24 +361,33 @@ class AmstradCPCValidator(BaseValidator):
         self.header_cpct_symbols = self._load_cpctelera_header_symbols()
 
     def _load_cpctelera_header_symbols(self) -> set[str]:
-        """Best-effort symbol extraction from the local CPCtelera installation."""
+        """Best-effort extraction across the complete installed CPCtelera API.
+
+        ``cpctelera.h`` is only an umbrella of includes, so scanning that file
+        alone yielded zero symbols and made the validator reject valid advanced
+        APIs demonstrated by the example library.
+        """
         cpct_path = os.environ.get("CPCT_PATH", "/home/oscar/cpctelera/cpctelera/")
         cpct_dir = Path(cpct_path)
         candidates = [
             cpct_dir / "src" / "cpctelera.h",
             cpct_dir / "cpctelera" / "src" / "cpctelera.h",
         ]
-        for header in candidates:
-            if not header.exists():
+        for umbrella in candidates:
+            if not umbrella.exists():
                 continue
-            try:
-                content = header.read_text(encoding="utf-8", errors="ignore")
-            except Exception as exc:
-                logger.debug(f"No se pudo leer {header}: {exc}")
-                continue
-            symbols = set(self.CPCT_HEADER_FUNCTION_RE.findall(content))
+            symbols: set[str] = set()
+            for header in umbrella.parent.rglob("*.h"):
+                try:
+                    content = header.read_text(encoding="utf-8", errors="ignore")
+                except Exception as exc:
+                    logger.debug(f"No se pudo leer {header}: {exc}")
+                    continue
+                symbols.update(self.CPCT_HEADER_FUNCTION_RE.findall(content))
             if symbols:
-                logger.debug(f"Cargados {len(symbols)} símbolos CPCtelera desde {header}")
+                logger.debug(
+                    f"Cargados {len(symbols)} símbolos CPCtelera desde {umbrella.parent}"
+                )
                 return symbols
         return set()
 
@@ -614,7 +648,7 @@ class AmstradCPCValidator(BaseValidator):
 class CodeValidator:
     """Validador principal que coordina todas las validaciones."""
     
-    def __init__(self, platform: str):
+    def __init__(self, platform: str, spec: Optional[Dict] = None, output_mode: str = "single"):
         """
         Args:
             platform: Plataforma objetivo (spectrum, amstrad_cpc)
@@ -622,7 +656,8 @@ class CodeValidator:
         self.platform = platform.lower()
         
         # Inicializar validadores
-        self.syntax_validator = SyntaxValidator(platform)
+        allowed = {"assets.h", "llmz80_runtime.h"} if output_mode == "project" else set()
+        self.syntax_validator = SyntaxValidator(platform, allowed_local_includes=allowed)
         
         if platform == 'spectrum':
             self.platform_validator = SpectrumValidator(platform)
@@ -630,6 +665,8 @@ class CodeValidator:
             self.platform_validator = AmstradCPCValidator(platform)
         else:
             raise ValueError(f"Platform not supported: {platform}")
+        self.semantic_validator = SemanticValidator(platform, spec)
+        self.last_semantic_report: Dict = {}
     
     def validate(self, code: str) -> ValidationResult:
         """
@@ -661,6 +698,10 @@ class CodeValidator:
         
         if platform_result.errors:
             logger.warning(f"⚠️ Errores de plataforma encontrados: {len(platform_result.errors)}")
+
+        self.last_semantic_report = self.semantic_validator.validate(code)
+        all_errors.extend(self.last_semantic_report["errors"])
+        all_warnings.extend(self.last_semantic_report["warnings"])
         
         # Resultado final
         is_valid = len(all_errors) == 0

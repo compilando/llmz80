@@ -1,0 +1,3 @@
+Excluded from generation RAG: the bundled source triggers an SDCC internal
+compiler error (SDCCgenconstprop.cc:1012) with the currently supported local
+CPCtelera/SDCC toolchain. The prebuilt artifacts remain available as reference.

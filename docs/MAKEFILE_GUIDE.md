@@ -1,328 +1,130 @@
-# 📘 Guía del Makefile de LLMZ80
+# LLMZ80 Makefile guide
 
-El Makefile de LLMZ80 proporciona comandos convenientes para todas las tareas principales del proyecto.
+The Makefile is a thin interface over the Python CLI. It covers common project
+workflows without duplicating application logic.
 
-## 🚀 Inicio Rápido
+## First run
 
 ```bash
-# Ver todos los comandos disponibles
-make help
-
-# Configuración inicial completa
 make setup
-
-# Verificar entorno
-make check-env
+# Add OPENAI_API_KEY to .env
+make doctor
 ```
 
-## 📦 Instalación
+`setup` creates `.venv`, installs runtime dependencies there, creates `.env`
+when needed, and creates the local runtime directories. It does not modify the
+operating-system Python and does not start Docker or Qdrant.
+
+The dependency set supports Python 3.10 through 3.13. The Makefile selects the
+newest compatible `python3.x` command installed on the host instead of blindly
+using a newer, unsupported system Python.
+
+## Generate programs
 
 ```bash
-# Instalar dependencias de producción
-make install
+# Direct prompts
+make generate-spectrum PROMPT="Create a Pong game"
+make generate-cpc PROMPT="Create a Mode 0 graphics demo"
 
-# Instalar dependencias de desarrollo
-make install-dev
+# Omit PROMPT for the interactive prompt
+make generate-spectrum
 
-# Configuración inicial completa (crea .env, directorios, etc.)
-make setup
+# Launch the configured emulator after a successful build
+make run-spectrum PROMPT="Create a maze game"
+make run-cpc PROMPT="Create a sprite animation"
+
+# Override the configured emulator
+make run-cpc EMULATOR=cpcec PROMPT="Create a sprite animation"
+make run-spectrum EMULATOR=zesarux PROMPT="Create a maze game"
 ```
 
-## 🎮 Generación de Código
+With the default `cap32` adapter, `run-cpc` mounts the canonical `output.dsk`
+and queues `run"program.bin"` after firmware boot, so the generated application
+starts automatically instead of stopping at the BASIC prompt. Other emulator
+overrides keep their native launch behaviour.
 
-### Modo con Prompt Directo
+On Arch Linux, the Spectrum options are the AUR packages
+`fuse-emulator-sdl` and `zesarux`; the expected commands are `fuse` and
+`zesarux`, respectively. Emulator preflight runs before code generation, so a
+missing executable never consumes an API request.
+
+The generic form is useful in scripts:
 
 ```bash
-# ZX Spectrum
-make generate-spectrum PROMPT="crear hello world"
-make generate-spectrum PROMPT="crear juego de snake"
-
-# Amstrad CPC
-make generate-cpc PROMPT="crear demo gráfica"
-make generate-cpc PROMPT="mostrar sprites en modo 0"
+make generate PLATFORM=spectrum PROMPT="Create a scrolling message"
+make generate PLATFORM=amstrad_cpc PROMPT="Create a platform game"
 ```
 
-### Modo Interactivo
+Optional CLI flags can be passed through `GENERATOR_ARGS`:
 
 ```bash
-# ZX Spectrum (preguntará el prompt)
-make interactive-spectrum
-
-# Amstrad CPC (preguntará el prompt)
-make interactive-cpc
+make generate-spectrum \
+  PROMPT="Create a keyboard-controlled character" \
+  GENERATOR_ARGS="--no-embeddings --max-attempts 6"
 ```
 
-### Ejemplos Rápidos
+Generation does not require Qdrant. The deterministic local catalog remains
+available when Qdrant is offline or `--no-embeddings` is used.
+
+## Validate changes
 
 ```bash
-# Hello World
-make example-hello-spectrum
-make example-hello-cpc
-
-# Juego Snake (ZX Spectrum)
-make example-game-spectrum
-
-# Demo gráfica (Amstrad CPC)
-make example-demo-cpc
+make test             # Python tests
+make coverage         # Tests plus HTML coverage report
+make lint             # Flake8; failures are returned to the shell
+make format           # Apply Black formatting
+make audit-examples   # Compile every example the RAG catalog may retrieve
+make check            # Tests plus the complete real-toolchain example audit
 ```
 
-## 🗄️ Base de Datos Vectorial
+`make check` requires Z88DK and CPCtelera because it performs real Spectrum and
+Amstrad builds. `make test` can be used when those toolchains are unavailable;
+toolchain-dependent integration tests skip themselves.
+
+## Optional Qdrant service
 
 ```bash
-# Poblar BD para una plataforma
-make populate-spectrum
-make populate-cpc
-
-# Poblar ambas plataformas
-make populate-all
+make qdrant-up
+make qdrant-status
+make qdrant-index
+make qdrant-down
 ```
 
-## 📊 Estadísticas y Aprendizaje
-
-```bash
-# Ver estadísticas
-make stats-spectrum        # Estadísticas ZX Spectrum
-make stats-cpc            # Estadísticas Amstrad CPC
-make stats-all            # Todas las estadísticas
-
-# Listar ejemplos exitosos
-make list-examples
-
-# Listar errores comunes registrados
-make list-errors
-
-# Ver información completa del sistema
-make info
-```
-
-### Ejemplo de Salida de Estadísticas
-
-```json
-{
-  "total_generations": 15,
-  "successful_compilations": 13,
-  "failed_compilations": 2,
-  "average_attempts": 1.2,
-  "average_rating": 4.1,
-  "total_ratings": 8,
-  "last_updated": "2025-11-20T13:45:00"
-}
-```
-
-## 🧪 Desarrollo
-
-```bash
-# Formatear código
-make format
-
-# Ejecutar linter
-make lint
-
-# Ejecutar tests
-make test
-```
-
-## 🔧 Mantenimiento
-
-### Limpieza
-
-```bash
-# Limpiar archivos temporales (__pycache__, *.pyc, etc.)
-make clean
-
-# Limpiar caché de embeddings
-make clean-cache
-
-# Limpieza completa (temporales + caché)
-make clean-all
-
-# Limpiar datos de aprendizaje (¡CUIDADO! Pedirá confirmación)
-make clean-learning
-```
-
-### Validación y Reparación
-
-```bash
-# Validar y reparar caché
-make validate-cache
-
-# Reconstruir embeddings
-make rebuild-embeddings-spectrum
-make rebuild-embeddings-cpc
-make rebuild-all
-
-# Reset completo (limpia y repuebla)
-make reset-learning
-```
-
-## 🔍 Utilidades
-
-```bash
-# Verificar configuración del entorno
-make check-env
-
-# Ver versión e información
-make version
-
-# Información completa
-make info
-```
-
-### Salida de `make check-env`
-
-```
-🔍 Verificando configuración del entorno...
-
-Python:
-Python 3.10.12
-
-Variables de entorno:
-  ✅ .env existe
-  ✅ OPENAI_API_KEY configurada
-
-Directorios:
-  ✅ local/learning existe
-  ✅ logs existe
-
-Datos de aprendizaje:
-  ✅ Estadísticas ZX Spectrum disponibles
-  ⚪ Sin estadísticas Amstrad CPC
-```
-
-## 🐳 Docker (Opcional)
-
-```bash
-# Construir imagen Docker
-make docker-build
-
-# Ejecutar en Docker
-make docker-run
-```
-
-## 📋 Tabla de Comandos Principales
-
-| Categoría | Comando | Descripción |
-|-----------|---------|-------------|
-| **General** | `make help` | Muestra ayuda completa |
-| **Instalación** | `make setup` | Configuración inicial completa |
-| | `make install` | Instala dependencias |
-| **Generación** | `make generate-spectrum PROMPT="..."` | Genera código Spectrum |
-| | `make generate-cpc PROMPT="..."` | Genera código CPC |
-| | `make interactive-spectrum` | Modo interactivo Spectrum |
-| **BD Vectorial** | `make populate-all` | Puebla todas las BDs |
-| **Estadísticas** | `make stats-all` | Muestra todas las stats |
-| | `make list-examples` | Lista ejemplos exitosos |
-| | `make list-errors` | Lista errores comunes |
-| **Desarrollo** | `make test` | Ejecuta tests |
-| | `make lint` | Ejecuta linter |
-| | `make format` | Formatea código |
-| **Mantenimiento** | `make clean` | Limpia temporales |
-| | `make validate-cache` | Valida caché |
-| **Utilidades** | `make check-env` | Verifica entorno |
-| | `make info` | Info completa |
-| **Ejemplos** | `make example-hello-spectrum` | Hello World |
-| | `make example-game-spectrum` | Juego Snake |
-
-## 💡 Casos de Uso Comunes
-
-### Primer Uso
-
-```bash
-# 1. Instalación inicial
-make setup
-
-# 2. Editar .env con tu API key
-# (el comando setup ya creó .env desde .env.example)
-
-# 3. Poblar bases de datos
-make populate-all
-
-# 4. Generar primer código
-make example-hello-spectrum
-```
-
-### Desarrollo Diario
-
-```bash
-# Generar código
-make generate-spectrum PROMPT="tu idea aquí"
-
-# Ver cómo va el aprendizaje
-make stats-spectrum
-make list-examples
-
-# Ver errores comunes
-make list-errors
-```
-
-### Mantenimiento Regular
-
-```bash
-# Limpiar archivos temporales
-make clean
-
-# Validar caché si hay problemas
-make validate-cache
-
-# Ver estado del sistema
-make check-env
-```
-
-### Después de Actualizar Ejemplos
-
-```bash
-# Repoblar BD vectorial
-make populate-spectrum  # o populate-cpc
-
-# O ambas
-make populate-all
-```
-
-## ⚠️ Comandos con Precaución
-
-Estos comandos son destructivos, úsalos con cuidado:
-
-```bash
-# Limpia TODOS los datos de aprendizaje (pedirá confirmación)
-make clean-learning
-
-# Reset completo del sistema de aprendizaje
-make reset-learning
-```
-
-## 🎨 Personalización
-
-Puedes modificar las variables al inicio del Makefile:
-
-```makefile
-PYTHON := python3           # Cambiar versión de Python
-PLATFORM_SPECTRUM := spectrum
-PLATFORM_CPC := amstrad_cpc
-```
-
-## 🆘 Solución de Problemas
-
-### "make: command not found"
-- Instala make: `sudo apt-get install make` (Linux) o usa Homebrew en macOS
-
-### "OPENAI_API_KEY no configurada"
-- Ejecuta `make setup` para crear .env
-- Edita `.env` y añade tu API key
-
-### "BD vectorial vacía"
-- Ejecuta `make populate-all` para poblar las bases de datos
-
-### "Error al generar código"
-- Verifica con `make check-env`
-- Revisa logs en `logs/`
-- Asegura que Qdrant esté corriendo (si usas embeddings)
-
-## 📚 Más Información
-
-- Ver `README.md` para documentación completa del proyecto
-- Ver `docs/PHASE_1_IMPLEMENTATION.md` para detalles de las fases
-- Ver `.cursorrules` para reglas de desarrollo
-
----
-
-**Consejo Pro**: Ejecuta `make help` en cualquier momento para ver todos los comandos disponibles con sus descripciones.
+Qdrant needs Docker. Indexing also needs a valid OpenAI API key because it
+creates embeddings. Stopping Qdrant preserves its data under
+`local/qdrant_storage`. The image is pinned to a client-compatible release;
+override `QDRANT_IMAGE` deliberately when upgrading both sides.
+
+## Variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `VENV_DIR` | `.venv` | Project virtual-environment directory |
+| `BOOTSTRAP_PYTHON` | newest installed Python 3.10–3.13 | Python used only to create `.venv` |
+| `PYTHON` | `.venv/bin/python` | Project Python interpreter |
+| `PLATFORM` | `spectrum` | Generic generation target platform |
+| `PROMPT` | empty | Empty enables the interactive prompt |
+| `LOG_LEVEL` | `INFO` | CLI logging level |
+| `GENERATOR_ARGS` | empty | Additional `llm_z80.py` arguments |
+| `EMULATOR` | configured value | Emulator override for `run*` targets |
+| `QDRANT_URL` | `http://127.0.0.1:6333` | Optional Qdrant endpoint |
+| `QDRANT_IMAGE` | `qdrant/qdrant:v1.18.3` | Reproducible optional Qdrant image |
+
+Run `make help` for the complete public command list.
+
+## Removed legacy targets
+
+The previous Makefile mixed application features, host installation notes, and
+service management. The rewrite intentionally removes:
+
+- `qdrant-preflight` from generation: Qdrant is optional.
+- `docker-build` and `docker-run`: there is no application `Dockerfile`.
+- separate interactive targets: omitting `PROMPT` already starts that mode.
+- demo/example targets: they duplicated normal generation with hard-coded prompts.
+- statistics, learning-reset, and embedding-cache shortcuts: they exposed stale
+  internal file formats and made destructive operations too easy.
+- emulator installation instructions: they were distro-specific documentation,
+  not build tasks.
+
+Generated programs, learning data, embeddings, and Qdrant storage are never
+deleted by `make clean`.

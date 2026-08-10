@@ -119,10 +119,13 @@ include $(CPCT_PATH)/cfg/global_paths.mk
 ##   Flags used to configure the compilation of your code. They are usually 
 ##   fine for most of the projects, but you may change them for special uses.
 #####
-Z80CCFLAGS    :=
+# CPCtelera's prebuilt assembly bindings use SDCC's classic stack ABI.
+# SDCC 4.2+ defaults to ABI 1, which can compile and link successfully while
+# passing parameters in registers that CPCtelera expects on the stack.
+Z80CCFLAGS    := --sdcccall 0 --disable-warning 296
 Z80ASMFLAGS   := -l -o -s
 Z80CCINCLUDE  := -I$(CPCT_SRC) -I$(SRCDIR)
-Z80CCLINKARGS := -mz80 --no-std-crt0 -Wl-u \
+Z80CCLINKARGS := -mz80 --sdcccall 0 --disable-warning 296 --no-std-crt0 -Wl-u \
                  --code-loc $(Z80CODELOC) \
                  --data-loc 0 -l$(CPCT_LIB)
 ####
@@ -152,4 +155,4 @@ CFILES         := $(filter-out $(BIN_OBJFILES), $(CFILES))
 C_OBJFILES     := $(patsubst $(SRCDIR)%, $(OBJDIR)%, $(patsubst %.$(C_EXT), %.$(OBJ_EXT), $(BIN_OBJFILES) $(CFILES)))
 ASM_OBJFILES   := $(patsubst $(SRCDIR)%, $(OBJDIR)%, $(patsubst %.$(ASM_EXT), %.$(OBJ_EXT), $(ASMFILES)))
 DSKINCOBJFILES := $(foreach FILE, $(DSKINCSRCFILES), $(patsubst $(DSKFILESDIR)/%, $(OBJDSKINCSDIR)/%, $(FILE)).$(DSKINC_EXT))
-OBJFILES       := $(C_OBJFILES) $(ASM_OBJFILES) 
+OBJFILES       := $(C_OBJFILES) $(ASM_OBJFILES)

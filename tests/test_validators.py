@@ -27,9 +27,23 @@ void main(void) {
     assert any("cpct_madeUpFunction" in error for error in result.errors)
 
 
-def test_amstrad_validator_accepts_get_key_ascii_without_args():
+def test_amstrad_validator_accepts_real_get_key_ascii_without_args():
     code = """#include <cpctelera.h>
 
+void main(void) {
+    u8 ascii;
+    cpct_disableFirmware();
+    ascii = cpct_getKeypressedAsASCII();
+}
+"""
+
+    result = CodeValidator("amstrad_cpc").validate(code)
+
+    assert result.is_valid
+
+
+def test_amstrad_validator_rejects_invented_get_key_ascii():
+    code = """#include <cpctelera.h>
 void main(void) {
     u8 ascii;
     cpct_disableFirmware();
@@ -39,7 +53,8 @@ void main(void) {
 
     result = CodeValidator("amstrad_cpc").validate(code)
 
-    assert result.is_valid
+    assert not result.is_valid
+    assert any("cpct_getKeyASCII" in error for error in result.errors)
 
 
 def test_amstrad_validator_rejects_px2byte_m2():
@@ -168,6 +183,33 @@ void main(void) {
 
     assert not result.is_valid
     assert any("cpct_getRandom_lcg_u8" in error and "0 argumentos" in error for error in result.errors)
+
+
+def test_spectrum_validator_rejects_nonexistent_zx_plot():
+    code = """#include <arch/zx.h>
+void main(void) {
+    zx_plot(10, 10, 1);
+}
+"""
+
+    result = CodeValidator("spectrum").validate(code)
+
+    assert not result.is_valid
+    assert any("zx_plot" in error and "no existe" in error for error in result.errors)
+
+
+def test_spectrum_validator_rejects_uppercase_qaop_scancode():
+    code = """#include <arch/zx.h>
+#include <input.h>
+void main(void) {
+    if (in_key_pressed(IN_KEY_SCANCODE_Q)) { }
+}
+"""
+
+    result = CodeValidator("spectrum").validate(code)
+
+    assert not result.is_valid
+    assert any("IN_KEY_SCANCODE_Q" in error for error in result.errors)
 
 
 def test_amstrad_validator_counts_casted_call_arguments():

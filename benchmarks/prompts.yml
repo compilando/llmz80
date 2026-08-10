@@ -1,0 +1,123 @@
+schema_version: 1
+name: core-bilingual-v1
+cases:
+  - id: spectrum_flea_es
+    platform: spectrum
+    language: es
+    prompt: Una pulga que salta por la pantalla y rebota en los bordes
+    archetype: animation
+    required_capabilities: [sprite, animation, bounds, frame_pacing]
+  - id: spectrum_flea_en
+    platform: spectrum
+    language: en
+    prompt: A flea that jumps around the screen and bounces at the edges
+    archetype: animation
+    required_capabilities: [sprite, animation, bounds, frame_pacing]
+  - id: spectrum_collect_es
+    platform: spectrum
+    language: es
+    prompt: Juego de recoger diez monedas con teclado y marcador
+    archetype: collect_game
+    required_capabilities: [input, sprite, collision, hud, score]
+  - id: spectrum_collect_en
+    platform: spectrum
+    language: en
+    prompt: Collect ten coins with keyboard controls and an on-screen score
+    archetype: collect_game
+    required_capabilities: [input, sprite, collision, hud, score]
+  - id: spectrum_pong_es
+    platform: spectrum
+    language: es
+    prompt: Pong para un jugador con marcador y reinicio de la pelota
+    archetype: arcade
+    required_capabilities: [input, collision, hud, score, state]
+  - id: spectrum_pong_en
+    platform: spectrum
+    language: en
+    prompt: Single-player Pong with score and ball reset
+    archetype: arcade
+    required_capabilities: [input, collision, hud, score, state]
+  - id: spectrum_menu_es
+    platform: spectrum
+    language: es
+    prompt: Menú con tres opciones navegable con teclado
+    archetype: static_display
+    required_capabilities: [input, input_edges, text, state]
+  - id: spectrum_scroll_en
+    platform: spectrum
+    language: en
+    prompt: A scrolling star field with a ship controlled by the player
+    archetype: scrolling_scene
+    required_capabilities: [input, sprite, animation, frame_pacing]
+  - id: spectrum_platform_es
+    platform: spectrum
+    language: es
+    prompt: Personaje que camina y salta sobre plataformas
+    archetype: platform_movement
+    required_capabilities: [input, sprite, collision, gravity, frame_pacing]
+  - id: spectrum_board_en
+    platform: spectrum
+    language: en
+    prompt: A playable noughts and crosses board with a win screen
+    archetype: board_game
+    required_capabilities: [input, board, state, end_state, text]
+  - id: cpc_flea_es
+    platform: amstrad_cpc
+    language: es
+    prompt: Una pulga dibujada como sprite salta por la pantalla
+    archetype: animation
+    required_capabilities: [sprite, animation, bounds, frame_pacing]
+  - id: cpc_flea_en
+    platform: amstrad_cpc
+    language: en
+    prompt: A flea sprite jumps around the screen
+    archetype: animation
+    required_capabilities: [sprite, animation, bounds, frame_pacing]
+  - id: cpc_collect_es
+    platform: amstrad_cpc
+    language: es
+    prompt: Recoge objetos en modo 1 con vidas y puntuación
+    archetype: collect_game
+    required_capabilities: [input, sprite, collision, hud, score]
+  - id: cpc_collect_en
+    platform: amstrad_cpc
+    language: en
+    prompt: Collect objects in Mode 1 with lives and score
+    archetype: collect_game
+    required_capabilities: [input, sprite, collision, hud, score]
+  - id: cpc_mode0_es
+    platform: amstrad_cpc
+    language: es
+    prompt: Demo animada en modo 0 con sprite multicolor
+    archetype: animation
+    required_capabilities: [mode_0, palette, sprite, animation]
+  - id: cpc_mode0_en
+    platform: amstrad_cpc
+    language: en
+    prompt: Animated Mode 0 demo with a multicolour sprite
+    archetype: animation
+    required_capabilities: [mode_0, palette, sprite, animation]
+  - id: cpc_maze_es
+    platform: amstrad_cpc
+    language: es
+    prompt: Laberinto jugable con salida y contador de pasos
+    archetype: board_game
+    required_capabilities: [input, board, collision, hud, end_state]
+  - id: cpc_maze_en
+    platform: amstrad_cpc
+    language: en
+    prompt: A playable maze with an exit and step counter
+    archetype: board_game
+    required_capabilities: [input, board, collision, hud, end_state]
+  - id: cpc_platform_es
+    platform: amstrad_cpc
+    language: es
+    prompt: Juego de plataformas con salto, gravedad y meta
+    archetype: platform_movement
+    required_capabilities: [input, sprite, collision, gravity, end_state]
+  - id: cpc_static_en
+    platform: amstrad_cpc
+    language: en
+    prompt: A title screen with instructions and a blinking start message
+    archetype: static_display
+    required_capabilities: [text, animation, input]

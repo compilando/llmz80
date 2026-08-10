@@ -9,8 +9,18 @@ openai:
   embedding_model: text-embedding-3-small
 
 examples:
-  max_examples: 15
+  max_examples: 8
   truncate_size: 50000  # Reducido: Tamaño máximo para ejemplos (caracteres)
+  roots:
+    spectrum:
+      - examples/spectrum
+    amstrad_cpc:
+      - examples/amstrad_cpc
+      - examples/amstrad_cpc_level2
+
+generation:
+  # Includes the initial build. Compiler diagnostics are the source of truth.
+  max_attempts: 4
 
 embeddings:
   cache_dir: "local/embeddings"
@@ -46,13 +56,14 @@ compiler:
   amstrad_cpc:
     c_compiler: "sdcc"
     asm_compiler: "z80asm"
-    params: "-mz80 --no-std-crt0"
+    # CPCtelera's prebuilt assembly bindings require the classic stack ABI.
+    params: "-mz80 --sdcccall 0 --no-std-crt0"
 
 # Configuración del emulador (por plataforma)
 emulator:
   spectrum:
-    name: "fuse"
-    params: "--machine 48 --no-sound"
+    name: "zesarux"
+    params: "--machine 48k"
   amstrad_cpc:
     name: "cap32"
     params: "--machine 6128"

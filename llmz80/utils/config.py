@@ -92,6 +92,13 @@ def initialize_global_vars(config: Dict[str, Any], platform: str) -> Dict[str, A
     examples_config = config.get('examples', {})
     max_example_size = examples_config.get('truncate_size', 50000)
     example_dir_template = "examples/{platform}"
+    configured_roots = examples_config.get('roots', {}).get(platform)
+    if configured_roots:
+        example_dirs = [Path(path) for path in configured_roots]
+    elif platform == 'amstrad_cpc':
+        example_dirs = [Path('examples/amstrad_cpc'), Path('examples/amstrad_cpc_level2')]
+    else:
+        example_dirs = [Path(example_dir_template.format(platform=platform))]
     
     # Configuración de slug
     slug_max_length = config.get('output', {}).get('slug_max_length', 40)
@@ -119,6 +126,7 @@ def initialize_global_vars(config: Dict[str, Any], platform: str) -> Dict[str, A
         'safety_margin': safety_margin,
         'max_example_size': max_example_size,
         'example_dir_template': example_dir_template,
+        'example_dirs': example_dirs,
         'slug_max_length': slug_max_length,
         'model': model,
         'temperature': temperature,
@@ -127,4 +135,4 @@ def initialize_global_vars(config: Dict[str, Any], platform: str) -> Dict[str, A
         'max_examples': max_examples,
         'embedding_model': embedding_model,
         'error_doc_glob_pattern': '**/*.md'
-    } 
+    }

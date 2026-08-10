@@ -1,6 +1,6 @@
 CC=zcc
 CFLAGS=+zx -vn -O3 -clib=sdcc_iy
-LDFLAGS=-create-app -subtype=tap
+LDFLAGS=-create-app -subtype=default
 TARGET=example_name
 
 SOURCES=$(wildcard src/*.c)

@@ -7,7 +7,7 @@ name = "llmz80"
 version = "0.1.0"
 description = "Generador inteligente de código C para microordenadores clásicos Z80 usando IA"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 license = {text = "MIT"}
 authors = [
     {name = "LLMZ80 Contributors"}
@@ -35,7 +35,7 @@ dependencies = [
     "google-generativeai>=0.8.5",
     "google-cloud-aiplatform>=1.89.0",
     "requests>=2.32.3",
-    "qdrant-client>=1.13.3",
+    "qdrant-client>=1.18.0,<1.19.0",
     "termcolor>=2.5.0",
 ]
 
@@ -71,7 +71,7 @@ Issues = "https://github.com/compilando/llmz80/issues"
 llmz80 = "llm_z80:main"
 
 [tool.setuptools]
-packages = ["llmz80", "llmz80.api", "llmz80.core", "llmz80.utils", "generators"]
+packages = ["llmz80", "llmz80.api", "llmz80.core", "llmz80.quality", "llmz80.utils", "generators"]
 
 [tool.black]
 line-length = 100
@@ -113,7 +113,8 @@ exclude = [
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q --strict-markers --cov=llmz80 --cov-report=term-missing --cov-report=html"
+addopts = "-ra -q --strict-markers"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]

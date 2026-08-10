@@ -1,0 +1,50 @@
+from pathlib import Path
+import shutil
+import subprocess
+
+import pytest
+
+from llm_z80 import prepare_amstrad_cpc_build_project, resolve_cpct_path
+from llmz80.core.runtime_contracts import archetype_contract, runtime_contract
+
+
+def test_all_generation_archetypes_have_loop_and_primitives():
+    for name in (
+        "static_display", "animation", "collect_game", "platform_movement",
+        "board_game", "scrolling_scene", "arcade",
+    ):
+        contract = archetype_contract(name)
+        assert contract["loop"]
+        assert contract["required_primitives"]
+
+
+@pytest.mark.skipif(shutil.which("zcc") is None, reason="Z88DK is not installed")
+def test_spectrum_runtime_compiles(tmp_path):
+    header = runtime_contract("spectrum")
+    (tmp_path / "main.c").write_text(
+        header + "\nstatic const unsigned char dot[8]={24,60,126,255,126,60,24,0};\n"
+        "void main(void){zx_cls(PAPER_BLACK|INK_WHITE);llmz80_draw_sprite8(8,8,dot);"
+        "llmz80_wait_frame();while(1){}}\n", encoding="utf-8")
+    result = subprocess.run([
+        "zcc", "+zx", "-vn", "-O3", "-clib=sdcc_iy", "main.c", "-o", "output",
+        "-create-app", "-subtype=default",
+    ], cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "output.tap").stat().st_size > 0
+
+
+@pytest.mark.skipif(shutil.which("make") is None, reason="make is not installed")
+def test_cpc_runtime_compiles(tmp_path):
+    cpct_path = resolve_cpct_path()
+    if cpct_path is None:
+        pytest.skip("CPCtelera is not installed")
+    header = runtime_contract("amstrad_cpc")
+    (tmp_path / "main.c").write_text(
+        header + "\nstatic const u8 dot[2]={0xFF,0xFF};\n"
+        "void main(void){cpct_disableFirmware();cpct_setVideoMode(1);"
+        "llmz80_scan_input();llmz80_draw_sprite(1,1,dot,1,2);llmz80_wait_frame();"
+        "while(1){}}\n", encoding="utf-8")
+    assert prepare_amstrad_cpc_build_project(tmp_path, cpct_path)
+    result = subprocess.run(["make", f"CPCT_PATH={cpct_path}/"], cwd=tmp_path,
+                            capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr

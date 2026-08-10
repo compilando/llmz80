@@ -1,5 +1,4 @@
 import logging
-import random
 import time
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
@@ -7,6 +6,7 @@ import numpy as np
 
 from ..utils.helpers import estimate_tokens
 from .code_context import build_embedding_text, build_example_context, discover_support_files
+from .example_catalog import ExampleCatalog
 
 class ExamplesLoader:
     """Cargador de ejemplos de código para diferentes plataformas."""
@@ -52,8 +52,9 @@ class ExamplesLoader:
         # Intentar cargar el caché de embeddings
         self.embeddings_cache = self.cache_manager.load_cache()
         
-        # Buscar recursivamente en todas las carpetas
-        all_c_files = list(examples_dir.rglob('*.c'))
+        # Index complete programs, not arbitrary support/asset translation units.
+        catalog = ExampleCatalog(self.platform, examples_dir, self.max_example_size)
+        all_c_files = [entry['file_path'] for entry in catalog.discover()]
         if not all_c_files:
             logging.warning(f"⚠️ No se encontraron archivos .c en {examples_dir}")
             return examples
@@ -198,10 +199,10 @@ class ExamplesLoader:
             logging.warning(f"⚠️ No se encontraron archivos .c en {examples_dir}")
             return examples
             
-        # Si hay demasiados archivos, toma una muestra aleatoria para mayor diversidad
+        # Stable preselection: retrieval must be reproducible when vector search
+        # is disabled or unavailable.
         if len(all_c_files) > self.max_examples * 3:
-            random.shuffle(all_c_files)
-            all_c_files = all_c_files[:self.max_examples * 3]
+            all_c_files = sorted(all_c_files)[:self.max_examples * 3]
         
         # Cargar contenido de archivos
         for file_path in all_c_files:
@@ -278,7 +279,7 @@ class ExamplesLoader:
                 all_examples.append({"path": rel_path, "content": content})
             
             # Limitar a la cantidad solicitada
-            random.shuffle(all_examples)
+            all_examples.sort(key=lambda example: example['path'])
             return all_examples[:max_examples]
         
         # Calcular similitud con todos los ejemplos
@@ -349,7 +350,7 @@ class ExamplesLoader:
                 all_examples.append({"path": rel_path, "content": content})
             
             # Limitar a la cantidad solicitada
-            random.shuffle(all_examples)
+            all_examples.sort(key=lambda example: example['path'])
             return all_examples[:max_examples]
         
         # Ordenar por similitud descendente

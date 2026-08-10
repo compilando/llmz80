@@ -1,6 +1,9 @@
 import logging
+import json
 import os
+import re
 import time
+import hashlib
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from openai import OpenAI
@@ -10,13 +13,18 @@ from numpy.linalg import norm
 # Obtener instancia del logger para este módulo
 logger = logging.getLogger(__name__)
 
-MAX_PROMPT_EXAMPLE_CHARS = 8000
-MAX_PROMPT_EXAMPLES_CHARS = 60000
+MAX_PROMPT_EXAMPLE_CHARS = 9000
+MAX_PROMPT_PRIMARY_EXAMPLE_CHARS = 20000
+MAX_PROMPT_EXAMPLES_CHARS = 45000
 
 from ..core.embeddings import EmbeddingsManager
 from ..core.cache_manager import EmbeddingsCacheManager
 from ..core.examples_loader import ExamplesLoader
-from ..core.code_context import build_example_context, is_self_contained_c_context
+from ..core.code_context import build_example_context
+from ..core.example_catalog import ExampleCatalog
+from ..core.generation_spec import GenerationSpec, create_generation_spec
+from ..core.runtime_contracts import generation_contract
+from ..core.project_mode import create_project_layout
 from ..utils.helpers import clean_api_response, get_output_paths, build_completion_kwargs, is_reasoning_model
 from vector_db import get_qdrant_client, search_similar, ensure_collection_exists, upsert_embeddings, PointStruct
 import uuid as _uuid
@@ -82,6 +90,20 @@ class LLMZ80Generator:
             global_vars['max_example_size'],
             self.max_examples
         )
+        examples_dir = global_vars.get('example_dirs') or [
+            Path(global_vars['example_dir_template'].format(platform=self.platform))
+        ]
+        self.example_catalog = ExampleCatalog(
+            self.platform,
+            examples_dir,
+            max_context_size=global_vars['max_example_size'],
+        )
+        self.last_retrieval: List[Dict[str, Any]] = []
+        self.current_spec: Optional[GenerationSpec] = None
+        self.last_context_manifest: Dict[str, Any] = {}
+        self.output_mode = "single"
+        self.asset_paths: List[Path] = []
+        self.generation_metrics: Dict[str, Any] = {}
         
         logging.info(f"🚀 Inicializando Generador de Código LLMZ80 para {self.platform.upper().replace('_', ' ')}")
         logging.info(f"⚙️ Usando Modelo: {self.model}, Temp: {self.temperature}, Max Tokens: {self.max_tokens}, Max Ejemplos: {self.max_examples}")
@@ -263,8 +285,8 @@ Ensure the code compiles with the CPCtelera toolchain."""
         else:
             examples_to_use: List[Dict[str, Any]] = relevant_examples
 
-        examples_to_use = self._fit_examples_for_prompt(examples_to_use)
         examples_to_use = self._filter_examples_for_output_contract(examples_to_use)
+        examples_to_use = self._fit_examples_for_prompt(examples_to_use)
 
         # Añadir ejemplos al prompt
         for i, example in enumerate(examples_to_use):
@@ -288,6 +310,11 @@ Ensure the code compiles with the CPCtelera toolchain."""
         # 4. Combinar todas las partes
         full_system_prompt = platform_instructions
 
+        if self.current_spec is not None:
+            full_system_prompt += "\n\n" + generation_contract(
+                self.platform, self.current_spec.archetype
+            )
+
         # Inject recurring-error guidance from learning system (if wired)
         if self.learning_system is not None:
             try:
@@ -308,65 +335,87 @@ Ensure the code compiles with the CPCtelera toolchain."""
         full_system_prompt += "\n\n--- CRITICAL REMINDER ---\n"
         full_system_prompt += "Output ONLY raw C code. No markdown, no explanations, no extra text.\n"
         full_system_prompt += "First line must be #include or a comment. Code must compile successfully."
-        full_system_prompt += "\nGenerate a self-contained main.c. Do not add #include \"local_file.h\"."
-        full_system_prompt += "\nEmbed all required sprites, tables, palettes, and data directly in main.c."
+        if self.output_mode == "project":
+            full_system_prompt += "\nGenerate src/main.c for the owned project template."
+            full_system_prompt += "\nOnly assets.h and llmz80_runtime.h are permitted local includes."
+        else:
+            full_system_prompt += "\nGenerate a self-contained main.c. Do not add #include \"local_file.h\"."
+            full_system_prompt += "\nEmbed all required sprites, tables, palettes, and data directly in main.c."
         full_system_prompt += "\nExamples may show SUPPORT FILE and BUILD FILE sections; use them to learn valid APIs, data shapes, and compiler constraints, but do not require missing project files in your output."
 
         logging.debug(f"Prompt del sistema construido ({len(full_system_prompt)} caracteres).")
         return full_system_prompt
 
     def _filter_examples_for_output_contract(self, examples: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Prefer examples compatible with the current single-file output contract."""
-        if self.platform != "amstrad_cpc":
-            return examples
+        """Keep complete programs and discard asset-only translation units.
 
-        self_contained = [
-            example for example in examples
-            if is_self_contained_c_context(example.get("content", ""))
+        A multi-file CPC project is still valid API evidence when support files
+        are clearly delimited.  Requiring every example to be self-contained
+        discarded most of the CPCtelera library while retaining some data-only
+        C files that happened not to contain local includes.
+        """
+        complete = [
+            example
+            for example in examples
+            if re.search(r"\b(?:void|int)\s+main\s*\(", example.get("content", ""))
         ]
-        if not self_contained:
-            logging.warning(
-                "No hay ejemplos autocontenidos para el contrato main.c; "
-                "se usarán ejemplos originales como fallback"
-            )
-            return examples
-
-        if len(self_contained) < len(examples):
+        if len(complete) < len(examples):
             logging.info(
-                "Filtrando ejemplos RAG por contrato main.c autocontenido: "
-                f"{len(examples)} -> {len(self_contained)}"
+                "Descartando unidades de soporte sin main() del contexto: "
+                f"{len(examples)} -> {len(complete)}"
             )
-        return self_contained
+        return complete
 
     def _fit_examples_for_prompt(self, examples: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Keep retrieved examples useful without overflowing the model context."""
+        """Fit only whole examples; never splice the middle out of C code."""
         fitted_examples = []
         used_chars = 0
+        selected_manifest = []
+        dropped_manifest = []
 
         for example in examples:
-            if used_chars >= MAX_PROMPT_EXAMPLES_CHARS:
-                break
-
             content = example.get("content", "")
             remaining = MAX_PROMPT_EXAMPLES_CHARS - used_chars
-            max_chars = min(MAX_PROMPT_EXAMPLE_CHARS, remaining)
-            if len(content) > max_chars:
-                head_size = int(max_chars * 0.7)
-                tail_size = max_chars - head_size
-                content = (
-                    content[:head_size]
-                    + "\n/* ... example truncated for prompt budget ... */\n"
-                    + content[-tail_size:]
-                )
+            reason = None
+            primary_large_example = (
+                not fitted_examples
+                and MAX_PROMPT_EXAMPLE_CHARS < len(content) <= MAX_PROMPT_PRIMARY_EXAMPLE_CHARS
+            )
+            if len(content) > MAX_PROMPT_EXAMPLE_CHARS and not primary_large_example:
+                reason = "larger_than_per_example_budget"
+            elif len(content) > remaining:
+                reason = "larger_than_remaining_budget"
+            if reason:
+                dropped_manifest.append({
+                    "path": example.get("path", "unknown"),
+                    "characters": len(content),
+                    "reason": reason,
+                })
+                continue
 
             fitted_example = dict(example)
-            fitted_example["content"] = content
             fitted_examples.append(fitted_example)
             used_chars += len(content)
+            selected_manifest.append({
+                "path": example.get("path", "unknown"),
+                "characters": len(content),
+                "sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                "capabilities": example.get("capabilities", []),
+                "score": float(example.get("score", 0.0)),
+                "selection": "primary_large_example" if primary_large_example else "standard",
+            })
 
-        if len(fitted_examples) < len(examples):
+        self.last_context_manifest = {
+            "schema_version": 1,
+            "character_budget": MAX_PROMPT_EXAMPLES_CHARS,
+            "characters_used": used_chars,
+            "estimated_tokens": (used_chars + 3) // 4,
+            "selected": selected_manifest,
+            "dropped": dropped_manifest,
+        }
+        if dropped_manifest:
             logging.info(
-                "Recortando ejemplos del prompt por presupuesto de contexto: "
+                "Omitiendo ejemplos completos por presupuesto de contexto: "
                 f"{len(examples)} -> {len(fitted_examples)}"
             )
 
@@ -382,10 +431,32 @@ Ensure the code compiles with the CPCtelera toolchain."""
             Formatted user prompt string
         """
         platform_name = self.platform.replace('_', ' ')
-        # Keep it direct and clear
-        return f"""Generate {platform_name} C code according to the system instructions that fulfills the following request: {user_request}
+        spec = self.current_spec or create_generation_spec(user_request, self.platform)
+        output_contract = (
+            "Return main.c for the fixed project layout. You may include only "
+            '\"assets.h\" and \"llmz80_runtime.h\" as local headers.'
+            if self.output_mode == "project"
+            else "Return exactly one self-contained C source file and nothing else."
+        )
+        asset_contract = ""
+        if self.asset_paths:
+            symbols = [
+                f"asset_{re.sub(r'[^A-Za-z0-9_]', '_', path.stem).strip('_').lower()}"
+                for path in self.asset_paths
+            ]
+            asset_contract = (
+                "\nGenerated asset symbols available through assets.h: "
+                + ", ".join(symbols) + ".\n"
+            )
+        return f"""Create a complete, playable {platform_name} program for this request:
 
-Please provide specific details about desired behaviors, controls, graphics mode (if applicable), and any other relevant technical requirements."""
+{user_request}
+
+The following validated GenerationSpec is the implementation contract. Satisfy every listed capability, state, timing requirement and budget:
+{spec.to_json()}
+{asset_contract}
+
+Choose the simplest implementation that preserves the requested behaviour and uses only the verified contract and retrieved compiling examples. Resolve unspecified technical details conservatively. {output_contract}"""
         
     def generate_c_code(self, user_request: str) -> str:
         """Genera código C utilizando la API de OpenAI basado en la solicitud del usuario y el contexto.
@@ -397,8 +468,18 @@ Please provide specific details about desired behaviors, controls, graphics mode
             Código C generado
         """
         logging.info(f"🤖 Generando código para: '{user_request[:100]}...'")
+        self.current_spec = create_generation_spec(user_request, self.platform)
+        self.generation_metrics = {
+            "schema_version": 1, "calls": 0, "latency_ms": 0,
+            "input_tokens": 0, "output_tokens": 0, "model": self.model,
+        }
 
-        relevant_examples_content = []
+        # Reliable baseline: deterministic local retrieval over files containing
+        # main().  Qdrant may augment this set, but generation never depends on
+        # an external collection being populated correctly.
+        relevant_examples_content = self.example_catalog.search(
+            user_request, min(self.max_examples, 8)
+        )
         
         if self.use_embeddings:
             logging.info("🔍 Buscando ejemplos relevantes en la base de datos vectorial...")
@@ -453,16 +534,31 @@ Please provide specific details about desired behaviors, controls, graphics mode
                 if search_results:
                     logging.info(f"✅ Se encontraron {len(search_results)} ejemplos relevantes en Qdrant.")
                     examples_dir = Path(self.global_vars['example_dir_template'].format(platform=self.platform))
-                    loaded_paths = set() # Para evitar cargar el mismo archivo múltiples veces si tiene varios chunks
+                    loaded_paths = {
+                        example.get('path') for example in relevant_examples_content
+                    }
+                    allowed_catalog_paths = {
+                        entry['path'] for entry in self.example_catalog.discover()
+                    }
                     
                     for payload, score in search_results:
+                        if payload.get('source') == 'learned' and not payload.get('quality_promoted'):
+                            logging.debug("Omitiendo ejemplo aprendido sin evidencia de calidad")
+                            continue
                         relative_path_str = payload.get("file_path")
+                        if (
+                            payload.get('source') != 'learned'
+                            and relative_path_str not in allowed_catalog_paths
+                        ):
+                            logging.debug(
+                                f"Omitiendo punto Qdrant obsoleto/no certificado: {relative_path_str}"
+                            )
+                            continue
                         if relative_path_str and relative_path_str not in loaded_paths:
                             file_path = examples_dir / relative_path_str
                             source_code_payload = payload.get("source_code")
-                            if (
-                                source_code_payload
-                                and "// FILE:" in source_code_payload
+                            if source_code_payload and re.search(
+                                r"\b(?:void|int)\s+main\s*\(", source_code_payload
                             ):
                                 relevant_examples_content.append({
                                     'path': relative_path_str,
@@ -471,7 +567,10 @@ Please provide specific details about desired behaviors, controls, graphics mode
                                     'score': score
                                 })
                                 loaded_paths.add(relative_path_str)
-                            elif file_path.exists():
+                            elif file_path.exists() and re.search(
+                                r"\b(?:void|int)\s+main\s*\(",
+                                file_path.read_text(encoding='utf-8', errors='ignore'),
+                            ):
                                 try:
                                     content = build_example_context(
                                         file_path,
@@ -494,21 +593,34 @@ Please provide specific details about desired behaviors, controls, graphics mode
                             else:
                                 logging.warning(f"⚠️ Archivo de ejemplo referenciado en Qdrant no encontrado: {file_path}")
                 else:
-                    logging.warning("⚠️ No se encontraron ejemplos relevantes en Qdrant.")
+                    logging.info("Qdrant no devolvió programas; se mantiene el catálogo local.")
 
             except Exception as e:
-                logging.error(f"❌ Error durante la búsqueda en Qdrant: {e}")
-                logging.warning("⬇️ Recurriendo a la carga básica de ejemplos (sin búsqueda semántica).")
-                # Fallback: Cargar ejemplos básicos si falla Qdrant
-                all_examples = self.examples_loader.load_code_examples_basic()
-                relevant_examples_content = all_examples[:self.max_examples]
-        
-        # Si no se usan embeddings o si Qdrant falló y no se cargaron ejemplos en el fallback
-        if not self.use_embeddings or not relevant_examples_content:
-            if not relevant_examples_content: # Asegurar que cargamos algo si Qdrant falló
-                 logging.info(f"⚙️ Usando selección básica de ejemplos (sin búsqueda semántica).")
-                 all_examples = self.examples_loader.load_code_examples_basic()
-                 relevant_examples_content = all_examples[:self.max_examples]
+                logging.warning(
+                    f"Qdrant no disponible ({e}); usando catálogo local determinista."
+                )
+
+        relevant_examples_content.sort(
+            key=lambda example: (
+                -float(example.get('score', 0.0)),
+                example.get('path', ''),
+            )
+        )
+        relevant_examples_content = relevant_examples_content[: self.max_examples]
+        self.last_retrieval = [
+            {
+                'path': example.get('path', ''),
+                'description': example.get('description', ''),
+                'score': float(example.get('score', 0.0)),
+                'source': example.get('source', 'qdrant'),
+                'capabilities': example.get('capabilities', []),
+                'controls': example.get('controls', []),
+                'video_mode': example.get('video_mode'),
+                'apis': example.get('apis', []),
+                'quality_tier': example.get('quality_tier', 'unverified'),
+            }
+            for example in relevant_examples_content
+        ]
         
         # Construir el prompt del sistema con los ejemplos seleccionados
         system_prompt = self._build_system_prompt(relevant_examples_content)
@@ -520,6 +632,7 @@ Please provide specific details about desired behaviors, controls, graphics mode
 
         try:
             logging.info(f"📞 Llamando a la API de OpenAI (Modelo: {self.model})...")
+            call_started = time.monotonic()
             response = self.client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -534,6 +647,9 @@ Please provide specific details about desired behaviors, controls, graphics mode
             )
 
             raw_code = response.choices[0].message.content
+            self._capture_response_metrics(
+                response, time.monotonic() - call_started, system_prompt + user_prompt
+            )
             logging.info("✅ Llamada a la API exitosa.")
             
             if raw_code is None:
@@ -547,6 +663,28 @@ Please provide specific details about desired behaviors, controls, graphics mode
             logging.error(f"❌ Error durante llamada a la API de OpenAI o procesamiento: {e}")
             # Consider more specific error handling for API errors (e.g., rate limits, auth)
             raise # Re-raise to indicate failure
+
+    def _capture_response_metrics(self, response: Any, elapsed: float, prompt_text: str) -> None:
+        usage = getattr(response, "usage", None)
+        input_tokens = getattr(usage, "prompt_tokens", None)
+        output_tokens = getattr(usage, "completion_tokens", None)
+        self.generation_metrics["calls"] = int(self.generation_metrics.get("calls", 0)) + 1
+        self.generation_metrics["latency_ms"] = int(
+            self.generation_metrics.get("latency_ms", 0) + elapsed * 1000
+        )
+        self.generation_metrics["input_tokens"] = int(
+            self.generation_metrics.get("input_tokens", 0)
+            + (input_tokens if input_tokens is not None else (len(prompt_text) + 3) // 4)
+        )
+        self.generation_metrics["output_tokens"] = int(
+            self.generation_metrics.get("output_tokens", 0) + (output_tokens or 0)
+        )
+
+    def save_generation_metrics(self, output_dir: Path) -> None:
+        (output_dir / "generation_metrics.json").write_text(
+            json.dumps(self.generation_metrics, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     
     def suggest_code_correction(
         self,
@@ -579,6 +717,7 @@ Please provide specific details about desired behaviors, controls, graphics mode
             )
             
             # Llamar a la API con temperatura más baja para correcciones más precisas
+            call_started = time.monotonic()
             response = self.client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": correction_system_prompt},
@@ -593,6 +732,10 @@ Please provide specific details about desired behaviors, controls, graphics mode
             )
             
             raw_corrected_code = response.choices[0].message.content
+            self._capture_response_metrics(
+                response, time.monotonic() - call_started,
+                correction_system_prompt + correction_user_prompt,
+            )
             
             if raw_corrected_code is None:
                 raise ValueError("La API no devolvió contenido para la corrección.")
@@ -632,6 +775,9 @@ MOST COMMON FIXES NEEDED:
 - Use #include <stdio.h> for printf()
 - Use #include <input.h> for keyboard functions
 - Use #include <sound.h> for sound functions
+- Never use zx_plot()/zx_point(); use a proven local plot()/unplot() bitmap helper
+- QAOP scancodes are IN_KEY_SCANCODE_q/a/o/p with lowercase letter suffixes
+- Fix SDCC warning 158 by range-checking byte constants and casting 128..255 explicitly to `(uint8_t)`, including macros passed as byte arguments
 - DO NOT invent functions - use only documented Z88DK functions
 - Check function signatures match Z88DK documentation
 
@@ -665,6 +811,11 @@ MOST COMMON FIXES NEEDED:
 - Add cpct_disableFirmware() at start of main()
 - Use cpct_setVideoMode() before graphics operations
 - Call cpct_scanKeyboard() or cpct_scanKeyboard_f() before cpct_isKeyPressed()
+- Use cpct_getKeypressedAsASCII(), not the nonexistent cpct_getKeyASCII()
+- cpct_getRandom_lcg_u8() requires one entropy argument
+- Never store full-screen CPC coordinates as signed i16 8.8 fixed point; use i16 10.6 (shift 6), i32 8.8, or separate integer/fraction fields
+- Check shifted constants against the destination type range (i16 is -32768 through 32767)
+- Avoid SDCC warning 158 on valid u8 constants above 127 by range-checking and casting explicitly to `(u8)`
 - DO NOT invent functions - use only documented CPCtelera functions
 - Check function signatures match CPCtelera documentation
 - Embed sprites/tables/palettes directly in main.c; no #include "sprites.h"
@@ -706,6 +857,8 @@ MOST COMMON FIXES NEEDED:
 
         if user_request:
             parts.append(f"=== ORIGINAL USER REQUEST ===\n{user_request}\n")
+            spec = self.current_spec or create_generation_spec(user_request, self.platform)
+            parts.append(f"=== GENERATION SPEC (must remain satisfied) ===\n{spec.to_json()}\n")
             parts.append(
                 "Preserve this intent while fixing the code. Do not strip features the user asked for.\n"
             )
@@ -737,12 +890,17 @@ MOST COMMON FIXES NEEDED:
         user_prompt: str,
         code: str,
         compilation_attempts: int = 1,
+        quality_evidence: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """Index a successfully-compiled generation into Qdrant for future RAG.
 
         Tagged with `source=learned` and `compilation_attempts` so retrieval
         can later rerank in favour of first-try successes.
         """
+        from ..core.learning import LearningSystem
+        if not LearningSystem.should_promote(quality_evidence or {}):
+            logging.info("Ejemplo aprendido no indexado: no supera las puertas de calidad")
+            return False
         try:
             client = get_qdrant_client()
             if not client:
@@ -769,6 +927,8 @@ MOST COMMON FIXES NEEDED:
                     "source": "learned",
                     "compilation_attempts": int(compilation_attempts),
                     "timestamp": _datetime.now().isoformat(),
+                    "quality_promoted": True,
+                    "quality_evidence": quality_evidence or {},
                 },
             )
             ok = upsert_embeddings(client, self.platform, [point])
@@ -820,6 +980,34 @@ MOST COMMON FIXES NEEDED:
             with open(paths['platform_file'], 'w', encoding='utf-8') as f:
                 f.write(self.platform)
             logging.info(f"  ℹ️ Información de plataforma guardada en: {paths['platform_file']}")
+
+            retrieval_file = paths['base'] / 'retrieval_context.json'
+            retrieval_file.write_text(
+                json.dumps(self.last_retrieval, ensure_ascii=False, indent=2) + "\n",
+                encoding='utf-8',
+            )
+            paths['retrieval_file'] = retrieval_file
+
+            context_file = paths['base'] / 'prompt_context.json'
+            context_file.write_text(
+                json.dumps(self.last_context_manifest, ensure_ascii=False, indent=2) + "\n",
+                encoding='utf-8',
+            )
+            paths['context_file'] = context_file
+
+            spec = self.current_spec or create_generation_spec(prompt, self.platform)
+            spec_file = paths['base'] / 'generation_spec.json'
+            spec.save(spec_file)
+            paths['generation_spec_file'] = spec_file
+            self.save_generation_metrics(paths['base'])
+
+            if self.output_mode == "project":
+                mode = int(spec.presentation.get("video_mode", 1))
+                if mode not in {0, 1}:
+                    mode = 1
+                create_project_layout(
+                    paths['base'], self.platform, code, self.asset_paths, cpc_mode=mode
+                )
 
             logging.info("✅ Todos los archivos guardados correctamente!")
             logging.info(f"  📁 Directorio de Salida: {paths['base'].resolve()}")
