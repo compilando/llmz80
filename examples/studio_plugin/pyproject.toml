@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llmz80-dodge-arena-example"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["llmz80>=0.1.0"]
+
+[project.entry-points."llmz80.genre_packs"]
+dodge_arena = "retro_bonus_pack:PACK"
+
+[tool.setuptools]
+py-modules = ["retro_bonus_pack"]

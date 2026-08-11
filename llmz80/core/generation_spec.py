@@ -9,6 +9,13 @@ from pathlib import Path
 
 
 ARCHETYPE_RULES = (
+    (
+        "maze_collect_game",
+        (
+            "comecocos", "come cocos", "pacman", "pac-man", "pac man",
+            "maze chase", "pellet maze",
+        ),
+    ),
     ("platform_movement", ("plataform", "platform", "salta", "jump", "gravedad", "gravity")),
     ("collect_game", ("recoge", "recoger", "collect", "moneda", "coin", "objeto", "object")),
     ("board_game", ("tablero", "board", "tres en raya", "tic tac toe", "laberinto", "maze")),
@@ -16,6 +23,17 @@ ARCHETYPE_RULES = (
     ("arcade", ("pong", "pelota", "ball", "disparo", "shoot")),
     ("animation", ("anima", "mueve", "moves", "salta", "jumps", "rebota", "bounce", "parpade", "blink")),
 )
+
+GAME_TERMS = ("juego", "game", "jugable", "playable")
+EXPLICIT_STATIC_TERMS = (
+    "pantalla estatica", "pantalla estática", "static screen", "static display",
+    "demo estatica", "demo estática", "static demo", "mockup",
+)
+
+MAZE_COLLECT_CAPABILITIES = {
+    "animation", "collision", "collect", "end_state", "frame_pacing", "hud",
+    "input", "score", "sprite", "tiles",
+}
 
 CAPABILITY_RULES = {
     "input": (
@@ -32,6 +50,8 @@ CAPABILITY_RULES = {
     "animation": ("anima", "mueve", "moves", "salta", "jumps", "rebota", "blink", "parpade"),
     "gravity": ("gravedad", "gravity", "salta", "jump"),
     "palette": ("color", "colour", "paleta", "palette"),
+    "tiles": ("tile", "tiles", "mapa", "map", "laberinto", "maze"),
+    "collect": ("recoge", "recoger", "collect", "moneda", "coin", "punto", "pellet"),
 }
 
 
@@ -82,21 +102,34 @@ def create_generation_spec(prompt: str, platform: str) -> GenerationSpec:
         if _contains(text, terms):
             archetype = candidate
             break
+    if (
+        archetype == "static_display"
+        and _contains(text, GAME_TERMS)
+        and not _contains(text, EXPLICIT_STATIC_TERMS)
+    ):
+        # A request for a game must never silently degrade into a drawing.
+        archetype = "arcade"
 
     capabilities = {name for name, terms in CAPABILITY_RULES.items() if _contains(text, terms)}
+    if archetype == "maze_collect_game":
+        capabilities.update(MAZE_COLLECT_CAPABILITIES)
     if archetype not in {"static_display", "board_game"}:
         capabilities.update({"animation", "frame_pacing"})
-    if archetype in {"collect_game", "platform_movement", "arcade", "board_game"}:
+    if archetype in {
+        "maze_collect_game", "collect_game", "platform_movement", "arcade", "board_game"
+    }:
         capabilities.add("input")
 
     controls: list[str] = []
     if "input" in capabilities:
         controls = ["left", "right", "action"]
-        if archetype == "board_game":
+        if archetype in {"board_game", "maze_collect_game"}:
             controls = ["left", "right", "up", "down", "action"]
 
     states = ["running"]
-    if "end_state" in capabilities or archetype in {"collect_game", "board_game", "arcade"}:
+    if "end_state" in capabilities or archetype in {
+        "maze_collect_game", "collect_game", "board_game", "arcade"
+    }:
         states.append("finished")
     if "state" in capabilities:
         states.insert(0, "title")
@@ -107,7 +140,7 @@ def create_generation_spec(prompt: str, platform: str) -> GenerationSpec:
         "video_mode": mode if is_cpc else "spectrum_bitmap",
         "screen_width": 160 if is_cpc and mode == 0 else (320 if is_cpc else 256),
         "screen_height": 200 if is_cpc else 192,
-        "hud_required": "hud" in capabilities,
+        "hud_required": bool({"hud", "score"} & capabilities),
     }
     timing = {
         "frame_hz": 50,

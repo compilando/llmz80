@@ -20,7 +20,7 @@ QDRANT_STORAGE ?= $(CURDIR)/local/qdrant_storage
 SUPPORTED_PLATFORMS := spectrum amstrad_cpc
 PYTHON_SOURCES := llmz80 generators tests scripts $(wildcard *.py)
 
-.PHONY: help setup venv install install-dev doctor \
+.PHONY: help setup venv install install-dev doctor studio \
 	generate generate-spectrum generate-cpc run run-spectrum run-cpc \
 	test coverage lint format check audit-examples benchmark smoke quality-gate clean \
 	qdrant-up qdrant-down qdrant-status qdrant-index \
@@ -35,6 +35,9 @@ help: ## Show the available commands
 	@printf '  make generate-spectrum PROMPT="Create a Pong game"\n'
 	@printf '  make run-cpc PROMPT="Create a Mode 0 graphics demo"\n'
 	@printf '  make generate PLATFORM=amstrad_cpc GENERATOR_ARGS="--no-embeddings"\n\n'
+
+studio: ## Open the guided LLMZ80 Studio TUI (WORKSPACE=studio-projects)
+	$(PYTHON) -m llmz80.cli studio "$(or $(WORKSPACE),studio-projects)"
 
 venv:
 	@$(BOOTSTRAP_PYTHON) -c 'import sys; raise SystemExit(0 if (3, 10) <= sys.version_info[:2] < (3, 14) else 1)' || { \
@@ -52,6 +55,7 @@ venv:
 
 install: venv ## Install runtime dependencies in .venv
 	$(PYTHON) -m pip install -r requirements.txt
+	$(PYTHON) -m pip install --no-build-isolation --no-deps -e .
 
 install-dev: venv ## Install runtime and development dependencies in .venv
 	$(PYTHON) -m pip install -r requirements.txt -r requirements-dev.txt
@@ -72,7 +76,7 @@ doctor: ## Check Python, credentials, and both native toolchains
 		exit 1; \
 	fi
 	@$(PYTHON) --version
-	@$(PYTHON) -c 'import openai, numpy, yaml; print("Python dependencies: OK")'
+	@$(PYTHON) -c 'import openai, numpy, pydantic, textual, yaml; print("Python dependencies: OK")'
 	@if [ -f .env ] && grep -Eq '^OPENAI_API_KEY=.+$$' .env; then \
 		printf 'OpenAI credentials: configured in .env\n'; \
 	elif [ -n "$${OPENAI_API_KEY:-}" ]; then \

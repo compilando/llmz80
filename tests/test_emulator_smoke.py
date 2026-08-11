@@ -7,6 +7,7 @@ from llmz80.quality import emulator_smoke
 from llmz80.quality.emulator_smoke import (
     _cpc_input,
     _image_observation,
+    _spectrum_input,
     runtime_rejection_diagnostics,
     smoke_test,
 )
@@ -80,6 +81,15 @@ def test_cpc_input_uses_space_to_leave_title_state():
     )
     assert name == "Key_Space"
     assert event == " "
+
+
+def test_spectrum_input_uses_space_to_leave_title_state():
+    name, pressed, released = _spectrum_input(
+        "/* title_screen */ if (in_key_pressed(IN_KEY_SCANCODE_SPACE)) start(); "
+        "in_key_pressed(IN_KEY_SCANCODE_p);"
+    )
+    assert name == "space"
+    assert pressed != released
 
 
 def test_cpc_cursor_input_repeats_until_mode_one_byte_changes():

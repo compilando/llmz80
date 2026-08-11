@@ -27,6 +27,8 @@ classifiers = [
 
 dependencies = [
     "openai>=1.75.0",
+    "pydantic>=2.7.0,<3.0.0",
+    "textual>=1.0.0",
     "python-dotenv>=1.0.1",
     "Pillow>=11.2.1",
     "numpy>=2.2.4",
@@ -68,10 +70,11 @@ Repository = "https://github.com/compilando/llmz80"
 Issues = "https://github.com/compilando/llmz80/issues"
 
 [project.scripts]
-llmz80 = "llm_z80:main"
+llmz80 = "llmz80.cli:main"
 
 [tool.setuptools]
-packages = ["llmz80", "llmz80.api", "llmz80.core", "llmz80.quality", "llmz80.utils", "generators"]
+packages = ["llmz80", "llmz80.api", "llmz80.core", "llmz80.quality", "llmz80.studio", "llmz80.utils", "generators"]
+py-modules = ["llm_z80", "vector_db"]
 
 [tool.black]
 line-length = 100

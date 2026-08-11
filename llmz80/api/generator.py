@@ -16,12 +16,13 @@ logger = logging.getLogger(__name__)
 MAX_PROMPT_EXAMPLE_CHARS = 9000
 MAX_PROMPT_PRIMARY_EXAMPLE_CHARS = 20000
 MAX_PROMPT_EXAMPLES_CHARS = 45000
+MIN_LEARNED_VECTOR_SCORE = 0.20
 
 from ..core.embeddings import EmbeddingsManager
 from ..core.cache_manager import EmbeddingsCacheManager
 from ..core.examples_loader import ExamplesLoader
 from ..core.code_context import build_example_context
-from ..core.example_catalog import ExampleCatalog
+from ..core.example_catalog import ExampleCatalog, infer_capabilities
 from ..core.generation_spec import GenerationSpec, create_generation_spec
 from ..core.runtime_contracts import generation_contract
 from ..core.project_mode import create_project_layout
@@ -29,6 +30,52 @@ from ..utils.helpers import clean_api_response, get_output_paths, build_completi
 from vector_db import get_qdrant_client, search_similar, ensure_collection_exists, upsert_embeddings, PointStruct
 import uuid as _uuid
 from datetime import datetime as _datetime
+
+
+def _example_hash(example: Dict[str, Any]) -> str:
+    content = example.get("content")
+    if isinstance(content, str):
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+    supplied = str(example.get("content_sha256", "")).strip().lower()
+    if re.fullmatch(r"[0-9a-f]{64}", supplied):
+        return supplied
+    return hashlib.sha256(b"").hexdigest()
+
+
+def _select_context_examples(
+    examples: List[Dict[str, Any]], limit: int
+) -> List[Dict[str, Any]]:
+    """Deduplicate retrieval by content and keep a curated/learned balance."""
+    ordered = sorted(
+        examples,
+        key=lambda example: (
+            -float(example.get("score", 0.0)),
+            1 if example.get("source") == "learned" else 0,
+            example.get("path", ""),
+        ),
+    )
+    selected: List[Dict[str, Any]] = []
+    seen_hashes: set[str] = set()
+    seen_paths: set[str] = set()
+    learned_count = 0
+    learned_limit = max(1, limit // 2)
+    for example in ordered:
+        path = str(example.get("path", ""))
+        digest = _example_hash(example)
+        if path in seen_paths or digest in seen_hashes:
+            continue
+        if example.get("source") == "learned":
+            if learned_count >= learned_limit:
+                continue
+            learned_count += 1
+        enriched = dict(example)
+        enriched["content_sha256"] = digest
+        selected.append(enriched)
+        seen_paths.add(path)
+        seen_hashes.add(digest)
+        if len(selected) >= limit:
+            break
+    return selected
 
 class LLMZ80Generator:
     """Generador de código Z80 utilizando LLMs."""
@@ -368,6 +415,9 @@ Ensure the code compiles with the CPCtelera toolchain."""
 
     def _fit_examples_for_prompt(self, examples: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Fit only whole examples; never splice the middle out of C code."""
+        # Defend the final prompt even if two retrieval backends returned the
+        # same program under different learned paths.
+        examples = _select_context_examples(examples, len(examples))
         fitted_examples = []
         used_chars = 0
         selected_manifest = []
@@ -523,7 +573,7 @@ Choose the simplest implementation that preserves the requested behaviour and us
                     raw_results,
                     key=lambda r: _adjusted(r[0], r[1]),
                     reverse=True,
-                )[: self.max_examples]
+                )
                 # --- DEBUG: Log search results --- 
                 logger.debug(f"Resultados crudos de Qdrant ({len(search_results)} encontrados):")
                 for i, (payload, score) in enumerate(search_results):
@@ -540,6 +590,47 @@ Choose the simplest implementation that preserves the requested behaviour and us
                     allowed_catalog_paths = {
                         entry['path'] for entry in self.example_catalog.discover()
                     }
+                    required_capabilities = set(self.current_spec.capabilities)
+
+                    def _qdrant_example(payload, score, path, content):
+                        source = payload.get('source', 'qdrant')
+                        adjusted_score = _adjusted(payload, score)
+                        capabilities = list(payload.get('capabilities') or infer_capabilities(
+                            f"{payload.get('description', '')}\n{content}"
+                        ))
+                        if source == 'learned':
+                            if adjusted_score < MIN_LEARNED_VECTOR_SCORE:
+                                logging.debug(
+                                    "Omitiendo ejemplo aprendido de baja relevancia: "
+                                    f"{path} ({adjusted_score:.3f})"
+                                )
+                                return None
+                            required_overlap = required_capabilities & set(capabilities)
+                            minimum_overlap = min(2, len(required_capabilities))
+                            if minimum_overlap and len(required_overlap) < minimum_overlap:
+                                logging.debug(
+                                    "Omitiendo ejemplo aprendido sin cobertura suficiente: "
+                                    f"{path} ({sorted(required_overlap)})"
+                                )
+                                return None
+                        return {
+                            'path': path,
+                            'content': content,
+                            'content_sha256': payload.get('content_sha256') or hashlib.sha256(
+                                content.encode('utf-8')
+                            ).hexdigest(),
+                            'description': payload.get('description', ''),
+                            'score': adjusted_score,
+                            'source': source,
+                            'capabilities': capabilities,
+                            'controls': list(payload.get('controls') or []),
+                            'video_mode': payload.get('video_mode'),
+                            'apis': list(payload.get('apis') or []),
+                            'quality_tier': payload.get('quality_tier') or (
+                                'learned_verified' if source == 'learned' else 'unverified'
+                            ),
+                            'archetype': payload.get('archetype'),
+                        }
                     
                     for payload, score in search_results:
                         if payload.get('source') == 'learned' and not payload.get('quality_promoted'):
@@ -560,12 +651,11 @@ Choose the simplest implementation that preserves the requested behaviour and us
                             if source_code_payload and re.search(
                                 r"\b(?:void|int)\s+main\s*\(", source_code_payload
                             ):
-                                relevant_examples_content.append({
-                                    'path': relative_path_str,
-                                    'content': source_code_payload,
-                                    'description': payload.get('description', ''),
-                                    'score': score
-                                })
+                                example = _qdrant_example(
+                                    payload, score, relative_path_str, source_code_payload
+                                )
+                                if example is not None:
+                                    relevant_examples_content.append(example)
                                 loaded_paths.add(relative_path_str)
                             elif file_path.exists() and re.search(
                                 r"\b(?:void|int)\s+main\s*\(",
@@ -581,12 +671,11 @@ Choose the simplest implementation that preserves the requested behaviour and us
                                         content = content[:self.global_vars['max_example_size']]
                                         logging.debug(f"Truncando ejemplo de Qdrant: {relative_path_str}")
                                             
-                                    relevant_examples_content.append({
-                                        'path': relative_path_str,
-                                        'content': content,
-                                        'description': payload.get('description', ''),
-                                        'score': score # Guardar score por si es útil
-                                    })
+                                    example = _qdrant_example(
+                                        payload, score, relative_path_str, content
+                                    )
+                                    if example is not None:
+                                        relevant_examples_content.append(example)
                                     loaded_paths.add(relative_path_str)
                                 except Exception as read_exc:
                                     logging.warning(f"⚠️ Error leyendo archivo de ejemplo {file_path} desde Qdrant: {read_exc}")
@@ -600,13 +689,10 @@ Choose the simplest implementation that preserves the requested behaviour and us
                     f"Qdrant no disponible ({e}); usando catálogo local determinista."
                 )
 
-        relevant_examples_content.sort(
-            key=lambda example: (
-                -float(example.get('score', 0.0)),
-                example.get('path', ''),
-            )
+        relevant_examples_content = _select_context_examples(
+            relevant_examples_content,
+            self.max_examples,
         )
-        relevant_examples_content = relevant_examples_content[: self.max_examples]
         self.last_retrieval = [
             {
                 'path': example.get('path', ''),
@@ -618,6 +704,8 @@ Choose the simplest implementation that preserves the requested behaviour and us
                 'video_mode': example.get('video_mode'),
                 'apis': example.get('apis', []),
                 'quality_tier': example.get('quality_tier', 'unverified'),
+                'archetype': example.get('archetype'),
+                'content_sha256': _example_hash(example),
             }
             for example in relevant_examples_content
         ]
@@ -816,6 +904,7 @@ MOST COMMON FIXES NEEDED:
 - Never store full-screen CPC coordinates as signed i16 8.8 fixed point; use i16 10.6 (shift 6), i32 8.8, or separate integer/fraction fields
 - Check shifted constants against the destination type range (i16 is -32768 through 32767)
 - Avoid SDCC warning 158 on valid u8 constants above 127 by range-checking and casting explicitly to `(u8)`
+- Fix SDCC warning 357 for `static const u8` sprites by passing the array directly to `cpct_drawSprite`; never cast a const sprite to `(void*)`
 - DO NOT invent functions - use only documented CPCtelera functions
 - Check function signatures match CPCtelera documentation
 - Embed sprites/tables/palettes directly in main.c; no #include "sprites.h"
@@ -917,8 +1006,12 @@ MOST COMMON FIXES NEEDED:
                 logging.warning("No se obtuvo embedding para el ejemplo aprendido")
                 return False
 
+            content_sha256 = hashlib.sha256(code.encode("utf-8")).hexdigest()
             point = PointStruct(
-                id=str(_uuid.uuid4()),
+                id=str(_uuid.uuid5(
+                    _uuid.NAMESPACE_URL,
+                    f"llmz80:{self.platform}:{content_sha256}",
+                )),
                 vector=embedding.tolist(),
                 payload={
                     "file_path": f"learned/{_datetime.now().strftime('%Y%m%d_%H%M%S')}.c",
@@ -929,6 +1022,21 @@ MOST COMMON FIXES NEEDED:
                     "timestamp": _datetime.now().isoformat(),
                     "quality_promoted": True,
                     "quality_evidence": quality_evidence or {},
+                    "content_sha256": content_sha256,
+                    "archetype": self.current_spec.archetype if self.current_spec else None,
+                    "capabilities": (
+                        list(self.current_spec.capabilities)
+                        if self.current_spec else infer_capabilities(f"{user_prompt}\n{code}")
+                    ),
+                    "controls": list(self.current_spec.controls) if self.current_spec else [],
+                    "video_mode": (
+                        self.current_spec.presentation.get("video_mode")
+                        if self.current_spec else None
+                    ),
+                    "apis": sorted(set(re.findall(
+                        r"\b(?:cpct|zx|in|intrinsic)_[A-Za-z0-9_]+", code
+                    ))),
+                    "quality_tier": "learned_verified",
                 },
             )
             ok = upsert_embeddings(client, self.platform, [point])

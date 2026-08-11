@@ -610,6 +610,36 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
     for attempt in range(1, max_attempts + 1):
         logging.info(f"📍 Intento {attempt}/{max_attempts}...")
 
+        # Safe platform rewrites are independent of optional semantic
+        # validation. Apply them before synchronising project-mode sources so
+        # the compiler never sees an older copy of main.c.
+        try:
+            code_before_fixes = main_c_file.read_text(encoding="utf-8")
+            if platform == "amstrad_cpc":
+                fixed_code, deterministic_fixes = apply_deterministic_cpc_fixes(
+                    code_before_fixes
+                )
+            else:
+                fixed_code, deterministic_fixes = apply_deterministic_spectrum_fixes(
+                    code_before_fixes
+                )
+            if deterministic_fixes and fixed_code != code_before_fixes:
+                (output_dir / f"deterministic_fixes_attempt_{attempt}.txt").write_text(
+                    "\n".join(f"- {fix}" for fix in deterministic_fixes) + "\n",
+                    encoding="utf-8",
+                )
+                (output_dir / f"main_before_deterministic_fixes_attempt_{attempt}.c").write_text(
+                    code_before_fixes,
+                    encoding="utf-8",
+                )
+                main_c_file.write_text(fixed_code, encoding="utf-8")
+                logging.info(
+                    "🔧 Correcciones deterministas aplicadas: "
+                    + "; ".join(deterministic_fixes)
+                )
+        except Exception as exc:
+            logging.warning(f"⚠️ No se pudieron aplicar correcciones deterministas: {exc}")
+
         project_mode = (output_dir / "project_manifest.json").exists()
         if project_mode:
             (output_dir / "src").mkdir(exist_ok=True)
@@ -623,33 +653,6 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                 # Leer código para validar
                 with open(main_c_file, 'r') as f:
                     code_to_validate = f.read()
-
-                deterministic_fixes = []
-                fixed_code = code_to_validate
-                if platform == "amstrad_cpc":
-                    fixed_code, deterministic_fixes = apply_deterministic_cpc_fixes(code_to_validate)
-                elif platform == "spectrum":
-                    fixed_code, deterministic_fixes = apply_deterministic_spectrum_fixes(code_to_validate)
-
-                if deterministic_fixes and fixed_code != code_to_validate:
-                    deterministic_log = output_dir / f"deterministic_fixes_attempt_{attempt}.txt"
-                    try:
-                        deterministic_log.write_text(
-                            "\n".join(f"- {fix}" for fix in deterministic_fixes) + "\n",
-                            encoding="utf-8",
-                        )
-                        (output_dir / f"main_before_deterministic_fixes_attempt_{attempt}.c").write_text(
-                            code_to_validate,
-                            encoding="utf-8",
-                        )
-                        main_c_file.write_text(fixed_code, encoding="utf-8")
-                        logging.info(
-                            "🔧 Correcciones deterministas aplicadas: "
-                            + "; ".join(deterministic_fixes)
-                        )
-                        code_to_validate = fixed_code
-                    except Exception as e:
-                        logging.warning(f"⚠️ No se pudieron aplicar correcciones deterministas: {e}")
                 
                 # Validar y generar reporte
                 is_valid, validation_report = validator.validate_and_report(code_to_validate)
@@ -757,11 +760,20 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
         logging.info(f"🔨 Intentando compilación {attempt}/{max_attempts}...")
         
         try:
+            if project_mode:
+                shutil.copy2(main_c_file, output_dir / "src" / "main.c")
             if platform == "amstrad_cpc":
                 if cpct_path is None or not prepare_amstrad_cpc_build_project(output_dir, cpct_path):
                     return False
 
             save_build_environment_report(platform, output_dir, compile_command, cpct_path)
+
+            canonical_artifact = output_dir / (
+                "output.dsk" if platform == "amstrad_cpc" else "output.tap"
+            )
+            if platform == "amstrad_cpc" and canonical_artifact.is_file():
+                previous_artifact = output_dir / f"output_before_attempt_{attempt}.dsk.previous"
+                canonical_artifact.replace(previous_artifact)
 
             # Ejecutar compilador
             process = subprocess.run(
@@ -773,16 +785,9 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
             )
 
             artifacts = find_platform_artifacts(platform, output_dir)
+            staged_artifact = None
             if process.returncode == 0 and platform == "amstrad_cpc" and artifacts:
-                canonical_artifact = output_dir / "output.dsk"
-                fresh_dsk = select_fresh_artifact(canonical_artifact, artifacts)
-                if fresh_dsk and fresh_dsk.resolve() != canonical_artifact.resolve():
-                    try:
-                        shutil.copy2(fresh_dsk, canonical_artifact)
-                        logging.info(f"📦 DSK canónico creado: {canonical_artifact}")
-                        artifacts = find_platform_artifacts(platform, output_dir)
-                    except Exception as exc:
-                        logging.warning(f"⚠️ No se pudo crear output.dsk canónico: {exc}")
+                staged_artifact = select_fresh_artifact(canonical_artifact, artifacts)
 
             structured_report = build_report(
                 platform=platform,
@@ -793,7 +798,39 @@ def attempt_compilation_and_correction(platform: str, output_dir: Path, config: 
                 stderr=process.stderr,
                 artifacts=artifacts,
                 cpct_path=cpct_path,
+                candidate_artifact=staged_artifact,
             )
+
+            # Publish the canonical DSK only after warnings, resources and
+            # semantic evidence have all passed. Rejected builds retain only
+            # their toolchain-named candidate for diagnosis.
+            if (
+                platform == "amstrad_cpc"
+                and structured_report["quality_pass"]
+                and staged_artifact is not None
+            ):
+                try:
+                    shutil.copy2(staged_artifact, canonical_artifact)
+                    logging.info(f"📦 DSK canónico aceptado: {canonical_artifact}")
+                    artifacts = find_platform_artifacts(platform, output_dir)
+                    structured_report = build_report(
+                        platform=platform,
+                        output_dir=output_dir,
+                        command=compile_command,
+                        return_code=process.returncode,
+                        stdout=process.stdout,
+                        stderr=process.stderr,
+                        artifacts=artifacts,
+                        cpct_path=cpct_path,
+                        candidate_artifact=staged_artifact,
+                    )
+                except Exception as exc:
+                    structured_report["quality_pass"] = False
+                    structured_report["canonical_artifact"]["published"] = False
+                    structured_report["resources"]["errors"].append(
+                        f"failed to publish canonical artifact: {exc}"
+                    )
+                    logging.warning(f"⚠️ No se pudo publicar output.dsk canónico: {exc}")
             try:
                 write_build_report(
                     structured_report,

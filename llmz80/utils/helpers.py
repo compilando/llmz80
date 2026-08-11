@@ -166,6 +166,28 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
     if fixed != before_ascii:
         fixes.append("Corregido cpct_getKeyASCII() por cpct_getKeypressedAsASCII()")
 
+    # CPCtelera's assembly sprite routine does not modify sprite data. SDCC
+    # warning 357 is triggered when generated code discards a const array's
+    # code-space qualifier with an explicit (void*) cast. Passing the array
+    # directly is the compile-proven CPCtelera form used by certified examples.
+    const_sprite_arrays = set(re.findall(
+        r"\b(?:static\s+)?const\s+(?:u8|uint8_t|unsigned\s+char)\s+"
+        r"([A-Za-z_]\w*)\s*\[",
+        fixed,
+    ))
+    fixed_sprite_casts = 0
+    for symbol in sorted(const_sprite_arrays):
+        pattern = re.compile(
+            rf"(\bcpct_drawSprite\s*\(\s*)\(\s*void\s*\*\s*\)\s*"
+            rf"{re.escape(symbol)}\b"
+        )
+        fixed, count = pattern.subn(rf"\g<1>{symbol}", fixed)
+        fixed_sprite_casts += count
+    if fixed_sprite_casts:
+        fixes.append(
+            f"Eliminados {fixed_sprite_casts} casts void* de sprites const (SDCC warning 357)"
+        )
+
     fixed, cast_count = _cast_high_byte_constants(fixed, macro_type="u8")
     if cast_count:
         fixes.append(f"Añadidos casts explícitos a {cast_count} constantes byte altas")

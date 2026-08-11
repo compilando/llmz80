@@ -99,6 +99,7 @@ def build_report(
     stderr: str,
     artifacts: Iterable[Path],
     cpct_path: Path | None = None,
+    candidate_artifact: Path | None = None,
 ) -> dict[str, Any]:
     """Create a serialisable report for one real-toolchain invocation."""
     artifact_records = _artifact_records(output_dir, artifacts)
@@ -106,7 +107,9 @@ def build_report(
     program_binary = detect_program_binary(platform, output_dir)
     canonical_name = "output.tap" if platform == "spectrum" else "output.dsk"
     canonical = output_dir / canonical_name
-    canonical_ok = canonical.is_file() and canonical.stat().st_size > 0
+    canonical_published = canonical.is_file() and canonical.stat().st_size > 0
+    quality_artifact = candidate_artifact if candidate_artifact is not None else canonical
+    canonical_ok = quality_artifact.is_file() and quality_artifact.stat().st_size > 0
     unexpected_warning_count = sum(
         len(warnings[name]) for name in ("structural", "source", "other")
     )
@@ -143,7 +146,13 @@ def build_report(
         "canonical_artifact": {
             "path": canonical_name,
             "exists": canonical_ok,
-            "size_bytes": canonical.stat().st_size if canonical_ok else 0,
+            "size_bytes": quality_artifact.stat().st_size if canonical_ok else 0,
+            "published": canonical_published,
+            "staged_from": (
+                str(quality_artifact.relative_to(output_dir))
+                if canonical_ok and quality_artifact.resolve() != canonical.resolve()
+                else None
+            ),
         },
         "artifacts": artifact_records,
         "program_binary": (

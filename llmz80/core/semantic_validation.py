@@ -194,6 +194,57 @@ def estimate_static_data(code: str) -> int:
     return total
 
 
+def cpc_read_only_pointer_errors(code: str) -> list[str]:
+    """Detect SDCC warning 357 before compiling CPCtelera sprite calls."""
+    const_arrays = set(re.findall(
+        r"\b(?:static\s+)?const\s+(?:u8|uint8_t|unsigned\s+char)\s+"
+        r"([A-Za-z_]\w*)\s*\[",
+        code,
+    ))
+    errors = []
+    for symbol in sorted(const_arrays):
+        if re.search(
+            rf"\bcpct_drawSprite\s*\(\s*\(\s*void\s*\*\s*\)\s*{re.escape(symbol)}\b",
+            code,
+        ):
+            errors.append(
+                f"SDCC warning 357: const sprite {symbol} is cast to void*; "
+                "pass the array directly to cpct_drawSprite"
+            )
+    return errors
+
+
+def _maze_gameplay_errors(code: str) -> list[str]:
+    """Require observable game mechanics for the maze-collect contract."""
+    executable = _executable_code(code)
+    checks = (
+        (
+            r"\b(?:maze|map|level|board|tile|wall|laberinto|muro)[A-Za-z0-9_]*\b",
+            "Maze-collect game has no maze/tile/wall model",
+        ),
+        (
+            r"\b(?:pellet|dot|coin|collect|food|pickup|punto|comida)[A-Za-z0-9_]*\b",
+            "Maze-collect game has no collectible state",
+        ),
+        (
+            r"\b(?:collis|can_move|is_wall|wall_at|blocked|walkable|tile_at)[A-Za-z0-9_]*\b",
+            "Maze-collect game has no collision/wall test",
+        ),
+        (
+            r"\b(?:score|points|puntuacion|puntos)[A-Za-z0-9_]*\b",
+            "Maze-collect game has no score/HUD state",
+        ),
+    )
+    errors = [message for pattern, message in checks if not re.search(pattern, executable, re.IGNORECASE)]
+    if not re.search(
+        r"\b(?:player|pac|iv)?_?[xy]\s*(?:\+\+|--|[+\-]?=)",
+        executable,
+        re.IGNORECASE,
+    ):
+        errors.append("Maze-collect game has no evident player position update")
+    return errors
+
+
 class SemanticValidator:
     def __init__(self, platform: str, spec: dict[str, Any] | None = None):
         self.platform = platform
@@ -205,6 +256,10 @@ class SemanticValidator:
         capabilities = set(self.spec.get("capabilities", []))
         timing = self.spec.get("timing", {})
         states = set(self.spec.get("states", []))
+        archetype = self.spec.get("archetype", "")
+
+        if archetype == "maze_collect_game":
+            errors.extend(_maze_gameplay_errors(code))
 
         if timing.get("frame_sync_required") or "animation" in capabilities:
             if not any(re.search(rf"\b{name}\s*\(", code) for name in FRAME_CALLS):
@@ -244,6 +299,7 @@ class SemanticValidator:
             errors.append("GenerationSpec requires a finished state but no end-state variable is evident")
 
         if self.platform == "amstrad_cpc":
+            errors.extend(cpc_read_only_pointer_errors(code))
             executable = _executable_code(code)
             executable = re.sub(r"^\s*#.*$", "", executable, flags=re.MULTILINE)
             if re.search(r"(?<!/)/(?:=)?|%(?:=)?", executable):

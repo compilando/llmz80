@@ -1,5 +1,6 @@
 from llmz80.core.semantic_validation import (
     SemanticValidator,
+    cpc_read_only_pointer_errors,
     constant_range_errors,
     estimate_static_data,
 )
@@ -122,3 +123,75 @@ def test_required_input_must_have_a_platform_keyboard_read():
     )
     assert any("requires input" in error for error in missing["errors"])
     assert not any("requires input" in error for error in present["errors"])
+
+
+def test_cpc_const_sprite_void_cast_is_rejected_as_warning_357():
+    code = """
+    static const u8 spr_iv[16] = {0};
+    void main(void) {
+        u8* p;
+        cpct_drawSprite((void*)spr_iv, p, 2, 8);
+    }
+    """
+    errors = cpc_read_only_pointer_errors(code)
+    assert len(errors) == 1
+    assert "warning 357" in errors[0]
+    assert not cpc_read_only_pointer_errors(code.replace("(void*)spr_iv", "spr_iv"))
+
+
+def test_static_mockup_fails_maze_collect_game_contract():
+    spec = {
+        "archetype": "maze_collect_game",
+        "capabilities": ["animation", "input"],
+        "states": ["title", "running", "finished"],
+        "timing": {"frame_sync_required": True},
+    }
+    code = """
+    #include <cpctelera.h>
+    static const u8 spr_iv[16] = {0};
+    void main(void) {
+        u8* p;
+        cpct_drawSprite((void*)spr_iv, p, 2, 8);
+        while (1) { }
+    }
+    """
+    report = SemanticValidator("amstrad_cpc", spec).validate(code)
+    assert report["quality_pass"] is False
+    assert any("requires input" in error for error in report["errors"])
+    assert any("Maze-collect game" in error for error in report["errors"])
+    assert any("warning 357" in error for error in report["errors"])
+
+
+def test_complete_maze_collect_loop_satisfies_semantic_contract():
+    spec = {
+        "archetype": "maze_collect_game",
+        "capabilities": ["animation", "input"],
+        "states": ["running", "finished"],
+        "timing": {"frame_sync_required": True},
+    }
+    code = """
+    #include <cpctelera.h>
+    #define ST_RUNNING 0
+    #define ST_FINISHED 1
+    static u8 maze[8] = {1, 1, 1, 0, 0, 1, 1, 1};
+    static u8 pellets[8] = {0, 0, 0, 1, 1, 0, 0, 0};
+    static u8 player_x = 1;
+    static u8 player_y = 1;
+    static u8 score = 0;
+    static u8 g_state = ST_RUNNING;
+    static u8 is_wall(u8 x, u8 y) { return maze[x + y] != 0; }
+    void main(void) {
+        cpct_disableFirmware();
+        while (1) {
+            cpct_scanKeyboard_f();
+            if (cpct_isKeyPressed(Key_CursorRight) && !is_wall(player_x + 1, player_y)) {
+                player_x += 1;
+                if (pellets[player_x]) { pellets[player_x] = 0; score += 1; }
+                if (score == 2) { g_state = ST_FINISHED; }
+            }
+            cpct_waitVSYNC();
+        }
+    }
+    """
+    report = SemanticValidator("amstrad_cpc", spec).validate(code)
+    assert report["quality_pass"], report["errors"]

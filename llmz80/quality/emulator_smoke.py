@@ -62,6 +62,24 @@ def _source_observations(source: str) -> tuple[bool, bool]:
     return any(token in source for token in draw_calls), any(token in source for token in transition_tokens)
 
 
+def _project_source(output_dir: Path) -> str:
+    """Concatenate every C source in the project.
+
+    Input and draw heuristics must see the whole program. Modular projects keep
+    main.c as a stub and put the platform calls in src/, so reading only main.c
+    would silently degrade adapter selection to the fallback key.
+    """
+    parts: list[str] = []
+    root_main = output_dir / "main.c"
+    if root_main.is_file():
+        parts.append(root_main.read_text(encoding="utf-8", errors="ignore"))
+    for path in sorted((output_dir / "src").glob("*.c")):
+        if path.name == "main.c":
+            continue
+        parts.append(path.read_text(encoding="utf-8", errors="ignore"))
+    return "\n".join(parts)
+
+
 def _frame_dir(output_dir: Path, platform: str) -> Path:
     path = output_dir / "smoke_frames" / f"{platform}_{uuid.uuid4().hex[:10]}"
     path.mkdir(parents=True, exist_ok=False)
@@ -111,6 +129,18 @@ _SPECTRUM_ROWS = {
 
 def _spectrum_input(source: str) -> tuple[str, str, str]:
     found = {match.lower() for match in re.findall(r"IN_KEY_SCANCODE_([A-Za-z0-9]+)", source)}
+    action_evidence = re.search(
+        r"\b(?:jump|grounded|velocity_y|vy|STATE_TITLE|ST_TITLE|title_screen)\b",
+        source,
+        re.IGNORECASE,
+    )
+    # A project with a title state must receive its action key first. Sending a
+    # movement key can otherwise leave the runtime test measuring a static menu.
+    if "space" in found and action_evidence:
+        row, bit = _SPECTRUM_ROWS["space"]
+        values = [0x1F] * 8
+        values[row] &= ~(1 << bit)
+        return "space", "".join(f"{value:02x}" for value in values) + "00", "1f" * 8 + "00"
     # Prefer controls whose effect normally persists long enough to capture.
     for key in ("p", "d", "l", "o", "a", "q", "w", "s", "space"):
         if key in found and key in _SPECTRUM_ROWS:
@@ -142,6 +172,42 @@ def _connect_zrcp(port: int, deadline: float) -> socket.socket:
     raise OSError(f"ZEsarUX remote protocol did not start: {last_error}")
 
 
+def _zrcp_query(connection: socket.socket, command: str) -> str:
+    """Send a command and return whatever ZEsarUX answered."""
+    connection.sendall((command + "\n").encode("utf-8"))
+    time.sleep(0.12)
+    chunks: list[bytes] = []
+    try:
+        while True:
+            data = connection.recv(65536)
+            if not data:
+                break
+            chunks.append(data)
+    except (TimeoutError, socket.timeout):
+        pass
+    return b"".join(chunks).decode("utf-8", errors="ignore")
+
+
+def _read_probes(connection: socket.socket, probes: dict[str, Any]) -> dict[str, int]:
+    """Read each probed engine variable straight out of emulated memory."""
+    addresses = probes.get("addresses") or {}
+    widths = probes.get("widths") or {}
+    values: dict[str, int] = {}
+    for name, address in sorted(addresses.items()):
+        width = int(widths.get(name, 1))
+        try:
+            answer = _zrcp_query(connection, f"read-memory {int(address)} {width}")
+        except OSError:
+            continue
+        digits = "".join(re.findall(r"[0-9A-Fa-f]{2}", answer.split("command@")[0]))[: width * 2]
+        if len(digits) < width * 2:
+            continue
+        octets = [int(digits[index:index + 2], 16) for index in range(0, width * 2, 2)]
+        # The Z80 is little endian, so a 16-bit probe arrives low byte first.
+        values[name] = sum(byte << (8 * position) for position, byte in enumerate(octets))
+    return values
+
+
 def _zrcp_command(connection: socket.socket, command: str) -> None:
     connection.sendall((command + "\n").encode("utf-8"))
     time.sleep(0.12)
@@ -161,15 +227,31 @@ def _wait_for_file(path: Path, timeout: float = 1.5) -> bool:
     return False
 
 
+def _matrix_for_key(key: str) -> tuple[str, str]:
+    """Keyboard matrix bytes for holding one key down, then releasing it."""
+    row, bit = _SPECTRUM_ROWS[key]
+    values = [0x1F] * 8
+    values[row] &= ~(1 << bit)
+    return "".join(f"{value:02x}" for value in values) + "00", "1f" * 8 + "00"
+
+
 def _run_zesarux(
     adapter: dict[str, Any], artifact: Path, output_dir: Path, source: str, seconds: int,
+    probes: dict[str, Any] | None = None, script: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     capture_dir = _frame_dir(output_dir, "spectrum")
     raw_frames = capture_dir / "frames.raw"
     before = capture_dir / "before.bmp"
     after = capture_dir / "after.bmp"
     port = _free_local_port()
-    run_seconds = max(6, seconds)
+    # Every probe read and the sweep hold cost wall-clock time inside the
+    # emulator's bounded lifetime. Budget for them or the session is cut off
+    # mid-read and the reason surfaces only as a broken pipe.
+    steps = list(script or [])
+    reads = 1 + len(steps) if steps else 2
+    probe_cost = reads * len(((probes or {}).get("addresses") or {})) * 0.2
+    hold_cost = sum(int(step.get("frames", 50)) / 50.0 for step in steps)
+    run_seconds = int(max(6, seconds) + probe_cost + hold_cost + 3)
     command = [
         adapter["executable"], "--noconfigfile", "--machine", "48k",
         "--vo", "null", "--ao", "null", "--vofile", str(raw_frames),
@@ -182,17 +264,40 @@ def _run_zesarux(
     )
     input_name, pressed, released = _spectrum_input(source)
     remote_error: str | None = None
+    probe_before: dict[str, int] = {}
+    probe_after: dict[str, int] = {}
+    step_readings: list[dict[str, Any]] = []
     try:
         connection = _connect_zrcp(port, time.monotonic() + 2.5)
         with connection:
             time.sleep(1.4)
             _zrcp_command(connection, f'save-screen "{before}"')
             _wait_for_file(before)
+            if probes:
+                probe_before = _read_probes(connection, probes)
             _zrcp_command(connection, f"set-ui-io-ports {pressed}")
             time.sleep(0.45)
             _zrcp_command(connection, f'save-screen "{after}"')
             _wait_for_file(after)
+            if probes and not steps:
+                probe_after = _read_probes(connection, probes)
             _zrcp_command(connection, f"set-ui-io-ports {released}")
+            # Each step holds one input for its own duration and then reads the
+            # state contract. Steps accumulate inside a single boot, so their
+            # order is the order the design states them in.
+            for step in steps:
+                reading: dict[str, Any] = {"id": step.get("id"), "read": {}}
+                step_readings.append(reading)
+                key = step.get("key")
+                if key in _SPECTRUM_ROWS:
+                    held, let_go = _matrix_for_key(key)
+                    _zrcp_command(connection, f"set-ui-io-ports {held}")
+                time.sleep(max(0.1, int(step.get("frames", 50)) / 50.0))
+                if probes:
+                    reading["read"] = _read_probes(connection, probes)
+                    probe_after = reading["read"] or probe_after
+                if key in _SPECTRUM_ROWS:
+                    _zrcp_command(connection, f"set-ui-io-ports {let_go}")
     except OSError as exc:
         remote_error = str(exc)
     try:
@@ -228,6 +333,9 @@ def _run_zesarux(
         "screenshot_change": screenshot_change,
         "raw_frame_change": raw_frame_change,
         "scripted_input": input_name,
+        "probe_before": probe_before,
+        "probe_after": probe_after,
+        "step_readings": step_readings,
         "scripted_input_sent": remote_error is None,
         "input_transition": remote_error is None and visual_change,
         "frames": observations,
@@ -399,11 +507,21 @@ def _run_caprice32(
     }
 
 
-def smoke_test(output_dir: Path, platform: str, full: bool = False, seconds: int = 3) -> dict[str, Any]:
+def smoke_test(
+    output_dir: Path,
+    platform: str,
+    full: bool = False,
+    seconds: int = 3,
+    probes: dict[str, Any] | None = None,
+    script: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     output_dir = output_dir.resolve()
+    if probes is None:
+        probe_path = output_dir / "probes.json"
+        if probe_path.is_file():
+            probes = json.loads(probe_path.read_text(encoding="utf-8"))
     artifact = output_dir / ("output.tap" if platform == "spectrum" else "output.dsk")
-    source_path = output_dir / "main.c"
-    source = source_path.read_text(encoding="utf-8", errors="ignore") if source_path.exists() else ""
+    source = _project_source(output_dir)
     artifact_ok, artifact_evidence = _artifact_valid(platform, artifact)
     source_draws, source_transitions = _source_observations(source)
     adapter = discover_adapter(platform)
@@ -431,7 +549,9 @@ def smoke_test(output_dir: Path, platform: str, full: bool = False, seconds: int
     if full and supported_full and artifact_ok:
         try:
             if platform == "spectrum":
-                report.update(_run_zesarux(adapter, artifact, output_dir, source, seconds))
+                report.update(
+                    _run_zesarux(adapter, artifact, output_dir, source, seconds, probes, script)
+                )
                 report["evidence"].append("bounded ZEsarUX framebuffer capture and ZRCP input")
             else:
                 report.update(_run_caprice32(adapter, artifact, output_dir, source, seconds))

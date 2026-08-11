@@ -108,3 +108,24 @@ def test_deterministic_fix_uses_cpctelera_u8_for_high_macro():
     fixed, _ = apply_deterministic_cpc_fixes("#define SCREEN_H 200\n")
     assert "#define SCREEN_H ((u8)200)" in fixed
     assert "uint8_t" not in fixed
+
+
+def test_deterministic_fix_removes_warning_357_const_sprite_casts():
+    code = """#include <cpctelera.h>
+static const u8 spr_iv[16] = {0};
+static const u8 spr_ghost[16] = {0};
+void main(void) {
+    u8* p;
+    cpct_drawSprite((void*)spr_iv, p, 2, 8);
+    cpct_drawSprite(( void * ) spr_ghost, p, 2, 8);
+}
+"""
+    fixed, fixes = apply_deterministic_cpc_fixes(code)
+    assert "cpct_drawSprite(spr_iv, p, 2, 8)" in fixed
+    assert "cpct_drawSprite(spr_ghost, p, 2, 8)" in fixed
+    assert "(void*)spr" not in fixed
+    assert any("warning 357" in fix for fix in fixes)
+
+    second, second_fixes = apply_deterministic_cpc_fixes(fixed)
+    assert second == fixed
+    assert not any("warning 357" in fix for fix in second_fixes)

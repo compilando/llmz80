@@ -40,6 +40,7 @@ passes on both installed toolchains.
 | Q11 | Real execution gate and CPC ABI compatibility | Q01,Q08,Q10 | `complete` | ZEsarUX/Caprice32 boot, framebuffer and input evidence; CPCtelera builds force SDCC ABI 0; static evidence cannot promote learning |
 | Q12 | Overflow-safe generation and repair completion | Q06,Q07,Q11 | `complete` | Range-aware fixed-point validation; quality-warning retries; relevant large-example context; compatible Qdrant client; warning-free CPC build and full CPC/Spectrum runtime evidence |
 | Q13 | Live bilingual corpus hardening | Q02,Q07,Q08,Q12 | `complete` | 20/20 live cases build and pass real emulator QA; 90% first-build and 100% final-build rates; 0 unexpected final warnings; 113 tests and 53/53 catalog builds pass |
+| Q14 | Maze-game intent, warning-357 and retrieval hardening | Q03,Q05,Q07,Q12 | `complete` | `comecocos`/Pac-Man maps to an interactive maze contract; const sprites compile without warning 357; learned context is metadata-preserving and content-deduplicated; rejected builds do not publish canonical DSKs |
 
 ## Task details
 
@@ -171,6 +172,23 @@ passes on both installed toolchains.
   format and report the real capability recall.
 - Acceptance: every case has a quality-passing build and full runtime report;
   the complete automated suite and catalog audit pass after all live fixes.
+
+### Q14 — Maze-game intent, warning-357 and retrieval hardening
+
+- Map Spanish and English Pac-Man/comecocos requests to an explicit four-way
+  maze-collect contract with input, tiles, collision, collectibles, score,
+  frame pacing and a finite end state.
+- Reject static mockups that do not implement the requested gameplay mechanics.
+- Detect and deterministically repair SDCC warning 357 caused by casting
+  constant CPC sprite arrays to `void*`; retain the compiler-clean source form.
+- Preserve learned-example capabilities, controls, APIs, video mode, archetype,
+  quality tier and content hash in Qdrant. Apply a relevance floor, capability
+  coverage, content-hash deduplication and a learned-context diversity cap.
+- Gate a toolchain-named DSK candidate first and publish `output.dsk` only after
+  build warnings, semantic checks and resource budgets pass.
+- Acceptance: exact prompt/spec, semantic rejection, deterministic repair,
+  real CPCtelera warning fixture, retrieval and staged-artifact regressions;
+  full quality gate and catalog audit.
 
 ## Quality metrics
 
@@ -321,3 +339,25 @@ The scorecard must report at least:
 - Final deterministic evidence: 113/113 Python tests and 53/53 catalog programs
   compile. `local/quality/live_full.json` and `.md` contain the persisted live
   scorecard; all roadmap tasks are complete.
+
+### 2026-08-10 — Q14 maze-game and retrieval hardening complete
+
+- The reported `un comecocos de una Abogada que se llama IV` prompt now maps to
+  `maze_collect_game` instead of `static_display`. Its spec requires four-way
+  input, sprites, tiles, collisions, collectible state, HUD/score, 50 Hz pacing
+  and a finished state.
+- Maze semantic validation rejects the original draw-once mockup and requires
+  evidence of a maze model, collectible state, collision test, score state and
+  player updates in addition to the existing input/frame/end-state gates.
+- Added pre-build detection and deterministic removal of `(void*)` casts on
+  constant `cpct_drawSprite` data. The exact two-sprite warning-357 fixture now
+  compiles under the installed CPCtelera toolchain without generated warnings.
+- Qdrant learned points now use content-stable IDs and retain generation
+  metadata. Retrieval applies a score floor and capability overlap, limits
+  learned examples to half the context and deduplicates identical source hashes
+  even when timestamps/paths differ.
+- CPC builds now gate `program.dsk` as a candidate. `output.dsk` is copied only
+  after build quality passes, and previous canonical files are preserved outside
+  the DSK glob while a retry is evaluated.
+- Evidence: 126/126 Python tests, lint, the real warning-357 CPCtelera fixture,
+  53/53 catalog builds and `make quality-gate` pass.

@@ -35,27 +35,44 @@ INTENT_GROUPS = (
     {"keyboard", "teclado", "key", "keys", "tecla", "teclas", "input", "control", "qaop"},
     {"sprite", "sprites", "player", "jugador", "ship", "nave", "character", "personaje", "flea", "pulga"},
     {"graphic", "graphics", "grafico", "graficos", "draw", "dibuja", "pixel", "line", "screen"},
-    {"game", "juego", "arcade", "tetris", "pong", "snake", "tic", "tac", "toe"},
+    {
+        "game", "juego", "arcade", "tetris", "pong", "snake", "tic", "tac", "toe",
+        "comecocos", "pacman", "pellet",
+    },
     {"sound", "sonido", "music", "musica", "beep", "audio"},
     {"random", "aleatorio", "azar", "procedural"},
-    {"tile", "tiles", "tilemap", "map", "mapa", "scroll", "scrolling"},
+    {
+        "tile", "tiles", "tilemap", "map", "mapa", "maze", "laberinto",
+        "scroll", "scrolling", "comecocos", "pacman",
+    },
     {"colour", "color", "colores", "palette", "paleta", "ink", "border", "borde"},
     {"animate", "animated", "animation", "animacion", "mueve", "move", "jump", "jumps", "salta", "rebota", "bounce"},
-    {"collision", "colision", "collide", "rebota", "bounce", "bounds", "bordes"},
-    {"score", "puntuacion", "marcador", "lives", "vidas", "hud", "counter", "contador"},
-    {"collect", "recoge", "recoger", "coin", "coins", "moneda", "monedas", "object", "objeto"},
+    {
+        "collision", "colision", "collide", "rebota", "bounce", "bounds", "bordes",
+        "wall", "walls", "muro", "muros", "comecocos", "pacman",
+    },
+    {
+        "score", "puntuacion", "puntos", "marcador", "lives", "vidas", "hud",
+        "counter", "contador", "comecocos", "pacman",
+    },
+    {
+        "collect", "recoge", "recoger", "coin", "coins", "moneda", "monedas",
+        "object", "objeto", "pellet", "pellets", "comecocos", "pacman",
+    },
     {"platform", "platforms", "plataforma", "plataformas", "gravity", "gravedad"},
 )
 
 CAPABILITY_TOKENS = {
     "text": {"text", "texto", "print", "printf", "menu", "title"},
-    "input": {"keyboard", "teclado", "key", "tecla", "input", "control", "qaop", "playable", "jugable"},
-    "sprite": {"sprite", "player", "jugador", "ship", "nave", "character", "personaje", "flea", "pulga"},
-    "animation": {"animate", "animated", "animation", "animacion", "move", "mueve", "jump", "salta", "scroll"},
-    "collision": {"collision", "colision", "collide", "bounce", "rebota", "platform", "plataforma"},
-    "hud": {"score", "puntuacion", "marcador", "lives", "vidas", "hud", "counter", "contador"},
+    "input": {"keyboard", "teclado", "key", "tecla", "input", "control", "qaop", "playable", "jugable", "comecocos", "pacman"},
+    "sprite": {"sprite", "player", "jugador", "ship", "nave", "character", "personaje", "flea", "pulga", "comecocos", "pacman"},
+    "animation": {"animate", "animated", "animation", "animacion", "move", "mueve", "jump", "salta", "scroll", "comecocos", "pacman"},
+    "collision": {"collision", "colision", "collide", "bounce", "rebota", "platform", "plataforma", "wall", "muro", "comecocos", "pacman"},
+    "collect": {"collect", "recoge", "coin", "moneda", "pellet", "comecocos", "pacman"},
+    "hud": {"score", "puntuacion", "puntos", "marcador", "lives", "vidas", "hud", "counter", "contador", "comecocos", "pacman"},
+    "score": {"score", "puntuacion", "puntos", "marcador", "comecocos", "pacman"},
     "sound": {"sound", "sonido", "music", "musica", "beep", "audio"},
-    "tiles": {"tile", "tiles", "tilemap", "map", "mapa", "maze", "laberinto"},
+    "tiles": {"tile", "tiles", "tilemap", "map", "mapa", "maze", "laberinto", "comecocos", "pacman"},
     "palette": {"colour", "color", "palette", "paleta", "ink"},
     "frame_pacing": {"vsync", "waitvsync", "intrinsic_halt", "frame"},
 }
@@ -72,6 +89,10 @@ def _tokens(value: str) -> set[str]:
 
 def _expanded_query_tokens(query: str) -> set[str]:
     tokens = _tokens(query)
+    if {"pac", "man"} <= tokens:
+        tokens.add("pacman")
+    if {"come", "cocos"} <= tokens:
+        tokens.add("comecocos")
     expanded = set(tokens)
     for group in INTENT_GROUPS:
         if tokens & group:

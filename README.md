@@ -9,6 +9,11 @@
 
 LLMZ80 es un generador inteligente de código C para microordenadores clásicos Z80 (ZX Spectrum y Amstrad CPC) que utiliza **Large Language Models** (LLMs), **embeddings**, **RAG** (Retrieval Augmented Generation), validación previa y corrección automática para generar código compilable desde descripciones en lenguaje natural.
 
+El nuevo **LLMZ80 Studio** añade un flujo guiado por TUI y orientado a proyectos:
+el diseño versionado `game.yml` es la fuente de verdad, mientras que el C se
+genera de forma determinista. Esto permite reabrir y modificar el juego sin
+volver a generar todo mediante un prompt.
+
 ## Estado del Proyecto
 
 El flujo principal actual genera **C**:
@@ -25,18 +30,31 @@ La revisión más reciente del flujo C, sus causas raíz y evidencia de compilac
 está en [Auditoría fundacional 2026-08-09](docs/FOUNDATIONAL_AUDIT_2026-08-09.md).
 El trabajo y la evidencia de mejora se registran en
 [Generation quality roadmap](docs/GENERATION_QUALITY_ROADMAP.md).
+La renovación del editor y sus criterios de aceptación se mantienen en
+[LLMZ80 Studio roadmap](docs/STUDIO_ROADMAP.md).
+Las interfaces para añadir géneros, plataformas, capacidades y exportadores se
+documentan en [Extending LLMZ80 Studio](docs/STUDIO_EXTENSIONS.md).
 
 ## ✨ Características Principales
 
 - 🤖 **Generación de código con IA**: Usa modelos OpenAI configurables para crear código C orientado a Z80
 - 🔍 **RAG fiable**: catálogo local determinista de programas compilables, ampliable con Qdrant
+- 🧭 **Jugabilidad contractual**: peticiones como `comecocos`/`Pac-Man` se
+  convierten en un contrato de laberinto interactivo con controles, colisiones,
+  objetos, marcador, ritmo de 50 Hz y estado final; no pueden degradarse a una
+  imagen estática
 - 🎯 **Compilación automática**: Compila y verifica el código generado automáticamente
 - 📊 **Contrato de build verificable**: Cada ejecución guarda `build_report.json`
   con advertencias clasificadas, artefactos y tamaño del programa; una opción
   ignorada o un artefacto vacío ya no cuentan como éxito
 - 🔧 **Corrección inteligente**: Si la compilación falla, el LLM sugiere correcciones
 - 🧪 **Validación previa**: Reglas locales detectan errores comunes antes de compilar
+- 🩹 **Reparaciones deterministas**: los fallos CPCtelera conocidos, incluido
+  SDCC warning 357 en sprites constantes, se corrigen antes de gastar un retry LLM
 - 🧱 **Contrato CPCtelera**: En Amstrad CPC se fuerza `main.c` autocontenido y APIs CPCtelera conocidas
+- 📦 **DSK con puerta de calidad**: `output.dsk` sólo se publica después de
+  superar advertencias, semántica y presupuestos; un build rechazado conserva
+  únicamente el artefacto candidato para diagnóstico
 - 📈 **Aprendizaje local**: Guarda ejemplos exitosos y errores recurrentes para mejorar iteraciones futuras
 - 🎨 **Generación de sprites**: Crea sprites desde descripciones o imágenes
 - 📚 **Base de conocimiento**: Aprende de ejemplos de código existentes
@@ -224,6 +242,36 @@ python llm_z80.py --platform amstrad_cpc --populate-db
 ```
 
 ## 📖 Uso
+
+### LLMZ80 Studio (recomendado para juegos completos)
+
+```bash
+# Asistente visual en terminal; no necesita API para crear el proyecto base
+make studio
+
+# Equivalente, eligiendo el directorio de proyectos
+.venv/bin/llmz80 studio studio-projects
+```
+
+El primer vertical slice permite elegir Spectrum o CPC, juego de recolección o
+persecución en laberinto y alcance de producción; crea título, controles,
+entidades, tres niveles, escenarios de aceptación y presupuestos técnicos. Desde
+la propia TUI puede guardar, regenerar fuentes, compilar y ejecutar el test
+headless del emulador.
+
+También existe un flujo reproducible para CI:
+
+```bash
+.venv/bin/llmz80 project validate studio-projects/my-game
+.venv/bin/llmz80 project generate studio-projects/my-game
+.venv/bin/llmz80 project build studio-projects/my-game
+.venv/bin/llmz80 project test studio-projects/my-game
+.venv/bin/llmz80 project release studio-projects/my-game
+```
+
+La asistencia IA de Studio usa Responses API con salidas estructuradas para
+proponer cambios revisables sobre el diseño; nunca sustituye directamente el C
+ni relaja presupuestos o tests de aceptación.
 
 ### Generación Básica de Código
 

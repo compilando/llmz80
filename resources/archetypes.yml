@@ -9,6 +9,9 @@ archetypes:
   collect_game:
     loop: Scan input, update player, resolve one collision, update HUD only when changed, draw, wait.
     required_primitives: [frame_pacing, input, sprite, collision, hud, state]
+  maze_collect_game:
+    loop: Scan four-way input, test the destination maze cell, move actors, consume one collectible, update score/state, redraw changed cells, wait.
+    required_primitives: [frame_pacing, input, sprite, tiles, collision, collect, hud, state, end_state]
   platform_movement:
     loop: Scan input, apply platform-safe fixed-point velocity/gravity (10.6 in CPC i16), resolve axes separately, draw, wait.
     required_primitives: [frame_pacing, input, sprite, collision, gravity]

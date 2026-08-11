@@ -12,6 +12,13 @@ from llmz80.core.generation_spec import create_generation_spec
         ("A flea that jumps around the screen", "spectrum", "platform_movement", "en", "sprite"),
         ("Recoge monedas con marcador", "amstrad_cpc", "collect_game", "es", "score"),
         ("A playable maze with an exit", "amstrad_cpc", "board_game", "en", "end_state"),
+        (
+            "un comecocos de una Abogada que se llama IV",
+            "amstrad_cpc",
+            "maze_collect_game",
+            "es",
+            "collect",
+        ),
     ],
 )
 def test_bilingual_specs_are_stable(prompt, platform, archetype, language, capability):
@@ -42,3 +49,23 @@ def test_start_message_implies_input_contract():
     )
     assert "input" in spec.capabilities
     assert spec.timing["input_edges_required"] is True
+
+
+def test_maze_collect_game_cannot_degrade_to_static_display():
+    spec = create_generation_spec(
+        "un comecocos de una Abogada que se llama IV", "amstrad_cpc"
+    )
+    assert set(spec.controls) == {"left", "right", "up", "down", "action"}
+    assert {
+        "input", "sprite", "tiles", "collision", "collect", "score",
+        "frame_pacing", "end_state",
+    } <= set(spec.capabilities)
+    assert spec.states == ("running", "finished")
+    assert spec.presentation["hud_required"] is True
+
+
+def test_generic_game_is_interactive_unless_static_is_explicit():
+    assert create_generation_spec("un juego de una abogada", "spectrum").archetype == "arcade"
+    assert create_generation_spec(
+        "una demo estática de un juego", "spectrum"
+    ).archetype == "static_display"

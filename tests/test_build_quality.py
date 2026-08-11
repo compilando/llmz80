@@ -90,3 +90,25 @@ def test_fresh_build_artifact_replaces_stale_canonical_copy(tmp_path):
     canonical.write_bytes(b"old")
     generated.write_bytes(b"new")
     assert select_fresh_artifact(canonical, [canonical, generated]) == generated
+
+
+def test_cpc_candidate_can_be_gated_before_canonical_publication(tmp_path):
+    candidate = tmp_path / "program.dsk"
+    candidate.write_bytes(b"candidate")
+
+    report = build_report(
+        platform="amstrad_cpc",
+        output_dir=tmp_path,
+        command=["make"],
+        return_code=0,
+        stdout="",
+        stderr="",
+        artifacts=[candidate],
+        candidate_artifact=candidate,
+    )
+
+    assert report["quality_pass"] is True
+    assert report["canonical_artifact"]["exists"] is True
+    assert report["canonical_artifact"]["published"] is False
+    assert report["canonical_artifact"]["staged_from"] == "program.dsk"
+    assert not (tmp_path / "output.dsk").exists()

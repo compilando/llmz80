@@ -89,3 +89,6 @@ pip-delete-this-directory.txt
 
 # Pre-commit
 .pre-commit-config.yaml.bak
+
+# Studio workspaces hold generated projects, not source
+studio-projects/
