@@ -16,6 +16,8 @@ def _print_help() -> None:
         "  llmz80 project types\n"
         "  llmz80 project validate PATH\n"
         "  llmz80 project contract PATH\n"
+        "  llmz80 project reference PATH    (searches the web, calls the OpenAI API)\n"
+        "  llmz80 project adapt PATH        (adapts the design to the researched game)\n"
         "  llmz80 project write PATH        (calls the OpenAI API)\n"
         "  llmz80 project scaffold PATH\n"
         "  llmz80 project build PATH\n"
@@ -70,6 +72,8 @@ def _project_command(arguments: list[str]) -> int:
     if len(arguments) != 2 or arguments[0] not in {
         "validate",
         "contract",
+        "reference",
+        "adapt",
         "write",
         "scaffold",
         "generate",
@@ -99,6 +103,55 @@ def _project_command(arguments: list[str]) -> int:
         from llmz80.studio.acceptance import generation_prompt
 
         print(generation_prompt(project))
+        return 0
+    if arguments[0] == "reference":
+        from openai import OpenAI
+
+        from llmz80.studio.reference import ResponsesReferenceResearcher
+        from llmz80.utils.config import load_api_key, load_config
+
+        model = load_config("config.yml").get("openai", {}).get("model", "gpt-5")
+        print(f"Researching with {model}; this searches the web and calls the OpenAI API.")
+        researcher = ResponsesReferenceResearcher(OpenAI(api_key=load_api_key()), model=model)
+        dossier = service.research_reference(project, directory, researcher)
+        if not dossier.identified:
+            print("No game was identified. The design keeps its typology.")
+            return 1
+        # The publisher and year are not guaranteed -- magazine type-ins and
+        # self-published titles legitimately lack one or both -- so a blank
+        # parenthetical is dropped rather than printed as "( , )" or "()".
+        known = [part for part in (dossier.publisher, str(dossier.year or "")) if part]
+        on_publisher = f" ({', '.join(known)})" if known else ""
+        print(f"{dossier.title}{on_publisher}")
+        for source in dossier.sources:
+            print(f"  {source.url}")
+        print(directory / "reference.yml")
+        return 0
+    if arguments[0] == "adapt":
+        from openai import OpenAI
+
+        from llmz80.studio.planner import apply_proposal
+        from llmz80.studio.reference_design import ResponsesReferenceDesigner
+        from llmz80.utils.config import load_api_key, load_config
+
+        model = load_config("config.yml").get("openai", {}).get("model", "gpt-5")
+        designer = ResponsesReferenceDesigner(OpenAI(api_key=load_api_key()), model=model)
+        try:
+            proposal, diff = service.propose_from_reference(project, directory, designer)
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            return 1
+        print(diff)
+        if input("\nApply these changes? [y/N] ").strip().casefold() != "y":
+            print("Left unchanged.")
+            return 0
+        try:
+            updated = apply_proposal(project, proposal)
+        except ValueError as exc:
+            print(f"REFUSED: {exc}")
+            return 1
+        service.save_project(updated, directory)
+        print(directory / "game.yml")
         return 0
     if arguments[0] == "write":
         from openai import OpenAI

@@ -65,3 +65,13 @@ def test_release_without_evidence_reports_rather_than_crashes(tmp_path: Path, ca
     assert code == 1
     assert "ERROR:" in printed
     assert "Traceback" not in printed
+
+
+def test_the_help_lists_the_reference_commands(capsys):
+    from llmz80.cli import main
+
+    main(["help"])
+
+    printed = capsys.readouterr().out
+    assert "project reference PATH" in printed
+    assert "project adapt PATH" in printed
