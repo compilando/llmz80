@@ -183,6 +183,14 @@ def build_project(
     output_dir = output_dir.expanduser().resolve()
     if not (output_dir / "main.c").exists():
         render_project(project, output_dir)
+    if not program_sources(project, output_dir.parent):
+        # Without this the toolchain reports "undefined symbol: _main", which
+        # says nothing about the project actually being empty.
+        raise FileNotFoundError(
+            f"this project has no program yet: put its C sources in "
+            f"{project.program_dir}/, or run `llmz80 project write` to have them "
+            f"written. The contract they must satisfy is in build/CONTRACT.md"
+        )
     config = load_config(str(config_path))
     platform = project.target.platform.value
     cpct_path = None

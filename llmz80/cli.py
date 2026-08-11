@@ -62,7 +62,11 @@ def _project_command(arguments: list[str]) -> int:
 
     location = Path(arguments[1]).expanduser().resolve()
     service = StudioService.at(location.parent if location.name == "game.yml" else location.parent)
-    project = service.open_project(location)
+    try:
+        project = service.open_project(location)
+    except FileNotFoundError as exc:
+        print(f"ERROR: {exc}")
+        return 2
     if arguments[0] == "validate":
         print(
             f"VALID: {project.metadata.title} ({project.target.platform.value}, "
@@ -98,7 +102,11 @@ def _project_command(arguments: list[str]) -> int:
         print(result.output_dir)
         return 0
     if arguments[0] == "build":
-        result = service.build(project, directory)
+        try:
+            result = service.build(project, directory)
+        except FileNotFoundError as exc:
+            print(f"ERROR: {exc}")
+            return 2
         print(result.artifact or result.output_dir / "build_report.json")
         return 0 if result.success else 1
     if arguments[0] == "test":

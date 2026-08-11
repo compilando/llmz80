@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from llmz80.studio.compiler import render_project, validate_design_fits_target
+from llmz80.studio.compiler import build_project, render_project, validate_design_fits_target
 from llmz80.studio.layout import relayout
 from llmz80.studio.models import GenreId, TargetPlatform
 from llmz80.studio.packs import create_default_project
@@ -149,3 +149,11 @@ def test_imported_asset_is_owned_padded_and_target_packed(tmp_path: Path, platfo
     header = (result.output_dir / "src" / "assets.h").read_text()
     expected_bytes = 1 if platform is TargetPlatform.SPECTRUM else 2
     assert f"WIDTH_BYTES {expected_bytes}" in header
+
+
+def test_building_without_a_program_says_what_is_missing(tmp_path: Path):
+    project = create_default_project("Empty", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    directory = ProjectStore(tmp_path).create(project)
+
+    with pytest.raises(FileNotFoundError, match="no program yet"):
+        build_project(project, directory / "build")
