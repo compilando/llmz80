@@ -3,7 +3,11 @@
 import pytest
 from pydantic import ValidationError
 
-from llmz80.studio.reference import GameReference, ReferenceSource
+from llmz80.studio.reference import (
+    GameReference,
+    ReferenceSource,
+    ResponsesReferenceResearcher,
+)
 
 
 def _dossier(**overrides) -> GameReference:
@@ -50,3 +54,42 @@ def test_an_unidentified_dossier_needs_no_sources():
 
     assert dossier.identified is False
     assert dossier.sources == []
+
+
+class _FakeResponses:
+    """Stands in for client.responses, recording how it was called."""
+
+    def __init__(self, parsed):
+        self.parsed = parsed
+        self.calls = []
+
+    def parse(self, **kwargs):
+        self.calls.append(kwargs)
+        return type("Response", (), {"output_parsed": self.parsed})()
+
+
+class _FakeClient:
+    def __init__(self, parsed):
+        self.responses = _FakeResponses(parsed)
+
+
+def test_research_asks_for_web_search_and_returns_the_dossier():
+    client = _FakeClient(_dossier())
+
+    dossier = ResponsesReferenceResearcher(client).research(
+        "Zampabolas runs through a walled maze eating every dot", "spectrum"
+    )
+
+    assert dossier.title == "Zampa Bolas"
+    call = client.responses.calls[0]
+    assert {"type": "web_search"} in call["tools"]
+    assert call["text_format"] is GameReference
+    assert "spectrum" in call["input"][1]["content"]
+
+
+def test_research_refuses_an_empty_parse():
+    """No dossier is a failure, not an unidentified game: they mean different things."""
+    client = _FakeClient(None)
+
+    with pytest.raises(ValueError, match="did not return"):
+        ResponsesReferenceResearcher(client).research("something", "spectrum")

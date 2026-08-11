@@ -14,7 +14,7 @@ identification as licence to rewrite the design.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -55,3 +55,57 @@ class GameReference(BaseModel):
         if self.identified and not self.title.strip():
             raise ValueError("an identified game must have a title")
         return self
+
+
+#: What the researcher is told before it looks anything up. It is told to admit
+#: failure explicitly because a model asked to describe a game it cannot find
+#: will describe a plausible game instead, and a plausible game is exactly the
+#: failure this whole stage exists to prevent.
+RESEARCH_SYSTEM_PROMPT = """\
+You research games published for 8-bit home computers in the 1980s, chiefly the
+ZX Spectrum and the Amstrad CPC.
+
+Search the web for the game the brief names. Report only what your sources
+support, and cite every source you used.
+
+If you cannot find the game, or you are not confident that what you found is the
+same game the brief means, set identified to false and leave the descriptive
+fields empty. Do not describe a game you did not find. A wrong dossier is worse
+than no dossier, because the rest of the system will rebuild the design from it.
+
+Describe mechanics, pacing, screen layout and visual style in short plain
+sentences that a programmer can act on, not in marketing prose.
+"""
+
+
+class ReferenceResearcher(Protocol):
+    def research(self, brief: str, target: str) -> GameReference: ...
+
+
+class ResponsesReferenceResearcher:
+    """Researches through the OpenAI Responses API with web search enabled."""
+
+    def __init__(self, client: Any, model: str = "gpt-5") -> None:
+        self.client = client
+        self.model = model
+
+    def research(self, brief: str, target: str) -> GameReference:
+        response = self.client.responses.parse(
+            model=self.model,
+            input=[
+                {"role": "system", "content": RESEARCH_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"TARGET PLATFORM: {target}\n\n"
+                        f"WHAT THE DESIGNER ASKED FOR:\n{brief}"
+                    ),
+                },
+            ],
+            tools=[{"type": "web_search"}],
+            text_format=GameReference,
+        )
+        parsed = response.output_parsed
+        if parsed is None:
+            raise ValueError("the model did not return a structured game reference")
+        return parsed
