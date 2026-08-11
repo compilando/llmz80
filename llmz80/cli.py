@@ -146,7 +146,27 @@ def _project_command(arguments: list[str]) -> int:
         client, model = _openai_client_and_model()
         print(f"Researching with {model}; this searches the web and calls the OpenAI API.")
         researcher = ResponsesReferenceResearcher(client, model=model)
-        dossier = service.research_reference(project, directory, researcher)
+        # The OpenAI SDK parses the model's JSON into GameReference itself, so
+        # a response that satisfies the JSON schema but violates a cross-field
+        # rule -- an "identified" dossier with no sources, a source missing
+        # its retrieved_at -- raises pydantic.ValidationError from inside the
+        # SDK's post-parser, before Studio code ever sees the object. That
+        # subclasses ValueError, so it is caught here alongside the explicit
+        # ValueError research_reference raises when parsing yields nothing.
+        # A network or API failure (a connection drop, a bad key, a rate
+        # limit) is a different kind of problem with a different remedy and
+        # is not a ValueError, so it is deliberately left to propagate rather
+        # than folded into the same message.
+        try:
+            dossier = service.research_reference(project, directory, researcher)
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            print(
+                "The model's answer could not be read as a game reference. "
+                "This is usually transient -- try again -- but check the "
+                "configured model and API key if it keeps happening."
+            )
+            return 1
         if not dossier.identified:
             print("No game was identified. The design keeps its typology.")
             return 1

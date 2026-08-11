@@ -344,3 +344,54 @@ def test_adapt_reports_a_proposal_apply_proposal_genuinely_refuses(
     assert "REFUSED:" not in printed
     assert "would leave the game unplayable" in printed
     assert game_path.read_text() == before
+
+
+def test_reference_reports_rather_than_crashes_on_a_malformed_model_response(
+    tmp_path: Path, capsys, monkeypatch
+):
+    """The OpenAI SDK parses the model's JSON into GameReference itself, inside
+    client.responses.parse(): a response that satisfies the JSON schema but
+    violates a cross-field rule (an "identified" dossier with no sources) raises
+    pydantic.ValidationError from there, before ResponsesReferenceResearcher or
+    StudioService ever see a constructed object.
+
+    Every other fake .parse() in this suite returns an already-built dossier,
+    which bypasses that step entirely and cannot exercise this path. This one
+    instead performs the real GameReference validation client-side, the way
+    the SDK's own post-parser would, and lets the genuine ValidationError
+    propagate -- without stubbing ResponsesReferenceResearcher itself, and
+    without a network call.
+    """
+    from llmz80.studio.reference import GameReference
+
+    main(["project", "new", str(tmp_path), "Malformed Response"])
+    capsys.readouterr()
+    game_path = tmp_path / "malformed-response" / "game.yml"
+
+    class _RaisingResponses:
+        def parse(self, **_kwargs):
+            # Satisfies GameReference's JSON schema field-by-field but fails
+            # its cross-field model_validator -- a shape a real model
+            # response could take, and exactly what the SDK's own post-parse
+            # step would raise on.
+            return GameReference.model_validate(
+                {"identified": True, "confidence": "high", "title": "Not Really", "sources": []}
+            )
+
+    class _RaisingClient:
+        def __init__(self, **_kwargs):
+            self.responses = _RaisingResponses()
+
+    import llmz80.utils.config as config_module
+    import openai
+
+    monkeypatch.setattr(openai, "OpenAI", _RaisingClient)
+    monkeypatch.setattr(config_module, "load_api_key", lambda: "test-key")
+    monkeypatch.setattr(config_module, "load_config", lambda *_: {})
+
+    code = main(["project", "reference", str(game_path)])
+
+    printed = capsys.readouterr().out
+    assert code == 1
+    assert "ERROR:" in printed
+    assert "Traceback" not in printed
