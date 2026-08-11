@@ -15,6 +15,9 @@ from PIL import Image
 from .compiler import BuildResult, SourceResult, build_project, render_project
 from .models import AssetSpec, GameProject, GenreId, ProjectScope, TargetPlatform
 from .packs import create_default_project
+from .planner import ProjectProposal, proposal_diff
+from .reference import GameReference, ReferenceResearcher, load_reference, save_reference
+from .reference_design import ReferenceDesigner
 from .store import ProjectStore
 from .quality import studio_quality_report
 from .acceptance import runtime_script
@@ -91,6 +94,44 @@ class StudioService:
         project.assets = candidate.assets
         self.store.save(project, directory)
         return asset
+
+    def research_reference(
+        self, project: GameProject, directory: Path, researcher: ReferenceResearcher
+    ) -> GameReference:
+        """Research the game the brief names and archive what was found.
+
+        Archived whether or not the game was identified: knowing that a search
+        already came up empty is worth as much as the dossier itself, and stops
+        every later action paying for the same search again.
+        """
+        dossier = researcher.research(project.metadata.brief, project.target.platform.value)
+        save_reference(dossier, directory)
+        return dossier
+
+    def reference(self, directory: Path) -> GameReference | None:
+        return load_reference(directory)
+
+    def propose_from_reference(
+        self,
+        project: GameProject,
+        directory: Path,
+        designer: ReferenceDesigner,
+        dossier: GameReference | None = None,
+    ) -> tuple[ProjectProposal, str]:
+        """Propose a design adaptation, returned with the diff a reviewer reads.
+
+        Nothing is applied here. Applying is `planner.apply_proposal`, called
+        once somebody has looked at the diff.
+        """
+        dossier = dossier or load_reference(directory)
+        if dossier is None:
+            raise ValueError("there is no researched game for this project yet")
+        if not dossier.identified:
+            raise ValueError(
+                "no researched game was identified, so there is nothing to adapt to"
+            )
+        proposal = designer.propose(project, dossier)
+        return proposal, proposal_diff(proposal)
 
     def build(self, project: GameProject, directory: Path) -> BuildResult:
         self.generate_sources(project, directory)

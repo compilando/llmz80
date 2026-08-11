@@ -5,8 +5,9 @@ import pytest
 from llmz80.studio.models import GenreId, TargetPlatform
 from llmz80.studio.packs import create_default_project
 from llmz80.studio.planner import ProjectChange, ProjectProposal, apply_proposal
-from llmz80.studio.reference import GameReference, ReferenceSource
+from llmz80.studio.reference import GameReference, ReferenceSource, load_reference
 from llmz80.studio.reference_design import ResponsesReferenceDesigner
+from llmz80.studio.services import StudioService
 
 
 def _dossier(**overrides) -> GameReference:
@@ -104,3 +105,80 @@ def test_an_unidentified_dossier_yields_no_proposal(project):
         )
 
     assert client.responses.calls == []
+
+
+def test_researching_archives_the_dossier_in_the_project(tmp_path):
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project(
+        "Zampa", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE
+    )
+
+    class _Researcher:
+        def research(self, brief, target):
+            return _dossier()
+
+    dossier = service.research_reference(project, directory, _Researcher())
+
+    assert dossier.title == "Zampa Bolas"
+    assert load_reference(directory).title == "Zampa Bolas"
+
+
+def test_researching_archives_an_unidentified_dossier_too(tmp_path):
+    """A recorded empty search is worth as much as a dossier: it stops every
+    later action re-running the same search, so it is archived just the same."""
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project(
+        "Zampa", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE
+    )
+
+    class _Researcher:
+        def research(self, brief, target):
+            return GameReference(identified=False, confidence="low")
+
+    dossier = service.research_reference(project, directory, _Researcher())
+
+    assert dossier.identified is False
+    archived = load_reference(directory)
+    assert archived is not None
+    assert archived.identified is False
+
+
+def test_a_reference_proposal_is_returned_with_its_diff(tmp_path):
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project(
+        "Zampa", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE
+    )
+    proposal = ProjectProposal(
+        summary="match the original",
+        changes=[
+            ProjectChange(
+                path="/presentation/style",
+                operation="replace",
+                value="bright maze on black",
+                reason="the original drew a bright maze on black",
+            )
+        ],
+    )
+
+    class _Designer:
+        def propose(self, project, dossier):
+            return proposal
+
+    returned, diff = service.propose_from_reference(project, directory, _Designer(), _dossier())
+
+    assert returned is proposal
+    assert "presentation/style" in diff
+
+
+def test_proposing_without_a_dossier_says_so(tmp_path):
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project(
+        "Zampa", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE
+    )
+
+    class _Designer:
+        def propose(self, project, dossier):
+            raise AssertionError("must not be called")
+
+    with pytest.raises(ValueError, match="no researched game"):
+        service.propose_from_reference(project, directory, _Designer(), None)
