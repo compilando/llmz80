@@ -19,6 +19,7 @@ from llmz80.core.platform_notes import platform_notes
 
 from .acceptance import generation_prompt
 from .models import GameProject
+from .reference import GameReference, reference_prompt
 from .retrieval import examples_prompt
 
 #: Sources a program may contribute. Anything else is refused rather than
@@ -98,12 +99,18 @@ class ProgramWriter(Protocol):
     ) -> ProgramSources: ...
 
 
-def writing_prompt(project: GameProject, *, with_examples: bool = True) -> str:
+def writing_prompt(
+    project: GameProject,
+    *,
+    with_examples: bool = True,
+    reference: GameReference | None = None,
+) -> str:
     """Everything the writer is told before its first attempt."""
     parts = [
         generation_prompt(project),
         platform_notes(project.target.platform.value),
         library_interface(),
+        reference_prompt(reference),
     ]
     if with_examples:
         examples = examples_prompt(project)
@@ -172,12 +179,18 @@ def repair_prompt(
 class ResponsesProgramWriter:
     """Writes the program with the OpenAI Responses API."""
 
-    def __init__(self, client: Any, model: str = "gpt-5") -> None:
+    def __init__(
+        self,
+        client: Any,
+        model: str = "gpt-5",
+        reference: GameReference | None = None,
+    ) -> None:
         self.client = client
         self.model = model
+        self.reference = reference
 
     def write(self, project: GameProject, feedback: str | None = None) -> ProgramSources:
-        content = writing_prompt(project)
+        content = writing_prompt(project, reference=self.reference)
         if feedback:
             content += "\n\nYOUR PREVIOUS ATTEMPT WAS REJECTED\n\n" + feedback
         response = self.client.responses.parse(

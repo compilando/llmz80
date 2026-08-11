@@ -122,6 +122,44 @@ marketing prose.
 """
 
 
+def reference_prompt(dossier: GameReference | None) -> str:
+    """The dossier as a prompt block, or nothing at all.
+
+    An unidentified dossier yields nothing rather than a block saying so: the
+    absence of a reference is already the default, and a paragraph explaining
+    that there is no reference only spends attention.
+    """
+    if dossier is None or not dossier.identified:
+        return ""
+    lines = ["REFERENCE GAME", ""]
+    published = f"{dossier.publisher}, {dossier.year}" if dossier.year else dossier.publisher
+    # Undetermined platforms is dropped rather than rendered as "for .": a
+    # blank clause is a wrong sentence, not a shorter true one.
+    on_platforms = f" for {', '.join(dossier.platforms)}" if dossier.platforms else ""
+    lines.append(f"{dossier.title} ({published}){on_platforms}.")
+    lines.append(
+        "This is what the designer asked for. Make the program feel like this "
+        "game, within what the design below states."
+    )
+    # Mechanics is a list rendered as its own bullets, so it is kept out of the
+    # generic single-string loop below: that loop's "already multi-line, so
+    # leave it alone" check would otherwise re-indent a lone bullet on top of
+    # the indent it already has.
+    if dossier.mechanics:
+        lines.extend(["", "How it plays:"])
+        lines.extend(f"  - {rule}" for rule in dossier.mechanics)
+    for heading, value in (
+        ("Screen layout", dossier.screen_layout),
+        ("Pacing", dossier.pacing),
+        ("Look", dossier.visual_style),
+        ("Levels", dossier.level_structure),
+    ):
+        if value.strip():
+            lines.extend(["", f"{heading}:", value if "\n" in value else f"  {value}"])
+    lines.extend(["", f"Researched from: {', '.join(source.url for source in dossier.sources)}"])
+    return "\n".join(lines)
+
+
 class ReferenceResearcher(Protocol):
     def research(self, brief: str, target: str) -> GameReference: ...
 

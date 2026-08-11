@@ -104,12 +104,18 @@ def _project_command(arguments: list[str]) -> int:
         from openai import OpenAI
 
         from llmz80.studio.generator import ResponsesProgramWriter
+        from llmz80.studio.reference import load_reference
         from llmz80.utils.config import load_api_key, load_config
 
         settings = load_config("config.yml")
         model = settings.get("openai", {}).get("model", "gpt-5")
         print(f"Writing the program with {model}; this calls the OpenAI API.")
-        writer = ResponsesProgramWriter(OpenAI(api_key=load_api_key()), model=model)
+        dossier = load_reference(directory)
+        if dossier is not None and dossier.identified:
+            print(f"Writing as {dossier.title} ({dossier.publisher}).")
+        writer = ResponsesProgramWriter(
+            OpenAI(api_key=load_api_key()), model=model, reference=dossier
+        )
         report = service.write_program(project, directory, writer)
         for attempt in report["attempts"]:
             print(

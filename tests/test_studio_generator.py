@@ -13,6 +13,7 @@ from llmz80.studio.generator import (
 )
 from llmz80.studio.models import GenreId, TargetPlatform
 from llmz80.studio.packs import create_default_project
+from llmz80.studio.reference import GameReference, ReferenceSource
 
 
 @pytest.fixture
@@ -227,6 +228,35 @@ def test_the_writing_prompt_shows_the_platform_interface():
     assert "unsigned char plat_wait_frame(void);" in prompt
     assert "void plat_cell(unsigned char col, unsigned char row, unsigned char kind);" in prompt
     assert "PLATFORM LIBRARY INTERFACE" in prompt
+
+
+def test_the_writing_prompt_carries_the_dossier_when_the_project_has_one():
+    project = create_default_project("Ref", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    dossier = GameReference(
+        identified=True,
+        confidence="high",
+        title="Zampa Bolas",
+        publisher="Iber Soft",
+        mechanics=["eat every dot"],
+        sources=[
+            ReferenceSource(
+                url="https://example.org/z",
+                title="Zampa Bolas",
+                retrieved_at="1985-01-01T00:00:00Z",
+            )
+        ],
+    )
+
+    prompt = writing_prompt(project, with_examples=False, reference=dossier)
+
+    assert "REFERENCE GAME" in prompt
+    assert "Zampa Bolas" in prompt
+
+
+def test_the_writing_prompt_is_unchanged_without_a_dossier():
+    project = create_default_project("Ref", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+
+    assert "REFERENCE GAME" not in writing_prompt(project, with_examples=False)
 
 
 def test_a_missing_platform_header_is_not_silently_survivable():

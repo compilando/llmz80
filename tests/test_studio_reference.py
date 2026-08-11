@@ -9,6 +9,7 @@ from llmz80.studio.reference import (
     ReferenceSource,
     ResponsesReferenceResearcher,
     load_reference,
+    reference_prompt,
     save_reference,
 )
 
@@ -104,6 +105,24 @@ def test_a_hand_edited_dossier_wins(tmp_path):
     )
 
     assert load_reference(tmp_path).publisher == "Topo Soft"
+
+
+def test_the_prompt_block_carries_the_facts_and_the_sources():
+    block = reference_prompt(_dossier())
+
+    assert "REFERENCE GAME" in block
+    assert "Zampa Bolas" in block
+    assert "Iber Soft" in block
+    assert "two ghosts chase the player" in block
+    assert "https://worldofspectrum.org/example" in block
+
+
+def test_an_unidentified_dossier_produces_no_prompt_block():
+    assert reference_prompt(_dossier(identified=False, sources=[], title="")) == ""
+
+
+def test_no_dossier_produces_no_prompt_block():
+    assert reference_prompt(None) == ""
 
 
 class _FakeResponses:
