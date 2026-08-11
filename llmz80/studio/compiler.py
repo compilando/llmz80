@@ -1,4 +1,4 @@
-"""Deterministic source generation from GameProject v2."""
+"""Project scaffolding: the library, the contracts, and the program the project owns."""
 
 from __future__ import annotations
 
@@ -13,14 +13,13 @@ from llmz80.core.project_mode import create_project_layout
 from llmz80.core.build_quality import build_report, select_fresh_artifact, write_build_report
 from llmz80.utils.config import load_config
 
+from .acceptance import generation_prompt
 from .codegen import (
     SUPPORTED_ROLES,
-    build_actors,
-    engine_sources,
+    library_sources,
     playfield,
     render_config_header,
-    render_game_data,
-    render_main,
+    render_state_header,
 )
 from .models import GameProject, TargetPlatform, VideoMode
 from .probes import write_probe_report
@@ -41,31 +40,26 @@ class BuildResult:
     report: dict[str, object]
 
 
-def validate_backend_support(project: GameProject) -> None:
-    """Refuse designs the current deterministic engine cannot represent faithfully."""
-    unsupported: list[str] = []
+def program_sources(project: GameProject, project_dir: Path) -> list[Path]:
+    """The project's own C sources, which are written rather than generated."""
+    directory = (project_dir / project.program_dir).expanduser()
+    if not directory.is_dir():
+        return []
+    return sorted(
+        path for path in directory.iterdir() if path.suffix in {".c", ".h"} and path.is_file()
+    )
 
-    roles = [entity.role for entity in project.entities]
-    unknown = sorted({role for role in roles if role not in SUPPORTED_ROLES})
+
+def validate_design_fits_target(project: GameProject) -> None:
+    """Refuse designs the target machine cannot show, whoever writes the code.
+
+    This is about the hardware, not about any particular program: a level wider
+    than the character grid cannot be drawn however the program is written.
+    """
+    unsupported: list[str] = []
+    unknown = sorted({entity.role for entity in project.entities} - SUPPORTED_ROLES)
     if unknown:
         unsupported.append("unsupported entity roles: " + ", ".join(unknown))
-
-    players = sum(entity.count for entity in project.entities if entity.role == "player")
-    if players != 1:
-        unsupported.append(f"player count {players} (supported: 1)")
-    collectibles = sum(
-        entity.count for entity in project.entities if entity.role == "collectible"
-    )
-    if collectibles < 1:
-        unsupported.append("at least one collectible is required to finish a level")
-
-    actors = build_actors(project)
-    if len(actors) > project.budgets.max_entities:
-        unsupported.append(
-            f"actor count {len(actors)} exceeds the max_entities budget "
-            f"{project.budgets.max_entities}"
-        )
-
     columns, rows = playfield(project)
     for level in project.levels:
         if level.width > columns or level.height > rows:
@@ -73,26 +67,24 @@ def validate_backend_support(project: GameProject) -> None:
                 f"level {level.id} is {level.width}x{level.height} but "
                 f"{project.target.video_mode.value} offers {columns}x{rows} playable cells"
             )
-        elif level.width * level.height <= len(actors):
-            unsupported.append(
-                f"level {level.id} has {level.width * level.height} cells for "
-                f"{len(actors)} actors plus a free player cell"
-            )
-
     if unsupported:
-        raise ValueError(
-            "the current Studio engine cannot represent this design faithfully: "
-            + "; ".join(unsupported)
-        )
+        raise ValueError("this design does not fit the target: " + "; ".join(unsupported))
 
 
 def render_project(project: GameProject, output_dir: Path) -> SourceResult:
-    validate_backend_support(project)
+    """Scaffold a buildable project around the program the project owns.
+
+    Studio contributes the platform library, a header of target constants, the
+    state contract to define, and the acceptance contract to satisfy. It does
+    not contribute gameplay; `program_dir` does.
+    """
+    validate_design_fits_target(project)
     output_dir = output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    code = render_main(project)
+    project_dir = output_dir.parent
     cpc_mode = 0 if project.target.video_mode is VideoMode.CPC_MODE_0 else 1
-    source_assets = [output_dir.parent / asset.source for asset in project.assets]
+
+    source_assets = [project_dir / asset.source for asset in project.assets]
     missing = [str(path) for path in source_assets if not path.is_file()]
     if missing:
         raise FileNotFoundError("missing project assets: " + ", ".join(missing))
@@ -117,39 +109,47 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
             normalized.save(target)
             asset_paths.append(target)
 
-    # The engine is copied before the layout is written so the project manifest
-    # records it as owned source, and both toolchains glob it out of src/.
     source_dir = output_dir / "src"
     source_dir.mkdir(parents=True, exist_ok=True)
-    for engine_file in engine_sources(project):
-        shutil.copy2(engine_file, source_dir / engine_file.name)
+    for stale in source_dir.glob("*"):
+        if stale.is_file() and stale.suffix in {".c", ".h"}:
+            stale.unlink()
+    for piece in library_sources(project):
+        shutil.copy2(piece, source_dir / piece.name)
     (source_dir / "game_config.h").write_text(render_config_header(project), encoding="utf-8")
-    (source_dir / "game_data.c").write_text(render_game_data(project), encoding="utf-8")
+    (source_dir / "game_state.h").write_text(render_state_header(), encoding="utf-8")
+
+    owned = program_sources(project, project_dir)
+    for path in owned:
+        shutil.copy2(path, source_dir / path.name)
+    main_c = next((path for path in owned if path.name == "main.c"), None)
+    if main_c is not None:
+        shutil.copy2(main_c, output_dir / "main.c")
 
     create_project_layout(
         output_dir,
         project.target.platform.value,
-        code,
+        (output_dir / "main.c").read_text(encoding="utf-8") if main_c else "",
         assets=asset_paths,
         cpc_mode=cpc_mode,
     )
+    (output_dir / "CONTRACT.md").write_text(generation_prompt(project), encoding="utf-8")
 
     design = output_dir / "design"
     design.mkdir(exist_ok=True)
-    (
-        shutil.copy2(output_dir.parent / "game.yml", design / "game.yml")
-        if (output_dir.parent / "game.yml").exists()
-        else None
-    )
+    if (project_dir / "game.yml").exists():
+        shutil.copy2(project_dir / "game.yml", design / "game.yml")
     manifest = {
-        "schema_version": 2,
-        "source_of_truth": "game.yml",
-        "generated": True,
+        "schema_version": 3,
+        "source_of_truth": "game.yml for the design, "
+        f"{project.program_dir}/ for the program",
+        "generated": False,
         "target": project.target.platform.value,
         "genre": project.genre,
-        "modules": sorted(path.name for path in engine_sources(project))
-        + ["game_config.h", "game_data.c", "main.c"],
-        "actor_count": len(build_actors(project)),
+        "library": sorted(path.name for path in library_sources(project)),
+        "written_headers": ["game_config.h", "game_state.h"],
+        "program": sorted(path.name for path in owned),
+        "program_present": main_c is not None,
         "playfield_cells": list(playfield(project)),
     }
     (output_dir / "studio_manifest.json").write_text(

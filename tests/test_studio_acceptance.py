@@ -7,11 +7,13 @@ from llmz80.core.state_contract import (
     contract_prompt,
 )
 from llmz80.studio.acceptance import (
+    design_prompt,
     generation_prompt,
     runtime_script,
     scenarios_prompt,
     with_executable_scenarios,
 )
+from llmz80.studio.editing import set_entity_behaviour
 from llmz80.studio.models import AcceptanceScenario, GenreId, TargetPlatform
 from llmz80.studio.packs import create_default_project
 from llmz80.studio.services import StudioService
@@ -145,3 +147,29 @@ def test_a_scenario_expecting_an_unknown_symbol_is_refused():
             hold="down",
             expect={"g_not_a_symbol": 1},
         )
+
+
+def test_the_design_prompt_carries_the_map_and_the_entities(project):
+    prompt = design_prompt(project)
+
+    assert "Level level_1" in prompt
+    assert "####################" in prompt
+    assert "'#' is wall, '.' is floor" in prompt
+    for entity in project.entities:
+        assert f"{entity.id}: {entity.role} x{entity.count}" in prompt
+    assert "player at (" in prompt
+    assert f"Points per collectible: {project.gameplay.score_per_collectible}" in prompt
+
+
+def test_the_generation_prompt_is_contract_design_and_acceptance(project):
+    prompt = generation_prompt(project)
+
+    assert prompt.index("OBSERVABLE STATE CONTRACT") < prompt.index("DESIGN")
+    assert prompt.index("DESIGN") < prompt.index("RUNTIME ACCEPTANCE")
+
+
+def test_a_designed_behaviour_reaches_the_prompt(project):
+    edited = set_entity_behaviour(project, "enemy", "chase")
+
+    assert "moves chase" in design_prompt(edited)
+    assert "moves chase" not in design_prompt(project)

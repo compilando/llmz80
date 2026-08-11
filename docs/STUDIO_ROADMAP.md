@@ -23,7 +23,8 @@ have to be rewritten when the change lands, not quietly ignored.
 ## Product contract
 
 - `game.yml` (GameProject schema v3) is the editable source of truth.
-- Generated C and assets are reproducible build artifacts and are never silently treated as design.
+- The program is written into the project and owned by it. It is the artifact of record, not a
+  reproducible build output, because a written program cannot be reconstructed from the design.
 - AI returns typed design proposals; applying them is a separate, reviewable operation.
 - Every supported game must pass design, build, resource, semantic, runtime and playability gates.
 - The legacy prompt-to-C command remains compatible while projects migrate incrementally.
@@ -36,7 +37,7 @@ have to be rewritten when the change lands, not quietly ignored.
 | S02 | Versioned `GameProject` IR and safe persistence | Implemented | Models, cross-field validation, atomic YAML and revision history |
 | S03 | Extensible target/genre/capability registries | Implemented | Built-in target/genre packs, public protocols and entry-point discovery |
 | S04 | Guided Textual TUI | In progress | Create/open/edit/save/generate vertical slice; scalar fields only, no scene/level/entity editors |
-| S05 | Modular deterministic game engine | In progress | Versioned engine runtime in `resources/studio_engine` compiled by both toolchains; arbitrary enemy and collectible counts and per-level layouts; enemy behaviour is still patrol-only and levels carry no tilemap |
+| S05 | Modular deterministic game engine | Withdrawn | Replaced by scaffolding: `resources/studio_lib` offers platform pieces with no game loop, and the program lives in the project's `program_dir`. The former engine is kept as a reference program under `resources/studio_reference` |
 | S06 | Asset pipeline | In progress | Project-owned image import and deterministic Spectrum/CPC packing; imported assets are not yet referenced by the generated C, which draws primitives |
 | S07 | Structured AI design assistance | Implemented | Responses typed proposals, visible diff, separate apply action and protected contracts |
 | S08 | Automated gameplay QA | In progress | Design, build and runtime gates plus solvability analysis and, on Spectrum, memory-probed assertions that a scripted sweep scores exactly what the design predicts; CPC state probes and life/level transitions next |
@@ -292,3 +293,27 @@ failure, and it was in that blind spot that the Map tab shipped with a duplicate
   environment because `pytest-asyncio`, though declared in `pyproject.toml`, is not installed, so
   the widget wiring itself is unverified here; the editing operations it calls are covered by 20
   synchronous tests.
+
+## 2026-08-11 (C): the engine left the product
+
+- `resources/studio_engine` became `resources/studio_lib`, holding only `platform.h` and the two
+  `platform.c` implementations. `engine.c` and `engine.h` were deleted from it. Studio no longer
+  emits actor tables, spawn tables or wall bitmaps; `codegen.py` writes constants and nothing else.
+- `GameProject.program_dir` names the directory inside the project holding its C sources.
+  `render_project` scaffolds around them: the library, `game_config.h` with the design's constants,
+  `game_state.h` declaring the contract, and `CONTRACT.md` with the full generation prompt.
+  A project with no program still scaffolds and records `program_present: false`.
+- `validate_backend_support` became `validate_design_fits_target`. What remains is about the
+  machine, not about any program: a level wider than the character grid cannot be drawn however
+  the code is written.
+- The former engine survives as a reference program in `resources/studio_reference`, one per
+  target, with the design it satisfies. It is not retrievable context yet: the example catalog and
+  its audit compile one source file per entry, so a multi-file program cannot join them without
+  changing both.
+- The generation prompt gained the design itself: entities with roles, counts and behaviours, and
+  every level as the same ASCII grid the designer edits, with starting positions.
+- Evidence: the reference program, carried into a project as its own `program_dir`, scaffolded,
+  built and ran on both targets, and the acceptance gate passed both steps on Spectrum. 238
+  automated tests passed and the catalog remained at 53/53.
+- Still open: nothing generates a program yet. Until a generator is wired to `CONTRACT.md` and the
+  repair loop is fed with acceptance mismatches, a project's program has to be written by hand.

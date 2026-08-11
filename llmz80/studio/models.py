@@ -274,6 +274,10 @@ class GameProject(StrictModel):
     levels: list[LevelSpec] = Field(min_length=1)
     audio: AudioSpec = Field(default_factory=AudioSpec)
     assets: list[AssetSpec] = Field(default_factory=list)
+    #: Directory inside the project holding the program's C sources. The program
+    #: is written, not generated, so it is the artifact of record and lives with
+    #: the design rather than being reconstructed from it.
+    program_dir: str = Field(default="program", pattern=r"^[A-Za-z0-9_][A-Za-z0-9_./-]{0,63}$")
     budgets: BudgetSpec
     acceptance: list[AcceptanceScenario] = Field(default_factory=list)
 

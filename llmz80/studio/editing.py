@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .compiler import validate_backend_support
+from .compiler import validate_design_fits_target
 from .layout import default_tiles
 from .models import TILE_FLOOR, TILE_WALL, GameProject
 from .solvability import solvability_report
@@ -305,14 +305,14 @@ def editing_status(project: GameProject) -> dict[str, Any]:
     """Gate state for the design as it currently stands.
 
     Model invariants are already enforced by every operation above, so this
-    reports the two gates an editor cannot enforce keystroke by keystroke: the
-    engine's capability limits and level solvability. Both are advisory while
-    editing and blocking at release.
+    reports the two an editor cannot enforce keystroke by keystroke: whether the
+    design fits the target machine, and whether its levels are solvable. Both are
+    advisory while editing and blocking at release.
     """
     solvability = solvability_report(project)
     backend_error: str | None = None
     try:
-        validate_backend_support(project)
+        validate_design_fits_target(project)
     except ValueError as exc:
         backend_error = str(exc)
     return {

@@ -5,7 +5,9 @@
  */
 #include "platform.h"
 #include "engine.h"
+#include "game_state.h"
 #include "game_config.h"
+#include "maze_config.h"
 
 static unsigned char a_col[MAX_ACTORS];
 static unsigned char a_row[MAX_ACTORS];

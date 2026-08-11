@@ -29,18 +29,6 @@ extern const unsigned int g_wall_offset[];
 extern const char g_title_text[];
 extern const char g_controls_text[];
 
-/* Runtime probe contract. These have external linkage so they land in the
- * linker map and an emulator can read them straight out of memory, which is
- * how the runtime gate proves the rules ran rather than inferring it from
- * pixels. Renaming one breaks probes.json; treat them as public API. */
-extern unsigned char g_level;
-extern unsigned char g_lives;
-extern unsigned char g_remaining;
-extern unsigned int g_score;
-extern unsigned char g_worst_frame_cost;
-extern unsigned int g_hiscore;
-extern unsigned char g_state;
-
 void engine_run(void);
 void engine_format_number(unsigned int value, char *out);
 

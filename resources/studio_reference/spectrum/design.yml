@@ -1,0 +1,276 @@
+schema_version: 3
+metadata:
+  slug: reference-maze
+  title: Reference Maze
+  author: LLMZ80 Studio
+  language: es
+  created_at: '2026-08-11T06:13:08.346394Z'
+  updated_at: '2026-08-11T06:13:08.356985Z'
+kind: game
+scope: complete
+genre: maze_chase
+target:
+  platform: spectrum
+  video_mode: spectrum_bitmap
+  frame_hz: 50
+presentation:
+  style: colourful maze arcade
+  palette: []
+  show_score: true
+  show_lives: true
+controls:
+  scheme: qaop_space
+  left: O
+  right: P
+  up: Q
+  down: A
+  action: SPACE
+initial_scene: title
+scenes:
+- id: title
+  kind: title
+  title: Reference Maze
+  next_scene: null
+  options:
+  - label: START
+    target_scene: game
+- id: game
+  kind: gameplay
+  title: ''
+  next_scene: level_complete
+  options: []
+- id: level_complete
+  kind: level_complete
+  title: LEVEL COMPLETE
+  next_scene: game
+  options: []
+- id: game_over
+  kind: game_over
+  title: GAME OVER
+  next_scene: title
+  options: []
+entities:
+- id: player
+  role: player
+  sprite: hero
+  speed: 1
+  count: 1
+  behaviour: auto
+- id: enemy
+  role: enemy
+  sprite: enemy
+  speed: 1
+  count: 1
+  behaviour: auto
+- id: collectible
+  role: collectible
+  sprite: pellet
+  speed: 1
+  count: 8
+  behaviour: auto
+gameplay:
+  lives: 3
+  win_score: 100
+  level_count: 3
+  difficulty_curve: linear
+  score_per_collectible: 10
+levels:
+- id: level_1
+  name: LEVEL 1
+  width: 20
+  height: 16
+  time_limit_seconds: null
+  tiles:
+  - '####################'
+  - '#..................#'
+  - '#..................#'
+  - '#..................#'
+  - '#...#...#...#...#..#'
+  - '#..................#'
+  - '#..................#'
+  - '#..................#'
+  - '#...#...#...#...#..#'
+  - '#..................#'
+  - '#..................#'
+  - '#..................#'
+  - '#...#...#...#...#..#'
+  - '#..................#'
+  - '#..................#'
+  - '####################'
+  spawns:
+  - entity: player
+    col: 10
+    row: 8
+  - entity: enemy
+    col: 1
+    row: 1
+  - entity: collectible
+    col: 9
+    row: 2
+  - entity: collectible
+    col: 18
+    row: 3
+  - entity: collectible
+    col: 12
+    row: 5
+  - entity: collectible
+    col: 3
+    row: 7
+  - entity: collectible
+    col: 15
+    row: 8
+  - entity: collectible
+    col: 7
+    row: 10
+  - entity: collectible
+    col: 15
+    row: 11
+  - entity: collectible
+    col: 10
+    row: 13
+- id: level_2
+  name: LEVEL 2
+  width: 20
+  height: 16
+  time_limit_seconds: null
+  tiles:
+  - '####################'
+  - '#..................#'
+  - '#..................#'
+  - '#..#..#..#..#..#...#'
+  - '#..................#'
+  - '#..................#'
+  - '#..#..#..#..#..#...#'
+  - '#..................#'
+  - '#..................#'
+  - '#..#..#..#..#..#...#'
+  - '#..................#'
+  - '#..................#'
+  - '#..#..#..#..#..#...#'
+  - '#..................#'
+  - '#..................#'
+  - '####################'
+  spawns:
+  - entity: player
+    col: 10
+    row: 8
+  - entity: enemy
+    col: 8
+    row: 1
+  - entity: collectible
+    col: 15
+    row: 2
+  - entity: collectible
+    col: 10
+    row: 4
+  - entity: collectible
+    col: 18
+    row: 5
+  - entity: collectible
+    col: 12
+    row: 7
+  - entity: collectible
+    col: 4
+    row: 9
+  - entity: collectible
+    col: 16
+    row: 10
+  - entity: collectible
+    col: 7
+    row: 12
+  - entity: collectible
+    col: 18
+    row: 13
+- id: level_3
+  name: LEVEL 3
+  width: 20
+  height: 16
+  time_limit_seconds: null
+  tiles:
+  - '####################'
+  - '#..................#'
+  - '#....#....#....#...#'
+  - '#..................#'
+  - '#....#....#....#...#'
+  - '#..................#'
+  - '#....#....#....#...#'
+  - '#..................#'
+  - '#....#....#....#...#'
+  - '#..................#'
+  - '#....#....#....#...#'
+  - '#..................#'
+  - '#....#....#....#...#'
+  - '#..................#'
+  - '#..................#'
+  - '####################'
+  spawns:
+  - entity: player
+    col: 1
+    row: 1
+  - entity: enemy
+    col: 16
+    row: 1
+  - entity: collectible
+    col: 8
+    row: 3
+  - entity: collectible
+    col: 1
+    row: 5
+  - entity: collectible
+    col: 11
+    row: 6
+  - entity: collectible
+    col: 2
+    row: 8
+  - entity: collectible
+    col: 13
+    row: 9
+  - entity: collectible
+    col: 6
+    row: 11
+  - entity: collectible
+    col: 17
+    row: 12
+  - entity: collectible
+    col: 7
+    row: 14
+audio:
+  music: false
+  effects:
+  - start
+  - collect
+  - hit
+assets: []
+budgets:
+  binary_bytes: 24576
+  static_data_bytes: 8192
+  stack_bytes: 1024
+  max_entities: 16
+  frame_budget_cycles: 70000
+acceptance:
+- id: start_game
+  given: the title screen is visible
+  when: the player presses action
+  then: gameplay starts
+  hold: action
+  frames: 30
+  expect:
+    g_state: 1
+    g_level: 1
+    g_score: 0
+- id: collect_scores
+  given: a collectible is visible
+  when: the player touches it
+  then: the score increases and the collectible disappears
+  hold: down
+  frames: 60
+  expect:
+    g_score: 10
+    g_remaining: 7
+- id: enemy_costs_life
+  given: gameplay is active
+  when: the player touches an enemy
+  then: one life is lost and the player respawns
+  hold: null
+  frames: 50
+  expect: {}

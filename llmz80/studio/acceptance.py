@@ -116,7 +116,68 @@ def scenarios_prompt(project: GameProject) -> str:
     return "\n".join(lines)
 
 
+def design_prompt(project: GameProject) -> str:
+    """The design itself, in the form a program author needs it.
+
+    Levels are shown as the same grid the designer edited rather than as a byte
+    table, because the author has to reason about the shape before choosing how
+    to store it.
+    """
+    lines = [
+        "DESIGN",
+        "",
+        f"Title: {project.metadata.title}",
+        f"Target: {project.target.platform.value}, {project.target.video_mode.value}, "
+        f"{project.target.frame_hz} Hz",
+        f"Genre: {project.genre}",
+        f"Presentation: {project.presentation.style}",
+        f"Lives: {project.gameplay.lives}    "
+        f"Points per collectible: {project.gameplay.score_per_collectible}    "
+        f"Levels: {project.gameplay.level_count}",
+        f"Difficulty curve: {project.gameplay.difficulty_curve}",
+        "",
+        "Entities:",
+    ]
+    for entity in project.entities:
+        behaviour = "" if entity.behaviour == "auto" else f", moves {entity.behaviour}"
+        lines.append(
+            f"  {entity.id}: {entity.role} x{entity.count}, speed {entity.speed}{behaviour}"
+        )
+    if project.audio.effects:
+        lines.append("")
+        lines.append("Sound effects to play: " + ", ".join(project.audio.effects))
+
+    for level in project.levels:
+        limit = (
+            f", time limit {level.time_limit_seconds}s"
+            if level.time_limit_seconds is not None
+            else ""
+        )
+        lines.extend(
+            [
+                "",
+                f"Level {level.id} \"{level.name}\", {level.width}x{level.height}{limit}",
+                "  '#' is wall, '.' is floor:",
+            ]
+        )
+        lines.extend(f"    {row}" for row in level.tiles)
+        lines.append("  Starting positions (column, row):")
+        for spawn in level.spawns:
+            lines.append(f"    {spawn.entity} at ({spawn.col}, {spawn.row})")
+
+    lines.extend(
+        [
+            "",
+            "Studio writes game_config.h with these values as constants, and",
+            "game_state.h declaring the contract, into the same directory as your",
+            "sources. A platform library is there too: platform.h documents what",
+            "it offers. Use it or don't.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def generation_prompt(project: GameProject) -> str:
     """Everything a generator is owed before it writes the program."""
-    parts = [contract_prompt(), scenarios_prompt(project)]
+    parts = [contract_prompt(), design_prompt(project), scenarios_prompt(project)]
     return "\n\n".join(part for part in parts if part)
