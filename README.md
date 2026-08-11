@@ -43,6 +43,10 @@ documentan en [Extending LLMZ80 Studio](docs/STUDIO_EXTENSIONS.md).
   convierten en un contrato de laberinto interactivo con controles, colisiones,
   objetos, marcador, ritmo de 50 Hz y estado final; no pueden degradarse a una
   imagen estática
+- 📖 **Referencias reales**: cuando el brief nombra un juego de la época, Studio
+  lo busca en la web, archiva una ficha citada en `reference.yml` y la usa para
+  proponer un diseño y para decirle al escritor qué juego está haciendo; una
+  ficha sin fuentes se rechaza y un juego no identificado deja el diseño intacto
 - 🎯 **Compilación automática**: Compila y verifica el código generado automáticamente
 - 📊 **Contrato de build verificable**: Cada ejecución guarda `build_report.json`
   con advertencias clasificadas, artefactos y tamaño del programa; una opción
@@ -774,6 +778,8 @@ count. The status line states whether the design is releasable and why not.
     P=~/games/cave-runner/game.yml
     .venv/bin/llmz80 project validate $P              # the design, without building
     .venv/bin/llmz80 project contract $P              # what a program must satisfy
+    .venv/bin/llmz80 project reference $P             # searches the web, archives the dossier
+    .venv/bin/llmz80 project adapt $P                 # proposes a design diff, asks to apply
     .venv/bin/llmz80 project write $P                 # spends money: calls the API
     .venv/bin/llmz80 project build $P
     .venv/bin/llmz80 project test $P                  # emulator, reading memory
