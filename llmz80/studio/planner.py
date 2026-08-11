@@ -5,18 +5,68 @@ from __future__ import annotations
 from typing import Any, Literal
 from copy import deepcopy
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .editing import editing_status
 from .models import GameProject
 
 
+class SpawnValue(BaseModel):
+    """Mirrors `SpawnSpec` in models.py: where one entity instance starts."""
+
+    model_config = ConfigDict(extra="forbid")
+    entity: str = Field(pattern=r"^[a-z][a-z0-9_]{1,31}$")
+    col: int = Field(ge=0, le=39)
+    row: int = Field(ge=0, le=24)
+
+
 class ProjectChange(BaseModel):
+    """One JSON-pointer edit.
+
+    `value` is not a field: OpenAI's strict structured output requires every
+    property to carry a concrete JSON Schema type, and `Any` has none. Each
+    shape a design edit actually needs gets its own optional field instead, and
+    `value` becomes a read-only property over whichever one is set, so callers
+    keep reading a single thing.
+    """
+
     model_config = ConfigDict(extra="forbid")
     path: str = Field(pattern=r"^/[a-zA-Z0-9_/-]+$")
     operation: Literal["replace", "add", "remove"]
-    value: Any = None
     reason: str = Field(min_length=1, max_length=240)
+    value_text: str | None = None
+    value_number: int | None = None
+    value_rows: list[str] | None = None  # a level's tiles
+    value_spawns: list[SpawnValue] | None = None  # a level's spawns
+
+    @model_validator(mode="after")
+    def validate_value_shape(self) -> "ProjectChange":
+        variants = [
+            v
+            for v in (self.value_text, self.value_number, self.value_rows, self.value_spawns)
+            if v is not None
+        ]
+        if self.operation == "remove":
+            if variants:
+                raise ValueError(f"{self.path}: a remove must not carry a value")
+        elif len(variants) != 1:
+            raise ValueError(
+                f"{self.path}: {self.operation} needs exactly one value_* field set, "
+                f"found {len(variants)}"
+            )
+        return self
+
+    @property
+    def value(self) -> Any:
+        if self.value_text is not None:
+            return self.value_text
+        if self.value_number is not None:
+            return self.value_number
+        if self.value_rows is not None:
+            return self.value_rows
+        if self.value_spawns is not None:
+            return [spawn.model_dump(mode="json") for spawn in self.value_spawns]
+        return None
 
 
 class ProjectProposal(BaseModel):
@@ -41,7 +91,14 @@ class ResponsesProjectPlanner:
                     "content": (
                         "You are a game designer for constrained Z80 computers. "
                         "Propose small JSON-pointer changes to the supplied GameProject. "
-                        "Never emit C code and never silently relax budgets or acceptance tests."
+                        "Never emit C code and never silently relax budgets or acceptance tests. "
+                        "Each change carries its value in exactly one of value_text, "
+                        "value_number, value_rows or value_spawns, matching the field being "
+                        "changed: value_text for strings such as presentation.style or an "
+                        "entity's behaviour, value_number for integers such as lives or an "
+                        "entity's speed and count, value_rows for a level's tiles (one string "
+                        "per row), and value_spawns for a level's spawns. Leave all four unset "
+                        "for a remove, and set exactly one of them for an add or a replace."
                     ),
                 },
                 {

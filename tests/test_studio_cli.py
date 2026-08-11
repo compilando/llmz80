@@ -223,7 +223,10 @@ def _lives_proposal():
         summary="tune the difficulty",
         changes=[
             ProjectChange(
-                path="/gameplay/lives", operation="replace", value=5, reason="match the source"
+                path="/gameplay/lives",
+                operation="replace",
+                value_number=5,
+                reason="match the source",
             )
         ],
     )
@@ -254,7 +257,7 @@ def _sealing_proposal(project):
             ProjectChange(
                 path="/levels/0/tiles",
                 operation="replace",
-                value=["".join(row) for row in rows],
+                value_rows=["".join(row) for row in rows],
                 reason="frame the pellet with masonry",
             )
         ],

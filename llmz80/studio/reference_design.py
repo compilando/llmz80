@@ -27,14 +27,17 @@ Propose JSON-pointer changes to the supplied GameProject. You get at most 20
 changes in total, so spend them on whole arrays and whole objects -- a
 level's entire `tiles` list, an entity's whole spawn list -- rather than one
 row, cell or spawn at a time. Aim them at what makes the game recognisable:
-  /levels/N/tiles          the maze or screen layout, as rows of '#' and '.'
-  /levels/N/spawns         where each actor starts
-  /entities/N/count        how many of each actor
-  /entities/N/speed        pacing, 1 is slowest and 4 moves every frame
-  /entities/N/behaviour    chase, patrol_h, patrol_v, bounce, guard
-  /presentation/style      how it should look, in a short phrase
-  /gameplay/lives          lives the player starts with
-  /gameplay/difficulty_curve
+  /levels/N/tiles          the maze or screen layout, as rows of '#' and '.'  -> value_rows
+  /levels/N/spawns         where each actor starts                           -> value_spawns
+  /entities/N/count        how many of each actor                            -> value_number
+  /entities/N/speed        pacing, 1 is slowest and 4 moves every frame      -> value_number
+  /entities/N/behaviour    chase, patrol_h, patrol_v, bounce, guard          -> value_text
+  /presentation/style      how it should look, in a short phrase             -> value_text
+  /gameplay/lives          lives the player starts with                     -> value_number
+  /gameplay/difficulty_curve                                                 -> value_text
+
+Each change carries its value in exactly one of those value_* fields --
+never more than one, and none at all for a remove.
 
 Rules:
   * Terrain rows must all be the same width, keep the outer ring solid, and

@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+from openai.lib._pydantic import to_strict_json_schema
+
 from llmz80.studio.models import GenreId, TargetPlatform
 from llmz80.studio.packs import create_default_project
 import pytest
@@ -11,6 +13,38 @@ from llmz80.studio.planner import (
     proposal_diff,
 )
 from llmz80.studio.registry import genre_registry, target_registry
+
+
+def _iter_property_schemas(schema: dict):
+    """Yield (name, sub-schema) for every property in a JSON Schema document,
+    including those nested inside `$defs`. Strict structured output rejects
+    the whole request unless each one carries a concrete type."""
+    for definition in schema.get("$defs", {}).values():
+        yield from _iter_property_schemas(definition)
+    for name, prop_schema in schema.get("properties", {}).items():
+        yield name, prop_schema
+
+
+def test_project_proposal_is_usable_as_a_strict_structured_output_schema():
+    """`ProjectChange.value` used to be typed `Any`, which pydantic renders as
+    a bare `{"title": "Value"}` with no type key. OpenAI's structured-output
+    mode ('response_format') requires every property schema to declare a type
+    or a composition keyword (`anyOf`, `$ref`), and rejects the whole request
+    with a 400 otherwise -- something no other test caught, because they all
+    inject an already-built ProjectProposal through a fake client and never
+    exercise the schema. Run the exact transform the OpenAI SDK applies to
+    `text_format` before a call, so a schema regression fails here instead of
+    against the live API.
+    """
+    schema = to_strict_json_schema(ProjectProposal)
+
+    untyped = [
+        name
+        for name, prop_schema in _iter_property_schemas(schema)
+        if not ({"type", "anyOf", "$ref"} & prop_schema.keys())
+    ]
+
+    assert untyped == []
 
 
 def test_builtin_genre_registry_has_stable_ids():
@@ -46,7 +80,7 @@ def test_responses_planner_requests_typed_proposal():
             {
                 "path": "/gameplay/lives",
                 "operation": "replace",
-                "value": 2,
+                "value_number": 2,
                 "reason": "The commercial difficulty profile needs more tension.",
             }
         ],
@@ -72,7 +106,7 @@ def test_reviewed_proposal_is_transactional_and_validated():
             {
                 "path": "/gameplay/lives",
                 "operation": "replace",
-                "value": 2,
+                "value_number": 2,
                 "reason": "Create a more demanding commercial mode.",
             }
         ],
@@ -90,7 +124,7 @@ def test_ai_cannot_change_protected_contract(path):
     project = create_default_project("Maze", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
     proposal = ProjectProposal(
         summary="Unsafe change",
-        changes=[{"path": path, "operation": "replace", "value": 1, "reason": "test"}],
+        changes=[{"path": path, "operation": "replace", "value_number": 1, "reason": "test"}],
     )
 
     with pytest.raises(ValueError, match="protected"):
@@ -105,7 +139,7 @@ def test_budget_change_requires_explicit_approval():
             {
                 "path": "/budgets/binary_bytes",
                 "operation": "replace",
-                "value": 30000,
+                "value_number": 30000,
                 "reason": "More content.",
             }
         ],

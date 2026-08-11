@@ -63,7 +63,7 @@ def test_the_dossier_and_the_project_both_reach_the_model(project):
             ProjectChange(
                 path="/presentation/style",
                 operation="replace",
-                value="bright maze on black",
+                value_text="bright maze on black",
                 reason="the original drew a bright maze on black",
             )
         ],
@@ -84,7 +84,7 @@ def test_a_proposal_from_a_dossier_applies_like_any_other(project):
             ProjectChange(
                 path="/presentation/style",
                 operation="replace",
-                value="bright maze on black",
+                value_text="bright maze on black",
                 reason="the original drew a bright maze on black",
             )
         ],
@@ -166,7 +166,7 @@ def test_a_reference_proposal_is_returned_with_its_diff(tmp_path):
             ProjectChange(
                 path="/presentation/style",
                 operation="replace",
-                value="bright maze on black",
+                value_text="bright maze on black",
                 reason="the original drew a bright maze on black",
             )
         ],

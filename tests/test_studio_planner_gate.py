@@ -25,7 +25,7 @@ def _sealing_proposal(project):
             ProjectChange(
                 path="/levels/0/tiles",
                 operation="replace",
-                value=["".join(row) for row in rows],
+                value_rows=["".join(row) for row in rows],
                 reason="frame the pellet with masonry",
             )
         ],
@@ -62,26 +62,21 @@ def test_an_unplayable_proposal_can_be_applied_deliberately(project):
 def test_a_proposal_that_outgrows_the_target_grid_is_refused(project):
     level = project.levels[0]
     wide = ["." * 40 for _ in range(level.height)]
-    spawns = [
-        {"entity": spawn.entity, "col": spawn.col, "row": spawn.row} for spawn in level.spawns
-    ]
     proposal = ProjectProposal(
         summary="widen the first level",
         changes=[
             ProjectChange(
-                path="/levels/0",
+                path="/levels/0/width",
                 operation="replace",
-                value={
-                    "id": level.id,
-                    "name": level.name,
-                    "width": 40,
-                    "height": level.height,
-                    "time_limit_seconds": None,
-                    "tiles": wide,
-                    "spawns": spawns,
-                },
+                value_number=40,
                 reason="more room to run",
-            )
+            ),
+            ProjectChange(
+                path="/levels/0/tiles",
+                operation="replace",
+                value_rows=wide,
+                reason="more room to run",
+            ),
         ],
     )
 
@@ -96,7 +91,7 @@ def test_a_playable_proposal_still_applies(project):
             ProjectChange(
                 path="/gameplay/lives",
                 operation="replace",
-                value=5,
+                value_number=5,
                 reason="the maze is unforgiving",
             )
         ],
