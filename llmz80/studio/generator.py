@@ -107,10 +107,10 @@ def writing_prompt(
 ) -> str:
     """Everything the writer is told before its first attempt."""
     parts = [
+        reference_prompt(reference),
         generation_prompt(project),
         platform_notes(project.target.platform.value),
         library_interface(),
-        reference_prompt(reference),
     ]
     if with_examples:
         examples = examples_prompt(project)

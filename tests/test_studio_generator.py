@@ -6,6 +6,7 @@ from llmz80.core.platform_notes import platform_notes
 from llmz80.studio.generator import (
     ProgramFile,
     ProgramSources,
+    ResponsesProgramWriter,
     repair_prompt,
     store_program,
     write_program,
@@ -257,6 +258,52 @@ def test_the_writing_prompt_is_unchanged_without_a_dossier():
     project = create_default_project("Ref", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
 
     assert "REFERENCE GAME" not in writing_prompt(project, with_examples=False)
+
+
+class _FakeResponses:
+    """Stands in for client.responses, recording how it was called."""
+
+    def __init__(self, parsed):
+        self.parsed = parsed
+        self.calls = []
+
+    def parse(self, **kwargs):
+        self.calls.append(kwargs)
+        return type("Response", (), {"output_parsed": self.parsed})()
+
+
+class _FakeClient:
+    def __init__(self, parsed):
+        self.responses = _FakeResponses(parsed)
+
+
+def test_the_writer_actually_sends_the_dossier_to_the_model():
+    """Every other dossier test calls writing_prompt or reference_prompt
+    directly, so none of them would notice write() forgetting to pass the
+    reference through. This one inspects what actually reached
+    client.responses.parse."""
+    project = create_default_project("Ref", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    dossier = GameReference(
+        identified=True,
+        confidence="high",
+        title="Zampa Bolas",
+        publisher="Iber Soft",
+        mechanics=["eat every dot"],
+        sources=[
+            ReferenceSource(
+                url="https://example.org/z",
+                title="Zampa Bolas",
+                retrieved_at="1985-01-01T00:00:00Z",
+            )
+        ],
+    )
+    client = _FakeClient(_sources("with reference"))
+
+    ResponsesProgramWriter(client, reference=dossier).write(project)
+
+    content = client.responses.calls[0]["input"][1]["content"]
+    assert "REFERENCE GAME" in content
+    assert "Zampa Bolas" in content
 
 
 def test_a_missing_platform_header_is_not_silently_survivable():

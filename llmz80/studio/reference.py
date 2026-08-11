@@ -132,11 +132,15 @@ def reference_prompt(dossier: GameReference | None) -> str:
     if dossier is None or not dossier.identified:
         return ""
     lines = ["REFERENCE GAME", ""]
-    published = f"{dossier.publisher}, {dossier.year}" if dossier.year else dossier.publisher
-    # Undetermined platforms is dropped rather than rendered as "for .": a
-    # blank clause is a wrong sentence, not a shorter true one.
+    # An identified game with an unknown publisher is a real case for this era
+    # -- magazine type-ins, self-published titles -- so both known facts are
+    # joined and either may be missing. A blank clause, or a bare ", 1985" or
+    # empty "()", would be a wrong sentence rather than a shorter true one.
+    year = str(dossier.year) if dossier.year else ""
+    known = [part for part in (dossier.publisher, year) if part]
+    on_publisher = f" ({', '.join(known)})" if known else ""
     on_platforms = f" for {', '.join(dossier.platforms)}" if dossier.platforms else ""
-    lines.append(f"{dossier.title} ({published}){on_platforms}.")
+    lines.append(f"{dossier.title}{on_publisher}{on_platforms}.")
     lines.append(
         "This is what the designer asked for. Make the program feel like this "
         "game, within what the design below states."

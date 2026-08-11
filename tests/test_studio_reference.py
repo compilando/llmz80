@@ -125,6 +125,23 @@ def test_no_dossier_produces_no_prompt_block():
     assert reference_prompt(None) == ""
 
 
+def test_an_unknown_publisher_with_a_year_reads_as_a_whole_sentence():
+    """Magazine type-ins and self-published titles legitimately have no
+    publisher; a bare ", 1985" left over from a blank publisher would read
+    as a typo rather than a fact."""
+    block = reference_prompt(_dossier(publisher="", year=1985))
+
+    assert "Zampa Bolas (1985) for spectrum." in block
+    assert ", 1985" not in block
+
+
+def test_neither_publisher_nor_year_produces_no_dangling_parenthesis():
+    block = reference_prompt(_dossier(publisher="", year=None))
+
+    assert "Zampa Bolas for spectrum." in block
+    assert "()" not in block
+
+
 class _FakeResponses:
     """Stands in for client.responses, recording how it was called."""
 

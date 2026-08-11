@@ -112,7 +112,11 @@ def _project_command(arguments: list[str]) -> int:
         print(f"Writing the program with {model}; this calls the OpenAI API.")
         dossier = load_reference(directory)
         if dossier is not None and dossier.identified:
-            print(f"Writing as {dossier.title} ({dossier.publisher}).")
+            # The publisher is not guaranteed -- magazine type-ins and
+            # self-published titles legitimately have none -- so a blank
+            # parenthetical is dropped rather than printed as "()".
+            on_publisher = f" ({dossier.publisher})" if dossier.publisher else ""
+            print(f"Writing as {dossier.title}{on_publisher}.")
         writer = ResponsesProgramWriter(
             OpenAI(api_key=load_api_key()), model=model, reference=dossier
         )
