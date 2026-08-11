@@ -227,3 +227,24 @@ def test_the_writing_prompt_shows_the_platform_interface():
     assert "unsigned char plat_wait_frame(void);" in prompt
     assert "void plat_cell(unsigned char col, unsigned char row, unsigned char kind);" in prompt
     assert "PLATFORM LIBRARY INTERFACE" in prompt
+
+
+def test_a_missing_platform_header_is_not_silently_survivable():
+    """The header is now read once at import (mirroring BUILTIN_PACKS in
+    packs.py), specifically so a missing file fails loudly there instead of
+    surfacing, mid-loop, as an indistinguishable "writer failed" result under
+    write_program's blanket except. Reproducing that means re-running the
+    module's import-time load with the real header briefly out of the way."""
+    import importlib
+
+    import llmz80.studio.generator as generator_module
+
+    header = generator_module.PLATFORM_HEADER
+    missing = header.with_name(header.name + ".missing-for-test")
+    header.rename(missing)
+    try:
+        with pytest.raises(FileNotFoundError):
+            importlib.reload(generator_module)
+    finally:
+        missing.rename(header)
+        importlib.reload(generator_module)

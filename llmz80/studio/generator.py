@@ -31,11 +31,20 @@ PLATFORM_HEADER = (
     Path(__file__).resolve().parents[2] / "resources" / "studio_lib" / "common" / "platform.h"
 )
 
+#: Read once at import, mirroring BUILTIN_PACKS in packs.py: the header is
+#: invariant across every writer attempt in the repair loop, and a missing or
+#: unreadable file should fail loudly at startup rather than surface deep
+#: inside write_program's blanket except as an indistinguishable "writer
+#: failed" result.
+PLATFORM_INTERFACE = (
+    "PLATFORM LIBRARY INTERFACE\n\nThis header is beside your sources:\n\n"
+    + PLATFORM_HEADER.read_text(encoding="utf-8")
+)
+
 
 def library_interface() -> str:
     """The platform header, as a prompt block."""
-    body = PLATFORM_HEADER.read_text(encoding="utf-8")
-    return "PLATFORM LIBRARY INTERFACE\n\nThis header is beside your sources:\n\n" + body
+    return PLATFORM_INTERFACE
 
 
 class ProgramFile(BaseModel):
