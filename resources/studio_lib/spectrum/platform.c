@@ -5,6 +5,7 @@
  */
 #include <arch/zx.h>
 #include <input.h>
+#include <intrinsic.h>
 #include <sound.h>
 
 #include "platform.h"
@@ -30,6 +31,9 @@ static void put_glyph(unsigned char col, unsigned char row, const unsigned char 
 }
 
 void plat_init(void) {
+    /* Without this the ROM frame counter never advances, so plat_wait_frame
+     * degenerates into a busy loop and reports a frame cost of zero forever. */
+    intrinsic_ei();
     zx_border(INK_BLACK);
     zx_cls(PAPER_BLACK | INK_WHITE);
 }
@@ -48,7 +52,10 @@ void plat_border(unsigned char colour) {
 unsigned char plat_wait_frame(void) {
     static unsigned char previous;
     unsigned char start = *FRAMES;
-    unsigned char cost = (unsigned char)(start - previous);
+    /* One frame between consecutive waits means the work kept pace, so the
+     * frames actually lost is the elapsed count less that one. */
+    unsigned char elapsed = (unsigned char)(start - previous);
+    unsigned char cost = elapsed > 1 ? (unsigned char)(elapsed - 1) : 0;
     unsigned int guard = 0;
     while (*FRAMES == start && ++guard < 12000) {
     }

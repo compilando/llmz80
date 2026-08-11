@@ -32,8 +32,15 @@ ZX Spectrum 48K, with z88dk and the sdcc_iy library:
     are 256 bytes apart; use zx_cxy2saddr and zx_cxy2aaddr rather than arithmetic.
   * Drawing text through the ROM font at 0x3D00 avoids linking stdio and keeps
     the binary far smaller than printf does.
-  * The ROM frame counter at 23672 advances only while interrupts are enabled.
-    bit_beep disables them, so time spent making sound is invisible to it.
+  * Interrupts start disabled under this crt, so the ROM frame counter at
+    23672 never advances and a loop waiting for it to change hangs forever.
+    Call intrinsic_ei() from <intrinsic.h> once at start-up before using it as
+    a clock. Measured: without it, twenty consecutive waits all timed out;
+    with it, all twenty saw a tick.
+  * bit_beep disables interrupts while it plays, so time spent making sound is
+    invisible to that counter even once they are enabled.
+  * Give any wait loop a bounded guard anyway. A program that hangs still
+    boots, still draws its first screen, and looks alive while doing nothing.
   * bit_beep blocks. A long effect inside the game loop costs frames.
   * Key constants from input.h are spelled IN_KEY_SCANCODE_ plus the key as it
     appears on the keyboard: IN_KEY_SCANCODE_SPACE, and lower case letters as

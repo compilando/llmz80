@@ -342,3 +342,45 @@ failure, and it was in that blind spot that the Map tab shipped with a duplicate
   catalog remained at 53/53.
 - Still open: the writer has never been run against a live model here, so the prompt's quality is
   untested. Retrieval does not yet feed the reference program or per-genre examples into it.
+
+## 2026-08-11 (D2): measured, and a correction
+
+Three live runs of `llmz80 project write` against gpt-5, writing a Manic Miner
+design: a 30x18 cavern with ledges, eight keys and two patrolling nasties.
+
+- Run 1 produced nothing: `ProgramSources` used a dict field, which generates
+  `minProperties`, which structured outputs reject. Only a live call shows this.
+- Run 2, after reshaping the schema: 3 of 3 attempts compiled, 0 behaved. Two
+  earlier attempts had been rejected for warnings alone, which the prompt never
+  said were fatal, and one for spelling `IN_KEY_SCANCODE_space`.
+- Run 3, after stating both: 3 of 3 compiled again, 0 behaved.
+
+The behaviour failure was isolated without further API spend, using two probe
+programs built by hand:
+
+- The harness delivers keys correctly. A probe that sets a marker when P is held
+  read that marker back, so scripted input was never the problem.
+- The ROM frame counter at 23672 does not advance under this crt: twenty
+  consecutive waits all timed out. Generated programs paced their game loop on
+  it, so the loop hung on its first frame. `g_state` was already 1 by then,
+  which is why the gate saw a started game that never scored.
+- `intrinsic_ei()` fixes it: the same probe then saw all twenty ticks.
+
+**A correction to the P4 entry above.** The Spectrum HUD reading "LAG 0" was
+recorded as evidence that no frame was ever missed. It was not: the counter it
+read never moved, and `plat_wait_frame` only escaped through its guard. The
+frame cost figure was vacuous, and the reference program's frame pacing was a
+delay loop rather than frame sync.
+
+Fixing it exposed a second error in the same measurement. With interrupts
+enabled the reading became 1, not 0, because one frame between consecutive
+waits is the loop keeping pace rather than losing anything; the count was off by
+one and had never been exercised against a running clock to show it. The library
+now enables interrupts in `plat_init` and reports elapsed frames less that one.
+The reference program then measured zero frames lost, and this time the figure
+means what P4 claimed.
+
+Retrieval already exists from Q05/Q06 and is not wired into the program writer:
+`ExampleCatalog.search` returns useful hits but a Spectrum query also returns
+Amstrad CPC entries, so the platform filter needs looking at before it feeds a
+prompt.
