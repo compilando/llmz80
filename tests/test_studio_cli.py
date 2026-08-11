@@ -45,7 +45,7 @@ def test_help_lists_every_project_subcommand(capsys):
     assert main(["help"]) == 0
 
     printed = capsys.readouterr().out
-    for command in ("new", "validate", "generate", "build", "test", "release"):
+    for command in ("new", "validate", "scaffold", "build", "test", "release", "write"):
         assert f"llmz80 project {command}" in printed
 
 

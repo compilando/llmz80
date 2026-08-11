@@ -17,7 +17,7 @@ def _print_help() -> None:
         "  llmz80 project validate PATH\n"
         "  llmz80 project contract PATH\n"
         "  llmz80 project write PATH        (calls the OpenAI API)\n"
-        "  llmz80 project generate PATH\n"
+        "  llmz80 project scaffold PATH\n"
         "  llmz80 project build PATH\n"
         "  llmz80 project test PATH\n"
         "  llmz80 project release PATH\n"
@@ -64,6 +64,7 @@ def _project_command(arguments: list[str]) -> int:
         "validate",
         "contract",
         "write",
+        "scaffold",
         "generate",
         "build",
         "test",
@@ -110,7 +111,7 @@ def _project_command(arguments: list[str]) -> int:
             )
         print(directory / "write_report.json")
         return 0 if report["accepted"] else 1
-    if arguments[0] == "generate":
+    if arguments[0] in {"scaffold", "generate"}:
         result = service.generate_sources(project, directory)
         print(result.output_dir)
         return 0

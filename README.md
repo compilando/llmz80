@@ -742,3 +742,49 @@ Si este proyecto te resulta útil, ¡considera darle una estrella! ⭐
 ---
 
 **Hecho con ❤️ para la comunidad retro**
+
+## Studio: design a game, have it written, prove it runs
+
+Studio holds a design, scaffolds a buildable project around it, and judges the
+program that results. It does not write gameplay: the program lives in the
+project and is the artifact of record.
+
+Run everything through the project virtual environment, as the Makefile does.
+
+### Guided
+
+    make studio                     # or: make studio WORKSPACE=~/games
+
+Three panes. `ctrl+n` new, `ctrl+w` have the program written, `ctrl+b` build,
+`ctrl+t` test, `ctrl+r` release. On the Map pane, `wasd` moves the cursor,
+`space` toggles a wall, `m` moves the selected spawn, `+/-` change an entity
+count. The status line states whether the design is releasable and why not.
+
+### Headless
+
+    .venv/bin/llmz80 project types                    # the eighteen typologies
+    .venv/bin/llmz80 project new ~/games "Cave Runner" spectrum platform_single_screen
+
+    P=~/games/cave-runner/game.yml
+    .venv/bin/llmz80 project validate $P              # the design, without building
+    .venv/bin/llmz80 project contract $P              # what a program must satisfy
+    .venv/bin/llmz80 project write $P                 # spends money: calls the API
+    .venv/bin/llmz80 project build $P
+    .venv/bin/llmz80 project test $P                  # emulator, reading memory
+    .venv/bin/llmz80 project release $P
+
+Each step runs what precedes it, so `test` builds and `release` refuses unless
+every gate passed. Exit codes are 0 or 1, so they compose in CI.
+
+### Where the evidence lives
+
+    build/studio_quality_report.json   design, build and runtime gates
+    build/emulator_report.json         what memory read after each scripted input
+    build/probes.json                  where that state sits in the binary
+    build/CONTRACT.md                  what the program was asked to satisfy
+    write_report.json                  each attempt, and what was fed back
+
+A design that builds and runs is still refused if a level is unsolvable, if the
+target cannot produce the audio it asks for, or if the screen never changes.
+On Amstrad CPC the runtime gate abstains rather than passing: Caprice32 exposes
+no way to read memory, so behaviour there is unobserved.
