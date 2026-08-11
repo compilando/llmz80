@@ -8,7 +8,7 @@ diff, the protected paths and the playability refusal for free.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
 from .models import GameProject
 from .planner import ProjectProposal
@@ -46,7 +46,7 @@ Rules:
 """
 
 
-class ReferenceDesigner:
+class ReferenceDesigner(Protocol):
     def propose(
         self, project: GameProject, dossier: GameReference
     ) -> ProjectProposal: ...
