@@ -173,3 +173,31 @@ def test_a_designed_behaviour_reaches_the_prompt(project):
 
     assert "moves chase" in design_prompt(edited)
     assert "moves chase" not in design_prompt(project)
+
+
+def test_sweep_frames_follow_the_declared_speed(project):
+    from llmz80.studio.acceptance import frames_per_cell, sweep_frames
+
+    assert frames_per_cell(1) == 4
+    assert frames_per_cell(4) == 1
+    slow = sweep_frames(project, {"distance": 10})
+    fast = sweep_frames(
+        type(project).model_validate(
+            {
+                **project.model_dump(mode="json"),
+                "entities": [
+                    {**e, "speed": 4} if e["role"] == "player" else e
+                    for e in project.model_dump(mode="json")["entities"]
+                ],
+            }
+        ),
+        {"distance": 10},
+    )
+    assert slow > fast
+
+
+def test_the_prompt_states_the_movement_pace(project):
+    prompt = design_prompt(project)
+
+    assert "one cell every 4 frames" in prompt
+    assert "Speed is a pace, not a distance" in prompt

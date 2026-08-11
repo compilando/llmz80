@@ -203,12 +203,14 @@ def sweep_plan(project: GameProject, level_index: int = 0) -> dict:
         for spawn in level.spawns
         if roles.get(spawn.entity) == "collectible"
     }
-    best = {"direction": None, "collected": 0}
+    best = {"direction": None, "collected": 0, "distance": 0}
     if player is None:
         return best
     for name, step_col, step_row in SWEEP_DIRECTIONS:
         col, row = player
         collected = 0
+        steps = 0
+        furthest = 0
         while True:
             col += step_col
             row += step_row
@@ -216,10 +218,13 @@ def sweep_plan(project: GameProject, level_index: int = 0) -> dict:
                 break
             if level.tiles[row][col] == TILE_WALL:
                 break
+            steps += 1
             if (col, row) in collectibles:
                 collected += 1
+                # Only travel as far as the last collectible actually needs.
+                furthest = steps
         if collected > best["collected"]:
-            best = {"direction": name, "collected": collected}
+            best = {"direction": name, "collected": collected, "distance": furthest}
     return best
 
 

@@ -4,6 +4,7 @@ import pytest
 
 from llmz80.core.platform_notes import platform_notes
 from llmz80.studio.generator import (
+    ProgramFile,
     ProgramSources,
     repair_prompt,
     store_program,
@@ -34,25 +35,26 @@ class ScriptedWriter:
 def _sources(marker: str) -> ProgramSources:
     return ProgramSources(
         summary=f"attempt {marker}",
-        files={"main.c": f"/* {marker} */\nvoid main(void) {{ }}\n"},
+        files=[ProgramFile(name="main.c", body=f"/* {marker} */\nvoid main(void) {{ }}\n")],
     )
 
 
 def test_program_sources_reject_anything_that_is_not_a_source():
     with pytest.raises(ValueError, match="only .c and .h source names"):
-        ProgramSources(summary="s", files={"Makefile": "all:"})
+        ProgramSources(summary="s", files=[ProgramFile(name="Makefile", body="all:")])
 
     with pytest.raises(ValueError, match="must contain main.c"):
-        ProgramSources(summary="s", files={"engine.c": "void f(void){}"})
+        ProgramSources(summary="s", files=[ProgramFile(name="engine.c", body="void f(void){}")])
 
     with pytest.raises(ValueError, match="empty"):
-        ProgramSources(summary="s", files={"main.c": "   "})
+        ProgramSources(summary="s", files=[ProgramFile(name="main.c", body="   ")])
 
 
 def test_storing_a_program_replaces_what_was_there(tmp_path: Path, project):
-    store_program(project, tmp_path, ProgramSources(summary="a", files={
-        "main.c": "void main(void){}", "old.c": "void old(void){}"
-    }))
+    store_program(project, tmp_path, ProgramSources(summary="a", files=[
+        ProgramFile(name="main.c", body="void main(void){}"),
+        ProgramFile(name="old.c", body="void old(void){}"),
+    ]))
 
     store_program(project, tmp_path, _sources("second"))
 

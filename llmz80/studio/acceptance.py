@@ -18,8 +18,29 @@ from .solvability import sweep_plan
 #: Frames to hold the action key before gameplay is expected to be running.
 START_FRAMES = 30
 
-#: Frames to hold a direction while sweeping for collectibles.
-SWEEP_FRAMES = 60
+#: Display frames an actor of speed 1 takes to advance one cell. Speed 4 moves
+#: every frame. This is the design's meaning of "speed" and the program is told
+#: it, because an acceptance step that counts collected items is only decidable
+#: if how fast the player travels is agreed in advance.
+FRAMES_PER_CELL = (4, 3, 2, 1)
+
+#: Extra frames allowed on top of the exact travel time, absorbing a program's
+#: start-up and any rounding in its own pacing.
+SWEEP_MARGIN_FRAMES = 25
+
+
+def frames_per_cell(speed: int) -> int:
+    return FRAMES_PER_CELL[min(max(speed, 1), 4) - 1]
+
+
+def sweep_frames(project: GameProject, plan: dict) -> int:
+    """Frames to hold a direction so the planned collectibles are reachable."""
+    player = next(
+        (entity for entity in project.entities if entity.role == "player"), None
+    )
+    speed = player.speed if player else 1
+    distance = int(plan.get("distance") or 0)
+    return min(1000, distance * frames_per_cell(speed) + SWEEP_MARGIN_FRAMES)
 
 
 def derive_scenarios(project: GameProject) -> list[AcceptanceScenario]:
@@ -44,7 +65,7 @@ def derive_scenarios(project: GameProject) -> list[AcceptanceScenario]:
             collected = plan["collected"]
             document.update(
                 hold=plan["direction"],
-                frames=SWEEP_FRAMES,
+                frames=sweep_frames(project, plan),
                 expect={
                     "g_score": collected * project.gameplay.score_per_collectible,
                     "g_remaining": total - collected,
@@ -140,9 +161,18 @@ def design_prompt(project: GameProject) -> str:
     ]
     for entity in project.entities:
         behaviour = "" if entity.behaviour == "auto" else f", moves {entity.behaviour}"
+        pace = frames_per_cell(entity.speed)
         lines.append(
-            f"  {entity.id}: {entity.role} x{entity.count}, speed {entity.speed}{behaviour}"
+            f"  {entity.id}: {entity.role} x{entity.count}, speed {entity.speed} "
+            f"(one cell every {pace} frame{'s' if pace != 1 else ''}){behaviour}"
         )
+    lines.append("")
+    lines.append(
+        "Speed is a pace, not a distance: an actor of speed 1 advances one cell "
+        "every 4 frames, speed 2 every 3, speed 3 every 2, and speed 4 every "
+        "frame. The runtime acceptance below times its inputs by this rule, so a "
+        "program that moves faster or slower than its design says will fail it."
+    )
     if project.audio.effects:
         lines.append("")
         lines.append("Sound effects to play: " + ", ".join(project.audio.effects))

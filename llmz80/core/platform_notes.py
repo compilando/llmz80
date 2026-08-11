@@ -11,6 +11,11 @@ from __future__ import annotations
 COMMON_NOTES = """
 Both machines, learned from real failures:
 
+  * The build rejects any unexpected compiler warning, not just errors. Code
+    that merely compiles is not accepted. Warnings seen most often: unreachable
+    code after a return or an always-true loop, and an unused function
+    argument. Remove the cause rather than suppressing it.
+
   * Start gameplay on key press, not key release. An automated test holds a key
     for a few hundred milliseconds and photographs the screen while it is still
     held; a program that waits for release shows a menu and looks broken.
@@ -30,6 +35,10 @@ ZX Spectrum 48K, with z88dk and the sdcc_iy library:
   * The ROM frame counter at 23672 advances only while interrupts are enabled.
     bit_beep disables them, so time spent making sound is invisible to it.
   * bit_beep blocks. A long effect inside the game loop costs frames.
+  * Key constants from input.h are spelled IN_KEY_SCANCODE_ plus the key as it
+    appears on the keyboard: IN_KEY_SCANCODE_SPACE, and lower case letters as
+    IN_KEY_SCANCODE_q, IN_KEY_SCANCODE_a, IN_KEY_SCANCODE_o, IN_KEY_SCANCODE_p.
+    Read them with in_key_pressed().
 """
 
 CPC_NOTES = """

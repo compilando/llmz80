@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from llmz80.core.platform_notes import platform_notes
 
@@ -25,26 +25,49 @@ from .models import GameProject
 SOURCE_NAME = re.compile(r"^[a-z][a-z0-9_]{0,30}\.(c|h)$")
 
 
-class ProgramSources(BaseModel):
-    """The C sources of one program, keyed by file name."""
+class ProgramFile(BaseModel):
+    """One source file. A flat object, because structured outputs reject the
+    keyword a constrained mapping would generate."""
 
     model_config = ConfigDict(extra="forbid")
 
-    summary: str = Field(min_length=1, max_length=400)
-    files: dict[str, str] = Field(min_length=1, max_length=12)
+    name: str
+    body: str
 
-    @field_validator("files")
-    @classmethod
-    def validate_files(cls, files: dict[str, str]) -> dict[str, str]:
-        bad = sorted(name for name in files if not SOURCE_NAME.match(name))
+
+class ProgramSources(BaseModel):
+    """The C sources of one program.
+
+    Shape is kept plain for the schema's sake; the rules live in the validator
+    below, where a violation can be explained rather than merely rejected.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    summary: str
+    files: list[ProgramFile]
+
+    @model_validator(mode="after")
+    def validate_files(self) -> "ProgramSources":
+        names = [item.name for item in self.files]
+        if not names:
+            raise ValueError("a program must contain at least main.c")
+        bad = sorted(name for name in names if not SOURCE_NAME.match(name))
         if bad:
             raise ValueError("only .c and .h source names are accepted: " + ", ".join(bad))
-        if "main.c" not in files:
+        duplicated = sorted({name for name in names if names.count(name) > 1})
+        if duplicated:
+            raise ValueError("these sources are given twice: " + ", ".join(duplicated))
+        if "main.c" not in names:
             raise ValueError("a program must contain main.c")
-        empty = sorted(name for name, body in files.items() if not body.strip())
+        empty = sorted(item.name for item in self.files if not item.body.strip())
         if empty:
             raise ValueError("these sources are empty: " + ", ".join(empty))
-        return files
+        return self
+
+    @property
+    def sources(self) -> dict[str, str]:
+        return {item.name: item.body for item in self.files}
 
 
 class ProgramWriter(Protocol):
@@ -183,7 +206,7 @@ def store_program(project: GameProject, directory: Path, sources: ProgramSources
     for stale in program_dir.iterdir():
         if stale.is_file() and stale.suffix in {".c", ".h"}:
             stale.unlink()
-    for name, body in sorted(sources.files.items()):
+    for name, body in sorted(sources.sources.items()):
         (program_dir / name).write_text(body.rstrip() + "\n", encoding="utf-8")
     return program_dir
 
@@ -213,7 +236,7 @@ def write_program(
         program_dir = store_program(project, directory, sources)
         result.program_dir = program_dir
         attempt = Attempt(
-            number=number, summary=sources.summary, files=sorted(sources.files)
+            number=number, summary=sources.summary, files=sorted(sources.sources)
         )
         result.attempts.append(attempt)
 
