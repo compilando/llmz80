@@ -66,19 +66,30 @@ def test_an_unidentified_dossier_needs_no_sources():
 
 
 def test_a_dossier_survives_a_round_trip(tmp_path):
-    saved = save_reference(_dossier(), tmp_path)
+    dossier = _dossier()
+    saved = save_reference(dossier, tmp_path)
 
     assert saved == tmp_path / "reference.yml"
-    assert load_reference(tmp_path).title == "Zampa Bolas"
+    assert load_reference(tmp_path) == dossier
 
 
 def test_a_missing_dossier_reads_as_none(tmp_path):
     assert load_reference(tmp_path) is None
 
 
-def test_a_corrupt_dossier_is_refused_rather_than_ignored(tmp_path):
+def test_a_dossier_that_fails_validation_is_refused_rather_than_ignored(tmp_path):
     """Silently ignoring a broken file would rebuild the design from nothing."""
     (tmp_path / "reference.yml").write_text("identified: yes please\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="reference.yml"):
+        load_reference(tmp_path)
+
+
+def test_a_dossier_with_broken_yaml_is_refused_rather_than_ignored(tmp_path):
+    """The other half of the catch: syntactically invalid YAML, not just a bad document."""
+    (tmp_path / "reference.yml").write_text(
+        "identified: [true\n  confidence: high\n", encoding="utf-8"
+    )
 
     with pytest.raises(ValueError, match="reference.yml"):
         load_reference(tmp_path)

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 
 class ReferenceSource(BaseModel):
@@ -82,7 +82,11 @@ def load_reference(directory: Path) -> GameReference | None:
 
     A malformed file raises: a project that has a dossier and cannot read it is
     not the same as a project without one, and treating them alike would quietly
-    rebuild a design from a blank.
+    rebuild a design from a blank. Only content failures are turned into that
+    ValueError, though — bad YAML or a document that fails validation. A
+    filesystem problem such as a permissions error is a different kind of
+    failure with a different remedy, so it propagates as itself instead of
+    being relabelled as a broken dossier.
     """
     path = Path(directory).expanduser().resolve() / REFERENCE_FILENAME
     if not path.exists():
@@ -90,7 +94,7 @@ def load_reference(directory: Path) -> GameReference | None:
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         return GameReference.model_validate(data)
-    except Exception as exc:
+    except (yaml.YAMLError, ValidationError) as exc:
         raise ValueError(f"cannot read {path.name}: {exc}") from exc
 
 
