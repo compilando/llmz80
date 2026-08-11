@@ -110,6 +110,24 @@ def _project_command(arguments: list[str]) -> int:
         from llmz80.studio.reference import ResponsesReferenceResearcher
         from llmz80.utils.config import load_api_key, load_config
 
+        # reference.yml is meant to be hand-corrected once a search gets a
+        # detail wrong, and re-running this command would silently overwrite
+        # those corrections. A malformed archive is treated as unreadable
+        # rather than absent -- load_reference raises for exactly that reason
+        # -- so this refuses rather than guessing whether it is safe to
+        # replace something it cannot show the user.
+        try:
+            existing = service.reference(directory)
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            print("Fix or remove reference.yml before researching again.")
+            return 1
+        if existing is not None:
+            print(f"An archived dossier already exists: {existing.title or '(unidentified)'}")
+            if input("Replace it with a fresh search? [y/N] ").strip().casefold() != "y":
+                print("Left unchanged.")
+                return 0
+
         model = load_config("config.yml").get("openai", {}).get("model", "gpt-5")
         print(f"Researching with {model}; this searches the web and calls the OpenAI API.")
         researcher = ResponsesReferenceResearcher(OpenAI(api_key=load_api_key()), model=model)
