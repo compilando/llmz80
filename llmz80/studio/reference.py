@@ -106,12 +106,15 @@ Search the web for the game the brief names. Report only what your sources
 support, and cite every source you used.
 
 If you cannot find the game, or you are not confident that what you found is the
-same game the brief means, set identified to false and leave the descriptive
-fields empty. Do not describe a game you did not find. A wrong dossier is worse
-than no dossier, because the rest of the system will rebuild the design from it.
+same game the brief means, set identified to false and confidence to low, and
+leave every other field at its default: nothing guessed, nothing invented, no
+partial credit for a game you are not sure of. Do not describe a game you did
+not find. A wrong dossier is worse than no dossier, because the rest of the
+system will rebuild the design from it.
 
-Describe mechanics, pacing, screen layout and visual style in short plain
-sentences that a programmer can act on, not in marketing prose.
+When you do identify the game, describe mechanics, pacing, screen layout and
+visual style in short plain sentences that a programmer can act on, not in
+marketing prose.
 """
 
 

@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from llmz80.studio.reference import (
+    RESEARCH_SYSTEM_PROMPT,
     GameReference,
     ReferenceSource,
     ResponsesReferenceResearcher,
@@ -113,16 +114,17 @@ class _FakeClient:
 
 def test_research_asks_for_web_search_and_returns_the_dossier():
     client = _FakeClient(_dossier())
+    brief = "Zampabolas runs through a walled maze eating every dot"
 
-    dossier = ResponsesReferenceResearcher(client).research(
-        "Zampabolas runs through a walled maze eating every dot", "spectrum"
-    )
+    dossier = ResponsesReferenceResearcher(client).research(brief, "spectrum")
 
     assert dossier.title == "Zampa Bolas"
     call = client.responses.calls[0]
     assert {"type": "web_search"} in call["tools"]
     assert call["text_format"] is GameReference
+    assert call["input"][0] == {"role": "system", "content": RESEARCH_SYSTEM_PROMPT}
     assert "spectrum" in call["input"][1]["content"]
+    assert brief in call["input"][1]["content"]
 
 
 def test_research_refuses_an_empty_parse():
