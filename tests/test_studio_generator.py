@@ -216,3 +216,14 @@ def test_a_writer_that_fails_ends_the_loop_with_its_reason(tmp_path: Path, proje
     assert result.accepted is False
     assert result.attempts == []
     assert "did not return program sources" in result.last_error
+
+
+def test_the_writing_prompt_shows_the_platform_interface():
+    """A writer told to include platform.h must be shown what is in it."""
+    project = create_default_project("Iface", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+
+    prompt = writing_prompt(project, with_examples=False)
+
+    assert "unsigned char plat_wait_frame(void);" in prompt
+    assert "void plat_cell(unsigned char col, unsigned char row, unsigned char kind);" in prompt
+    assert "PLATFORM LIBRARY INTERFACE" in prompt

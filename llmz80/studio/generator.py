@@ -25,6 +25,18 @@ from .retrieval import examples_prompt
 #: silently dropped, so a writer cannot smuggle a Makefile past the scaffold.
 SOURCE_NAME = re.compile(r"^[a-z][a-z0-9_]{0,30}\.(c|h)$")
 
+#: The interface every target implements. Handed to the writer verbatim: telling
+#: it the library exists without showing the header invites invented functions.
+PLATFORM_HEADER = (
+    Path(__file__).resolve().parents[2] / "resources" / "studio_lib" / "common" / "platform.h"
+)
+
+
+def library_interface() -> str:
+    """The platform header, as a prompt block."""
+    body = PLATFORM_HEADER.read_text(encoding="utf-8")
+    return "PLATFORM LIBRARY INTERFACE\n\nThis header is beside your sources:\n\n" + body
+
 
 class ProgramFile(BaseModel):
     """One source file. A flat object, because structured outputs reject the
@@ -82,6 +94,7 @@ def writing_prompt(project: GameProject, *, with_examples: bool = True) -> str:
     parts = [
         generation_prompt(project),
         platform_notes(project.target.platform.value),
+        library_interface(),
     ]
     if with_examples:
         examples = examples_prompt(project)
