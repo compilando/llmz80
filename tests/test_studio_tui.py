@@ -8,6 +8,28 @@ from llmz80.studio.packs import BUILTIN_PACKS, create_default_project
 from llmz80.studio.tui import StudioApp, render_map
 
 
+def _neighbours(cell):
+    col, row = cell
+    return [(col + 1, row), (col - 1, row), (col, row + 1), (col, row - 1)]
+
+
+def _isolated_collectible(project):
+    """A collectible whose neighbours hold no other spawn.
+
+    Walling a cell that holds a spawn is refused by the model, so a test that
+    seals a collectible in has to pick one with room around it.
+    """
+    occupied = {(s.col, s.row) for s in project.levels[0].spawns}
+    roles = {e.id: e.role for e in project.entities}
+    for spawn in project.levels[0].spawns:
+        if roles.get(spawn.entity) != "collectible":
+            continue
+        cell = (spawn.col, spawn.row)
+        if not any(n in occupied for n in _neighbours(cell)):
+            return cell
+    raise AssertionError("every collectible has a neighbour that is occupied")
+
+
 @pytest.mark.asyncio
 async def test_creating_a_project_fills_the_editor(tmp_path: Path):
     app = StudioApp(tmp_path)
@@ -68,16 +90,9 @@ async def test_the_status_line_reports_an_unsolvable_design(tmp_path: Path):
         app.action_create()
         await pilot.pause()
 
-        target = next(
-            (s.col, s.row) for s in app.project.levels[0].spawns if s.entity == "collectible"
-        )
+        target = _isolated_collectible(app.project)
         sealed = app.project
-        for col, row in (
-            (target[0] + 1, target[1]),
-            (target[0] - 1, target[1]),
-            (target[0], target[1] + 1),
-            (target[0], target[1] - 1),
-        ):
+        for col, row in _neighbours(target):
             sealed = editing.set_tile(sealed, 0, col, row, "#")
         app.project = sealed
         app._status()

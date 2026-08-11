@@ -134,8 +134,22 @@ def default_spawns(
         offset = (level_index * 7) % len(available)
         available = available[offset:] + available[:offset]
 
-    needed = sum(entity.count for entity in entities if entity.role != "player")
-    if needed > len(available):
+    # Enemies take the cells furthest from the player, so a level does not open
+    # with everything already on top of them. Collectibles fill in around.
+    by_distance = sorted(
+        available,
+        key=lambda cell: -(abs(cell[0] - player_cell[0]) + abs(cell[1] - player_cell[1])),
+    )
+    enemy_total = sum(entity.count for entity in entities if entity.role == "enemy")
+    enemy_cells = by_distance[:enemy_total]
+    available = [cell for cell in available if cell not in set(enemy_cells)]
+
+    needed = sum(
+        entity.count
+        for entity in entities
+        if entity.role not in {"player", "enemy"}
+    )
+    if needed + enemy_total > len(available) + len(enemy_cells):
         raise ValueError(
             f"level {level_index + 1} has {len(available)} free floor cells "
             f"for {needed} entity instances"
@@ -143,7 +157,12 @@ def default_spawns(
 
     # Evenly spaced indices over the supply. With needed <= len(available) these
     # are strictly increasing, so no two instances can share a cell.
-    chosen = [available[(index * len(available)) // needed] for index in range(needed)]
+    chosen = (
+        [available[(index * len(available)) // needed] for index in range(needed)]
+        if needed
+        else []
+    )
+    enemy_supply = list(enemy_cells)
 
     spawns = [
         SpawnSpec(entity=entity.id, col=player_cell[0], row=player_cell[1])
@@ -155,8 +174,9 @@ def default_spawns(
         if entity.role == "player":
             continue
         for _ in range(entity.count):
-            column, row = chosen[cursor]
-            cursor += 1
+            column, row = enemy_supply.pop(0) if entity.role == "enemy" else chosen[cursor]
+            if entity.role != "enemy":
+                cursor += 1
             spawns.append(SpawnSpec(entity=entity.id, col=column, row=row))
     return spawns
 

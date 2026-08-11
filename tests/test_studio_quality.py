@@ -5,6 +5,28 @@ from llmz80.studio.quality import design_quality_report, studio_quality_report
 from llmz80.studio.solvability import solvability_report
 
 
+def _neighbours(cell):
+    col, row = cell
+    return [(col + 1, row), (col - 1, row), (col, row + 1), (col, row - 1)]
+
+
+def _isolated_collectible(project):
+    """A collectible whose neighbours hold no other spawn.
+
+    Walling a cell that holds a spawn is refused by the model, so a test that
+    seals a collectible in has to pick one with room around it.
+    """
+    occupied = {(s.col, s.row) for s in project.levels[0].spawns}
+    roles = {e.id: e.role for e in project.entities}
+    for spawn in project.levels[0].spawns:
+        if roles.get(spawn.entity) != "collectible":
+            continue
+        cell = (spawn.col, spawn.row)
+        if not any(n in occupied for n in _neighbours(cell)):
+            return cell
+    raise AssertionError("every collectible has a neighbour that is occupied")
+
+
 def test_builtin_design_passes_commercial_design_gates():
     project = create_default_project("Quality", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
 
@@ -59,19 +81,9 @@ def test_default_projects_are_solvable():
 
 def test_a_collectible_sealed_behind_walls_fails_the_design_gate():
     project = create_default_project("Sealed", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
-    target = next(
-        (spawn.col, spawn.row)
-        for spawn in project.levels[0].spawns
-        if spawn.entity == "collectible"
-    )
+    target = _isolated_collectible(project)
     # Wall in every orthogonal neighbour of one collectible, leaving it stranded.
-    neighbours = [
-        (target[0] + 1, target[1]),
-        (target[0] - 1, target[1]),
-        (target[0], target[1] + 1),
-        (target[0], target[1] - 1),
-    ]
-    sealed = _wall_off(project, 0, neighbours)
+    sealed = _wall_off(project, 0, _neighbours(target))
 
     report = design_quality_report(sealed)
 
@@ -136,21 +148,8 @@ def test_an_impossible_time_limit_fails_the_design_gate():
 
 def test_passing_build_and_runtime_cannot_release_an_unsolvable_design():
     project = create_default_project("Sealed", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
-    target = next(
-        (spawn.col, spawn.row)
-        for spawn in project.levels[0].spawns
-        if spawn.entity == "collectible"
-    )
-    sealed = _wall_off(
-        project,
-        0,
-        [
-            (target[0] + 1, target[1]),
-            (target[0] - 1, target[1]),
-            (target[0], target[1] + 1),
-            (target[0], target[1] - 1),
-        ],
-    )
+    target = _isolated_collectible(project)
+    sealed = _wall_off(project, 0, _neighbours(target))
 
     report = studio_quality_report(
         sealed, build={"quality_pass": True}, runtime={"quality_pass": True}

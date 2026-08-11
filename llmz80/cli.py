@@ -131,10 +131,19 @@ def _project_command(arguments: list[str]) -> int:
         print(result.artifact or result.output_dir / "build_report.json")
         return 0 if result.success else 1
     if arguments[0] == "test":
-        report = service.runtime_test(project, directory)
+        try:
+            report = service.runtime_test(project, directory)
+        except (RuntimeError, FileNotFoundError) as exc:
+            print(f"ERROR: {exc}")
+            return 1
         print(directory / "build" / "emulator_report.json")
         return 0 if report["quality_pass"] else 1
-    print(service.release(project, directory))
+    try:
+        print(service.release(project, directory))
+    except (RuntimeError, FileNotFoundError) as exc:
+        # A refused release is an ordinary outcome, not a crash.
+        print(f"ERROR: {exc}")
+        return 1
     return 0
 
 

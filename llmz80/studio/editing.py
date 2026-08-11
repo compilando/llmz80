@@ -210,6 +210,9 @@ def set_entity_count(project: GameProject, entity_id: str, count: int) -> GamePr
             continue
         supply = _free_cells(level)
         needed = count - len(owned)
+        if needed <= 0:
+            # This level already carries enough; only the others need filling.
+            continue
         if len(supply) < needed:
             raise EditError(
                 f"level {level['id']} has {len(supply)} free floor cells for "
@@ -318,6 +321,7 @@ def editing_status(project: GameProject) -> dict[str, Any]:
     return {
         "solvable": solvability.solvable,
         "solvability_failures": solvability.failures,
+        "warnings": solvability.warnings,
         "buildable": backend_error is None,
         "backend_error": backend_error,
         "ready": solvability.solvable and backend_error is None,

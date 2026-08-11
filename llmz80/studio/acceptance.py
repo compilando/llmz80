@@ -69,6 +69,11 @@ def derive_scenarios(project: GameProject) -> list[AcceptanceScenario]:
                 expect={
                     "g_score": collected * project.gameplay.score_per_collectible,
                     "g_remaining": total - collected,
+                    # Scoring while dying is not playing. A design that kills the
+                    # player during its own opening move has to fail here, or the
+                    # only gate that notices is a coarser one further on.
+                    "g_state": STATE_PLAYING,
+                    "g_lives": project.gameplay.lives,
                 },
             )
         scenarios.append(AcceptanceScenario.model_validate(document))

@@ -7,18 +7,17 @@ from llmz80.studio.planner import ProjectChange, ProjectProposal, apply_proposal
 
 def _sealing_proposal(project):
     """A proposal whose terrain walls a collectible in on every side."""
+    occupied = {(s.col, s.row) for s in project.levels[0].spawns}
+    roles = {e.id: e.role for e in project.entities}
+    neighbours = lambda c: [(c[0]+1, c[1]), (c[0]-1, c[1]), (c[0], c[1]+1), (c[0], c[1]-1)]
     target = next(
-        (spawn.col, spawn.row)
-        for spawn in project.levels[0].spawns
-        if spawn.entity == "collectible"
+        (s.col, s.row)
+        for s in project.levels[0].spawns
+        if roles.get(s.entity) == "collectible"
+        and not any(n in occupied for n in neighbours((s.col, s.row)))
     )
     rows = [list(row) for row in project.levels[0].tiles]
-    for col, row in (
-        (target[0] + 1, target[1]),
-        (target[0] - 1, target[1]),
-        (target[0], target[1] + 1),
-        (target[0], target[1] - 1),
-    ):
+    for col, row in neighbours(target):
         rows[row][col] = "#"
     return ProjectProposal(
         summary="add decorative walls",

@@ -53,3 +53,15 @@ def test_help_lists_the_write_command(capsys):
     main(["help"])
 
     assert "llmz80 project write PATH" in capsys.readouterr().out
+
+
+def test_release_without_evidence_reports_rather_than_crashes(tmp_path: Path, capsys):
+    main(["project", "new", str(tmp_path), "Unproven"])
+    capsys.readouterr()
+
+    code = main(["project", "release", str(tmp_path / "unproven" / "game.yml")])
+
+    printed = capsys.readouterr().out
+    assert code == 1
+    assert "ERROR:" in printed
+    assert "Traceback" not in printed

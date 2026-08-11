@@ -194,6 +194,8 @@ class StudioApp(App[None]):
         reasons = list(state["solvability_failures"])
         if state["backend_error"]:
             reasons.append(state["backend_error"])
+        if state["ready"] and state.get("warnings"):
+            reasons = list(state["warnings"])
         detail = (" · " + "; ".join(reasons)) if reasons else ""
         self._set_status(
             f"{self.project.metadata.title} · {self.project.target.platform.value} · "

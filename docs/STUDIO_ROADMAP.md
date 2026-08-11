@@ -497,3 +497,39 @@ ghosts edible". `Metadata.brief` holds the designer's own words, appears first
 in the design prompt, and feeds the retrieval query, where it describes the game
 far better than an id does. It is on the Project pane and is the fifth argument
 to `project new`.
+
+## 2026-08-11 (I): writing a Zampabolas, and what it exposed
+
+Asked for a Pac-Man style game, and the attempt found four faults.
+
+- `set_entity_count` divided by zero when asked for the count an entity already
+  had, which is what happens when a genre pack already supplies it.
+- A refused release raised a traceback from the CLI. Refusing is an ordinary
+  outcome and now prints one line.
+- The acceptance step for scoring checked the score and the count of things
+  left, and nothing else. A design whose enemies killed the player three times
+  during that same step passed it: the program had scored, and the step never
+  asked whether anyone was still alive. It now requires `g_state` to be playing
+  and lives to be untouched, which is what "collecting scores" was always meant
+  to mean.
+- Level content placed enemies by even spacing, so a chaser could start beside
+  the player. Enemies now take the cells furthest from the player.
+
+The fourth fix was not enough, and that is the useful part. Four chasers at the
+player's own speed end the game in under a second whatever the layout, and the
+captured frame reads GAME OVER, SCORE 00010: it ate one dot and lost three
+lives. `solvability` gained a `threat` report for a chaser starting within three
+cells, deliberately reported as a warning rather than a gate, because deciding
+whether a pursuit is survivable needs a simulation this does not do and
+rejecting playable designs on a guess costs more than it saves.
+
+The underlying limit is the speed scale. Speed runs from one cell every four
+frames to one every frame, so every value is between 12 and 50 cells a second
+and there is no way to say "the enemies are slower than the player walks".
+Giving the player speed 4 to outrun them asks for a cell every frame, which no
+sensible program implements, and three attempts failed the acceptance step
+because the program moved at a playable pace instead.
+
+So: the program works and the design does not. Studio produced a Zampabolas
+that compiles, boots, draws its maze, scores, loses lives and reaches a game
+over screen. It is unplayably hard, and no gate here can currently say so.

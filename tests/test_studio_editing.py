@@ -198,17 +198,17 @@ def test_scene_link_to_an_unknown_scene_is_refused(project):
 def test_status_reports_solvability_and_buildability_live(project):
     assert editing_status(project)["ready"] is True
 
+    occupied = {(s.col, s.row) for s in project.levels[0].spawns}
+    def neighbours(cell):
+        return [(cell[0]+1, cell[1]), (cell[0]-1, cell[1]),
+                (cell[0], cell[1]+1), (cell[0], cell[1]-1)]
     target = next(
         (spawn.col, spawn.row) for spawn in project.levels[0].spawns
         if spawn.entity == "collectible"
+        and not any(n in occupied for n in neighbours((spawn.col, spawn.row)))
     )
     sealed = project
-    for col, row in (
-        (target[0] + 1, target[1]),
-        (target[0] - 1, target[1]),
-        (target[0], target[1] + 1),
-        (target[0], target[1] - 1),
-    ):
+    for col, row in neighbours(target):
         sealed = set_tile(sealed, 0, col, row, "#")
 
     status = editing_status(sealed)
@@ -247,3 +247,14 @@ def test_only_enemies_may_declare_a_behaviour(project):
 def test_an_unknown_behaviour_is_refused(project):
     with pytest.raises(EditError):
         set_entity_behaviour(project, "enemy", "teleport")
+
+
+def test_setting_the_count_an_entity_already_has_is_a_no_op(project):
+    """Asking for the current count divided by zero before this was fixed."""
+    current = next(e.count for e in project.entities if e.id == "enemy")
+
+    result = set_entity_count(project, "enemy", current)
+
+    assert next(e.count for e in result.entities if e.id == "enemy") == current
+    for level in result.levels:
+        assert len([s for s in level.spawns if s.entity == "enemy"]) == current

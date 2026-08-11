@@ -16,6 +16,10 @@ from .models import TILE_WALL, GameProject, LevelSpec
 #: The gameplay loop advances the player at most one cell per 50 Hz frame.
 PLAYER_CELLS_PER_SECOND = 50
 
+#: Cells a chaser must start away from the player. Inside this, the level is
+#: lost before it begins no matter how either of them moves.
+CHASER_SPACE = 3
+
 Cell = tuple[int, int]
 
 
@@ -34,9 +38,20 @@ class LevelSolvability:
     estimated_steps: int = 0
     time_limit_seconds: int | None = None
     time_limit_feasible: bool = True
+    #: A chaser arrives before the player can reach anything worth points.
+    threat: bool = False
+    threat_frames: int | None = None
+    collect_frames: int = 0
 
     @property
     def solvable(self) -> bool:
+        """Whether the level can be finished at all.
+
+        Deliberately not a fairness judgement. A chaser starting on top of the
+        player is reported through `threat` and surfaced as a warning, because
+        deciding whether a pursuit is survivable needs a simulation this does
+        not do, and rejecting designs on a guess costs more than it saves.
+        """
         return not self.unreachable_collectibles and self.time_limit_feasible
 
     def as_dict(self) -> dict:
@@ -51,6 +66,7 @@ class LevelSolvability:
             "estimated_steps": self.estimated_steps,
             "time_limit_seconds": self.time_limit_seconds,
             "time_limit_feasible": self.time_limit_feasible,
+            "threat": self.threat,
             "solvable": self.solvable,
         }
 
@@ -62,6 +78,16 @@ class SolvabilityReport:
     @property
     def solvable(self) -> bool:
         return all(level.solvable for level in self.levels)
+
+    @property
+    def warnings(self) -> list[str]:
+        """Playable, but likely unfair. Shown to a designer, never a gate."""
+        return [
+            f"{level.level_id}: a chasing enemy starts {level.threat_frames} cells from "
+            f"the player, inside the {CHASER_SPACE} it needs to get away"
+            for level in self.levels
+            if level.threat and level.threat_frames is not None
+        ]
 
     @property
     def failures(self) -> list[str]:
@@ -86,6 +112,7 @@ class SolvabilityReport:
             "schema_version": 1,
             "solvable": self.solvable,
             "failures": self.failures,
+            "warnings": self.warnings,
             "levels": [level.as_dict() for level in self.levels],
         }
 
@@ -166,7 +193,11 @@ def analyse_level(project: GameProject, level: LevelSpec) -> LevelSolvability:
         budget = level.time_limit_seconds * PLAYER_CELLS_PER_SECOND
         feasible = budget >= minimum_steps
 
+    threat = threat_report(project, project.levels.index(level))
     return LevelSolvability(
+        threat=bool(threat.get("threatened")),
+        threat_frames=threat.get("closest_chaser_cells"),
+        collect_frames=int(threat.get("frames_to_first_collectible") or 0),
         level_id=level.id,
         total_floor=total_floor,
         reachable_floor=len(reach),
@@ -182,6 +213,66 @@ def analyse_level(project: GameProject, level: LevelSpec) -> LevelSolvability:
 
 #: Directions a swept key can move the player, as (name, column step, row step).
 SWEEP_DIRECTIONS = (("right", 1, 0), ("left", -1, 0), ("down", 0, 1), ("up", 0, -1))
+
+
+def threat_report(project: GameProject, level_index: int = 0) -> dict:
+    """Does a chasing enemy start close enough to catch the player at once?
+
+    Solvability proves a route exists and says nothing about surviving to walk
+    it. Judging that properly would mean simulating a pursuit, so this reports
+    only the case that needs no simulation: a chaser within `CHASER_SPACE` cells
+    of the spawn catches the player before they have meaningfully moved,
+    whatever either of them does. A wider rule would have to guess how well the
+    player flees, and guessing wrong rejects playable designs.
+    """
+    level = project.levels[level_index]
+    roles = {entity.id: entity.role for entity in project.entities}
+    paces = {entity.id: 5 - min(max(entity.speed, 1), 4) for entity in project.entities}
+    player_entity = next((e for e in project.entities if e.role == "player"), None)
+    chasers = {
+        entity.id
+        for entity in project.entities
+        if entity.role == "enemy" and entity.behaviour in {"chase", "guard"}
+    }
+    player = next(
+        ((s.col, s.row) for s in level.spawns if roles.get(s.entity) == "player"), None
+    )
+    if player is None or not chasers or player_entity is None:
+        return {"threatened": False, "chasers": 0}
+
+    reach = _distances(level, player)
+    collectibles = [
+        (s.col, s.row) for s in level.spawns if roles.get(s.entity) == "collectible"
+    ]
+    nearest = min((reach[c] for c in collectibles if c in reach), default=0)
+    player_pace = 5 - min(max(player_entity.speed, 1), 4)
+    frames_to_score = nearest * player_pace
+
+    soonest = None
+    for spawn in level.spawns:
+        if spawn.entity not in chasers:
+            continue
+        steps = reach.get((spawn.col, spawn.row))
+        if steps is None:
+            continue
+        frames = steps * paces[spawn.entity]
+        soonest = frames if soonest is None else min(soonest, frames)
+
+    closest = min(
+        (
+            reach[(s.col, s.row)]
+            for s in level.spawns
+            if s.entity in chasers and (s.col, s.row) in reach
+        ),
+        default=None,
+    )
+    return {
+        "threatened": closest is not None and closest <= CHASER_SPACE,
+        "closest_chaser_cells": closest,
+        "chasers": len(chasers),
+        "frames_to_first_collectible": frames_to_score,
+        "frames_until_caught": soonest,
+    }
 
 
 def sweep_plan(project: GameProject, level_index: int = 0) -> dict:
