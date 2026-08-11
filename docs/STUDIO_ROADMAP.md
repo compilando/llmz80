@@ -43,7 +43,7 @@ have to be rewritten when the change lands, not quietly ignored.
 | S08 | Automated gameplay QA | In progress | Design, build and runtime gates plus solvability analysis and, on Spectrum, memory-probed assertions that a scripted sweep scores exactly what the design predicts; CPC state probes and life/level transitions next |
 | S09 | Commercial vertical slices | In progress | Quality-gated reproducible release archive; content/presentation polish next |
 | S10 | Extension SDK | Implemented | Public typed protocols, entry-point groups, compatibility rules and installable example |
-| S11 | Real-game references driving the design | Implemented | Cited dossier in `reference.yml`, a proposal with an approvable diff, and a prompt block for the writer |
+| S11 | Real-game references driving the design | Implemented | Cited dossier in `reference.yml`, a proposal with an approvable diff, and a prompt block for the writer; adaptation is one-shot, so a refused proposal is discarded whole and retrying starts from a designer with no memory of what failed |
 
 ## Current vertical-slice acceptance
 
