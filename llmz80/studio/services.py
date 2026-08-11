@@ -18,6 +18,7 @@ from .packs import create_default_project
 from .store import ProjectStore
 from .quality import studio_quality_report
 from .acceptance import runtime_script
+from .generator import write_program
 from .release import export_release
 import json
 
@@ -260,6 +261,43 @@ class StudioService:
         combined = studio_quality_report(project, build=build.report, runtime=report)
         (build.output_dir / "studio_quality_report.json").write_text(
             json.dumps(combined, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        return report
+
+    def verify_program(self, project: GameProject, directory: Path) -> dict[str, Any]:
+        """Build the project and, where the target allows it, watch it run.
+
+        Returned as evidence rather than as a verdict: the repair loop needs the
+        diagnostics, not a boolean.
+        """
+        evidence: dict[str, Any] = {"build": None, "acceptance": None, "probes": None}
+        build = self.build(project, directory)
+        evidence["build"] = build.report
+        evidence["probes"] = build.report.get("probes")
+        if not build.success:
+            return evidence
+        try:
+            runtime = self.runtime_test(project, directory)
+        except RuntimeError as exc:
+            evidence["runtime_error"] = str(exc)
+            return evidence
+        evidence["runtime"] = runtime
+        evidence["acceptance"] = runtime.get("acceptance")
+        return evidence
+
+    def write_program(
+        self,
+        project: GameProject,
+        directory: Path,
+        writer: Any,
+        *,
+        attempts: int = 3,
+    ) -> dict[str, Any]:
+        """Have a program written into the project and repaired until it passes."""
+        result = write_program(project, directory, writer, self.verify_program, attempts=attempts)
+        report = result.as_dict()
+        (directory / "write_report.json").write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         return report
 

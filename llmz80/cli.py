@@ -15,6 +15,7 @@ def _print_help() -> None:
         " [maze_chase|single_screen_collect]\n"
         "  llmz80 project validate PATH\n"
         "  llmz80 project contract PATH\n"
+        "  llmz80 project write PATH        (calls the OpenAI API)\n"
         "  llmz80 project generate PATH\n"
         "  llmz80 project build PATH\n"
         "  llmz80 project test PATH\n"
@@ -49,6 +50,7 @@ def _project_command(arguments: list[str]) -> int:
     if len(arguments) != 2 or arguments[0] not in {
         "validate",
         "contract",
+        "write",
         "generate",
         "build",
         "test",
@@ -73,6 +75,24 @@ def _project_command(arguments: list[str]) -> int:
 
         print(generation_prompt(project))
         return 0
+    if arguments[0] == "write":
+        from openai import OpenAI
+
+        from llmz80.studio.generator import ResponsesProgramWriter
+        from llmz80.utils.config import load_api_key, load_config
+
+        settings = load_config("config.yml")
+        model = settings.get("openai", {}).get("model", "gpt-5")
+        print(f"Writing the program with {model}; this calls the OpenAI API.")
+        writer = ResponsesProgramWriter(OpenAI(api_key=load_api_key()), model=model)
+        report = service.write_program(project, directory, writer)
+        for attempt in report["attempts"]:
+            print(
+                f"  attempt {attempt['number']}: build={attempt['build_passed']} "
+                f"acceptance={attempt['acceptance_passed']}"
+            )
+        print(directory / "write_report.json")
+        return 0 if report["accepted"] else 1
     if arguments[0] == "generate":
         result = service.generate_sources(project, directory)
         print(result.output_dir)

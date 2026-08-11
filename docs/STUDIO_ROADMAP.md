@@ -317,3 +317,28 @@ failure, and it was in that blind spot that the Map tab shipped with a duplicate
   automated tests passed and the catalog remained at 53/53.
 - Still open: nothing generates a program yet. Until a generator is wired to `CONTRACT.md` and the
   repair loop is fed with acceptance mismatches, a project's program has to be written by hand.
+
+## 2026-08-11 (D): a program gets written, and repaired
+
+- `llmz80/studio/generator.py` asks a writer for the program, stores it in the project's
+  `program_dir`, verifies it, and feeds what failed back in. The writer is injected, so the loop
+  runs in tests without an API call and a different writer drops in without touching the loop.
+- `ProgramSources` refuses anything that is not a `.c` or `.h`, requires `main.c` and rejects
+  empty files, so a writer cannot smuggle a Makefile past the scaffold.
+- `repair_prompt` gives back the most specific evidence available: compiler diagnostics when the
+  build failed, the missing contract symbols when the linker map lacks them, and the exact memory
+  mismatches when the program built and ran but behaved wrongly.
+- `llmz80/core/platform_notes.py` puts every constraint learned by building into the prompt: the
+  CPC ABI rule, const-only data, warning 357, four pens in mode 1, the ROM frame counter needing
+  interrupts, bit_beep blocking, and starting gameplay on key press rather than release.
+- Evidence, with the real toolchain and the real emulator: a writer handed over the reference
+  program with `g_score += SCORE_PER_COLLECTIBLE` changed to `g_score += 0`. It compiled cleanly
+  and ran, and the loop rejected it, fed back
+  "After holding down for 60 frames: g_score: expected 10, read 0", and accepted the corrected
+  program on the second attempt.
+- A target that cannot be observed accepts on the build alone and records the acceptance verdict
+  as unobserved. It never inherits a pass it did not earn.
+- `llmz80 project write PATH` runs this against the OpenAI API. 250 automated tests passed and the
+  catalog remained at 53/53.
+- Still open: the writer has never been run against a live model here, so the prompt's quality is
+  untested. Retrieval does not yet feed the reference program or per-genre examples into it.

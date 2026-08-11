@@ -47,3 +47,9 @@ def test_help_lists_every_project_subcommand(capsys):
     printed = capsys.readouterr().out
     for command in ("new", "validate", "generate", "build", "test", "release"):
         assert f"llmz80 project {command}" in printed
+
+
+def test_help_lists_the_write_command(capsys):
+    main(["help"])
+
+    assert "llmz80 project write PATH" in capsys.readouterr().out
