@@ -49,6 +49,12 @@ def test_an_identified_dossier_without_sources_is_refused():
         _dossier(sources=[])
 
 
+def test_an_identified_dossier_with_a_blank_title_is_refused():
+    """Whitespace is not a title: the check must strip before judging it empty."""
+    with pytest.raises(ValidationError, match="title"):
+        _dossier(title="   ")
+
+
 def test_an_unidentified_dossier_needs_no_sources():
     dossier = _dossier(identified=False, confidence="low", sources=[], title="")
 
