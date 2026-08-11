@@ -384,3 +384,41 @@ Retrieval already exists from Q05/Q06 and is not wired into the program writer:
 `ExampleCatalog.search` returns useful hits but a Spectrum query also returns
 Amstrad CPC entries, so the platform filter needs looking at before it feeds a
 prompt.
+
+## 2026-08-11 (E): retrieval wired in, and a game
+
+Retrieval already existed from Q05/Q06 and only needed connecting. An earlier
+note here claimed its platform filter was broken; that was wrong. The filter
+works by directory, and the failing query had been given the corpus root rather
+than `examples/<platform>`.
+
+`llmz80/studio/retrieval.py` asks the catalog what a design needs and puts the
+reference program first, since it is the one program known to satisfy the
+contract on that machine, followed by up to two certified examples. The prompt
+grows from about 8k to 36k characters.
+
+With examples in the prompt, gpt-5 wrote a Manic Miner design that was accepted
+on its first attempt: memory read `g_state` 1, `g_level` 1, `g_score` 0 after
+the start key, then `g_score` 30 and `g_remaining` 5 after holding right, and
+zero frames lost. Every previous run had failed all three attempts.
+
+**That first success was not a game.** Looking at the captured frame showed a
+tape loader, and the program contained no drawing call at all. It implemented
+the rules, satisfied the state contract and passed acceptance while putting
+nothing on screen. Two faults let that through:
+
+- The screen was captured about two seconds in, while the tape was still
+  loading, so no capture ever showed the program. A frame is now taken after
+  the scripted inputs, which is the only one that can show gameplay.
+- `visual_change` accepted a difference in the raw frame stream, which a tape
+  loader produces on its own. With a settled post-input frame available the gate
+  now requires that frame to differ from the first one.
+
+The writer is also told plainly that drawing is part of the job.
+
+Re-running the invisible program against the hardened gate rejects it
+(`visual_change` false) while the reference program still passes, so the gate
+discriminates rather than merely tightening. A fresh run then produced a program
+accepted on its third attempt whose captured frame shows ledges, the miner,
+keys, two nasties and a HUD reading SCORE 00030, matching what acceptance
+demanded.

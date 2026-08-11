@@ -19,6 +19,7 @@ from llmz80.core.platform_notes import platform_notes
 
 from .acceptance import generation_prompt
 from .models import GameProject
+from .retrieval import examples_prompt
 
 #: Sources a program may contribute. Anything else is refused rather than
 #: silently dropped, so a writer cannot smuggle a Makefile past the scaffold.
@@ -76,15 +77,18 @@ class ProgramWriter(Protocol):
     ) -> ProgramSources: ...
 
 
-def writing_prompt(project: GameProject) -> str:
+def writing_prompt(project: GameProject, *, with_examples: bool = True) -> str:
     """Everything the writer is told before its first attempt."""
-    return "\n\n".join(
-        [
-            generation_prompt(project),
-            platform_notes(project.target.platform.value),
-            _instructions(project),
-        ]
-    )
+    parts = [
+        generation_prompt(project),
+        platform_notes(project.target.platform.value),
+    ]
+    if with_examples:
+        examples = examples_prompt(project)
+        if examples:
+            parts.append(examples)
+    parts.append(_instructions(project))
+    return "\n\n".join(part for part in parts if part)
 
 
 def _instructions(project: GameProject) -> str:
@@ -99,6 +103,12 @@ Do not redefine anything game_config.h already provides.
 
 Keep the binary under {project.budgets.binary_bytes} bytes and static data
 under {project.budgets.static_data_bytes} bytes.
+
+Draw the game. The state contract is read from memory, but a program that
+updates its variables without putting anything on screen is not a game and
+is rejected: the screen after the scripted inputs is compared against the
+screen before them, and it must differ. Draw the playfield, the actors and
+the score, and redraw only what changed.
 
 Write no build files, no Makefile and no prose outside code comments.
 """

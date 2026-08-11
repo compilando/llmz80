@@ -243,6 +243,7 @@ def _run_zesarux(
     raw_frames = capture_dir / "frames.raw"
     before = capture_dir / "before.bmp"
     after = capture_dir / "after.bmp"
+    played = capture_dir / "played.bmp"
     port = _free_local_port()
     # Every probe read and the sweep hold cost wall-clock time inside the
     # emulator's bounded lifetime. Budget for them or the session is cut off
@@ -298,6 +299,13 @@ def _run_zesarux(
                     probe_after = reading["read"] or probe_after
                 if key in _SPECTRUM_ROWS:
                     _zrcp_command(connection, f"set-ui-io-ports {let_go}")
+            if steps:
+                # The early captures land while the tape is still loading, so
+                # they show a loader rather than the program. Capture once more
+                # after the script has run, which is the only frame that can
+                # show gameplay.
+                _zrcp_command(connection, f'save-screen "{played}"')
+                _wait_for_file(played)
     except OSError as exc:
         remote_error = str(exc)
     try:
@@ -307,7 +315,9 @@ def _run_zesarux(
         stdout, stderr = process.communicate(timeout=3)
         remote_error = remote_error or "ZEsarUX exceeded its bounded runtime"
 
-    observations = [_image_observation(path) for path in (before, after) if path.is_file()]
+    observations = [
+        _image_observation(path) for path in (before, after, played) if path.is_file()
+    ]
     raw = raw_frames.read_bytes() if raw_frames.exists() else b""
     chunk_size = max(1, len(raw) // 6)
     raw_chunks = [
@@ -316,9 +326,16 @@ def _run_zesarux(
     ] if raw else []
     raw_frame_change = len(set(raw_chunks)) > 1
     if len(observations) >= 2:
-        screenshot_change = observations[0]["sha256"] != observations[1]["sha256"]
-        visual_change = screenshot_change or raw_frame_change
-        non_blank = any(item["non_blank"] for item in observations)
+        # Judge against the last frame captured: it is the one taken after the
+        # scripted inputs, and so the only one that can show the program itself.
+        screenshot_change = observations[0]["sha256"] != observations[-1]["sha256"]
+        # A raw-stream difference is not evidence of drawing: a tape loader
+        # changes the screen too. Only a settled frame that differs from the
+        # first one shows that the program itself put something there.
+        visual_change = screenshot_change if len(observations) >= 3 else (
+            screenshot_change or raw_frame_change
+        )
+        non_blank = observations[-1]["non_blank"]
     else:
         screenshot_change = False
         visual_change = raw_frame_change
