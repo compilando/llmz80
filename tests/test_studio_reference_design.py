@@ -5,7 +5,7 @@ import pytest
 from llmz80.studio.models import GenreId, TargetPlatform
 from llmz80.studio.packs import create_default_project
 from llmz80.studio.planner import ProjectChange, ProjectProposal, apply_proposal
-from llmz80.studio.reference import GameReference, ReferenceSource, load_reference
+from llmz80.studio.reference import GameReference, load_reference
 from llmz80.studio.reference_design import ResponsesReferenceDesigner
 from llmz80.studio.services import StudioService
 
@@ -105,6 +105,17 @@ def test_an_unidentified_dossier_yields_no_proposal(project):
         )
 
     assert client.responses.calls == []
+
+
+def test_a_call_that_returns_nothing_parsed_is_not_silently_accepted(project):
+    """The API contract allows a response with no structured output; propose
+    must not hand that back to a caller as if it were a real proposal."""
+    client = _FakeClient(None)
+
+    with pytest.raises(ValueError, match="did not return a structured project proposal"):
+        ResponsesReferenceDesigner(client).propose(project, _dossier())
+
+    assert len(client.responses.calls) == 1
 
 
 def test_researching_archives_the_dossier_in_the_project(tmp_path):

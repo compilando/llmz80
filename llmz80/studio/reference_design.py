@@ -23,8 +23,10 @@ DESIGN_SYSTEM_PROMPT = """\
 You adapt a game design so it resembles a real 1980s game that has been
 researched for you.
 
-Propose JSON-pointer changes to the supplied GameProject. Aim them at what makes
-the game recognisable:
+Propose JSON-pointer changes to the supplied GameProject. You get at most 20
+changes in total, so spend them on whole arrays and whole objects -- a
+level's entire `tiles` list, an entity's whole spawn list -- rather than one
+row, cell or spawn at a time. Aim them at what makes the game recognisable:
   /levels/N/tiles          the maze or screen layout, as rows of '#' and '.'
   /levels/N/spawns         where each actor starts
   /entities/N/count        how many of each actor
@@ -36,8 +38,12 @@ the game recognisable:
 
 Rules:
   * Terrain rows must all be the same width, keep the outer ring solid, and
-    leave every floor cell reachable. A layout that seals anything off is
-    rejected and your whole proposal is lost with it.
+    leave every floor cell reachable. Do not author a maze from a blank grid;
+    start from the level's existing `tiles` and open it up instead. Removing
+    a wall can never disconnect a region, but adding one can, so only add a
+    wall where a floor path still reaches everywhere else afterwards. A
+    layout that seals anything off is rejected and your whole proposal is
+    lost with it.
   * Never propose changes to /schema_version, /metadata/slug, /target/platform,
     /acceptance or /budgets. They are refused.
   * Only propose what the dossier supports. Where it says nothing, leave the
