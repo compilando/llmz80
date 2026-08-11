@@ -339,3 +339,27 @@ def set_audio(
     if music is not None:
         document["audio"]["music"] = music
     return _validated(document)
+
+
+def rename_project(
+    project: GameProject,
+    title: str,
+    *,
+    lives: int | None = None,
+    win_score: int | None = None,
+    style: str | None = None,
+) -> GameProject:
+    """Apply the scalar design fields a form edits, in one validated step.
+
+    Grouped because a form submits them together: applying them one at a time
+    would reject an edit that is only valid once all of them are in place.
+    """
+    document = _document(project)
+    document["metadata"]["title"] = title
+    if lives is not None:
+        document["gameplay"]["lives"] = lives
+    if win_score is not None:
+        document["gameplay"]["win_score"] = win_score
+    if style is not None:
+        document["presentation"]["style"] = style
+    return _validated(document)

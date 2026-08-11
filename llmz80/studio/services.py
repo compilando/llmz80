@@ -291,7 +291,7 @@ class StudioService:
         directory: Path,
         writer: Any,
         *,
-        attempts: int = 3,
+        attempts: int = 5,
     ) -> dict[str, Any]:
         """Have a program written into the project and repaired until it passes."""
         result = write_program(project, directory, writer, self.verify_program, attempts=attempts)

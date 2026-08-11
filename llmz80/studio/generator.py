@@ -227,7 +227,7 @@ def write_program(
     writer: ProgramWriter,
     verify: Callable[[GameProject, Path], dict[str, Any]],
     *,
-    attempts: int = 3,
+    attempts: int = 5,
 ) -> WriteResult:
     """Ask for a program, verify it, and feed what failed back in.
 

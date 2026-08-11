@@ -456,3 +456,24 @@ built but scored nothing where the design predicted ten. Three attempts is the
 current ceiling and it was reached. The typologies are verified as designs, not
 as generated games; only maze chase and the platformer have been carried through
 to a working program.
+
+## 2026-08-11 (G): the terminal front end, compacted
+
+Seven tabs and seventy-four widgets became three panes and nineteen. Labels sit
+beside their fields rather than above them, entities are one table instead of a
+select and five controls, the three separate gate readouts became one status
+line, and the actions moved onto keys. It boots and shows a map in an 80x24
+terminal, which the previous layout did not.
+
+The front end had also fallen behind the product: it still offered "Generate
+sources" from the era when Studio produced the game, and had no way to have a
+program written. `ctrl+w` does that now, and says it spends money before it does.
+
+`editing.rename_project` applies the scalar form fields in one validated step.
+Applying them one at a time would reject an edit that is only valid once all of
+them are in place, and putting that rule in a widget callback would have put a
+domain decision back in the UI.
+
+Attempts default to five rather than three. The breakout run reached a building
+program on its third attempt and had no attempt left to fix its behaviour, which
+is the shape of failure extra attempts address.
