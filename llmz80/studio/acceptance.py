@@ -144,9 +144,14 @@ def design_prompt(project: GameProject) -> str:
     table, because the author has to reason about the shape before choosing how
     to store it.
     """
-    lines = [
-        "DESIGN",
-        "",
+    lines = ["DESIGN", ""]
+    if project.metadata.brief.strip():
+        # The designer's own words come first: the structured fields below say
+        # what the game is made of, but only this says what it should be like.
+        lines.extend(
+            ["What this game should be:", "", project.metadata.brief.strip(), ""]
+        )
+    lines += [
         f"Title: {project.metadata.title}",
         f"Target: {project.target.platform.value}, {project.target.video_mode.value}, "
         f"{project.target.frame_hz} Hz",

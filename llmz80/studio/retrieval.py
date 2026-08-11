@@ -34,6 +34,7 @@ def retrieval_query(project: GameProject) -> str:
     )
     pack = PACKS_BY_ID.get(project.genre)
     parts = [
+        project.metadata.brief,
         project.genre.replace("_", " "),
         # The typology's own keywords describe the game in the corpus's terms,
         # which its id rarely does: "breakout" retrieves less than "ball bat".

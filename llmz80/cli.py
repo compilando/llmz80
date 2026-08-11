@@ -12,7 +12,7 @@ def _print_help() -> None:
         "\n"
         "  llmz80 studio [WORKSPACE]\n"
         "  llmz80 project new WORKSPACE TITLE [spectrum|amstrad_cpc]"
-        " [TYPE]\n"
+        " [TYPE] ['what this game should be']\n"
         "  llmz80 project types\n"
         "  llmz80 project validate PATH\n"
         "  llmz80 project contract PATH\n"
@@ -26,10 +26,11 @@ def _print_help() -> None:
 
 
 def _new_command(arguments: list[str]) -> int:
-    """project new WORKSPACE TITLE [TARGET] [GENRE]"""
-    if not 2 <= len(arguments) <= 4:
+    """project new WORKSPACE TITLE [TARGET] [TYPE] [BRIEF]"""
+    if not 2 <= len(arguments) <= 5:
         _print_help()
         return 2
+    brief = arguments[4] if len(arguments) > 4 else ""
     from llmz80.studio.models import TargetPlatform
     from llmz80.studio.packs import PACKS_BY_ID
     from llmz80.studio.services import StudioService
@@ -46,7 +47,13 @@ def _new_command(arguments: list[str]) -> int:
         for pack in PACKS_BY_ID.values():
             print(f"  {pack.id:24} {pack.description}")
         return 2
-    _, directory = StudioService.at(workspace).create_project(title, platform, genre)
+    service = StudioService.at(workspace)
+    project, directory = service.create_project(title, platform, genre)
+    if brief:
+        from llmz80.studio.editing import rename_project
+
+        project = rename_project(project, project.metadata.title, brief=brief)
+        service.save_project(project, directory)
     print(directory / "game.yml")
     return 0
 

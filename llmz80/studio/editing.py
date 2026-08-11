@@ -348,6 +348,7 @@ def rename_project(
     lives: int | None = None,
     win_score: int | None = None,
     style: str | None = None,
+    brief: str | None = None,
 ) -> GameProject:
     """Apply the scalar design fields a form edits, in one validated step.
 
@@ -362,4 +363,6 @@ def rename_project(
         document["gameplay"]["win_score"] = win_score
     if style is not None:
         document["presentation"]["style"] = style
+    if brief is not None:
+        document["metadata"]["brief"] = brief
     return _validated(document)

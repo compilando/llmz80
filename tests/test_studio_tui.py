@@ -124,3 +124,64 @@ def test_render_map_marks_the_cursor_wherever_it_sits():
 
     assert drawn[2].count("[reverse]") == 1
     assert sum(line.count("[reverse]") for line in drawn) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_slow_operation_leaves_the_interface_usable(tmp_path: Path):
+    """The whole point of the worker: the app answers while work is running."""
+    import threading
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Slow"
+        app.action_create()
+        await pilot.pause()
+
+        started, release = threading.Event(), threading.Event()
+
+        def slow() -> str:
+            started.set()
+            release.wait(5)
+            return "done"
+
+        app._run("Working", slow)
+        # Wait by yielding to the loop: blocking here would stop the very
+        # event loop the worker needs in order to start.
+        for _ in range(100):
+            await pilot.pause()
+            if started.is_set():
+                break
+        assert started.is_set(), "the job never started"
+
+        # While it runs the app still redraws and accepts input.
+        await pilot.pause()
+        assert "Working" in app.status_text
+        app.query_one("#f-lives").value = "7"
+        await pilot.pause()
+        assert app.query_one("#f-lives").value == "7"
+
+        release.set()
+        for _ in range(50):
+            await pilot.pause()
+            if "Working" not in app.status_text:
+                break
+        assert "Working" not in app.status_text
+
+
+@pytest.mark.asyncio
+async def test_the_brief_is_saved_and_reaches_the_prompt(tmp_path: Path):
+    from llmz80.studio.acceptance import design_prompt
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Zampabolas"
+        app.action_create()
+        await pilot.pause()
+
+        app.query_one("#f-brief").text = "Four ghosts. A big dot makes them edible."
+        app.action_save()
+        await pilot.pause()
+
+        assert "ghosts" in app.project.metadata.brief
+        assert "ghosts" in design_prompt(app.project)
+        assert "ghosts" in app.service.open_project(tmp_path / "zampabolas").metadata.brief

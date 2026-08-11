@@ -755,6 +755,11 @@ Run everything through the project virtual environment, as the Makefile does.
 
     make studio                     # or: make studio WORKSPACE=~/games
 
+A typology gives a starting shape; the free-text brief on the Project pane says
+what makes this game itself, and it is the first thing the program's author is
+shown. Write "four ghosts, and a power dot makes them edible" there rather than
+hoping a genre id conveys it.
+
 Three panes. `ctrl+n` new, `ctrl+w` have the program written, `ctrl+b` build,
 `ctrl+t` test, `ctrl+r` release. On the Map pane, `wasd` moves the cursor,
 `space` toggles a wall, `m` moves the selected spawn, `+/-` change an entity
@@ -763,7 +768,8 @@ count. The status line states whether the design is releasable and why not.
 ### Headless
 
     .venv/bin/llmz80 project types                    # the eighteen typologies
-    .venv/bin/llmz80 project new ~/games "Cave Runner" spectrum platform_single_screen
+    .venv/bin/llmz80 project new ~/games "Cave Runner" spectrum platform_single_screen \
+        "The miner crosses ledges to reach the keys. Falling off costs a life."
 
     P=~/games/cave-runner/game.yml
     .venv/bin/llmz80 project validate $P              # the design, without building

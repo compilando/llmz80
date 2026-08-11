@@ -56,6 +56,10 @@ class SceneKind(str, Enum):
 class Metadata(StrictModel):
     slug: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,47}$")
     title: str = Field(min_length=1, max_length=32)
+    #: What this game is, in the designer's own words. A typology gives a
+    #: starting shape; this says what makes this one itself, and it is the only
+    #: part of the design that structured fields cannot express.
+    brief: str = Field(default="", max_length=2000)
     author: str = Field(default="LLMZ80 Studio", max_length=32)
     language: Literal["en", "es"] = "es"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

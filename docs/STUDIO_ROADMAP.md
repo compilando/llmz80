@@ -477,3 +477,23 @@ domain decision back in the UI.
 Attempts default to five rather than three. The breakout run reached a building
 program on its third attempt and had no attempt left to fix its behaviour, which
 is the shape of failure extra attempts address.
+
+## 2026-08-11 (H): two faults the front end had all along
+
+Reported as "the operations do nothing, or nothing is shown".
+
+Building takes seconds and a runtime test tens of them, and both ran on the UI
+thread. The app froze so completely that even the "Building..." line never
+appeared, so a command that was working looked like a command that did nothing.
+Slow work now runs through an async worker awaiting `asyncio.to_thread`, and the
+result is applied from the UI task itself rather than across threads. Verified
+against a real build: the status line reads "Building..." while it runs, the
+interface still accepts typing, and it settles to "ready" afterwards.
+
+The second is more fundamental: there was nowhere to say what the game should
+be. A typology is a starting shape and the structured fields say what the game
+is made of, but neither expresses "Zampabolas, and eating a power dot makes the
+ghosts edible". `Metadata.brief` holds the designer's own words, appears first
+in the design prompt, and feeds the retrieval query, where it describes the game
+far better than an id does. It is on the Project pane and is the fifth argument
+to `project new`.

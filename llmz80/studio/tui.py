@@ -7,8 +7,10 @@ about a design, which is what keeps the same operations usable from a script.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
+from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
@@ -19,6 +21,7 @@ from textual.widgets import (
     Label,
     RichLog,
     Select,
+    TextArea,
     Static,
     TabbedContent,
     TabPane,
@@ -81,6 +84,7 @@ class StudioApp(App[None]):
     RichLog { height: 1fr; border: round $primary; }
     TabPane { padding: 0 1; }
     DataTable { height: auto; max-height: 12; }
+    TextArea { height: 6; }
     """
     BINDINGS = [
         ("ctrl+s", "save", "Save"),
@@ -142,6 +146,8 @@ class StudioApp(App[None]):
                     yield from self._field("Lives", Input(id="f-lives", type="integer"))
                     yield from self._field("Win score", Input(id="f-score", type="integer"))
                     yield from self._field("Style", Input(id="f-style"))
+                    yield Label("What this game should be (free text)")
+                    yield TextArea(id="f-brief")
             with TabPane("Map", id="map"):
                 with Horizontal():
                     with Vertical():
@@ -202,6 +208,9 @@ class StudioApp(App[None]):
         self.query_one("#f-lives", Input).value = str(project.gameplay.lives)
         self.query_one("#f-score", Input).value = str(project.gameplay.win_score)
         self.query_one("#f-style", Input).value = project.presentation.style
+        brief = self.query_one("#f-brief", TextArea)
+        if brief.text != project.metadata.brief:
+            brief.text = project.metadata.brief
 
         level = project.levels[self.level_index]
         self.cursor = (
@@ -342,17 +351,15 @@ class StudioApp(App[None]):
                 lives=int(self.query_one("#f-lives", Input).value or 3),
                 win_score=int(self.query_one("#f-score", Input).value or 100),
                 style=self.query_one("#f-style", Input).value.strip(),
+                brief=self.query_one("#f-brief", TextArea).text.strip(),
             )
         )
         self._log("[green]Saved[/green]")
 
     def action_write(self) -> None:
         """Have the program written. This spends money, so it says so first."""
-        if self.project is None or self.project_dir is None:
-            return
-        self.query_one(TabbedContent).active = "log"
-        self._log("[yellow]Writing the program; this calls the OpenAI API...[/yellow]")
-        try:
+
+        def job() -> str:
             from openai import OpenAI
 
             from llmz80.utils.config import load_api_key, load_config
@@ -362,29 +369,55 @@ class StudioApp(App[None]):
             model = load_config("config.yml").get("openai", {}).get("model", "gpt-5")
             writer = ResponsesProgramWriter(OpenAI(api_key=load_api_key()), model=model)
             report = self.service.write_program(self.project, self.project_dir, writer)
-            for attempt in report["attempts"]:
-                self._log(
-                    f"  attempt {attempt['number']}: build={attempt['build_passed']} "
-                    f"acceptance={attempt['acceptance_passed']}"
-                )
-            self._log(
+            lines = [
+                f"  attempt {attempt['number']}: build={attempt['build_passed']} "
+                f"acceptance={attempt['acceptance_passed']}"
+                for attempt in report["attempts"]
+            ]
+            lines.append(
                 "[green]Program accepted[/green]"
                 if report["accepted"]
                 else "[red]Not accepted[/red] " + report["last_error"]
             )
-        except Exception as exc:
-            self.notify(str(exc), severity="error")
+            return "\n".join(lines)
 
-    def _run(self, label: str, work) -> None:
+        self._run("Writing the program with the OpenAI API", job)
+
+    def _run(self, label: str, job) -> None:
+        """Run a slow job off the UI thread and report it as it finishes.
+
+        Building takes seconds and a runtime test takes tens of them. Run on the
+        UI thread they freeze the app so completely that even the "working"
+        line never appears, which reads as the command doing nothing at all.
+        """
         if self.project is None or self.project_dir is None:
+            self.notify("Create or open a project first", severity="warning")
             return
         self.query_one(TabbedContent).active = "log"
         self._log(f"[yellow]{label}...[/yellow]")
+        self._busy(label)
+        self._background(job, label)
+
+    @work(exclusive=True)
+    async def _background(self, job, label: str) -> None:
+        """Await the job on a thread, then update from the UI task itself.
+
+        Handing the result back through the event loop rather than across
+        threads keeps every widget touched from the task that owns it.
+        """
         try:
-            self._log(work())
+            message = await asyncio.to_thread(job)
         except Exception as exc:
-            self._log(f"[red]{exc}[/red]")
+            message = f"[red]{exc}[/red]"
             self.notify(str(exc), severity="error")
+        self._log(message)
+        self._finished(label)
+
+    def _busy(self, label: str) -> None:
+        self._set_status(f"[yellow]{label}...[/yellow] (the interface stays usable)")
+
+    def _finished(self, label: str) -> None:
+        self._status()
 
     def action_build(self) -> None:
         def work() -> str:
