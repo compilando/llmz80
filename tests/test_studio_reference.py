@@ -7,6 +7,8 @@ from llmz80.studio.reference import (
     GameReference,
     ReferenceSource,
     ResponsesReferenceResearcher,
+    load_reference,
+    save_reference,
 )
 
 
@@ -60,6 +62,36 @@ def test_an_unidentified_dossier_needs_no_sources():
 
     assert dossier.identified is False
     assert dossier.sources == []
+
+
+def test_a_dossier_survives_a_round_trip(tmp_path):
+    saved = save_reference(_dossier(), tmp_path)
+
+    assert saved == tmp_path / "reference.yml"
+    assert load_reference(tmp_path).title == "Zampa Bolas"
+
+
+def test_a_missing_dossier_reads_as_none(tmp_path):
+    assert load_reference(tmp_path) is None
+
+
+def test_a_corrupt_dossier_is_refused_rather_than_ignored(tmp_path):
+    """Silently ignoring a broken file would rebuild the design from nothing."""
+    (tmp_path / "reference.yml").write_text("identified: yes please\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="reference.yml"):
+        load_reference(tmp_path)
+
+
+def test_a_hand_edited_dossier_wins(tmp_path):
+    """Correcting a wrong dossier by hand has to stick, or correcting it is pointless."""
+    save_reference(_dossier(), tmp_path)
+    path = tmp_path / "reference.yml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("Iber Soft", "Topo Soft"), encoding="utf-8"
+    )
+
+    assert load_reference(tmp_path).publisher == "Topo Soft"
 
 
 class _FakeResponses:

@@ -14,8 +14,10 @@ identification as licence to rewrite the design.
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal, Protocol
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -55,6 +57,41 @@ class GameReference(BaseModel):
         if self.identified and not self.title.strip():
             raise ValueError("an identified game must have a title")
         return self
+
+
+#: Beside game.yml, and just as editable by hand.
+REFERENCE_FILENAME = "reference.yml"
+
+
+def save_reference(dossier: GameReference, directory: Path) -> Path:
+    """Archive the dossier atomically, so a crash leaves the old one intact."""
+    directory = Path(directory).expanduser().resolve()
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / REFERENCE_FILENAME
+    text = yaml.safe_dump(
+        dossier.model_dump(mode="json"), allow_unicode=True, sort_keys=False, width=100
+    )
+    temporary = path.with_suffix(".yml.tmp")
+    temporary.write_text(text, encoding="utf-8")
+    temporary.replace(path)
+    return path
+
+
+def load_reference(directory: Path) -> GameReference | None:
+    """Read the archived dossier, or None when the project has none.
+
+    A malformed file raises: a project that has a dossier and cannot read it is
+    not the same as a project without one, and treating them alike would quietly
+    rebuild a design from a blank.
+    """
+    path = Path(directory).expanduser().resolve() / REFERENCE_FILENAME
+    if not path.exists():
+        return None
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        return GameReference.model_validate(data)
+    except Exception as exc:
+        raise ValueError(f"cannot read {path.name}: {exc}") from exc
 
 
 #: What the researcher is told before it looks anything up. It is told to admit
