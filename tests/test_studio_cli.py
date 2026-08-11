@@ -186,3 +186,161 @@ def test_reference_reports_rather_than_crashes_on_a_malformed_archive(
     assert code == 1
     assert "ERROR:" in printed
     assert "Traceback" not in printed
+
+
+def _stub_adapt_dependencies(monkeypatch, designer):
+    """Route the `adapt` command's OpenAI-backed collaborator to a fake.
+
+    Same reasoning as `_stub_reference_dependencies`: `_project_command`
+    resolves `openai.OpenAI` and `ResponsesReferenceDesigner` through local
+    imports inside the branch, so the modules they come from are patched
+    rather than any name already bound in `llmz80.cli`.
+    """
+    import llmz80.studio.reference_design as reference_design_module
+    import llmz80.utils.config as config_module
+    import openai
+
+    monkeypatch.setattr(openai, "OpenAI", lambda **_: object())
+    monkeypatch.setattr(config_module, "load_api_key", lambda: "test-key")
+    monkeypatch.setattr(config_module, "load_config", lambda *_: {})
+    monkeypatch.setattr(
+        reference_design_module, "ResponsesReferenceDesigner", lambda *_a, **_k: designer
+    )
+
+
+class _FakeDesigner:
+    def __init__(self, proposal):
+        self._proposal = proposal
+
+    def propose(self, project, dossier):
+        return self._proposal
+
+
+def _lives_proposal():
+    from llmz80.studio.planner import ProjectChange, ProjectProposal
+
+    return ProjectProposal(
+        summary="tune the difficulty",
+        changes=[
+            ProjectChange(
+                path="/gameplay/lives", operation="replace", value=5, reason="match the source"
+            )
+        ],
+    )
+
+
+def _sealing_proposal(project):
+    """Borrowed from tests/test_studio_planner_gate.py: a proposal apply_proposal
+    genuinely refuses because it walls a collectible in on every side -- not one
+    that merely fails schema validation, which would exercise a different path.
+    """
+    from llmz80.studio.planner import ProjectChange, ProjectProposal
+
+    occupied = {(s.col, s.row) for s in project.levels[0].spawns}
+    roles = {e.id: e.role for e in project.entities}
+    neighbours = lambda c: [(c[0] + 1, c[1]), (c[0] - 1, c[1]), (c[0], c[1] + 1), (c[0], c[1] - 1)]
+    target = next(
+        (s.col, s.row)
+        for s in project.levels[0].spawns
+        if roles.get(s.entity) == "collectible"
+        and not any(n in occupied for n in neighbours((s.col, s.row)))
+    )
+    rows = [list(row) for row in project.levels[0].tiles]
+    for col, row in neighbours(target):
+        rows[row][col] = "#"
+    return ProjectProposal(
+        summary="add decorative walls",
+        changes=[
+            ProjectChange(
+                path="/levels/0/tiles",
+                operation="replace",
+                value=["".join(row) for row in rows],
+                reason="frame the pellet with masonry",
+            )
+        ],
+    )
+
+
+def test_adapt_reports_when_no_dossier_has_been_researched_yet(
+    tmp_path: Path, capsys, monkeypatch
+):
+    main(["project", "new", str(tmp_path), "No Dossier"])
+    capsys.readouterr()
+    game_path = tmp_path / "no-dossier" / "game.yml"
+
+    _stub_adapt_dependencies(monkeypatch, _FakeDesigner(None))
+    code = main(["project", "adapt", str(game_path)])
+
+    printed = capsys.readouterr().out
+    assert code == 1
+    assert "ERROR:" in printed
+    assert "there is no researched game for this project yet" in printed
+    assert "llmz80 project reference PATH" in printed
+
+
+def test_adapt_declined_leaves_game_yml_byte_for_byte_unchanged(
+    tmp_path: Path, capsys, monkeypatch
+):
+    from llmz80.studio.reference import save_reference
+
+    main(["project", "new", str(tmp_path), "Adapt Decline"])
+    capsys.readouterr()
+    directory = tmp_path / "adapt-decline"
+    game_path = directory / "game.yml"
+    save_reference(_identified_dossier("Decline Game"), directory)
+    before = game_path.read_text()
+
+    _stub_adapt_dependencies(monkeypatch, _FakeDesigner(_lives_proposal()))
+    monkeypatch.setattr("builtins.input", lambda *_: "n")
+    code = main(["project", "adapt", str(game_path)])
+
+    printed = capsys.readouterr().out
+    assert code == 0
+    assert "Left unchanged." in printed
+    assert game_path.read_text() == before
+
+
+def test_adapt_accepted_applies_the_proposal_and_saves_it(tmp_path: Path, capsys, monkeypatch):
+    from llmz80.studio.reference import save_reference
+
+    main(["project", "new", str(tmp_path), "Adapt Accept"])
+    capsys.readouterr()
+    directory = tmp_path / "adapt-accept"
+    game_path = directory / "game.yml"
+    save_reference(_identified_dossier("Accept Game"), directory)
+    before = game_path.read_text()
+
+    _stub_adapt_dependencies(monkeypatch, _FakeDesigner(_lives_proposal()))
+    monkeypatch.setattr("builtins.input", lambda *_: "y")
+    code = main(["project", "adapt", str(game_path)])
+
+    printed = capsys.readouterr().out
+    assert code == 0
+    assert str(game_path) in printed
+    assert game_path.read_text() != before
+    assert ProjectStore(tmp_path).load(game_path).gameplay.lives == 5
+
+
+def test_adapt_reports_a_proposal_apply_proposal_genuinely_refuses(
+    tmp_path: Path, capsys, monkeypatch
+):
+    from llmz80.studio.reference import save_reference
+
+    main(["project", "new", str(tmp_path), "Adapt Refuse"])
+    capsys.readouterr()
+    directory = tmp_path / "adapt-refuse"
+    game_path = directory / "game.yml"
+    save_reference(_identified_dossier("Refuse Game"), directory)
+    before = game_path.read_text()
+    proposal = _sealing_proposal(ProjectStore(tmp_path).load(game_path))
+
+    _stub_adapt_dependencies(monkeypatch, _FakeDesigner(proposal))
+    monkeypatch.setattr("builtins.input", lambda *_: "y")
+    code = main(["project", "adapt", str(game_path)])
+
+    printed = capsys.readouterr().out
+    assert code == 1
+    assert "ERROR:" in printed
+    assert "REFUSED:" not in printed
+    assert "would leave the game unplayable" in printed
+    assert game_path.read_text() == before

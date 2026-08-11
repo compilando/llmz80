@@ -27,6 +27,23 @@ def _print_help() -> None:
     )
 
 
+def _openai_client_and_model() -> tuple[object, str]:
+    """Resolve the configured OpenAI client and model name once.
+
+    Three subcommands each read config.yml and construct a client; keeping the
+    "gpt-5" default and the config lookup in one place means changing either
+    is a single edit instead of three synchronised ones. The imports stay
+    local to this function, not hoisted to module level, so subcommands that
+    never touch OpenAI still cost nothing to import.
+    """
+    from openai import OpenAI
+
+    from llmz80.utils.config import load_api_key, load_config
+
+    model = load_config("config.yml").get("openai", {}).get("model", "gpt-5")
+    return OpenAI(api_key=load_api_key()), model
+
+
 def _new_command(arguments: list[str]) -> int:
     """project new WORKSPACE TITLE [TARGET] [TYPE] [BRIEF]"""
     if not 2 <= len(arguments) <= 5:
@@ -105,17 +122,15 @@ def _project_command(arguments: list[str]) -> int:
         print(generation_prompt(project))
         return 0
     if arguments[0] == "reference":
-        from openai import OpenAI
-
         from llmz80.studio.reference import ResponsesReferenceResearcher
-        from llmz80.utils.config import load_api_key, load_config
 
         # reference.yml is meant to be hand-corrected once a search gets a
         # detail wrong, and re-running this command would silently overwrite
         # those corrections. A malformed archive is treated as unreadable
         # rather than absent -- load_reference raises for exactly that reason
         # -- so this refuses rather than guessing whether it is safe to
-        # replace something it cannot show the user.
+        # replace something it cannot show the user. This check happens
+        # before the OpenAI client is built, so declining costs nothing.
         try:
             existing = service.reference(directory)
         except ValueError as exc:
@@ -128,9 +143,9 @@ def _project_command(arguments: list[str]) -> int:
                 print("Left unchanged.")
                 return 0
 
-        model = load_config("config.yml").get("openai", {}).get("model", "gpt-5")
+        client, model = _openai_client_and_model()
         print(f"Researching with {model}; this searches the web and calls the OpenAI API.")
-        researcher = ResponsesReferenceResearcher(OpenAI(api_key=load_api_key()), model=model)
+        researcher = ResponsesReferenceResearcher(client, model=model)
         dossier = service.research_reference(project, directory, researcher)
         if not dossier.identified:
             print("No game was identified. The design keeps its typology.")
@@ -146,18 +161,20 @@ def _project_command(arguments: list[str]) -> int:
         print(directory / "reference.yml")
         return 0
     if arguments[0] == "adapt":
-        from openai import OpenAI
-
         from llmz80.studio.planner import apply_proposal
         from llmz80.studio.reference_design import ResponsesReferenceDesigner
-        from llmz80.utils.config import load_api_key, load_config
 
-        model = load_config("config.yml").get("openai", {}).get("model", "gpt-5")
-        designer = ResponsesReferenceDesigner(OpenAI(api_key=load_api_key()), model=model)
+        client, model = _openai_client_and_model()
+        designer = ResponsesReferenceDesigner(client, model=model)
         try:
             proposal, diff = service.propose_from_reference(project, directory, designer)
         except ValueError as exc:
             print(f"ERROR: {exc}")
+            # The service has no business knowing what this command is
+            # called, so the fix-it hint lives here rather than in its
+            # exception message.
+            if str(exc) == "there is no researched game for this project yet":
+                print("Run `llmz80 project reference PATH` first.")
             return 1
         print(diff)
         if input("\nApply these changes? [y/N] ").strip().casefold() != "y":
@@ -166,20 +183,19 @@ def _project_command(arguments: list[str]) -> int:
         try:
             updated = apply_proposal(project, proposal)
         except ValueError as exc:
-            print(f"REFUSED: {exc}")
+            # Every other refusal in this file prints ERROR:, including
+            # release's -- an ordinary outcome, not a crash -- so this
+            # matches rather than inventing a second vocabulary.
+            print(f"ERROR: {exc}")
             return 1
         service.save_project(updated, directory)
         print(directory / "game.yml")
         return 0
     if arguments[0] == "write":
-        from openai import OpenAI
-
         from llmz80.studio.generator import ResponsesProgramWriter
         from llmz80.studio.reference import load_reference
-        from llmz80.utils.config import load_api_key, load_config
 
-        settings = load_config("config.yml")
-        model = settings.get("openai", {}).get("model", "gpt-5")
+        client, model = _openai_client_and_model()
         print(f"Writing the program with {model}; this calls the OpenAI API.")
         dossier = load_reference(directory)
         if dossier is not None and dossier.identified:
@@ -188,9 +204,7 @@ def _project_command(arguments: list[str]) -> int:
             # parenthetical is dropped rather than printed as "()".
             on_publisher = f" ({dossier.publisher})" if dossier.publisher else ""
             print(f"Writing as {dossier.title}{on_publisher}.")
-        writer = ResponsesProgramWriter(
-            OpenAI(api_key=load_api_key()), model=model, reference=dossier
-        )
+        writer = ResponsesProgramWriter(client, model=model, reference=dossier)
         report = service.write_program(project, directory, writer)
         for attempt in report["attempts"]:
             print(
