@@ -3,11 +3,11 @@
 import pytest
 
 from llmz80.studio.editing import rename_project
-from llmz80.studio.models import GenreId, TargetPlatform
+from llmz80.studio.models import GenreId, PresentationSpec, TargetPlatform
 from llmz80.studio.packs import create_default_project
 from llmz80.studio.planner import ProjectChange, ProjectProposal, apply_proposal
 from llmz80.studio.reference import GameReference, load_reference, save_reference
-from llmz80.studio.reference_design import ResponsesReferenceDesigner
+from llmz80.studio.reference_design import DESIGN_SYSTEM_PROMPT, ResponsesReferenceDesigner
 from llmz80.studio.services import StudioService
 
 
@@ -54,6 +54,61 @@ class _FakeClient:
 @pytest.fixture
 def project():
     return create_default_project("Zampa", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+
+
+def test_the_prompt_puts_the_design_in_charge_of_what_the_game_is():
+    """The Zampabolas live run: the real 1990 game the brief named is an
+    entirely different genre (a 4-player grab-the-balls game, no enemies, no
+    progression) from the maze-chase the designer actually described. The
+    model proposed rewriting the design to match the real game anyway. The
+    prompt must place the design's genre, entity roles and scene flow beyond
+    the reference's reach, not merely suggest restraint."""
+    lowered = DESIGN_SYSTEM_PROMPT.lower()
+
+    assert "genre" in lowered
+    assert "role" in lowered
+    assert "scene" in lowered
+    # Not just mentioned -- explicitly withheld from the reference's authority.
+    assert "settled" in lowered or "not yours to change" in lowered or "not to change" in lowered
+
+
+def test_the_prompt_tells_the_model_to_hold_back_on_a_different_game():
+    """Where the dossier describes a different game from the design, the
+    prompt must call for a small or empty proposal, not a rewrite."""
+    lowered = DESIGN_SYSTEM_PROMPT.lower()
+
+    assert "different game" in lowered
+    assert "small" in lowered or "none at all" in lowered
+
+
+def test_the_prompt_states_the_true_presentation_style_bound():
+    """The live run copied the dossier's 600-character visual_style straight
+    into presentation.style, which pydantic capped at 80 and refused. Read
+    the real bound from the model instead of hard-coding it, so this test
+    fails the moment the prompt and the schema disagree, in either
+    direction."""
+    style_field = PresentationSpec.model_fields["style"]
+    max_length = next(
+        constraint.max_length
+        for constraint in style_field.metadata
+        if hasattr(constraint, "max_length")
+    )
+
+    assert str(max_length) in DESIGN_SYSTEM_PROMPT
+    assert "/presentation/style" in DESIGN_SYSTEM_PROMPT
+
+
+def test_the_prompt_no_longer_offers_count_or_difficulty_curve_as_targets():
+    """Both fields were among the ten changes the live run proposed to turn a
+    maze-chase into a 4-player ball-grabbing game: zeroing entity counts to
+    remove the enemies, and flattening the difficulty curve because the real
+    game has no progression. Neither is a presentation knob."""
+    # Bulleted targets are indented two spaces; the explanatory sentence about
+    # what was deliberately left off is not, so this tells the two apart.
+    assert "\n  /entities/N/count" not in DESIGN_SYSTEM_PROMPT
+    assert "\n  /gameplay/difficulty_curve" not in DESIGN_SYSTEM_PROMPT
+    assert "/entities/N/count" in DESIGN_SYSTEM_PROMPT
+    assert "/gameplay/difficulty_curve" in DESIGN_SYSTEM_PROMPT
 
 
 def test_the_dossier_and_the_project_both_reach_the_model(project):

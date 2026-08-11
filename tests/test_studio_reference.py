@@ -142,6 +142,17 @@ def test_neither_publisher_nor_year_produces_no_dangling_parenthesis():
     assert "()" not in block
 
 
+def test_the_prompt_block_does_not_claim_the_reference_is_the_brief():
+    """A real game the brief names can be a wildly different game from the one
+    the designer described (Zampabolas the maze-chase vs. Zampabolas the 1990
+    grab-the-balls game). The writer must be told the design decides what the
+    game is; the dossier only informs how it looks and feels."""
+    block = reference_prompt(_dossier())
+
+    assert "what the designer asked for" not in block.lower()
+    assert "design" in block.lower()
+
+
 class _FakeResponses:
     """Stands in for client.responses, recording how it was called."""
 

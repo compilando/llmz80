@@ -15,26 +15,46 @@ from .planner import ProjectProposal
 from .reference import GameReference
 
 #: Everything the designer is told. It is pointed at the fields that carry a
-#: game's identity, and warned off the ones that carry Studio's guarantees:
-#: a proposal touching a protected path is refused on apply anyway, and one that
-#: seals a level off is refused by the playability gate, so spending changes
-#: there only wastes the twenty a proposal is allowed.
+#: game's presentation, and warned off both the ones that carry the design's
+#: own identity and the ones that carry Studio's guarantees: a proposal
+#: touching a protected path is refused on apply anyway, and one that seals a
+#: level off is refused by the playability gate, so spending changes there
+#: only wastes the twenty a proposal is allowed.
 DESIGN_SYSTEM_PROMPT = """\
-You adapt a game design so it resembles a real 1980s game that has been
-researched for you.
+You dress a game design in the look, pacing and feel of a real 1980s game
+that has been researched for you. The design already decided what this game
+is -- its genre, each entity's role, and how its scenes flow from title to
+game over are settled and not yours to change. The dossier does not get a
+vote on any of that. A comecocos named after the real game stays a
+comecocos, wearing that game's clothes.
+
+Read the dossier against the design before proposing anything. Where the
+dossier describes a fundamentally different game -- a different genre, a
+different cast of actors, structure or progression the design does not
+have -- that is a sign the two are not the same kind of game under the same
+name, not licence to rebuild one into the other. The right response there is
+a small proposal, or none at all, never a reinterpretation.
 
 Propose JSON-pointer changes to the supplied GameProject. You get at most 20
 changes in total, so spend them on whole arrays and whole objects -- a
 level's entire `tiles` list, an entity's whole spawn list -- rather than one
-row, cell or spawn at a time. Aim them at what makes the game recognisable:
+row, cell or spawn at a time. Aim them at how the game presents itself, never
+at what it is:
   /levels/N/tiles          the maze or screen layout, as rows of '#' and '.'  -> value_rows
   /levels/N/spawns         where each actor starts                           -> value_spawns
-  /entities/N/count        how many of each actor                            -> value_number
-  /entities/N/speed        pacing, 1 is slowest and 4 moves every frame      -> value_number
-  /entities/N/behaviour    chase, patrol_h, patrol_v, bounce, guard          -> value_text
-  /presentation/style      how it should look, in a short phrase             -> value_text
-  /gameplay/lives          lives the player starts with                     -> value_number
-  /gameplay/difficulty_curve                                                 -> value_text
+  /entities/N/speed        pacing; 1 is slowest, 4 moves every frame (1-4)   -> value_number
+  /entities/N/behaviour    chase, patrol_h, patrol_v, bounce, guard, auto;
+                           only an enemy entity may carry a non-"auto" one   -> value_text
+  /presentation/style      how it should look, in a short phrase, at most 80
+                           characters -- the dossier's own visual_style can
+                           run to 600; do not paste it in whole              -> value_text
+  /gameplay/lives          lives the player starts with (1-9)                -> value_number
+
+/entities/N/count and /gameplay/difficulty_curve are deliberately not on this
+list. They look like presentation but they are how many of each actor there
+is and how the challenge grows across the game -- exactly the kind of thing a
+dossier describing a different game will disagree with the design about, and
+that disagreement is not the reference's to settle by changing them.
 
 Each change carries its value in exactly one of those value_* fields --
 never more than one, and none at all for a remove.
@@ -49,6 +69,11 @@ Rules:
     lost with it.
   * Never propose changes to /schema_version, /metadata/slug, /target/platform,
     /acceptance or /budgets. They are refused.
+  * There is no field value that means "none of this": every numeric field
+    above has a minimum greater than zero, so a zero is not a smaller value,
+    it is an invalid one. To drop a whole element the design has -- a menu
+    option, an asset -- propose removing it, not nullifying one of its
+    fields.
   * Only propose what the dossier supports. Where it says nothing, leave the
     design alone.
   * Give each change a reason that cites what in the dossier motivates it.

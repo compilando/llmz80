@@ -142,8 +142,8 @@ def reference_prompt(dossier: GameReference | None) -> str:
     on_platforms = f" for {', '.join(dossier.platforms)}" if dossier.platforms else ""
     lines.append(f"{dossier.title}{on_publisher}{on_platforms}.")
     lines.append(
-        "This is what the designer asked for. Make the program feel like this "
-        "game, within what the design below states."
+        "Match this game's look, pacing and feel where the design allows it. "
+        "The design below, not this dossier, is the authority on what the game is."
     )
     # Mechanics is a list rendered as its own bullets, so it is kept out of the
     # generic single-string loop below: that loop's "already multi-line, so
