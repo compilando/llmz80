@@ -422,3 +422,37 @@ discriminates rather than merely tightening. A fresh run then produced a program
 accepted on its third attempt whose captured frame shows ledges, the miner,
 keys, two nasties and a HUD reading SCORE 00030, matching what acceptance
 demanded.
+
+## 2026-08-11 (F): typologies as data
+
+Genres were an enum with two members, so every new kind of game meant editing
+code. They are now entries in `resources/genres.yml`: what the game is made of
+and what shape its space has. Eighteen are catalogued, covering maze chase,
+single-screen collect, two platformers, climbing, three shooters, brick breaker,
+snake, block pusher, top-down adventure, dodging, lane racing, static defence,
+boss arena, digging and memory sequence.
+
+Terrain became a named shape rather than a genre comparison: `open`, `maze`,
+`ledges`, `corridors` and `chambers`. Adding a typology needs no change in
+`layout.py`.
+
+The solvability gate earned its keep during this work. Three typologies using
+`chambers` failed it immediately: cutting one doorway per dividing wall looks
+symmetric but seals the quadrant that neither doorway touches. The gate named
+the sealed cells; the shaper now cuts a doorway on each side of the crossing
+wall. All eighteen typologies now produce, on both targets, a design that passes
+the design gate, is solvable on every level, fits the target grid and carries a
+runnable acceptance step: thirty-six designs, no failures.
+
+Retrieval asks with the typology's own keywords, since an id retrieves poorly:
+"breakout" finds less than "ball bat bricks bounce paddle".
+
+`llmz80 project types` lists them, and `project new` names them all when given
+an unknown one.
+
+A live run on `breakout`, deliberately the typology furthest from the design
+already proven, did not converge: two attempts failed to build and the third
+built but scored nothing where the design predicted ten. Three attempts is the
+current ceiling and it was reached. The typologies are verified as designs, not
+as generated games; only maze chase and the platformer have been carried through
+to a working program.

@@ -12,6 +12,7 @@ from pathlib import Path
 from llmz80.core.example_catalog import ExampleCatalog
 
 from .models import GameProject
+from .packs import PACKS_BY_ID
 
 EXAMPLES_ROOT = Path(__file__).resolve().parents[2] / "examples"
 REFERENCE_ROOT = Path(__file__).resolve().parents[2] / "resources" / "studio_reference"
@@ -31,8 +32,12 @@ def retrieval_query(project: GameProject) -> str:
     behaviours = sorted(
         {entity.behaviour for entity in project.entities if entity.behaviour != "auto"}
     )
+    pack = PACKS_BY_ID.get(project.genre)
     parts = [
         project.genre.replace("_", " "),
+        # The typology's own keywords describe the game in the corpus's terms,
+        # which its id rarely does: "breakout" retrieves less than "ball bat".
+        " ".join(pack.capabilities) if pack else "",
         project.presentation.style,
         "keyboard input sprite movement collision score lives",
         " ".join(roles),

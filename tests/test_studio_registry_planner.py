@@ -16,10 +16,13 @@ from llmz80.studio.registry import genre_registry, target_registry
 def test_builtin_genre_registry_has_stable_ids():
     registry = genre_registry(load_external=False)
 
-    assert {
+    identifiers = {
         pack.id.value if hasattr(pack.id, "value") else pack.id for pack in registry.values()
-    } == {genre.value for genre in GenreId}
-    assert "tiles" in registry.get("maze_chase").capabilities
+    }
+    # The enum names the two originals; the catalogue is free to add more.
+    assert identifiers >= {genre.value for genre in GenreId}
+    assert len(identifiers) == len(registry.values()), "typology ids must be unique"
+    assert "maze" in registry.get("maze_chase").capabilities
 
 
 def test_target_registry_declares_modes_budgets_and_emulators():

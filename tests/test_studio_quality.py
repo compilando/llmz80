@@ -94,7 +94,9 @@ def _serpentine_level(project, entities_by_role):
 
     corridor = [(col, row) for row in range(0, height, 2) for col in range(width)]
     spawns = [{"entity": entities_by_role["player"], "col": 0, "row": 0}]
-    spawns.append({"entity": entities_by_role["enemy"], "col": 5, "row": 0})
+    # One spawn per declared instance, whatever the typology asked for.
+    for offset, _ in enumerate(range(entities_by_role["enemy_count"])):
+        spawns.append({"entity": entities_by_role["enemy"], "col": 5 + offset, "row": 0})
     # The last collectible sits at the far end of the corridor.
     picks = [corridor[-1]] + corridor[10:17]
     for col, row in picks:
@@ -112,6 +114,7 @@ def _serpentine_level(project, entities_by_role):
 def test_an_impossible_time_limit_fails_the_design_gate():
     project = create_default_project("Rushed", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
     by_role = {entity.role: entity.id for entity in project.entities}
+    by_role["enemy_count"] = next(e.count for e in project.entities if e.role == "enemy")
     document = _serpentine_level(project, by_role)
 
     document["levels"][0]["time_limit_seconds"] = 999

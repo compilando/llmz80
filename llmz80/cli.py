@@ -12,7 +12,8 @@ def _print_help() -> None:
         "\n"
         "  llmz80 studio [WORKSPACE]\n"
         "  llmz80 project new WORKSPACE TITLE [spectrum|amstrad_cpc]"
-        " [maze_chase|single_screen_collect]\n"
+        " [TYPE]\n"
+        "  llmz80 project types\n"
         "  llmz80 project validate PATH\n"
         "  llmz80 project contract PATH\n"
         "  llmz80 project write PATH        (calls the OpenAI API)\n"
@@ -29,15 +30,21 @@ def _new_command(arguments: list[str]) -> int:
     if not 2 <= len(arguments) <= 4:
         _print_help()
         return 2
-    from llmz80.studio.models import GenreId, TargetPlatform
+    from llmz80.studio.models import TargetPlatform
+    from llmz80.studio.packs import PACKS_BY_ID
     from llmz80.studio.services import StudioService
 
     workspace, title = Path(arguments[0]).expanduser().resolve(), arguments[1]
     try:
         platform = TargetPlatform(arguments[2] if len(arguments) > 2 else "spectrum")
-        genre = GenreId(arguments[3] if len(arguments) > 3 else "maze_chase")
     except ValueError as exc:
         print(f"ERROR: {exc}")
+        return 2
+    genre = arguments[3] if len(arguments) > 3 else "maze_chase"
+    if genre not in PACKS_BY_ID:
+        print(f"ERROR: unknown game type '{genre}'. Available:")
+        for pack in PACKS_BY_ID.values():
+            print(f"  {pack.id:24} {pack.description}")
         return 2
     _, directory = StudioService.at(workspace).create_project(title, platform, genre)
     print(directory / "game.yml")
@@ -47,6 +54,12 @@ def _new_command(arguments: list[str]) -> int:
 def _project_command(arguments: list[str]) -> int:
     if arguments and arguments[0] == "new":
         return _new_command(arguments[1:])
+    if arguments and arguments[0] == "types":
+        from llmz80.studio.packs import BUILTIN_PACKS
+
+        for pack in BUILTIN_PACKS:
+            print(f"  {pack.id:24} {pack.terrain:10} {pack.description}")
+        return 0
     if len(arguments) != 2 or arguments[0] not in {
         "validate",
         "contract",

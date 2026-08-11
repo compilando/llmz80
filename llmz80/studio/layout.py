@@ -19,25 +19,92 @@ from .models import TILE_FLOOR, TILE_WALL, GameProject, GenreId, SpawnSpec
 PILLAR_PATTERNS: tuple[tuple[int, int], ...] = ((4, 4), (3, 3), (5, 2))
 
 
-def default_tiles(genre: str, width: int, height: int, level_index: int) -> list[str]:
-    """Return one terrain row per level row."""
-    walls_inside = genre == GenreId.MAZE_CHASE.value
-    step_x, step_y = PILLAR_PATTERNS[level_index % len(PILLAR_PATTERNS)]
-    rows: list[str] = []
-    for row in range(height):
-        cells: list[str] = []
-        for column in range(width):
-            on_border = row in (0, height - 1) or column in (0, width - 1)
-            pillar = (
-                walls_inside
-                and 1 < row < height - 2
-                and 1 < column < width - 2
-                and row % step_y == 0
-                and column % step_x == 0
-            )
-            cells.append(TILE_WALL if on_border or pillar else TILE_FLOOR)
-        rows.append("".join(cells))
-    return rows
+def _blank(width: int, height: int) -> list[list[str]]:
+    return [
+        [
+            TILE_WALL
+            if row in (0, height - 1) or column in (0, width - 1)
+            else TILE_FLOOR
+            for column in range(width)
+        ]
+        for row in range(height)
+    ]
+
+
+def _maze(rows, width, height, index):
+    step_x, step_y = PILLAR_PATTERNS[index % len(PILLAR_PATTERNS)]
+    for row in range(2, height - 2):
+        for column in range(2, width - 2):
+            if row % step_y == 0 and column % step_x == 0:
+                rows[row][column] = TILE_WALL
+
+
+def _ledges(rows, width, height, index):
+    """Horizontal platforms with a gap, staggered so a climb is possible."""
+    span = max(4, width // 4)
+    for number, row in enumerate(range(3, height - 2, 4)):
+        offset = (number + index) % 2
+        start = 2 + offset * span
+        for column in range(start, min(width - 2, start + span * 2)):
+            rows[row][column] = TILE_WALL
+
+
+def _corridors(rows, width, height, index):
+    """Serpentine lanes: full-width walls with one alternating opening."""
+    for number, row in enumerate(range(3, height - 2, 3)):
+        gap = 1 if (number + index) % 2 else width - 2
+        for column in range(1, width - 1):
+            if column != gap:
+                rows[row][column] = TILE_WALL
+
+
+def _chambers(rows, width, height, index):
+    """Four rooms around a cross wall.
+
+    The dividing wall needs a doorway on each side of the other wall, or a
+    quadrant ends up sealed off with no way in. Cutting one doorway per wall
+    looks symmetric and is wrong; the solvability gate rejects it.
+    """
+    middle_row = height // 2
+    middle_col = width // 2
+    left_door = 1 + (index * 3) % max(1, middle_col - 2)
+    right_door = middle_col + 1 + (index * 2) % max(1, width - middle_col - 3)
+    top_door = 1 + (index * 2) % max(1, middle_row - 2)
+    bottom_door = middle_row + 1 + (index * 3) % max(1, height - middle_row - 3)
+    for column in range(1, width - 1):
+        if column not in (left_door, right_door):
+            rows[middle_row][column] = TILE_WALL
+    for row in range(1, height - 1):
+        if row in (top_door, bottom_door) or row == middle_row:
+            continue
+        rows[row][middle_col] = TILE_WALL
+
+
+#: How each terrain kind carves the interior. "open" leaves it bare.
+TERRAIN_SHAPERS = {
+    "maze": _maze,
+    "ledges": _ledges,
+    "corridors": _corridors,
+    "chambers": _chambers,
+}
+
+
+def default_tiles(
+    genre: str, width: int, height: int, level_index: int, terrain: str | None = None
+) -> list[str]:
+    """Return one terrain row per level row.
+
+    Terrain is named by the genre pack. It is passed explicitly where known so
+    that adding a typology needs no change here; the genre name is only
+    consulted as a fallback for designs written before packs carried terrain.
+    """
+    if terrain is None:
+        terrain = "maze" if genre == GenreId.MAZE_CHASE.value else "open"
+    rows = _blank(width, height)
+    shaper = TERRAIN_SHAPERS.get(terrain)
+    if shaper is not None:
+        shaper(rows, width, height, level_index)
+    return ["".join(row) for row in rows]
 
 
 def _floor_cells(tiles: list[str]) -> list[tuple[int, int]]:

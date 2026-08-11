@@ -169,10 +169,10 @@ def test_the_generation_prompt_is_contract_design_and_acceptance(project):
 
 
 def test_a_designed_behaviour_reaches_the_prompt(project):
-    edited = set_entity_behaviour(project, "enemy", "chase")
+    edited = set_entity_behaviour(project, "enemy", "bounce")
 
-    assert "moves chase" in design_prompt(edited)
-    assert "moves chase" not in design_prompt(project)
+    assert "moves bounce" in design_prompt(edited)
+    assert "moves bounce" not in design_prompt(project)
 
 
 def test_sweep_frames_follow_the_declared_speed(project):
