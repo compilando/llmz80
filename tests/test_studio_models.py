@@ -5,7 +5,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from llmz80.studio.models import GenreId, TargetPlatform, VideoMode
+from llmz80.studio.models import AssetSpec, GenreId, TargetPlatform, VideoMode
 from llmz80.studio.packs import create_default_project
 from llmz80.studio.store import ProjectStore
 
@@ -127,3 +127,24 @@ def test_v2_documents_migrate_to_v3_on_load(tmp_path: Path):
     assert loaded.schema_version == 3
     assert loaded.levels[0].tiles == project.levels[0].tiles
     assert loaded.levels[0].spawns == project.levels[0].spawns
+
+
+def test_an_asset_declares_its_frames():
+    asset = AssetSpec(id="hero", source="assets/hero.png", width=64, height=16, frames=4)
+
+    assert asset.frames == 4
+    assert asset.frame_width == 16
+
+
+def test_an_asset_sheet_must_divide_into_whole_frames():
+    """A sheet 65 wide cannot hold 4 frames; the split would silently lose a column."""
+    with pytest.raises(ValidationError, match="frames"):
+        AssetSpec(id="hero", source="assets/hero.png", width=65, height=16, frames=4)
+
+
+def test_an_entity_may_name_a_sprite_that_no_asset_provides():
+    """Designs predating any artwork must keep loading; the library falls back to shapes."""
+    project = create_default_project("Fallback", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+
+    assert project.assets == []
+    assert any(entity.sprite for entity in project.entities)

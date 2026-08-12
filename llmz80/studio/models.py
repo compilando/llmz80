@@ -211,6 +211,20 @@ class AssetSpec(StrictModel):
     source: str = Field(pattern=r"^assets/[A-Za-z0-9_.-]+$")
     width: int = Field(ge=1, le=640)
     height: int = Field(ge=1, le=400)
+    #: Frames laid out left to right in one sheet. One means a still image.
+    frames: int = Field(default=1, ge=1, le=8)
+
+    @property
+    def frame_width(self) -> int:
+        return self.width // self.frames
+
+    @model_validator(mode="after")
+    def validate_frames(self) -> "AssetSpec":
+        if self.width % self.frames:
+            raise ValueError(
+                f"{self.id}: a sheet {self.width} wide cannot hold {self.frames} whole frames"
+            )
+        return self
 
 
 class BudgetSpec(StrictModel):
