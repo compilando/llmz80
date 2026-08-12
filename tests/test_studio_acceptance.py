@@ -141,6 +141,52 @@ def test_the_prompt_states_the_checks_and_the_controls(project):
     assert prompt in generation_prompt(project)
 
 
+def test_the_prompt_tells_the_writer_how_the_animation_frame_is_judged(project):
+    # The contract sentence (in contract_prompt) says the symbol must advance
+    # while moving and hold still while idle; this checks the acceptance
+    # section separately says *how that gets checked*: readings compared
+    # between steps, not repeating the contract's own wording.
+    prompt = scenarios_prompt(project)
+
+    assert "g_anim_frame" in prompt
+    assert "changed" in prompt or "differ" in prompt
+    assert "stayed the same" in prompt or "unchanged" in prompt
+    # The contract sentence itself belongs in contract_prompt, not here.
+    assert "currently drawn with" not in prompt
+
+
+def test_the_animation_expectation_does_not_depend_on_target(project):
+    # feel.py's animation gate only ever gets a memory reading through the
+    # Spectrum's zesarux adapter today (the CPC adapter captures screenshots,
+    # not memory), but that is a fact about which checker is wired up, not
+    # about what a correct CPC program looks like -- so the instruction must
+    # not vanish for a CPC target.
+    cpc_project = create_default_project("Contract", TargetPlatform.AMSTRAD_CPC, GenreId.MAZE_CHASE)
+
+    assert "g_anim_frame" in scenarios_prompt(cpc_project)
+
+
+def test_a_none_hold_reads_as_waiting_not_as_a_keypress(project):
+    scenario = next(s for s in project.acceptance if s.id == "enemy_costs_life")
+    assert scenario.hold == "none"  # the default maze_chase pack chases
+
+    prompt = scenarios_prompt(project)
+
+    assert "hold none" not in prompt
+    assert "without pressing anything" in prompt
+
+
+def test_a_design_with_no_chasing_enemy_gets_no_waiting_step_text(project):
+    patrol = editing.set_entity_behaviour(project, "enemy", "patrol_h")
+    patrol = with_executable_scenarios(patrol)
+
+    prompt = scenarios_prompt(patrol)
+
+    assert "without pressing anything" not in prompt
+    # Only start_game and collect_scores remain executable; no third step.
+    assert "  3." not in prompt
+
+
 def test_a_design_without_runnable_criteria_produces_no_script(project):
     document = project.model_dump(mode="json")
     for scenario in document["acceptance"]:

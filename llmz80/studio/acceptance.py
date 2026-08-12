@@ -200,7 +200,20 @@ def runtime_script(project: GameProject) -> list[dict[str, Any]]:
 
 
 def scenarios_prompt(project: GameProject) -> str:
-    """The acceptance half of a generation prompt."""
+    """The acceptance half of a generation prompt.
+
+    The g_anim_frame sentence below runs regardless of `project.target`, even
+    though `llmz80.studio.feel.animation_report` currently only ever gets a
+    reading on the Spectrum -- the Amstrad CPC adapter (`_run_caprice32`)
+    captures screenshots, not memory, so the gate abstains there today. That
+    is a fact about which emulator adapter exists, not about what a correct
+    CPC program looks like, and a program the writer only made to pass a
+    check that happens to be watching is exactly the failure mode this
+    module's docstring warns against. Silence is for a step the script
+    genuinely has none of (see the "none" hold below); it is not for a
+    correctness rule that still applies to a platform the checker cannot see
+    yet.
+    """
     steps = runtime_script(project)
     if not steps:
         return ""
@@ -210,16 +223,22 @@ def scenarios_prompt(project: GameProject) -> str:
         "After the program loads, an emulator holds each input below for the",
         "stated number of 50 Hz frames, in this order and without resetting",
         "between steps. It then reads the state contract from memory. Every",
-        "expected value must match exactly.",
+        "expected value must match exactly. If you declared g_anim_frame, it",
+        "is also read at every step: it must have changed since the previous",
+        "reading after a step held in a direction, and stayed the same after",
+        "a step that waits.",
         "",
     ]
     for index, step in enumerate(steps, start=1):
         expectations = ", ".join(
             f"{name} == {value}" for name, value in sorted(step["expect"].items())
         )
-        lines.append(
-            f"  {index}. hold {step['hold']} for {step['frames']} frames -> {expectations}"
+        action = (
+            f"wait {step['frames']} frames without pressing anything"
+            if step["hold"] == "none"
+            else f"hold {step['hold']} for {step['frames']} frames"
         )
+        lines.append(f"  {index}. {action} -> {expectations}")
     lines.append("")
     lines.append(
         "The controls are: "
