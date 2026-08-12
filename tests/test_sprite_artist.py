@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from llmz80.studio.models import GameProject, GenreId, TargetPlatform, VideoMode
 from llmz80.studio.packs import create_default_project
@@ -77,6 +77,47 @@ def _dossier(**overrides: object) -> GameReference:
 
 def _solid_image(size: tuple[int, int], colour: tuple[int, int, int, int]) -> Image.Image:
     return Image.new("RGBA", size, colour)
+
+
+#: One colour per column of `_four_pose_sheet`, chosen to be unmistakably
+#: different from each other and from the white background.
+_POSE_COLOURS = [
+    (255, 0, 0, 255),  # red
+    (0, 128, 0, 255),  # green
+    (0, 0, 255, 255),  # blue
+    (255, 165, 0, 255),  # orange
+]
+
+
+def _four_pose_sheet() -> Image.Image:
+    """A raw sheet with one solid, differently sized and positioned, non-
+    touching blob per column -- a stand-in for four genuinely different
+    animation poses side by side, which is exactly what the composed prompt
+    asks a real model to draw.
+
+    This is the shape the old clean-the-whole-sheet-then-split order got
+    wrong: `_clean_image` keeps only the single largest connected component,
+    so run across the whole sheet it would keep one pose and blank the other
+    three. Run per column, after splitting (`SpriteArtist.draw_frames`), it
+    keeps all four -- see `test_draw_frames_keeps_all_four_distinct_poses`.
+    """
+    column_width = 200
+    height = 200
+    width = column_width * FRAMES_PER_SHEET
+    sheet = Image.new("RGBA", (width, height), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(sheet)
+    # A different size and position per column, so no single bounding-box
+    # crop could coincidentally cover more than one of them.
+    boxes = [
+        (20, 20, 60, 60),  # small, top-left of its column
+        (30, 120, 170, 180),  # wide, low in its column
+        (20, 20, 180, 180),  # large, fills most of its column
+        (80, 80, 120, 120),  # small, centred
+    ]
+    for index, (x0, y0, x1, y1) in enumerate(boxes):
+        offset = index * column_width
+        draw.rectangle((offset + x0, y0, offset + x1, y1), fill=_POSE_COLOURS[index])
+    return sheet
 
 
 # --- The composed prompt ----------------------------------------------------
@@ -213,6 +254,35 @@ def test_a_wrongly_sized_image_still_yields_valid_frames(
 
     assert len(frames) == FRAMES_PER_SHEET
     assert all(frame.size == (SPRITE_SIZE, SPRITE_SIZE) for frame in frames)
+
+
+def test_draw_frames_keeps_all_four_distinct_poses():
+    """The regression this guards against: cleaning the whole sheet before
+    splitting it keeps only the single largest connected pose and silently
+    blanks the other three, so every generated sprite would animate as one
+    real frame plus three empty ones. A fake generator returning a single
+    fixed blob cannot catch that -- every "frame" it produced would trivially
+    look the same either way -- so this one returns four distinct,
+    non-touching poses instead (`_four_pose_sheet`) and checks that all four
+    survive, and that they are not all the same frame repeated.
+    """
+    project = _project()
+    entity = next(e for e in project.entities if e.role == "player")
+    artist = SpriteArtist(_FakeGenerator(_four_pose_sheet()))
+
+    frames = artist.draw_frames(project, entity)
+
+    assert len(frames) == FRAMES_PER_SHEET
+    non_background_pixel_counts = [
+        sum(1 for pixel in frame.convert("RGB").getdata() if pixel != (255, 255, 255))
+        for frame in frames
+    ]
+    assert all(count > 0 for count in non_background_pixel_counts), (
+        f"every frame must carry drawn pixels of its own pose; got {non_background_pixel_counts}"
+    )
+    assert len({frame.tobytes() for frame in frames}) == FRAMES_PER_SHEET, (
+        "the four frames must differ from each other -- four distinct poses went in"
+    )
 
 
 def test_the_sheet_and_request_sizes_are_consistent_with_the_packer():

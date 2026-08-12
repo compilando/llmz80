@@ -18,7 +18,7 @@ by guessing would be worse than not having them at all:
   not obey small requested dimensions -- asking for a 64x16 sheet reliably
   returns a large canvas (commonly 1024x1024) with a small sprite lost
   somewhere in the middle of it. So the prompt asks for a large sheet instead,
-  and the result is reduced with nearest-neighbour resampling, which keeps
+  and each pose in it is reduced with nearest-neighbour resampling, which keeps
   pixel art blocky rather than blurring it the way any smooth filter would.
 
 - It depends on `image_utils._clean_image` and `image_utils._scale_image`
@@ -31,6 +31,16 @@ by guessing would be worse than not having them at all:
   `_process_image` -- `compiler.py` already documented, in `CPC_DEFAULT_PALETTE`,
   that the platform colour table those pull in has real gaps -- but no such
   problem exists for the two pixel-geometry helpers this module actually uses.
+
+  `_clean_image` in particular keeps only the *single largest* connected
+  non-background component and discards the rest -- exactly right for
+  isolating one drawn pose against its background, and exactly wrong if it is
+  run across the whole sheet at once: four separate, non-touching poses would
+  collapse to whichever one happens to be largest, and the other three would
+  come back blank. So this module always splits the sheet into its
+  `FRAMES_PER_SHEET` columns *first*, by arithmetic, and only then hands each
+  column to `_clean_image`/`_scale_image` on its own -- see `_sheet_columns`
+  and `SpriteArtist.draw_frames`.
 """
 
 from __future__ import annotations
@@ -60,7 +70,9 @@ REQUEST_WIDTH = FRAMES_PER_SHEET * REQUEST_FRAME_SIZE
 REQUEST_HEIGHT = REQUEST_FRAME_SIZE
 
 #: The sheet's real, final size: `FRAMES_PER_SHEET` frames of
-#: `spriting.SPRITE_SIZE` pixels each, side by side.
+#: `spriting.SPRITE_SIZE` pixels each, side by side. Nothing in this module
+#: resizes the whole sheet to this size in one step any more (see the module
+#: docstring) -- it names the same total, reached one column at a time.
 SHEET_WIDTH = FRAMES_PER_SHEET * SPRITE_SIZE
 SHEET_HEIGHT = SPRITE_SIZE
 
@@ -130,6 +142,35 @@ def compose_prompt(
     return "\n\n".join([body, sheet, _style_context(project, entity, dossier)])
 
 
+def _sheet_columns(sheet: Image.Image, frames: int) -> list[Image.Image]:
+    """Split a raw, arbitrarily-sized sheet into `frames` equal columns, by
+    arithmetic, on whatever width the model actually returned -- before any
+    cleaning or scaling touches it. Splitting first, rather than cleaning the
+    whole sheet and splitting the result, is what keeps four separate,
+    non-touching poses from being collapsed into one: `_clean_image` (used
+    per column by the caller) keeps only the single largest connected
+    component, which is exactly right once each pose is on its own, and
+    exactly wrong across a sheet of several.
+
+    `split_frames` (see `sprite_sheet.py`) requires a width that divides
+    evenly by `frames`; a model's response is under no obligation to provide
+    one. A width that does not divide is cropped down to the largest width
+    that does -- the discarded sliver is at most `frames - 1` pixels of a
+    canvas hundreds of pixels wide, so it only ever trims padding, never a
+    real pose. A sheet narrower than `frames` pixels -- possible only from a
+    pathological or test response, never a real model at the sizes this
+    module requests -- cannot even give each frame one pixel of its own column,
+    so it is widened first (nearest-neighbour, like every other resize here)
+    instead of being cropped to nothing.
+    """
+    usable_width = (sheet.width // frames) * frames
+    if usable_width == 0:
+        sheet = _scale_image(sheet, frames, sheet.height)
+    elif usable_width != sheet.width:
+        sheet = sheet.crop((0, 0, usable_width, sheet.height))
+    return split_frames(sheet, frames)
+
+
 class SpriteArtist:
     """Draws one entity's sprite sheet, ready for `spriting.py`'s packer.
 
@@ -149,17 +190,20 @@ class SpriteArtist:
         """One entity's sheet, cut into `FRAMES_PER_SHEET` frames of
         `spriting.SPRITE_SIZE` x `spriting.SPRITE_SIZE` pixels each.
 
-        Whatever size the model actually returns -- it is under no obligation
-        to honour `REQUEST_WIDTH`/`REQUEST_HEIGHT`, and routinely does not --
-        is first trimmed to its drawn content (`_clean_image`) and then forced
-        down to the sheet's real, final size with nearest-neighbour
-        resampling (`_scale_image`). Forcing the exact size here, rather than
-        trusting whatever the model sent, is what keeps a wrongly-sized
-        response from ever reaching `split_frames`: that final size is always
-        `FRAMES_PER_SHEET * SPRITE_SIZE` wide, which always divides evenly.
+        The raw response is split into its `FRAMES_PER_SHEET` columns first
+        (`_sheet_columns`), on whatever size the model actually returned --
+        it is under no obligation to honour `REQUEST_WIDTH`/`REQUEST_HEIGHT`,
+        and routinely does not. Only then is each column, on its own, trimmed
+        to its drawn pose (`_clean_image`) and forced down to
+        `SPRITE_SIZE` x `SPRITE_SIZE` with nearest-neighbour resampling
+        (`_scale_image`). Cleaning per column rather than across the whole
+        sheet is what keeps one pose's `_clean_image` result from crowding
+        out the other three (see the module docstring); forcing each column's
+        exact final size, rather than trusting whatever the model sent, is
+        what keeps a wrongly-sized response from ever producing a frame that
+        is not exactly 16x16.
         """
         prompt = compose_prompt(project, entity, dossier)
         sheet = self.generator.generate_image(prompt)
-        cleaned = _clean_image(sheet)
-        scaled = _scale_image(cleaned, SHEET_WIDTH, SHEET_HEIGHT)
-        return split_frames(scaled, FRAMES_PER_SHEET)
+        columns = _sheet_columns(sheet, FRAMES_PER_SHEET)
+        return [_scale_image(_clean_image(column), SPRITE_SIZE, SPRITE_SIZE) for column in columns]
