@@ -44,29 +44,6 @@ def _checked_id(sprite_id: str) -> str:
     return sprite_id
 
 
-def _frame_stride(packed: PackedSprite) -> int:
-    """How many bytes one frame really advances by inside `packed.data`.
-
-    On the Spectrum (`pack_spectrum`), `data` and `mask` are independent arrays of
-    identical size, one `bytes_per_frame`-sized chunk per frame in each.
-
-    On the CPC (`pack_cpc`), `PackedSprite.mask` is always empty: the mask does not
-    travel separately, it is interleaved one byte ahead of every colour byte inside
-    `data` (see that function's docstring for why `cpct_drawSpriteMasked` wants it
-    laid out that way). A frame therefore really occupies `2 * bytes_per_frame`
-    bytes of `data`, even though `bytes_per_frame` itself -- built from
-    `width_bytes * height` -- says nothing about that doubling; it is purely a
-    width/height figure, not a "how far to the next frame" figure.
-
-    Reading this off `len(packed.mask) == 0` rather than a target flag keeps this
-    module ignorant of which pack_* function produced a given sprite, matching how
-    `spriting.py` itself draws that same distinction.
-    """
-    if len(packed.mask) == 0:
-        return 2 * packed.bytes_per_frame
-    return packed.bytes_per_frame
-
-
 def _c_byte_array(name: str, data: bytes) -> str:
     """A `static const unsigned char NAME[] = { ... };` declaration, line-wrapped."""
     if not data:
@@ -154,16 +131,17 @@ def render_sprite_header(sprites: dict[str, PackedSprite]) -> str:
     lines.append(f"const unsigned char *const sprite_mask[] = {{ {mask_pointers} }};")
     lines.append("")
 
-    # Offsets: real per-frame stride (see _frame_stride) times frame index, padded
-    # to a rectangular [SPRITE_COUNT][max_frames] array -- C has no ragged arrays.
-    # A short sprite's unused columns repeat its last real offset rather than 0,
-    # so a program that (buggily) reads past its own sprite_frames[] count still
-    # lands inside that sprite's last real frame instead of at an arbitrary byte.
+    # Offsets: PackedSprite.bytes_per_frame is already the true per-frame stride
+    # for both targets -- on the CPC it accounts for the interleaved mask, so it
+    # must not be doubled again here. Frame index times that stride, padded to a
+    # rectangular [SPRITE_COUNT][max_frames] array -- C has no ragged arrays. A
+    # short sprite's unused columns repeat its last real offset rather than 0, so
+    # a program that (buggily) reads past its own sprite_frames[] count still
+    # lands inside that sprite's last real frame instead of an arbitrary byte.
     offset_rows = []
     for sprite_id in ids:
         packed = sprites[sprite_id]
-        stride = _frame_stride(packed)
-        real = [frame * stride for frame in range(packed.frames)]
+        real = [frame * packed.bytes_per_frame for frame in range(packed.frames)]
         padded = real + [real[-1]] * (max_frames - len(real))
         offset_rows.append("{" + ", ".join(str(value) for value in padded) + "}")
     lines.append(

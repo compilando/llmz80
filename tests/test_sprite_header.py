@@ -72,10 +72,12 @@ def test_frame_offset_on_the_spectrum_is_plain_frame_times_bytes_per_frame():
 
 
 def test_frame_offset_on_the_cpc_accounts_for_the_interleaved_mask():
-    """CPC frames are twice `bytes_per_frame` long in `data` because the mask rides
-    along interleaved with the colour bytes; the offset table must stride by that
-    real length, not by `PackedSprite.bytes_per_frame` alone."""
-    packed = _cpc_packed(frames=3, width_bytes=8)  # bytes_per_frame = 8*16 = 128
+    """CPC frames are twice `width_bytes * height` long in `data` because the mask
+    rides along interleaved with the colour bytes. `PackedSprite.bytes_per_frame`
+    already reports that true, doubled stride (it is interleaving-aware), so the
+    offset table is just frame index times `bytes_per_frame` -- same formula as
+    the Spectrum test above, only the value differs because the stride does."""
+    packed = _cpc_packed(frames=3, width_bytes=8)  # bytes_per_frame = 2 * 8*16 = 256
     text = render_sprite_header({"hero": packed})
 
     assert "{0, 256, 512}" in text.replace("\n", " ")
