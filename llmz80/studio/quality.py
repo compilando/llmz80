@@ -7,6 +7,7 @@ from typing import Any
 from .models import GameProject, SceneKind
 from .registry import audio_gaps
 from .solvability import solvability_report
+from .terrain_structure import structure_report
 
 
 def design_quality_report(project: GameProject) -> dict[str, Any]:
@@ -44,17 +45,21 @@ def design_quality_report(project: GameProject) -> dict[str, Any]:
     }
     solvability = solvability_report(project)
     checks["every_level_is_solvable"] = solvability.solvable
+    structure = structure_report(project)
+    checks["every_level_has_genre_shaped_terrain"] = structure.structured
     gaps = audio_gaps(project)
     checks["audio_is_supported_by_target"] = not gaps
     failures = [name for name, passed in checks.items() if not passed]
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "checks": checks,
         "failures": failures,
         "solvability_failures": solvability.failures,
+        "terrain_structure_failures": structure.failures,
         "audio_gaps": gaps,
         "achievable_score": achievable_score,
         "solvability": solvability.as_dict(),
+        "terrain_structure": structure.as_dict(),
         "quality_pass": not failures,
     }
 
