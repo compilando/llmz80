@@ -33,6 +33,13 @@ void plat_text(unsigned char col, unsigned char row, const char *text);
 void plat_cell(unsigned char col, unsigned char row, unsigned char kind);
 void plat_border(unsigned char colour);
 
+/* Draws one 16x16 masked sprite whose top-left corner sits at character cell
+ * (col, row), so it covers two cells each way. Sprites come from sprites.h,
+ * which Studio generates beside your sources; SPRITE_COUNT is zero when the
+ * design carries no artwork, and then this does nothing. */
+void plat_sprite(unsigned char col, unsigned char row, unsigned char sprite,
+                 unsigned char frame);
+
 /* Sound effect identifiers, matching AUDIO_EFFECTS in the design model. */
 #define SOUND_START 0
 #define SOUND_COLLECT 1

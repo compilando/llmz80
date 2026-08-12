@@ -112,3 +112,12 @@ void plat_cell(unsigned char col, unsigned char row, unsigned char kind) {
 void plat_sound(unsigned char effect) {
     (void)effect;
 }
+
+/* Stub: Task 7 gives the CPC its own masked blitter (cpct_drawSpriteMasked
+ * against the interleaved mask+colour bytes pack_cpc already produces). This
+ * task only wires sprites.h into every build, so a CPC program that calls
+ * plat_sprite compiles and links today but draws nothing yet. */
+void plat_sprite(unsigned char col, unsigned char row, unsigned char sprite,
+                 unsigned char frame) {
+    (void)col; (void)row; (void)sprite; (void)frame;
+}

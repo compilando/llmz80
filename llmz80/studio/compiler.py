@@ -23,6 +23,36 @@ from .codegen import (
 )
 from .models import GameProject, TargetPlatform, VideoMode
 from .probes import write_probe_report
+from .sprite_header import render_sprite_header
+from .sprite_sheet import split_frames
+from .spriting import SPRITE_SIZE, PackedSprite, pack_cpc, pack_spectrum
+
+#: A palette to quantise CPC sprite pixels against (see `spriting.pack_cpc`).
+#: Two other sources were considered and rejected for now:
+#:
+#: - `PresentationSpec.palette` (models.py) is a list of raw ints with no
+#:   defined meaning yet -- it is explicitly documented as unused. Treating
+#:   it as RGB here would invent a contract before the task that owns colour
+#:   has written one.
+#: - The pre-Studio `image_utils.get_palette_for_platform` (repo root) lives
+#:   outside the `llmz80` package, pulls in numpy/scipy, calls `sys.exit(1)`
+#:   at import time if `resources/platforms.yml` is missing, and its own CPC
+#:   colour table has gaps (no RGB past firmware colour 21). Importing it
+#:   here would be a layering violation in exchange for an unreliable table.
+#:
+#: So this is a small fixed default, deliberately matching the four hardware
+#: pens `cpc/platform.c`'s `apply_palette()` actually programs at runtime
+#: (HW_BLACK, HW_BLUE, HW_BRIGHT_YELLOW, HW_WHITE): what the packer quantises
+#: sprites against is then what the machine really shows, in both CPC video
+#: modes (mode 1 uses exactly these four pens; mode 0 only ever produces
+#: these same four pen indices too, since no more hardware pens are actually
+#: set). Real per-design colour selection belongs to a later task.
+CPC_DEFAULT_PALETTE: list[tuple[int, int, int]] = [
+    (0, 0, 0),        # HW_BLACK
+    (0, 0, 255),      # HW_BLUE
+    (255, 255, 0),    # HW_BRIGHT_YELLOW
+    (255, 255, 255),  # HW_WHITE
+]
 
 
 @dataclass(frozen=True)
@@ -118,6 +148,30 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
         shutil.copy2(piece, source_dir / piece.name)
     (source_dir / "game_config.h").write_text(render_config_header(project), encoding="utf-8")
     (source_dir / "game_state.h").write_text(render_state_header(), encoding="utf-8")
+
+    # sprites.h is written unconditionally -- render_sprite_header({}) is a
+    # valid, SPRITE_COUNT-0 header, and every project's platform.c includes
+    # "sprites.h" (see plat_sprite), so a design with no sprite-kind assets
+    # still needs one to build.
+    packed_sprites: dict[str, PackedSprite] = {}
+    for asset, source in zip(project.assets, asset_paths):
+        if asset.kind != "sprite":
+            continue
+        if asset.frame_width != SPRITE_SIZE or asset.height != SPRITE_SIZE:
+            # Not shaped like a blitter sprite (every frame 16x16): leave it
+            # to the generic assets.c/assets.h conversion below, the way an
+            # imported asset was handled before sprites.h existed. Only a
+            # sprite-kind asset that already fits the packer's one fixed
+            # size gets a masked sprites.h entry.
+            continue
+        with Image.open(source) as sheet:
+            frames = split_frames(sheet.convert("RGBA"), asset.frames)
+        packed_sprites[asset.id] = (
+            pack_spectrum(frames)
+            if project.target.platform is TargetPlatform.SPECTRUM
+            else pack_cpc(frames, mode=cpc_mode, palette=CPC_DEFAULT_PALETTE)
+        )
+    (source_dir / "sprites.h").write_text(render_sprite_header(packed_sprites), encoding="utf-8")
 
     owned = program_sources(project, project_dir)
     for path in owned:

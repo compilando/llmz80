@@ -10,6 +10,7 @@
 
 #include "platform.h"
 #include "game_config.h"
+#include "sprites.h"
 
 #define ROM_FONT ((const unsigned char *)0x3D00)
 #define FRAMES ((volatile unsigned char *)23672)
@@ -106,6 +107,45 @@ void plat_cell(unsigned char col, unsigned char row, unsigned char kind) {
     } else {
         put_glyph(col, row, blank, PAPER_BLACK | INK_WHITE);
     }
+}
+
+/* Draws one 16x16 masked sprite as four character cells: two cells wide,
+ * two tall. Each half calls zx_cxy2saddr afresh rather than adding a fixed
+ * offset to the first half's address -- the Spectrum's screen file is split
+ * into three non-linear thirds, and only a fresh conversion gets the right
+ * address when the sprite's second row of cells lands in the next third. */
+void plat_sprite(unsigned char col, unsigned char row, unsigned char sprite,
+                 unsigned char frame) {
+#if SPRITE_COUNT
+    const unsigned char *data;
+    const unsigned char *mask;
+    unsigned char half;
+    unsigned char line;
+    if (sprite >= SPRITE_COUNT) return;
+    if (col > 30 || row > 22) return;
+    /* Frame offsets come precomputed from the header: multiplying here would
+     * pull in SDCC's 16-bit routines, which the CPCtelera link rejects and
+     * which cost more than a table lookup anyway. */
+    data = sprite_data[sprite] + sprite_frame_offset[sprite][frame];
+    mask = sprite_mask[sprite] + sprite_frame_offset[sprite][frame];
+    for (half = 0; half < 2; ++half) {
+        unsigned char *base = (unsigned char *)zx_cxy2saddr(col, row + half);
+        for (line = 0; line < 8; ++line) {
+            unsigned char *at = base + ((unsigned int)line << 8);
+            at[0] = (unsigned char)((at[0] & *mask++) | *data++);
+            at[1] = (unsigned char)((at[1] & *mask++) | *data++);
+        }
+    }
+    /* One attribute per covered cell. A single ink per sprite is what the
+     * machine affords and what the era used; per-cell colour would need the
+     * packer to carry an attribute plane. */
+    *(unsigned char *)zx_cxy2aaddr(col, row) = sprite_attribute[sprite];
+    *(unsigned char *)zx_cxy2aaddr(col + 1, row) = sprite_attribute[sprite];
+    *(unsigned char *)zx_cxy2aaddr(col, row + 1) = sprite_attribute[sprite];
+    *(unsigned char *)zx_cxy2aaddr(col + 1, row + 1) = sprite_attribute[sprite];
+#else
+    (void)col; (void)row; (void)sprite; (void)frame;
+#endif
 }
 
 /* Beeper effects through z88dk's certified bit_beep, kept short because the
