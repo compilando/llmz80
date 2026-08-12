@@ -1,8 +1,9 @@
 """The generated header, judged as text a compiler will read."""
 
 import pytest
+from PIL import Image
 
-from llmz80.studio.spriting import PackedSprite
+from llmz80.studio.spriting import PackedSprite, pack_spectrum
 from llmz80.studio.sprite_header import render_sprite_header
 
 
@@ -115,9 +116,34 @@ def test_spectrum_mask_pointers_reference_a_separate_array():
 
 
 def test_attribute_bytes_are_emitted_as_zero_for_every_sprite():
+    """`_packed` builds a `PackedSprite` directly, without going through
+    `pack_spectrum`, so `.attribute` is whatever a bare construction defaults
+    to (0) -- this pins that default, not the packer's colour logic."""
     text = render_sprite_header({"hero": _packed(1), "enemy": _packed(1)})
 
     assert "sprite_attribute[] = {0, 0}" in text.replace("\n", " ").replace("  ", " ")
+
+
+def test_a_sprites_own_nonzero_attribute_reaches_the_header():
+    """A hand-built PackedSprite with a specific attribute byte must come out
+    the other end unchanged, in the right position for its sprite id."""
+    red = PackedSprite(bytes(32), bytes(32), 2, 16, 1, attribute=0x42)
+    black = _packed(1)
+    text = render_sprite_header({"hero": red, "enemy": black})
+
+    assert "sprite_attribute[] = {66, 0}" in text.replace("\n", " ").replace("  ", " ")
+
+
+def test_pack_spectrums_ink_reaches_the_header_not_just_the_packed_sprite():
+    """End to end: a red frame packed by `pack_spectrum` must show up as
+    attribute 66 (0x42, INK_RED | BRIGHT) in the rendered header text, not
+    merely on the `PackedSprite` object that never gets rendered."""
+    red_frame = Image.new("RGBA", (16, 16), (255, 0, 0, 255))
+    packed = pack_spectrum([red_frame])
+
+    text = render_sprite_header({"hero": packed})
+
+    assert "sprite_attribute[] = {66}" in text.replace("\n", " ").replace("  ", " ")
 
 
 def test_mismatched_width_bytes_across_sprites_is_rejected():

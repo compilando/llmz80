@@ -11,6 +11,7 @@ keeps the background. A blit is `screen = (screen & mask) | data`.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 from PIL import Image
@@ -25,6 +26,101 @@ SPRITE_SIZE = 16
 #: decision made once here rather than differently in each caller.
 ALPHA_THRESHOLD = 128
 
+#: Ink and BRIGHT bits exactly as z88dk defines them in <arch/zx.h>, found on
+#: this machine at
+#: /usr/local/share/z88dk/include/_DEVELOPMENT/sdcc/arch/zx.h (lines 15-33),
+#: which is the copy the SDCC build this project targets (see
+#: docs/STUDIO_ROADMAP.md's --sdcccall note in sprite_header.py) actually
+#: includes:
+#:
+#:     #define INK_BLACK   0x00   #define PAPER_BLACK   0x00
+#:     #define INK_BLUE    0x01   #define PAPER_BLUE    0x08
+#:     #define INK_RED     0x02   #define PAPER_RED     0x10
+#:     #define INK_MAGENTA 0x03   #define PAPER_MAGENTA 0x18
+#:     #define INK_GREEN   0x04   #define PAPER_GREEN   0x20
+#:     #define INK_CYAN    0x05   #define PAPER_CYAN    0x28
+#:     #define INK_YELLOW  0x06   #define PAPER_YELLOW  0x30
+#:     #define INK_WHITE   0x07   #define PAPER_WHITE   0x38
+#:     #define BRIGHT      0x40   #define FLASH         0x80
+#:
+#: Read as binary, the eight INK_* values are not an arbitrary enumeration:
+#: INK_BLUE=001, INK_RED=010, INK_GREEN=100, and every other ink is the OR of
+#: those three bits (INK_MAGENTA=011=red+blue, INK_CYAN=101=green+blue,
+#: INK_YELLOW=110=red+green, INK_WHITE=111=all three). Bit 0 means "blue is
+#: on", bit 1 "red is on", bit 2 "green is on". `_spectrum_ink` below computes
+#: the index arithmetically from that layout instead of a hand-written 8-way
+#: table that could silently drift from the real constants.
+_INK_BRIGHT_BIT = 0x40
+
+#: PAPER_BLACK | INK_BLACK. Every current design typology draws on a black
+#: paper (see spriting.py's own module docstring and the game typology
+#: catalogue this Studio ships), and there is exactly one sprite-colour slot
+#: to fill in, so PAPER_BLACK is the paper this module commits to rather than
+#: leaving configurable before a second paper colour is ever asked for.
+_PAPER_BLACK = 0x00
+
+#: A channel this bright or higher counts as "on" when deciding which of
+#: red/green/blue contribute to the ink. 128 is the midpoint of the 0-255
+#: range, which cleanly separates "absent" (0) from either Spectrum
+#: intensity, dim (~0xCD/0xD7 depending on source) or bright (0xFF).
+_CHANNEL_ON_THRESHOLD = 128
+
+#: The average of a colour's "on" channels must reach this brightness to set
+#: BRIGHT. It sits between the dim Spectrum intensity (~0xCD=205..0xD7=215,
+#: depending on which reference you read) and full 0xFF=255, so a genuine dim
+#: colour and a genuine bright one land on opposite sides of it.
+_BRIGHT_THRESHOLD = 230
+
+
+def _spectrum_ink(rgb: tuple[int, int, int]) -> int:
+    """The ink+BRIGHT bits (not yet combined with a paper) for one opaque
+    RGB colour. See the constants above for where the bit layout comes from.
+    """
+    r, g, b = rgb
+    red_on = r >= _CHANNEL_ON_THRESHOLD
+    green_on = g >= _CHANNEL_ON_THRESHOLD
+    blue_on = b >= _CHANNEL_ON_THRESHOLD
+    ink = (0x04 if green_on else 0) | (0x02 if red_on else 0) | (0x01 if blue_on else 0)
+    on_values = [channel for channel, on in zip((r, g, b), (red_on, green_on, blue_on)) if on]
+    bright = bool(on_values) and (sum(on_values) / len(on_values)) >= _BRIGHT_THRESHOLD
+    return ink | (_INK_BRIGHT_BIT if bright else 0)
+
+
+def _dominant_opaque_rgb(frames: list[Image.Image]) -> tuple[int, int, int] | None:
+    """The most common opaque RGB colour across every frame, or `None` if the
+    sprite has no opaque pixels at all.
+
+    Most-common, rather than most-saturated or most-central, because it is
+    the colour a human looking at the sprite would name first: a mostly-red
+    knight with a thin grey outline should read as a red sprite, and "most
+    frequent among opaque pixels" is exactly that without needing to guess at
+    what counts as an edge or a highlight.
+    """
+    counts: Counter[tuple[int, int, int]] = Counter()
+    for frame in frames:
+        pixels = frame.load()
+        for y in range(SPRITE_SIZE):
+            for x in range(SPRITE_SIZE):
+                r, g, b, a = pixels[x, y]
+                if a >= ALPHA_THRESHOLD:
+                    counts[(r, g, b)] += 1
+    if not counts:
+        return None
+    return counts.most_common(1)[0][0]
+
+
+def _spectrum_attribute(frames: list[Image.Image]) -> int:
+    """The one Spectrum attribute byte (PAPER_BLACK | ink [| BRIGHT]) a
+    sprite's frames resolve to. A frame with no opaque pixels at all -- an
+    edge case, not the normal case, since a sprite that draws nothing has
+    nothing to be seen -- falls back to plain PAPER_BLACK | INK_BLACK (0)
+    rather than crashing on an empty Counter.
+    """
+    dominant = _dominant_opaque_rgb(frames)
+    if dominant is None:
+        return _PAPER_BLACK
+    return _PAPER_BLACK | _spectrum_ink(dominant)
+
 
 @dataclass(frozen=True)
 class PackedSprite:
@@ -35,6 +131,14 @@ class PackedSprite:
     width_bytes: int
     height: int
     frames: int
+    #: The Spectrum attribute byte (PAPER_BLACK | ink [| BRIGHT]) this
+    #: sprite's opaque pixels resolve to; see `_spectrum_attribute`. Defaults
+    #: to 0 so every existing direct `PackedSprite(...)` construction --
+    #: production code and tests alike -- keeps compiling unchanged. Ignored
+    #: on the CPC, where colour lives in the pixel data itself (`pack_cpc`'s
+    #: palette), but still present so one `sprites.h` shape compiles against
+    #: both platform libraries.
+    attribute: int = 0
 
     @property
     def bytes_per_frame(self) -> int:
@@ -124,10 +228,19 @@ def _checked(frames: list[Image.Image]) -> list[Image.Image]:
 
 
 def pack_spectrum(frames: list[Image.Image]) -> PackedSprite:
-    """Pack frames as one bit per pixel, two bytes to a row."""
+    """Pack frames as one bit per pixel, two bytes to a row.
+
+    The Spectrum affords one ink for all four character cells a sprite
+    covers -- there is no per-pixel colour, only per-cell attributes, and a
+    16x16 sprite is one cell short of covering a 2x2 attribute block cleanly
+    anyway. `_spectrum_attribute` picks that one ink from the frames' opaque
+    pixels; see it and `_dominant_opaque_rgb` for how.
+    """
+    checked = _checked(frames)
+    attribute = _spectrum_attribute(checked)
     data = bytearray()
     mask = bytearray()
-    for frame in _checked(frames):
+    for frame in checked:
         pixels = frame.load()
         for y in range(SPRITE_SIZE):
             for byte in range(2):
@@ -142,7 +255,7 @@ def pack_spectrum(frames: list[Image.Image]) -> PackedSprite:
                         holes |= 0x80 >> bit
                 data.append(bits)
                 mask.append(holes)
-    return PackedSprite(bytes(data), bytes(mask), 2, SPRITE_SIZE, len(frames))
+    return PackedSprite(bytes(data), bytes(mask), 2, SPRITE_SIZE, len(frames), attribute=attribute)
 
 
 def pack_cpc(
@@ -219,4 +332,9 @@ def pack_cpc(
                         mask_pens.append(transparent_pen)
                 data.append(pack_byte(*mask_pens))
                 data.append(pack_byte(*colour_pens))
+    # `attribute` is left at its default (0): on the CPC colour lives in the
+    # pixel data itself, packed above through `palette`, so there is nothing
+    # for an attribute byte to add. It still exists on this PackedSprite --
+    # unused rather than absent -- so sprite_header.py can emit one
+    # `sprite_attribute[]` array shape that compiles against either platform.
     return PackedSprite(bytes(data), b"", width_bytes, SPRITE_SIZE, len(frames))

@@ -155,11 +155,12 @@ def render_sprite_header(sprites: dict[str, PackedSprite]) -> str:
     lines.append(f"const unsigned char sprite_frames[] = {{{frame_counts}}};")
     lines.append("")
 
-    # No PackedSprite carries colour-attribute data yet, so every sprite gets 0 --
-    # meaningful only on the Spectrum, where 0 is PAPER_BLACK | INK_BLACK; the CPC
-    # blitter ignores this array entirely but still needs it to exist so the same
+    # PackedSprite.attribute (see spriting.py's _spectrum_attribute) carries the
+    # one Spectrum ink+PAPER_BLACK[+BRIGHT] byte a sprite's opaque pixels resolve
+    # to. The CPC blitter ignores this array entirely -- colour lives in its
+    # pixel data instead -- but the array still needs to exist so the same
     # generated program compiles unmodified against either platform library.
-    attribute_bytes = ", ".join("0" for _ in ids)
+    attribute_bytes = ", ".join(str(sprites[sprite_id].attribute) for sprite_id in ids)
     lines.append(f"const unsigned char sprite_attribute[] = {{{attribute_bytes}}};")
     lines.append("")
     lines.append("#endif /* SPRITE_COUNT */")

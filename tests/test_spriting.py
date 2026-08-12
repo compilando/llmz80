@@ -256,6 +256,91 @@ def test_mode_one_palette_over_four_entries_is_refused():
         pack_cpc([_square()], mode=1, palette=palette)
 
 
+# --- Spectrum attribute (ink) -----------------------------------------------
+#
+# One ink for the whole sprite is what the Spectrum affords: attributes are
+# per character cell, not per pixel. `_spectrum_ink` derives the 3-bit ink
+# index and the BRIGHT bit from the dominant opaque colour's RGB using the
+# real z88dk <arch/zx.h> bit layout (see spriting.py); these values are
+# checked by hand against that layout, not read off the implementation.
+#
+# INK_RED=0x02, INK_CYAN=0x05, INK_YELLOW=0x06, INK_WHITE=0x07, BRIGHT=0x40,
+# PAPER_BLACK=0x00 (llmz80/studio/spriting.py cites the exact header and
+# lines). The RGB fixtures below are the Spectrum's own canonical bright and
+# dim colour values (bright: 0/255 per channel; dim: 0/0xCD per channel).
+
+
+def _solid(rgb: tuple[int, int, int]) -> Image.Image:
+    """A fully opaque 16x16 frame, one solid RGB colour."""
+    return Image.new("RGBA", (16, 16), (*rgb, 255))
+
+
+def test_a_mostly_red_frame_gets_bright_red_ink_on_black_paper():
+    packed = pack_spectrum([_solid((255, 0, 0))])
+
+    # 0x00 (PAPER_BLACK) | 0x02 (INK_RED) | 0x40 (BRIGHT) = 0x42.
+    assert packed.attribute == 0x42
+
+
+def test_a_mostly_white_frame_gets_bright_white_ink():
+    packed = pack_spectrum([_solid((255, 255, 255))])
+
+    # INK_WHITE=0x07 | BRIGHT=0x40 = 0x47.
+    assert packed.attribute == 0x47
+
+
+def test_a_mostly_cyan_frame_gets_bright_cyan_ink():
+    packed = pack_spectrum([_solid((0, 255, 255))])
+
+    # INK_CYAN=0x05 | BRIGHT=0x40 = 0x45.
+    assert packed.attribute == 0x45
+
+
+def test_a_mostly_yellow_frame_gets_bright_yellow_ink():
+    packed = pack_spectrum([_solid((255, 255, 0))])
+
+    # INK_YELLOW=0x06 | BRIGHT=0x40 = 0x46.
+    assert packed.attribute == 0x46
+
+
+def test_the_dominant_colour_across_frames_wins_not_the_first_frame():
+    """A sprite whose first frame is a small red dot but whose second frame
+    (and most pixels overall) is solid cyan should read as cyan -- "most
+    common opaque colour", not "first frame's colour"."""
+    packed = pack_spectrum([_dot(0, 0), _solid((0, 255, 255))])
+
+    assert packed.attribute == 0x45  # INK_CYAN | BRIGHT
+
+
+def test_bright_and_dim_red_do_not_collapse_to_the_same_attribute():
+    """(255, 0, 0) is the Spectrum's own bright red; (205, 0, 0) -- 0xCD, the
+    conventional dim intensity -- is its non-bright counterpart. Both are
+    "red" to a human, but the hardware distinguishes them with one bit, and
+    this packer must not throw that bit away."""
+    bright = pack_spectrum([_solid((255, 0, 0))])
+    dim = pack_spectrum([_solid((205, 0, 0))])
+
+    assert bright.attribute == 0x42  # INK_RED | BRIGHT
+    assert dim.attribute == 0x02  # INK_RED, not bright
+    assert bright.attribute != dim.attribute
+
+
+def test_a_fully_transparent_frame_does_not_crash_and_gets_plain_black():
+    packed = pack_spectrum([Image.new("RGBA", (16, 16), (0, 0, 0, 0))])
+
+    # No opaque pixels to take an ink from: PAPER_BLACK | INK_BLACK, i.e. 0.
+    # Harmless, since a fully transparent sprite draws nothing to be seen.
+    assert packed.attribute == 0x00
+
+
+def test_cpc_packing_leaves_the_attribute_at_its_unused_default():
+    """The CPC has no attribute byte -- colour lives in the pixel data via
+    `palette` -- so `pack_cpc` must not invent one."""
+    packed = pack_cpc([_solid((255, 0, 0))], mode=0, palette=[(255, 0, 0)])
+
+    assert packed.attribute == 0
+
+
 def test_cpc_nearest_pen_uses_euclidean_distance_in_rgb():
     """A pixel closer to palette[1] than palette[0], but not an exact match,
     must still resolve to pen 1 -- the packer does its own nearest-colour
