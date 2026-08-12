@@ -6,6 +6,7 @@ import pytest
 
 from llm_z80 import prepare_amstrad_cpc_build_project, resolve_cpct_path
 from llmz80.core.runtime_contracts import archetype_contract, runtime_contract
+from llmz80.core.state_contract import PROBE_WIDTHS, SYMBOLS_BY_NAME, contract_prompt
 from llmz80.utils.helpers import apply_deterministic_cpc_fixes
 
 
@@ -17,6 +18,19 @@ def test_all_generation_archetypes_have_loop_and_primitives():
         contract = archetype_contract(name)
         assert contract["loop"]
         assert contract["required_primitives"]
+
+
+def test_the_contract_carries_an_animation_frame():
+    assert "g_anim_frame" in SYMBOLS_BY_NAME
+    assert SYMBOLS_BY_NAME["g_anim_frame"].required is False
+    assert PROBE_WIDTHS["g_anim_frame"] == 1
+
+
+def test_the_prompt_explains_when_the_animation_frame_must_change():
+    text = contract_prompt()
+
+    assert "g_anim_frame" in text
+    assert "moves" in text
 
 
 @pytest.mark.skipif(shutil.which("zcc") is None, reason="Z88DK is not installed")

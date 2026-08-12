@@ -49,6 +49,13 @@ STATE_CONTRACT: tuple[StateSymbol, ...] = (
         False,
         "worst number of display frames a single game iteration missed; zero is ideal",
     ),
+    StateSymbol(
+        "g_anim_frame",
+        1,
+        False,
+        "the animation frame the player is currently drawn with; it must advance "
+        "while the player moves and hold still while it does not",
+    ),
 )
 
 SYMBOLS_BY_NAME = {symbol.name: symbol for symbol in STATE_CONTRACT}
