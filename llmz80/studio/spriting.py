@@ -38,7 +38,24 @@ class PackedSprite:
 
     @property
     def bytes_per_frame(self) -> int:
-        return self.width_bytes * self.height
+        """How many bytes of `data` one frame really occupies.
+
+        On the Spectrum (`pack_spectrum`), `mask` is a separate, equal-sized
+        array, so a frame is exactly `width_bytes * height` bytes of `data`.
+
+        On the CPC (`pack_cpc`), `mask` is always empty -- the mask does not
+        travel separately, it is interleaved one byte ahead of every colour
+        byte inside `data` (see `pack_cpc`'s docstring). A frame therefore
+        occupies twice `width_bytes * height` bytes of `data`. Reading that off
+        `mask` being empty, rather than a target flag, keeps this in step with
+        the same distinction `pack_cpc` and `pack_spectrum` already draw.
+
+        This is what makes `len(data) == frames * bytes_per_frame` true for
+        both packers -- the property answers "how far to the next frame",
+        not just "how big is one row block".
+        """
+        stride = self.width_bytes * self.height
+        return stride if self.mask else stride * 2
 
 
 def _nearest_pen(rgb: tuple[int, int, int], palette: list[tuple[int, int, int]]) -> int:
@@ -171,6 +188,13 @@ def pack_cpc(
     pixels_per_byte = 2 if mode == 0 else 4
     width_bytes = SPRITE_SIZE // pixels_per_byte
     bits_per_pen = 4 if mode == 0 else 2
+    max_pens = 1 << bits_per_pen  # 16 in mode 0, 4 in mode 1: what fits in the pen's bit width
+    if len(palette) > max_pens:
+        raise ValueError(
+            f"mode {mode} pens are {bits_per_pen} bits wide, so a palette can have at most "
+            f"{max_pens} entries; got {len(palette)}. A longer palette would silently alias "
+            "two colours onto the same pen, since only the low bits of the index are encoded."
+        )
     transparent_pen = (1 << bits_per_pen) - 1  # all bits set -> "keep the background" per pixel
     pack_byte = _pack_byte_m0 if mode == 0 else _pack_byte_m1
 

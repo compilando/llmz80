@@ -56,6 +56,67 @@ def test_a_frame_that_is_not_sixteen_by_sixteen_is_refused():
         pack_spectrum([Image.new("RGBA", (8, 8), (0, 0, 0, 0))])
 
 
+def test_bytes_per_frame_tells_the_truth_about_the_spectrum_layout():
+    packed = pack_spectrum([_square(), _square()])
+
+    assert len(packed.data) == packed.frames * packed.bytes_per_frame
+
+
+# --- Mirror-proof fixtures --------------------------------------------------
+#
+# The fixtures above (an 8x8 opaque block in the top-left of a 16x16 frame)
+# are symmetric enough that flipping bit order within a byte, or reversing row
+# order, still satisfies every assertion above. These fixtures single out one
+# pixel at a time so that kind of mirroring is caught. The expected bytes are
+# derived independently from the machine convention `0x80 >> bit` (leftmost
+# pixel is the high bit) and row-major, top-to-bottom order -- not read off
+# the implementation.
+
+
+def _dot(x: int, y: int) -> Image.Image:
+    """A transparent 16x16 frame with exactly one opaque pixel at `(x, y)`."""
+    frame = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    frame.putpixel((x, y), (255, 255, 255, 255))
+    return frame
+
+
+def test_spectrum_pixel_at_origin_sets_the_high_bit_of_the_left_byte():
+    packed = pack_spectrum([_dot(0, 0)])
+
+    assert packed.data[0] == 0x80
+    assert packed.data[1] == 0x00
+
+
+def test_spectrum_pixel_at_x_seven_sets_the_low_bit_of_the_left_byte():
+    """x=7 is the rightmost pixel still inside the left byte -- pins bit order
+    within a byte in a way (0, 0) alone cannot: reversing `0x80 >> bit` to
+    `0x01 << bit` would put this pixel's bit in the same place as x=0's."""
+    packed = pack_spectrum([_dot(7, 0)])
+
+    assert packed.data[0] == 0x01
+    assert packed.data[1] == 0x00
+
+
+def test_spectrum_pixel_at_x_eight_sets_the_high_bit_of_the_right_byte():
+    """x=8 is the leftmost pixel of the right byte -- pins byte order within a
+    row: swapping the left/right bytes would move this pixel into byte 0."""
+    packed = pack_spectrum([_dot(8, 0)])
+
+    assert packed.data[0] == 0x00
+    assert packed.data[1] == 0x80
+
+
+def test_spectrum_pixel_on_row_one_lands_two_bytes_in_and_no_other_row_lights_up():
+    """Pins row order: a fixture where only row 1 is lit distinguishes
+    top-to-bottom from any other row ordering, which a uniformly-opaque
+    top-half fixture cannot."""
+    packed = pack_spectrum([_dot(0, 1)])
+
+    assert packed.data[0] == 0x00   # row 0, left byte: untouched
+    assert packed.data[2] == 0x80   # row 1, left byte: the one lit pixel
+    assert packed.data[4] == 0x00   # row 2, left byte: untouched
+
+
 # --- Amstrad CPC -----------------------------------------------------------
 #
 # The values below are derived by hand from the two macros CPCtelera actually
@@ -170,6 +231,29 @@ def test_mode_one_a_fully_transparent_frame_keeps_the_whole_background():
 
     assert packed.data[0] == 0xFF
     assert packed.data[1] == 0x00
+
+
+def test_bytes_per_frame_tells_the_truth_about_the_cpc_interleaved_layout():
+    """Two mode-0 frames give len(data) == 512 while width_bytes * height == 128:
+    the interleaved mask doubles the real stride, and bytes_per_frame must say
+    so, not just report the width/height figure."""
+    packed = pack_cpc([_square(), _square()], mode=0, palette=[(255, 255, 255)])
+
+    assert len(packed.data) == 512
+    assert packed.bytes_per_frame == 256
+    assert len(packed.data) == packed.frames * packed.bytes_per_frame
+
+
+def test_mode_zero_palette_over_sixteen_entries_is_refused():
+    palette = [(i, i, i) for i in range(17)]
+    with pytest.raises(ValueError, match="mode 0.*16.*17"):
+        pack_cpc([_square()], mode=0, palette=palette)
+
+
+def test_mode_one_palette_over_four_entries_is_refused():
+    palette = [(i, i, i) for i in range(5)]
+    with pytest.raises(ValueError, match="mode 1.*4.*5"):
+        pack_cpc([_square()], mode=1, palette=palette)
 
 
 def test_cpc_nearest_pen_uses_euclidean_distance_in_rgb():
