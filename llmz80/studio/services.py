@@ -17,7 +17,7 @@ from .models import AssetSpec, GameProject, GenreId, ProjectScope, TargetPlatfor
 from .packs import create_default_project
 from .planner import ProjectProposal, proposal_diff
 from .reference import GameReference, ReferenceResearcher, load_reference, save_reference
-from .reference_design import ReferenceDesigner
+from .reference_design import ReferenceDesigner, propose_and_apply
 from .store import ProjectStore
 from .quality import studio_quality_report
 from .acceptance import runtime_script
@@ -117,11 +117,20 @@ class StudioService:
         directory: Path,
         designer: ReferenceDesigner,
         dossier: GameReference | None = None,
-    ) -> tuple[ProjectProposal, str]:
-        """Propose a design adaptation, returned with the diff a reviewer reads.
+        *,
+        attempts: int = 3,
+    ) -> tuple[ProjectProposal, str, GameProject, list[str]]:
+        """Propose a design adaptation, repaired against `apply_proposal`
+        until it is one a reviewer could accept as-is, returned with the diff
+        a reviewer reads.
 
-        Nothing is applied here. Applying is `planner.apply_proposal`, called
-        once somebody has looked at the diff.
+        Nothing is saved here -- `directory` is only where the dossier is
+        read from -- but the returned project is already the one
+        `planner.apply_proposal` built while validating the proposal, ready
+        for a caller to persist once somebody has looked at the diff and
+        agreed. The fourth item is the refusal reason from each attempt that
+        did not apply, oldest first, so a caller can report what repair
+        happened without this layer printing anything itself.
         """
         dossier = dossier or load_reference(directory)
         if dossier is None:
@@ -130,8 +139,13 @@ class StudioService:
             raise ValueError(
                 "no researched game was identified, so there is nothing to adapt to"
             )
-        proposal = designer.propose(project, dossier)
-        return proposal, proposal_diff(proposal)
+        adaptation = propose_and_apply(project, dossier, designer, attempts=attempts)
+        return (
+            adaptation.proposal,
+            proposal_diff(adaptation.proposal),
+            adaptation.project,
+            adaptation.refusals,
+        )
 
     def build(self, project: GameProject, directory: Path) -> BuildResult:
         self.generate_sources(project, directory)

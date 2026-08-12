@@ -7,7 +7,12 @@ from llmz80.studio.models import GenreId, PresentationSpec, TargetPlatform
 from llmz80.studio.packs import create_default_project
 from llmz80.studio.planner import ProjectChange, ProjectProposal, apply_proposal
 from llmz80.studio.reference import GameReference, load_reference, save_reference
-from llmz80.studio.reference_design import DESIGN_SYSTEM_PROMPT, ResponsesReferenceDesigner
+from llmz80.studio.reference_design import (
+    DESIGN_SYSTEM_PROMPT,
+    ResponsesReferenceDesigner,
+    propose_and_apply,
+    repair_feedback,
+)
 from llmz80.studio.services import StudioService
 
 
@@ -228,13 +233,17 @@ def test_a_reference_proposal_is_returned_with_its_diff(tmp_path):
     )
 
     class _Designer:
-        def propose(self, project, dossier):
+        def propose(self, project, dossier, feedback=None):
             return proposal
 
-    returned, diff = service.propose_from_reference(project, directory, _Designer(), _dossier())
+    returned, diff, updated, refusals = service.propose_from_reference(
+        project, directory, _Designer(), _dossier()
+    )
 
     assert returned is proposal
     assert "presentation/style" in diff
+    assert updated.presentation.style == "bright maze on black"
+    assert refusals == []
 
 
 def test_proposing_without_a_dossier_says_so(tmp_path):
@@ -244,7 +253,7 @@ def test_proposing_without_a_dossier_says_so(tmp_path):
     )
 
     class _Designer:
-        def propose(self, project, dossier):
+        def propose(self, project, dossier, feedback=None):
             raise AssertionError("must not be called")
 
     with pytest.raises(ValueError, match="no researched game"):
@@ -264,7 +273,7 @@ def test_proposing_without_a_dossier_argument_falls_back_to_the_archived_one(tmp
     received = []
 
     class _Designer:
-        def propose(self, project, dossier):
+        def propose(self, project, dossier, feedback=None):
             received.append(dossier)
             return ProjectProposal(summary="match the original", changes=[])
 
@@ -283,7 +292,7 @@ def test_proposing_from_an_unidentified_archived_dossier_says_so(tmp_path):
     )
 
     class _Designer:
-        def propose(self, project, dossier):
+        def propose(self, project, dossier, feedback=None):
             raise AssertionError("must not be called")
 
     with pytest.raises(ValueError, match="no researched game was identified"):
@@ -314,3 +323,206 @@ def test_researching_sends_the_brief_and_the_platform_value(tmp_path):
     # TargetPlatform is a str Enum, so it compares equal to its own .value;
     # only checking the type catches passing the enum member itself.
     assert type(received[0][1]) is str
+
+
+# --- the repair loop -------------------------------------------------------
+#
+# The live run's ten-change proposal was thrown away whole over two
+# mechanically fixable errors: a `presentation.style` written past its
+# 80-character bound, and an `entities.1.count` of 0 against a `ge=1` floor.
+# These tests prove `propose_and_apply` turns that kind of refusal into
+# another attempt with real, actionable feedback instead of a dead end.
+
+
+class ScriptedDesigner:
+    """A designer whose attempts are decided in advance -- some refusable,
+    some not -- so the repair loop is testable without a model. Mirrors
+    `generator.ScriptedWriter`."""
+
+    def __init__(self, *attempts: ProjectProposal) -> None:
+        self.attempts = list(attempts)
+        self.feedback_seen: list[str | None] = []
+
+    def propose(self, project, dossier, feedback=None):
+        self.feedback_seen.append(feedback)
+        return self.attempts[min(len(self.feedback_seen), len(self.attempts)) - 1]
+
+
+def _oversized_style_proposal() -> ProjectProposal:
+    """The live-run shape: a `presentation.style` written past its 80-char
+    bound. `ProjectChange.value_text` carries no length limit of its own, so
+    this parses cleanly and is only refused once `apply_proposal` revalidates
+    the whole `GameProject`."""
+    return ProjectProposal(
+        summary="paint the maze from the dossier",
+        changes=[
+            ProjectChange(
+                path="/presentation/style",
+                operation="replace",
+                value_text="x" * 100,
+                reason="the dossier's visual_style ran long",
+            )
+        ],
+    )
+
+
+def _fixed_style_proposal() -> ProjectProposal:
+    return ProjectProposal(
+        summary="paint the maze from the dossier",
+        changes=[
+            ProjectChange(
+                path="/presentation/style",
+                operation="replace",
+                value_text="bright maze on black",
+                reason="the dossier's visual_style, trimmed to fit",
+            )
+        ],
+    )
+
+
+def _sealing_proposal(project) -> ProjectProposal:
+    """Borrowed from tests/test_studio_planner_gate.py: a proposal that
+    `apply_proposal` refuses because it walls a collectible in on every
+    side -- a solvability failure, not a schema violation, so it exercises
+    `repair_feedback`'s other branch."""
+    occupied = {(s.col, s.row) for s in project.levels[0].spawns}
+    roles = {e.id: e.role for e in project.entities}
+    neighbours = lambda c: [(c[0] + 1, c[1]), (c[0] - 1, c[1]), (c[0], c[1] + 1), (c[0], c[1] - 1)]
+    target = next(
+        (s.col, s.row)
+        for s in project.levels[0].spawns
+        if roles.get(s.entity) == "collectible"
+        and not any(n in occupied for n in neighbours((s.col, s.row)))
+    )
+    rows = [list(row) for row in project.levels[0].tiles]
+    for col, row in neighbours(target):
+        rows[row][col] = "#"
+    return ProjectProposal(
+        summary="add decorative walls",
+        changes=[
+            ProjectChange(
+                path="/levels/0/tiles",
+                operation="replace",
+                value_rows=["".join(row) for row in rows],
+                reason="frame the pellet with masonry",
+            )
+        ],
+    )
+
+
+def test_repair_feedback_names_every_field_that_ended_up_out_of_bounds(project):
+    """The exact live-run case: a style written past 80 characters and an
+    entity count zeroed below its ge=1 floor, both in one proposal. Both
+    fields must be named, with their actual bound, not a generic message."""
+    proposal = ProjectProposal(
+        summary="import the dossier wholesale",
+        changes=[
+            ProjectChange(
+                path="/presentation/style",
+                operation="replace",
+                value_text="x" * 100,
+                reason="paste the dossier's visual style",
+            ),
+            ProjectChange(
+                path="/entities/1/count",
+                operation="replace",
+                value_number=0,
+                reason="remove the enemies",
+            ),
+        ],
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        apply_proposal(project, proposal)
+
+    feedback = repair_feedback(excinfo.value)
+
+    assert "/presentation/style" in feedback
+    assert "80 characters" in feedback
+    assert "/entities/1/count" in feedback
+    assert "greater than or equal to 1" in feedback
+
+
+def test_repair_feedback_on_an_unplayable_result_names_solvability_not_fields(project):
+    """The other shape `apply_proposal` raises: a plain sentence about
+    solvability, not a field-by-field pydantic error. It must be quoted, not
+    misread as a validation failure."""
+    with pytest.raises(ValueError) as excinfo:
+        apply_proposal(project, _sealing_proposal(project))
+
+    feedback = repair_feedback(excinfo.value)
+
+    assert "unplayable" in feedback.lower()
+    assert "reachable" in feedback.lower()
+
+
+def test_a_refused_proposal_is_repaired_on_the_second_attempt(project):
+    designer = ScriptedDesigner(_oversized_style_proposal(), _fixed_style_proposal())
+
+    result = propose_and_apply(project, _dossier(), designer)
+
+    assert len(designer.feedback_seen) == 2
+    assert result.proposal is designer.attempts[1]
+    assert result.project.presentation.style == "bright maze on black"
+    assert len(result.refusals) == 1
+    assert "80 characters" in result.refusals[0]
+
+
+def test_the_feedback_handed_to_the_second_attempt_names_the_real_problem(project):
+    designer = ScriptedDesigner(_oversized_style_proposal(), _fixed_style_proposal())
+
+    propose_and_apply(project, _dossier(), designer)
+
+    feedback = designer.feedback_seen[1]
+    assert feedback is not None
+    assert "/presentation/style" in feedback
+    assert "80 characters" in feedback
+
+
+def test_an_unplayable_proposal_is_also_repaired(project):
+    designer = ScriptedDesigner(_sealing_proposal(project), _fixed_style_proposal())
+
+    result = propose_and_apply(project, _dossier(), designer)
+
+    assert "unplayable" in designer.feedback_seen[1].lower()
+    assert result.project.presentation.style == "bright maze on black"
+
+
+def test_exhausting_attempts_raises_carrying_the_last_refusal(project):
+    designer = ScriptedDesigner(
+        _oversized_style_proposal(), _oversized_style_proposal(), _oversized_style_proposal()
+    )
+
+    with pytest.raises(ValueError, match="80 characters"):
+        propose_and_apply(project, _dossier(), designer, attempts=3)
+
+    assert len(designer.feedback_seen) == 3
+
+
+def test_a_proposal_that_applies_first_time_makes_exactly_one_model_call(project):
+    designer = ScriptedDesigner(_fixed_style_proposal())
+
+    result = propose_and_apply(project, _dossier(), designer)
+
+    assert designer.feedback_seen == [None]
+    assert result.refusals == []
+
+
+def test_the_service_repairs_a_refused_proposal_before_returning_it(tmp_path):
+    """Proves the loop is actually reachable through the service both front
+    ends call, not just the module-level function directly."""
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project(
+        "Zampa", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE
+    )
+    save_reference(_dossier(), directory)
+    designer = ScriptedDesigner(_oversized_style_proposal(), _fixed_style_proposal())
+
+    proposal, diff, updated, refusals = service.propose_from_reference(
+        project, directory, designer
+    )
+
+    assert proposal is designer.attempts[1]
+    assert updated.presentation.style == "bright maze on black"
+    assert len(refusals) == 1
+    assert "presentation/style" in diff

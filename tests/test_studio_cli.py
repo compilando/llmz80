@@ -212,7 +212,7 @@ class _FakeDesigner:
     def __init__(self, proposal):
         self._proposal = proposal
 
-    def propose(self, project, dossier):
+    def propose(self, project, dossier, feedback=None):
         return self._proposal
 
 
@@ -347,6 +347,55 @@ def test_adapt_reports_a_proposal_apply_proposal_genuinely_refuses(
     assert "REFUSED:" not in printed
     assert "would leave the game unplayable" in printed
     assert game_path.read_text() == before
+
+
+def test_adapt_repairs_a_refused_proposal_and_tells_the_user_it_retried(
+    tmp_path: Path, capsys, monkeypatch
+):
+    """The live-run bug this loop exists for: a first proposal refused over a
+    mechanically fixable error must not be thrown away whole. This proves the
+    repair actually reaches `project adapt` end to end, and that a user
+    watching the command sees why it took more than one model call."""
+    from llmz80.studio.planner import ProjectChange, ProjectProposal
+    from llmz80.studio.reference import save_reference
+
+    main(["project", "new", str(tmp_path), "Adapt Repair"])
+    capsys.readouterr()
+    directory = tmp_path / "adapt-repair"
+    game_path = directory / "game.yml"
+    save_reference(_identified_dossier("Repair Game"), directory)
+
+    oversized_style = ProjectProposal(
+        summary="paint it like the original",
+        changes=[
+            ProjectChange(
+                path="/presentation/style",
+                operation="replace",
+                value_text="x" * 100,
+                reason="the dossier's visual_style ran long",
+            )
+        ],
+    )
+
+    class _RepairingDesigner:
+        def __init__(self):
+            self.calls = 0
+
+        def propose(self, project, dossier, feedback=None):
+            self.calls += 1
+            return oversized_style if self.calls == 1 else _lives_proposal()
+
+    designer = _RepairingDesigner()
+    _stub_adapt_dependencies(monkeypatch, designer)
+    monkeypatch.setattr("builtins.input", lambda *_: "y")
+    code = main(["project", "adapt", str(game_path)])
+
+    printed = capsys.readouterr().out
+    assert code == 0
+    assert designer.calls == 2
+    assert "Attempt 1 was refused, repairing:" in printed
+    assert "80 characters" in printed
+    assert ProjectStore(tmp_path).load(game_path).gameplay.lives == 5
 
 
 def test_reference_reports_rather_than_crashes_on_a_malformed_model_response(

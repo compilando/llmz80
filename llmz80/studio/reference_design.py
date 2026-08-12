@@ -8,10 +8,13 @@ diff, the protected paths and the playability refusal for free.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from pydantic import ValidationError
+
 from .models import GameProject
-from .planner import ProjectProposal
+from .planner import ProjectProposal, apply_proposal
 from .reference import GameReference
 
 #: Everything the designer is told. It is pointed at the fields that carry a
@@ -82,7 +85,7 @@ Rules:
 
 class ReferenceDesigner(Protocol):
     def propose(
-        self, project: GameProject, dossier: GameReference
+        self, project: GameProject, dossier: GameReference, feedback: str | None = None
     ) -> ProjectProposal: ...
 
 
@@ -93,22 +96,24 @@ class ResponsesReferenceDesigner:
         self.client = client
         self.model = model
 
-    def propose(self, project: GameProject, dossier: GameReference) -> ProjectProposal:
+    def propose(
+        self, project: GameProject, dossier: GameReference, feedback: str | None = None
+    ) -> ProjectProposal:
         if not dossier.identified:
             raise ValueError(
                 "this game was not identified, so there is nothing to adapt the design to"
             )
+        content = (
+            f"RESEARCHED GAME:\n{dossier.model_dump_json(indent=2)}\n\n"
+            f"CURRENT DESIGN:\n{project.model_dump_json(indent=2)}"
+        )
+        if feedback:
+            content += "\n\nYOUR PREVIOUS PROPOSAL WAS REJECTED\n\n" + feedback
         response = self.client.responses.parse(
             model=self.model,
             input=[
                 {"role": "system", "content": DESIGN_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": (
-                        f"RESEARCHED GAME:\n{dossier.model_dump_json(indent=2)}\n\n"
-                        f"CURRENT DESIGN:\n{project.model_dump_json(indent=2)}"
-                    ),
-                },
+                {"role": "user", "content": content},
             ],
             text_format=ProjectProposal,
         )
@@ -116,3 +121,106 @@ class ResponsesReferenceDesigner:
         if parsed is None:
             raise ValueError("the model did not return a structured project proposal")
         return parsed
+
+
+def repair_feedback(error: ValueError) -> str:
+    """Turn a refusal from `apply_proposal` into an instruction the model can
+    act on, the way `generator.repair_prompt` turns a failed build or a wrong
+    reading into one.
+
+    The two shapes `apply_proposal` raises deserve different handling. A
+    `pydantic.ValidationError` names the exact fields that ended up outside
+    their bounds once the changes were applied -- `presentation.style` too
+    long, `entities.1.count` below its minimum -- so it is unpacked field by
+    field rather than passed through as one opaque message. Everything else
+    -- a protected path, a bad JSON pointer, the playability gate's refusal --
+    already reads as a sentence a person wrote, so it is quoted whole and
+    paired with what to do about it.
+    """
+    if isinstance(error, ValidationError):
+        lines = [
+            "THE PROPOSAL WAS REFUSED: THESE FIELDS ENDED UP OUTSIDE THEIR BOUNDS",
+            "",
+        ]
+        for item in error.errors():
+            path = "/" + "/".join(str(part) for part in item["loc"])
+            lines.append(f"  {path}: {item['msg']}")
+        lines.append("")
+        lines.append(
+            "Rewrite only the changes that set these fields so the result stays inside "
+            "each bound. Leave every other change exactly as it was."
+        )
+        return "\n".join(lines)
+    message = str(error)
+    if message.startswith("this proposal would leave the game unplayable"):
+        return (
+            "THE PROPOSAL WAS REFUSED: IT WOULD LEAVE THE GAME UNPLAYABLE\n\n"
+            + message
+            + "\n\nPropose different terrain or spawn changes for the same area that keep "
+            "every floor cell reachable and every collectible obtainable. Do not repeat the "
+            "change that caused this."
+        )
+    return (
+        "THE PROPOSAL WAS REFUSED\n\n"
+        + message
+        + "\n\nRemove or rework whichever change is responsible and propose again."
+    )
+
+
+@dataclass
+class ReferenceAdaptation:
+    """What the repair loop produced: the proposal that finally applied, the
+    project `apply_proposal` already built while checking it, and the refusal
+    each earlier attempt drew, oldest first."""
+
+    proposal: ProjectProposal
+    project: GameProject
+    refusals: list[str] = field(default_factory=list)
+
+
+def propose_and_apply(
+    project: GameProject,
+    dossier: GameReference,
+    designer: ReferenceDesigner,
+    *,
+    attempts: int = 3,
+    allow_budget_changes: bool = False,
+    allow_unplayable: bool = False,
+) -> ReferenceAdaptation:
+    """Propose a design adaptation and validate it through `apply_proposal`,
+    repairing a mechanically refused proposal instead of discarding the whole
+    thing -- the way `generator.write_program` repairs a program that failed
+    to build rather than giving up on the first rejection.
+
+    `apply_proposal` never mutates `project` or touches disk; it only builds
+    and validates a candidate `GameProject` in memory. That means the loop can
+    run to a validated result before anyone has agreed to anything, and the
+    project this returns is exactly the one a caller would get by calling
+    `apply_proposal` again with the same inputs -- so a caller who wants
+    consent first can show the diff, ask, and on "yes" use the project already
+    computed here instead of redoing the work.
+
+    Raises `ValueError` carrying the last refusal reason once attempts run
+    out, so a user who burned several model calls learns what finally went
+    wrong rather than getting a generic failure.
+    """
+    refusals: list[str] = []
+    feedback: str | None = None
+    for _ in range(max(1, attempts)):
+        proposal = designer.propose(project, dossier, feedback)
+        try:
+            updated = apply_proposal(
+                project,
+                proposal,
+                allow_budget_changes=allow_budget_changes,
+                allow_unplayable=allow_unplayable,
+            )
+        except ValueError as exc:
+            refusals.append(str(exc))
+            feedback = repair_feedback(exc)
+            continue
+        return ReferenceAdaptation(proposal=proposal, project=updated, refusals=refusals)
+    raise ValueError(
+        f"the proposal could not be repaired in {attempts} attempt"
+        f"{'s' if attempts != 1 else ''}; the last refusal was: " + refusals[-1]
+    )

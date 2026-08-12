@@ -181,14 +181,21 @@ def _project_command(arguments: list[str]) -> int:
         print(directory / "reference.yml")
         return 0
     if arguments[0] == "adapt":
-        from llmz80.studio.planner import apply_proposal
         from llmz80.studio.reference_design import ResponsesReferenceDesigner
 
         client, model = _openai_client_and_model()
         designer = ResponsesReferenceDesigner(client, model=model)
         try:
-            proposal, diff = service.propose_from_reference(project, directory, designer)
+            proposal, diff, updated, refusals = service.propose_from_reference(
+                project, directory, designer
+            )
         except ValueError as exc:
+            # `propose_from_reference` already repaired what it could; a
+            # ValueError reaching here is either the "no dossier" guard, or
+            # the repair loop having exhausted its attempts and raised
+            # carrying the last refusal -- either way an ordinary outcome,
+            # not a crash, so it is reported the same way as every other
+            # refusal in this file, including release's.
             print(f"ERROR: {exc}")
             # The service has no business knowing what this command is
             # called, so the fix-it hint lives here rather than in its
@@ -196,18 +203,15 @@ def _project_command(arguments: list[str]) -> int:
             if str(exc) == "there is no researched game for this project yet":
                 print("Run `llmz80 project reference PATH` first.")
             return 1
+        # A repair happens silently to the model -- these lines are the only
+        # sign a user watching the command sees that it made more than one
+        # API call, so a silent wait does not read as a hang.
+        for number, reason in enumerate(refusals, start=1):
+            print(f"Attempt {number} was refused, repairing: {reason}")
         print(diff)
         if input("\nApply these changes? [y/N] ").strip().casefold() != "y":
             print("Left unchanged.")
             return 0
-        try:
-            updated = apply_proposal(project, proposal)
-        except ValueError as exc:
-            # Every other refusal in this file prints ERROR:, including
-            # release's -- an ordinary outcome, not a crash -- so this
-            # matches rather than inventing a second vocabulary.
-            print(f"ERROR: {exc}")
-            return 1
         service.save_project(updated, directory)
         print(directory / "game.yml")
         return 0
