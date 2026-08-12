@@ -201,3 +201,103 @@ def test_the_prompt_states_the_movement_pace(project):
 
     assert "one cell every 4 frames" in prompt
     assert "Speed is a pace, not a distance" in prompt
+
+
+def _with_assets(project, assets: list[dict]):
+    document = project.model_dump(mode="json")
+    document["assets"] = assets
+    return type(project).model_validate(document)
+
+
+def test_a_project_without_assets_gets_no_sprite_section(project):
+    assert project.assets == []
+
+    prompt = design_prompt(project)
+
+    assert "SPRITE_" not in prompt
+    assert "plat_sprite" not in prompt
+
+
+def test_a_project_with_sprite_assets_gets_the_sprite_section(project):
+    # "hero" is the id the player entity's `sprite` field already names (see
+    # packs.py); a 32x16 sheet at two frames of 16x16 each is exactly what the
+    # blitter packs, so this asset earns a SPRITE_<ID> constant.
+    with_art = _with_assets(
+        project,
+        [{"id": "hero", "kind": "sprite", "source": "assets/hero.png", "width": 32, "height": 16, "frames": 2}],
+    )
+
+    prompt = design_prompt(with_art)
+
+    assert "SPRITE_HERO" in prompt
+    assert "2 frames" in prompt
+    assert "plat_sprite" in prompt
+    assert "plat_cell" in prompt
+
+
+def test_the_prompt_states_which_entity_wears_a_matching_sprite(project):
+    player = next(entity for entity in project.entities if entity.role == "player")
+    assert player.sprite == "hero"
+    with_art = _with_assets(
+        project,
+        [{"id": "hero", "kind": "sprite", "source": "assets/hero.png", "width": 16, "height": 16, "frames": 1}],
+    )
+
+    prompt = design_prompt(with_art)
+
+    # The sprite's own line names the entity that wears it, not just its
+    # existence: check the two appear together, not merely both in the prompt.
+    hero_lines = [line for line in prompt.splitlines() if "SPRITE_HERO" in line]
+    assert len(hero_lines) == 1
+    assert player.id in hero_lines[0]
+
+
+def test_a_sprite_no_entity_names_claims_no_wearer(project):
+    # No entity in the default project has sprite == "cape", so the prompt must
+    # not invent a binding for it -- an unsupported claim here is worse than
+    # silence, per the same rule the reference dossier follows.
+    assert not any(entity.sprite == "cape" for entity in project.entities)
+    with_art = _with_assets(
+        project,
+        [{"id": "cape", "kind": "sprite", "source": "assets/cape.png", "width": 16, "height": 16, "frames": 1}],
+    )
+
+    prompt = design_prompt(with_art)
+
+    cape_lines = [line for line in prompt.splitlines() if "SPRITE_CAPE" in line]
+    assert len(cape_lines) == 1
+    assert "worn by" not in cape_lines[0]
+    for entity in with_art.entities:
+        assert entity.id not in cape_lines[0]
+
+
+def test_an_asset_shaped_wrong_for_the_blitter_is_left_out(project):
+    # Only a sprite-kind asset whose frames are exactly the blitter's 16x16 gets
+    # packed into sprites.h (see compiler.py); anything else falls back to a
+    # plain asset import and has no SPRITE_<ID>, so the prompt must not claim one.
+    with_art = _with_assets(
+        project,
+        [
+            {
+                "id": "banner",
+                "kind": "sprite",
+                "source": "assets/banner.png",
+                "width": 32,
+                "height": 32,
+                "frames": 1,
+            },
+            {
+                "id": "backdrop",
+                "kind": "screen",
+                "source": "assets/backdrop.png",
+                "width": 16,
+                "height": 16,
+                "frames": 1,
+            },
+        ],
+    )
+
+    prompt = design_prompt(with_art)
+
+    assert "SPRITE_BANNER" not in prompt
+    assert "SPRITE_BACKDROP" not in prompt

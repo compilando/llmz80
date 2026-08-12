@@ -12,8 +12,9 @@ from typing import Any
 
 from llmz80.core.state_contract import STATE_PLAYING, contract_prompt
 
-from .models import AcceptanceScenario, GameProject
+from .models import AcceptanceScenario, AssetSpec, GameProject
 from .solvability import sweep_plan
+from .spriting import SPRITE_SIZE
 
 #: Frames to hold the action key before gameplay is expected to be running.
 START_FRAMES = 30
@@ -142,6 +143,24 @@ def scenarios_prompt(project: GameProject) -> str:
     return "\n".join(lines)
 
 
+def blitter_sprites(project: GameProject) -> list[AssetSpec]:
+    """Assets that `render_project` (see `compiler.py`) actually packs into
+    `sprites.h` as a `SPRITE_<ID>`.
+
+    An asset only earns that constant when it is sprite-kind and every frame is
+    exactly the blitter's fixed 16x16: anything else falls back to the generic
+    `assets.c` import instead and gets no `SPRITE_<ID>` at all. Telling the
+    writer about a constant that will not exist would be a wrong prompt, so
+    this mirrors that same filter rather than assuming every sprite asset
+    qualifies.
+    """
+    return [
+        asset
+        for asset in project.assets
+        if asset.kind == "sprite" and asset.frame_width == SPRITE_SIZE and asset.height == SPRITE_SIZE
+    ]
+
+
 def design_prompt(project: GameProject) -> str:
     """The design itself, in the form a program author needs it.
 
@@ -183,6 +202,21 @@ def design_prompt(project: GameProject) -> str:
         "frame. The runtime acceptance below times its inputs by this rule, so a "
         "program that moves faster or slower than its design says will fail it."
     )
+    sprites = blitter_sprites(project)
+    if sprites:
+        lines.append("")
+        lines.append(
+            "Sprites: actors are drawn with plat_sprite(col, row, sprite, frame); "
+            "terrain cells are drawn with plat_cell. Each sprite below is a "
+            "SPRITE_<ID> constant and a frame count from sprites.h."
+        )
+        for asset in sprites:
+            identifier = f"SPRITE_{asset.id.upper()}"
+            frame_word = "frame" if asset.frames == 1 else "frames"
+            wearers = [entity.id for entity in project.entities if entity.sprite == asset.id]
+            worn_by = f", worn by {', '.join(wearers)}" if wearers else ""
+            lines.append(f"  {asset.id}: {identifier}, {asset.frames} {frame_word}{worn_by}")
+
     if project.audio.effects:
         lines.append("")
         lines.append("Sound effects to play: " + ", ".join(project.audio.effects))
