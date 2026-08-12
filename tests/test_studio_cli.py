@@ -45,7 +45,7 @@ def test_help_lists_every_project_subcommand(capsys):
     assert main(["help"]) == 0
 
     printed = capsys.readouterr().out
-    for command in ("new", "validate", "scaffold", "build", "test", "release", "write"):
+    for command in ("new", "validate", "scaffold", "build", "test", "release", "write", "sprites"):
         assert f"llmz80 project {command}" in printed
 
 
@@ -447,3 +447,185 @@ def test_reference_reports_rather_than_crashes_on_a_malformed_model_response(
     assert code == 1
     assert "ERROR:" in printed
     assert "Traceback" not in printed
+
+
+# --- project sprites ---------------------------------------------------
+
+
+def _sprite_sheet_image():
+    """A raw sheet with one solid, non-touching blob per column, on a white
+    background -- what `SpriteArtist.draw_frames` (see `sprite_artist.py`
+    and its own test suite's `_four_pose_sheet`) needs to survive
+    `image_utils._clean_image`/`_scale_image` and come back as four distinct
+    16x16 frames rather than three blank ones.
+    """
+    from PIL import Image, ImageDraw
+
+    column_width = 40
+    width = column_width * 4
+    height = 40
+    sheet = Image.new("RGBA", (width, height), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(sheet)
+    colours = [(255, 0, 0, 255), (0, 128, 0, 255), (0, 0, 255, 255), (255, 165, 0, 255)]
+    for index, colour in enumerate(colours):
+        offset = index * column_width
+        draw.rectangle((offset + 5, 5, offset + column_width - 5, height - 5), fill=colour)
+    return sheet
+
+
+class _FakeImageGenerator:
+    """Stands in for `OpenAIImageGenerator`: returns a fixed sheet, makes no
+    network call, and remembers how many times it was asked to draw.
+    """
+
+    def __init__(self, **_kwargs):
+        self.calls = 0
+
+    def generate_image(self, prompt):
+        self.calls += 1
+        return _sprite_sheet_image()
+
+
+def _stub_sprites_dependencies(monkeypatch, generator):
+    """Route the `sprites` command's OpenAI-backed collaborators to fakes.
+
+    Same reasoning as `_stub_reference_dependencies`: `_project_command`
+    resolves `openai.OpenAI` and `OpenAIImageGenerator` through local imports
+    inside the branch, so the modules they come from are patched rather than
+    any name already bound in `llmz80.cli`.
+    """
+    from types import SimpleNamespace
+
+    import generators.openai_generator as openai_generator_module
+    import llmz80.utils.config as config_module
+    import openai
+
+    monkeypatch.setattr(openai, "OpenAI", lambda **_: SimpleNamespace(api_key="test-key"))
+    monkeypatch.setattr(config_module, "load_api_key", lambda: "test-key")
+    monkeypatch.setattr(config_module, "load_config", lambda *_: {})
+    monkeypatch.setattr(openai_generator_module, "OpenAIImageGenerator", lambda **_: generator)
+
+
+def test_sprites_draws_and_registers_missing_art(tmp_path: Path, capsys, monkeypatch):
+    main(["project", "new", str(tmp_path), "Sprited"])
+    capsys.readouterr()
+    game_path = tmp_path / "sprited" / "game.yml"
+
+    generator = _FakeImageGenerator()
+    _stub_sprites_dependencies(monkeypatch, generator)
+
+    code = main(["project", "sprites", str(game_path)])
+
+    printed = capsys.readouterr().out
+    assert code == 0
+    project = ProjectStore(tmp_path).load(game_path)
+    entity_sprites = sorted({entity.sprite for entity in project.entities})
+    assert generator.calls == len(entity_sprites)
+    registered = {asset.id: asset for asset in project.assets if asset.kind == "sprite"}
+    assert sorted(registered) == entity_sprites
+    for asset in registered.values():
+        assert asset.frames == 4
+        assert (tmp_path / "sprited" / asset.source).is_file()
+        assert asset.id in printed
+
+
+def test_sprites_declining_an_overwrite_leaves_existing_art_untouched(
+    tmp_path: Path, capsys, monkeypatch
+):
+    main(["project", "new", str(tmp_path), "Sprite Decline"])
+    capsys.readouterr()
+    directory = tmp_path / "sprite-decline"
+    game_path = directory / "game.yml"
+
+    _stub_sprites_dependencies(monkeypatch, _FakeImageGenerator())
+    assert main(["project", "sprites", str(game_path)]) == 0
+    capsys.readouterr()
+    before_game = game_path.read_text()
+    before_project = ProjectStore(tmp_path).load(game_path)
+    before_files = {
+        asset.source: (directory / asset.source).read_bytes()
+        for asset in before_project.assets
+        if asset.kind == "sprite"
+    }
+    assert before_files, "the first run should have drawn some art to protect"
+
+    second_generator = _FakeImageGenerator()
+    _stub_sprites_dependencies(monkeypatch, second_generator)
+    monkeypatch.setattr("builtins.input", lambda *_: "n")
+    code = main(["project", "sprites", str(game_path)])
+
+    printed = capsys.readouterr().out
+    assert code == 0
+    assert "Left unchanged." in printed
+    assert second_generator.calls == 0
+    assert game_path.read_text() == before_game
+    for source, contents in before_files.items():
+        assert (directory / source).read_bytes() == contents
+
+
+def test_sprites_accepting_an_overwrite_redraws_the_existing_art(
+    tmp_path: Path, capsys, monkeypatch
+):
+    main(["project", "new", str(tmp_path), "Sprite Accept"])
+    capsys.readouterr()
+    directory = tmp_path / "sprite-accept"
+    game_path = directory / "game.yml"
+
+    _stub_sprites_dependencies(monkeypatch, _FakeImageGenerator())
+    assert main(["project", "sprites", str(game_path)]) == 0
+    capsys.readouterr()
+    before_project = ProjectStore(tmp_path).load(game_path)
+    entity_sprites = sorted({entity.sprite for entity in before_project.entities})
+
+    second_generator = _FakeImageGenerator()
+    _stub_sprites_dependencies(monkeypatch, second_generator)
+    monkeypatch.setattr("builtins.input", lambda *_: "y")
+    code = main(["project", "sprites", str(game_path)])
+
+    printed = capsys.readouterr().out
+    assert code == 0
+    assert second_generator.calls == len(entity_sprites)
+    after_project = ProjectStore(tmp_path).load(game_path)
+    registered = sorted(a.id for a in after_project.assets if a.kind == "sprite")
+    assert registered == entity_sprites
+    assert "Sprite art already exists for:" in printed
+
+
+def test_sprites_prints_the_money_warning_before_constructing_a_generator(
+    tmp_path: Path, capsys, monkeypatch
+):
+    main(["project", "new", str(tmp_path), "Sprite Warn"])
+    capsys.readouterr()
+    game_path = tmp_path / "sprite-warn" / "game.yml"
+
+    class _StoppedBeforeSpending(Exception):
+        pass
+
+    printed_before_construction = []
+
+    class _RefusingGenerator:
+        def __init__(self, **_kwargs):
+            printed_before_construction.append(capsys.readouterr().out)
+            raise _StoppedBeforeSpending()
+
+        def generate_image(self, prompt):  # pragma: no cover - must never run
+            raise AssertionError("an image must not be generated in this test")
+
+    from types import SimpleNamespace
+
+    import generators.openai_generator as openai_generator_module
+    import llmz80.utils.config as config_module
+    import openai
+
+    monkeypatch.setattr(openai, "OpenAI", lambda **_: SimpleNamespace(api_key="test-key"))
+    monkeypatch.setattr(config_module, "load_api_key", lambda: "test-key")
+    monkeypatch.setattr(config_module, "load_config", lambda *_: {})
+    monkeypatch.setattr(openai_generator_module, "OpenAIImageGenerator", _RefusingGenerator)
+
+    import pytest
+
+    with pytest.raises(_StoppedBeforeSpending):
+        main(["project", "sprites", str(game_path)])
+
+    assert printed_before_construction, "the generator was never constructed"
+    assert "OpenAI API" in printed_before_construction[0]

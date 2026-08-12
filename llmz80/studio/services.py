@@ -7,17 +7,20 @@ from pathlib import Path
 from typing import Any
 import re
 import shutil
+import tempfile
 
 from llmz80.core.state_contract import STATE_PLAYING
 from llmz80.quality.emulator_smoke import smoke_test, write_smoke_report
 from PIL import Image
 
 from .compiler import BuildResult, SourceResult, build_project, render_project
-from .models import AssetSpec, GameProject, GenreId, ProjectScope, TargetPlatform
+from .models import AssetSpec, EntitySpec, GameProject, GenreId, ProjectScope, TargetPlatform
 from .packs import create_default_project
 from .planner import ProjectProposal, proposal_diff
 from .reference import GameReference, ReferenceResearcher, load_reference, save_reference
 from .reference_design import ReferenceDesigner, propose_and_apply
+from .sprite_artist import SpriteArtist
+from .spriting import SPRITE_SIZE
 from .store import ProjectStore
 from .quality import studio_quality_report
 from .acceptance import runtime_script
@@ -55,7 +58,19 @@ class StudioService:
         self.store.save(project, directory)
         return render_project(project, directory / "build")
 
-    def add_asset(self, project: GameProject, directory: Path, source: Path) -> AssetSpec:
+    def add_asset(
+        self, project: GameProject, directory: Path, source: Path, *, frames: int = 1
+    ) -> AssetSpec:
+        """Copy `source` into the project's `assets/`, derive its id from the
+        filename, validate it against the design, and save the project.
+
+        `frames` defaults to 1 -- a still image, the only kind every caller
+        before `draw_sprites` ever imported. `draw_sprites` is the first
+        caller that stages a multi-pose sheet, and passes the real count
+        through so the registered `AssetSpec` (which has carried `frames`
+        since it gained the field) states it correctly instead of silently
+        claiming every sheet is one still frame.
+        """
         source = source.expanduser().resolve()
         if not source.is_file():
             raise FileNotFoundError(f"asset not found: {source}")
@@ -81,6 +96,7 @@ class StudioService:
             source=f"assets/{destination.name}",
             width=width,
             height=height,
+            frames=frames,
         )
         candidate = GameProject.model_validate(
             {
@@ -94,6 +110,70 @@ class StudioService:
         project.assets = candidate.assets
         self.store.save(project, directory)
         return asset
+
+    def draw_sprites(
+        self,
+        project: GameProject,
+        directory: Path,
+        artist: SpriteArtist,
+        dossier: GameReference | None = None,
+    ) -> list[AssetSpec]:
+        """Draw the sheet each entity's sprite id is missing, and register it.
+
+        One sheet is drawn per distinct `EntitySpec.sprite` id that has no
+        matching sprite-kind asset yet -- several entities sharing a sprite id
+        (three enemies all wearing "enemy") draw once, not once each, since
+        `SpriteArtist.draw_frames` takes one representative entity and the
+        result is worn by every entity whose `sprite` matches.
+
+        Existing art is never touched here: a caller that wants an entity's
+        sprite redrawn removes its asset first (`llmz80 project sprites` does
+        this after asking), so from this method's view that id is "missing"
+        like any other -- there is exactly one path that registers a sprite
+        asset, `add_asset`, and this reuses it rather than writing a second
+        one that also knows how to save the project and derive an id.
+
+        `dossier`, when not given, is read the same way
+        `propose_from_reference` reads one: a project with no researched game
+        still needs art, and `SpriteArtist.draw_frames` already knows how to
+        compose a prompt from the design alone when there is none.
+        """
+        if dossier is None:
+            dossier = load_reference(directory)
+        have = {asset.id for asset in project.assets if asset.kind == "sprite"}
+        wanted: dict[str, EntitySpec] = {}
+        for entity in project.entities:
+            if entity.sprite not in have:
+                wanted.setdefault(entity.sprite, entity)
+
+        drawn: list[AssetSpec] = []
+        for sprite_id, entity in wanted.items():
+            # `add_asset` derives an asset's id from the file it is given, by
+            # sanitising the filename stem into the same character set
+            # `AssetSpec.id` requires. Staging the sheet under `sprite_id`
+            # itself only round-trips to that same id if `sprite_id` was
+            # already in that set -- true for every sprite this Studio has
+            # ever generated (see `packs.py`), but `EntitySpec.sprite` carries
+            # no such pattern constraint of its own, so a design that broke
+            # that convention would otherwise register an asset silently
+            # misnamed relative to the entity that is meant to wear it.
+            if not re.fullmatch(r"[a-z][a-z0-9_]{1,31}", sprite_id):
+                raise ValueError(
+                    f"entity {entity.id!r} wears sprite id {sprite_id!r}, which is "
+                    "not a valid asset identifier (expected lowercase letters, "
+                    "digits and underscores, starting with a letter)"
+                )
+            frames = artist.draw_frames(project, entity, dossier)
+            sheet = Image.new("RGBA", (SPRITE_SIZE * len(frames), SPRITE_SIZE))
+            for index, frame in enumerate(frames):
+                sheet.paste(frame, (index * SPRITE_SIZE, 0))
+            with tempfile.TemporaryDirectory() as scratch:
+                staged = Path(scratch) / f"{sprite_id}.png"
+                sheet.save(staged)
+                asset = self.add_asset(project, directory, staged, frames=len(frames))
+            have.add(sprite_id)
+            drawn.append(asset)
+        return drawn
 
     def research_reference(
         self, project: GameProject, directory: Path, researcher: ReferenceResearcher
