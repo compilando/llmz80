@@ -1,9 +1,11 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
 from PIL import Image
 
+from llmz80.studio.acceptance import blitter_sprites
 from llmz80.studio.compiler import build_project, render_project, validate_design_fits_target
 from llmz80.studio.layout import relayout
 from llmz80.studio.models import AssetSpec, GenreId, TargetPlatform
@@ -195,6 +197,58 @@ def test_sprites_that_fit_the_budget_build_as_before(tmp_path: Path):
 
     sprites_h = (result.output_dir / "src" / "sprites.h").read_text(encoding="utf-8")
     assert "#define SPRITE_COUNT 1" in sprites_h
+
+
+def test_sprites_h_and_blitter_sprites_agree_on_every_asset(tmp_path: Path):
+    """`compiler.render_project` (what actually gets packed into `sprites.h`)
+    and `acceptance.blitter_sprites` (what `design_prompt` tells the writer to
+    expect) must name exactly the same assets. Both now call the single
+    `spriting.is_blitter_sprite`, so simply calling that function twice would
+    prove nothing about agreement -- it would just prove a function returns
+    the same thing twice. This instead drives each real code path (the
+    compiler's file writer, the prompt's list builder) on a mix designed to
+    exercise every way an asset can fail the rule -- wrong kind, wrong frame
+    size -- and checks the *outputs* against each other: the constants the
+    written header actually `#define`s, versus the ids `blitter_sprites`
+    reports. A future edit that reintroduces a hand-copied filter in only one
+    of the two places -- the exact regression this guards against -- would
+    make one of them disagree with the header the other module wrote.
+    """
+    project = create_default_project("Mix", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    directory = ProjectStore(tmp_path).create(project)
+    assets_dir = directory / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+
+    fits = _add_sprite_asset(directory, "hero", frames=1)  # sprite kind, 16x16: qualifies
+
+    Image.new("RGBA", (16, 32), (255, 0, 0, 255)).save(assets_dir / "banner.png")
+    wrong_size = AssetSpec(
+        id="banner", kind="sprite", source="assets/banner.png", width=16, height=32, frames=1
+    )  # sprite kind, but not 16x16: disqualified by size
+
+    Image.new("RGBA", (16, 16), (0, 255, 0, 255)).save(assets_dir / "tiles.png")
+    wrong_kind = AssetSpec(
+        id="tiles", kind="tileset", source="assets/tiles.png", width=16, height=16, frames=1
+    )  # 16x16, but not sprite kind: disqualified by kind
+
+    project.assets = [fits, wrong_size, wrong_kind]
+
+    result = render_project(project, directory / "build")
+    sprites_h = (result.output_dir / "src" / "sprites.h").read_text(encoding="utf-8")
+
+    expected_ids = {asset.id for asset in blitter_sprites(project)}
+    assert expected_ids == {"hero"}  # sanity: the fixture actually exercises all three cases
+
+    for asset in project.assets:
+        constant = f"SPRITE_{asset.id.upper()}"
+        if asset.id in expected_ids:
+            assert re.search(rf"#define {constant} \d+\b", sprites_h), (
+                f"{constant} is missing from sprites.h though blitter_sprites promised it"
+            )
+        else:
+            assert constant not in sprites_h, (
+                f"{constant} is in sprites.h though blitter_sprites never promised it"
+            )
 
 
 def test_sprites_over_the_static_data_budget_are_refused(tmp_path: Path):

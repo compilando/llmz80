@@ -14,7 +14,7 @@ from llmz80.core.state_contract import STATE_PLAYING, contract_prompt
 
 from .models import AcceptanceScenario, AssetSpec, GameProject
 from .solvability import sweep_plan
-from .spriting import SPRITE_SIZE
+from .spriting import is_blitter_sprite
 
 #: Frames to hold the action key before gameplay is expected to be running.
 START_FRAMES = 30
@@ -147,18 +147,12 @@ def blitter_sprites(project: GameProject) -> list[AssetSpec]:
     """Assets that `render_project` (see `compiler.py`) actually packs into
     `sprites.h` as a `SPRITE_<ID>`.
 
-    An asset only earns that constant when it is sprite-kind and every frame is
-    exactly the blitter's fixed 16x16: anything else falls back to the generic
-    `assets.c` import instead and gets no `SPRITE_<ID>` at all. Telling the
-    writer about a constant that will not exist would be a wrong prompt, so
-    this mirrors that same filter rather than assuming every sprite asset
-    qualifies.
+    Telling the writer about a constant that will not exist would be a wrong
+    prompt, so this calls the exact same rule `render_project` packs against --
+    `spriting.is_blitter_sprite` -- rather than keeping a second copy of it
+    here that could silently drift from the compiler's.
     """
-    return [
-        asset
-        for asset in project.assets
-        if asset.kind == "sprite" and asset.frame_width == SPRITE_SIZE and asset.height == SPRITE_SIZE
-    ]
+    return [asset for asset in project.assets if is_blitter_sprite(asset)]
 
 
 def design_prompt(project: GameProject) -> str:

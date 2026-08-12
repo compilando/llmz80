@@ -16,6 +16,8 @@ from dataclasses import dataclass
 
 from PIL import Image
 
+from .models import AssetSpec
+
 #: Every sprite is one 16x16 block, two character cells square. Fixing the size
 #: keeps the blitter branchless and the budget arithmetic honest; a design that
 #: needs something else needs a second sprite kind, not a variable-size one.
@@ -25,6 +27,28 @@ SPRITE_SIZE = 16
 #: edges no matter how firmly the prompt forbids them, and a threshold is a
 #: decision made once here rather than differently in each caller.
 ALPHA_THRESHOLD = 128
+
+
+def is_blitter_sprite(asset: AssetSpec) -> bool:
+    """Whether `asset` is the kind of thing this module's packers accept.
+
+    Two call sites need this exact answer and must never see a different one:
+    `compiler.render_project` packs an asset into `sprites.h` as a masked
+    `SPRITE_<ID>` only when this is true, and `acceptance.blitter_sprites`
+    (which `design_prompt` reads) must advertise exactly that same set of
+    constants -- promising a `SPRITE_<ID>` the header will not actually define
+    is a prompt that lies to the model, and the model finds out three files
+    and one compiler error later. Living here rather than in either caller
+    means there is one rule instead of two copies that can quietly drift:
+    `spriting.py` already owns what its own packers can and cannot accept
+    (see `SPRITE_SIZE` above), so the answer to "does this asset qualify"
+    belongs next to the size it is being measured against, not duplicated at
+    each place that asks the question.
+
+    An asset that fails this falls back to the older, size-agnostic
+    `assets.c` conversion and gets no `SPRITE_<ID>` constant at all.
+    """
+    return asset.kind == "sprite" and asset.frame_width == SPRITE_SIZE and asset.height == SPRITE_SIZE
 
 #: Ink and BRIGHT bits exactly as z88dk defines them in <arch/zx.h>, found on
 #: this machine at

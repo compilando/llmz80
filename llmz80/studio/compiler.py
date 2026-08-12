@@ -25,7 +25,7 @@ from .models import GameProject, TargetPlatform, VideoMode
 from .probes import write_probe_report
 from .sprite_header import render_sprite_header
 from .sprite_sheet import split_frames
-from .spriting import SPRITE_SIZE, PackedSprite, pack_cpc, pack_spectrum
+from .spriting import PackedSprite, is_blitter_sprite, pack_cpc, pack_spectrum
 
 #: A palette to quantise CPC sprite pixels against (see `spriting.pack_cpc`).
 #: Two other sources were considered and rejected for now:
@@ -198,14 +198,10 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
     # still needs one to build.
     packed_sprites: dict[str, PackedSprite] = {}
     for asset, source in zip(project.assets, asset_paths):
-        if asset.kind != "sprite":
-            continue
-        if asset.frame_width != SPRITE_SIZE or asset.height != SPRITE_SIZE:
-            # Not shaped like a blitter sprite (every frame 16x16): leave it
+        if not is_blitter_sprite(asset):
+            # Not a blitter sprite (see `spriting.is_blitter_sprite`): leave it
             # to the generic assets.c/assets.h conversion below, the way an
-            # imported asset was handled before sprites.h existed. Only a
-            # sprite-kind asset that already fits the packer's one fixed
-            # size gets a masked sprites.h entry.
+            # imported asset was handled before sprites.h existed.
             continue
         with Image.open(source) as sheet:
             frames = split_frames(sheet.convert("RGBA"), asset.frames)
