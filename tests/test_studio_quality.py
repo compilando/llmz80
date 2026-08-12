@@ -183,3 +183,59 @@ def test_cpc_projects_start_silent_and_refuse_effects_by_name():
 
     assert report["checks"]["audio_is_supported_by_target"] is False
     assert any("cannot play sound effects" in gap for gap in report["audio_gaps"])
+
+
+def _swap_level_content(project, i, j):
+    """Return a copy with levels `i` and `j`'s terrain and spawns exchanged.
+
+    A level's identity (id, name) stays put; only what makes it harder or
+    easier -- its grid and spawns -- moves. Every level still places exactly
+    `entity.count` of every entity (the swap just relocates which level holds
+    which content), so `validate_contract` stays satisfied while the route
+    lengths `difficulty_report` measures get scrambled out of order.
+    """
+    document = project.model_dump(mode="json")
+    levels = document["levels"]
+    for key in ("width", "height", "time_limit_seconds", "tiles", "spawns"):
+        levels[i][key], levels[j][key] = levels[j][key], levels[i][key]
+    return type(project).model_validate(document)
+
+
+def test_a_design_whose_levels_do_not_escalate_fails_the_difficulty_gate():
+    project = create_default_project("Flat", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    scrambled = _swap_level_content(project, 0, len(project.levels) - 1)
+
+    report = design_quality_report(scrambled)
+
+    assert report["checks"]["every_level_honors_the_difficulty_curve"] is False
+    assert "every_level_honors_the_difficulty_curve" in report["failures"]
+    assert report["difficulty_failures"]
+    assert report["quality_pass"] is False
+
+
+def test_freshly_created_projects_of_several_genres_honor_their_difficulty_curve():
+    for genre in ("maze_chase", "single_screen_collect", "sokoban", "boss_arena"):
+        for platform in TargetPlatform:
+            project = create_default_project("Curve", platform, genre)
+
+            report = design_quality_report(project)
+
+            assert report["checks"]["every_level_honors_the_difficulty_curve"] is True, (
+                genre,
+                platform,
+            )
+            assert report["difficulty_failures"] == []
+
+
+def test_the_difficulty_report_is_annexed_with_per_level_detail():
+    project = create_default_project("Annex", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+
+    report = design_quality_report(project)
+
+    difficulty = report["difficulty"]
+    assert difficulty["honored"] is True
+    assert difficulty["curve"] == project.gameplay.difficulty_curve
+    assert [level["level"] for level in difficulty["levels"]] == [
+        level.id for level in project.levels
+    ]
+    assert all("estimated_steps" in level for level in difficulty["levels"])

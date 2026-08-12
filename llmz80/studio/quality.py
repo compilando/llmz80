@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .difficulty import difficulty_report
 from .models import GameProject, SceneKind
 from .registry import audio_gaps
 from .solvability import solvability_report
@@ -47,19 +48,23 @@ def design_quality_report(project: GameProject) -> dict[str, Any]:
     checks["every_level_is_solvable"] = solvability.solvable
     structure = structure_report(project)
     checks["every_level_has_genre_shaped_terrain"] = structure.structured
+    difficulty = difficulty_report(project)
+    checks["every_level_honors_the_difficulty_curve"] = difficulty.honored
     gaps = audio_gaps(project)
     checks["audio_is_supported_by_target"] = not gaps
     failures = [name for name, passed in checks.items() if not passed]
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "checks": checks,
         "failures": failures,
         "solvability_failures": solvability.failures,
         "terrain_structure_failures": structure.failures,
+        "difficulty_failures": difficulty.failures,
         "audio_gaps": gaps,
         "achievable_score": achievable_score,
         "solvability": solvability.as_dict(),
         "terrain_structure": structure.as_dict(),
+        "difficulty": difficulty.as_dict(),
         "quality_pass": not failures,
     }
 
