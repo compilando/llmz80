@@ -11,15 +11,16 @@ scripted step (`step_readings`, built in
 `llmz80.quality.emulator_smoke._run_zesarux`) and compares consecutive
 readings directly.
 
-`step_readings` entries carry only an id and a reading -- see the line that
-builds them, `reading: dict[str, Any] = {"id": step.get("id"), "read": {}}`.
-The scripted step's own `hold` (a direction, or the literal "none" for a step
-that touches no key) never reaches that structure, so this module cannot read
-it. Instead it reads the id: a step whose id names it as idle (contains the
-substring "idle") is treated as a hold of "none"; every other step that
-carries a reading of the symbol is treated as movement. This is a naming
-convention for whoever builds the script handed to this gate, not a property
-of `step_readings` itself.
+Each `step_readings` entry carries the scripted step's own `hold` alongside
+its id and reading -- see the line that builds them,
+`reading: dict[str, Any] = {"id": step.get("id"), "hold": step.get("hold"),
+"read": {}}`. `hold` is the literal "none" for a step that touches no key, or
+one of the four movement directions for a step that does (see
+`ScenarioHold` in `llmz80.studio.models`); a fifth value, "action", holds the
+start/fire key and says nothing about whether the player is moving. So this
+module classifies straight from that fact rather than from any naming
+convention on the id: "none" is idle, a direction is movement, and "action"
+(or an absent `hold`) is neither and is left out of the comparison.
 """
 
 from __future__ import annotations
@@ -29,37 +30,61 @@ from typing import Any
 #: The one state-contract symbol this gate is about.
 _SYMBOL = "g_anim_frame"
 
+_DIRECTIONS = {"left", "right", "up", "down"}
 
-def _is_idle_step(step_id: Any) -> bool:
-    return "idle" in str(step_id or "").lower()
+
+def _classify(hold: Any) -> str | None:
+    """Movement state a scripted `hold` implies, or None when it says nothing.
+
+    "action" presses the start/fire key and does not say whether the player
+    sprite is moving, so it is left unclassified rather than guessed at. A
+    missing `hold` -- what every `step_readings` entry looked like before this
+    field was threaded through -- is unclassified for the same reason: no
+    information beats a guess.
+    """
+    if hold == "none":
+        return "idle"
+    if hold in _DIRECTIONS:
+        return "moving"
+    return None
 
 
 def animation_report(runtime: dict[str, Any]) -> dict[str, Any]:
     """Judge `g_anim_frame` against its declared meaning.
 
-    Abstaining is not passing: when no step ever reported the symbol, this
-    returns `observed: False` and `quality_pass: None`, exactly as
-    `probe_report` and `acceptance_report` do when a target has no memory
-    probe adapter -- a target that never reports the symbol must not inherit
-    a pass it never earned. Once at least one reading exists, the verdict is
-    a definite True or False: partial evidence (no idle step in the run, or
-    only one moving reading) is reported as a failure with a reason, not as
-    a second kind of abstention, so a script that omits the checks this gate
-    needs does not silently let a broken animation through.
+    Abstaining is not passing: when no step yields both a reading of the
+    symbol and a `hold` that classifies as moving or idle, this returns
+    `observed: False` and `quality_pass: None`, exactly as `probe_report` and
+    `acceptance_report` do when a target has no memory probe adapter -- a
+    target that never reports usable evidence must not inherit a pass it
+    never earned. This is also what happens to a report written before
+    `hold` reached `step_readings`: every entry is unclassifiable, so it reads
+    exactly like a target that reported nothing.
+
+    Once at least one classified reading exists, the verdict is a definite
+    True or False: partial evidence (no idle step in the run, or only one
+    moving reading) is reported as a failure with a reason, not as a second
+    kind of abstention, so a script that omits the checks this gate needs
+    does not silently let a broken animation through.
     """
-    entries: list[tuple[Any, int, bool]] = []
+    entries: list[tuple[Any, int, str]] = []
     for reading in runtime.get("step_readings") or []:
         read = reading.get("read") or {}
         if _SYMBOL not in read:
             continue
-        entries.append((reading.get("id"), read[_SYMBOL], _is_idle_step(reading.get("id"))))
+        state = _classify(reading.get("hold"))
+        if state is None:
+            continue
+        entries.append((reading.get("id"), read[_SYMBOL], state))
 
     if not entries:
         return {
             "schema_version": 1,
             "observed": False,
-            "reason": f"no step reported {_SYMBOL}; this target has no memory probe "
-            "adapter or the program never declared the symbol",
+            "reason": f"no step yielded both a reading of {_SYMBOL} and a hold "
+            "that classifies as moving or idle; this target has no memory "
+            "probe adapter, the program never declared the symbol, or the "
+            "steps never reached this gate with their hold intact",
             "failures": [],
             "quality_pass": None,
         }
@@ -71,10 +96,10 @@ def animation_report(runtime: dict[str, Any]) -> dict[str, Any]:
     moving_ids: list[str] = []
     idle_held: list[bool] = []
     idle_ids: list[str] = []
-    for (_prev_id, prev_value, _prev_idle), (curr_id, curr_value, curr_idle) in zip(
+    for (_prev_id, prev_value, _prev_state), (curr_id, curr_value, curr_state) in zip(
         entries, entries[1:]
     ):
-        if curr_idle:
+        if curr_state == "idle":
             idle_ids.append(str(curr_id))
             idle_held.append(prev_value == curr_value)
         else:
@@ -109,7 +134,7 @@ def animation_report(runtime: dict[str, Any]) -> dict[str, Any]:
         "schema_version": 1,
         "observed": True,
         "readings": [
-            {"id": step_id, "read": value, "idle": idle} for step_id, value, idle in entries
+            {"id": step_id, "read": value, "state": state} for step_id, value, state in entries
         ],
         "failures": failures,
         "quality_pass": not failures,

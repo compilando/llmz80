@@ -144,3 +144,50 @@ def test_caprice32_delays_post_input_screenshot(monkeypatch, tmp_path):
         "-a", "CAP32_DELAY", "-a", "CAP32_SCRNSHOT"
     ]
     assert report["boot"] is False
+
+
+def test_zesarux_step_reading_carries_the_step_hold(monkeypatch, tmp_path):
+    """Wiring check, no real emulator needed: a scripted step's own `hold`
+    reaches `step_readings` unchanged, so `animation_report` can classify a
+    step as moving or idle from a fact instead of guessing from its id.
+
+    The Caprice32 (Amstrad CPC) path above never builds `step_readings` at
+    all -- `_run_caprice32` takes no `script` argument and its report has no
+    such key -- which is the memory-probe limitation the CPC has: there is no
+    ZRCP-style remote protocol to read memory through, so this field, like
+    the rest of `step_readings`, simply does not exist there.
+    """
+
+    class _FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+    class _FakeProcess:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return "", ""
+
+    monkeypatch.setattr(emulator_smoke, "_connect_zrcp", lambda port, deadline: _FakeConnection())
+    monkeypatch.setattr(emulator_smoke, "_zrcp_command", lambda *args, **kwargs: None)
+    monkeypatch.setattr(emulator_smoke, "_wait_for_file", lambda *args, **kwargs: True)
+    monkeypatch.setattr(emulator_smoke, "_read_probes", lambda *args, **kwargs: {"g_anim_frame": 7})
+    monkeypatch.setattr(emulator_smoke.subprocess, "Popen", lambda *args, **kwargs: _FakeProcess())
+    monkeypatch.setattr(emulator_smoke.time, "sleep", lambda *args, **kwargs: None)
+
+    report = emulator_smoke._run_zesarux(
+        {"executable": "/usr/bin/zesarux"},
+        tmp_path / "output.tap",
+        tmp_path,
+        "",
+        3,
+        probes={"addresses": {"g_anim_frame": 32768}, "widths": {"g_anim_frame": 1}},
+        script=[{"id": "rest", "hold": "none", "frames": 50}],
+    )
+
+    assert report["step_readings"] == [
+        {"id": "rest", "hold": "none", "read": {"g_anim_frame": 7}}
+    ]

@@ -287,7 +287,7 @@ def _run_zesarux(
             # state contract. Steps accumulate inside a single boot, so their
             # order is the order the design states them in.
             for step in steps:
-                reading: dict[str, Any] = {"id": step.get("id"), "read": {}}
+                reading: dict[str, Any] = {"id": step.get("id"), "hold": step.get("hold"), "read": {}}
                 step_readings.append(reading)
                 key = step.get("key")
                 if key in _SPECTRUM_ROWS:
