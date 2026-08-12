@@ -6,9 +6,11 @@ from PIL import Image
 
 from llmz80.studio.compiler import build_project, render_project, validate_design_fits_target
 from llmz80.studio.layout import relayout
-from llmz80.studio.models import GenreId, TargetPlatform
+from llmz80.studio.models import AssetSpec, GenreId, TargetPlatform
 from llmz80.studio.packs import create_default_project
 from llmz80.studio.services import StudioService
+from llmz80.studio.spriting import pack_spectrum
+from llmz80.studio.sprite_sheet import split_frames
 from llmz80.studio.store import ProjectStore
 
 REFERENCE = Path(__file__).resolve().parents[1] / "resources" / "studio_reference"
@@ -23,6 +25,30 @@ def _with_program(project, directory: Path, platform: TargetPlatform):
         if path.suffix in {".c", ".h"}:
             (program / path.name).write_bytes(path.read_bytes())
     return project
+
+
+def _sprite_sheet(frames: int) -> Image.Image:
+    """A `frames`-wide 16x16-per-frame RGBA sheet, half opaque so it packs to
+    non-trivial data and mask bytes rather than an all-one-value edge case.
+    """
+    image = Image.new("RGBA", (16 * frames, 16), (0, 0, 0, 0))
+    pixels = image.load()
+    for y in range(16):
+        for x in range(16 * frames):
+            if (x + y) % 2 == 0:
+                pixels[x, y] = (255, 0, 0, 255)
+    return image
+
+
+def _add_sprite_asset(directory: Path, asset_id: str, frames: int) -> AssetSpec:
+    """Write a real `frames`-frame 16x16 sprite sheet and its AssetSpec."""
+    assets_dir = directory / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{asset_id}.png"
+    _sprite_sheet(frames).save(assets_dir / filename)
+    return AssetSpec(
+        id=asset_id, source=f"assets/{filename}", width=16 * frames, height=16, frames=frames
+    )
 
 
 @pytest.mark.parametrize("platform", list(TargetPlatform))
@@ -157,3 +183,43 @@ def test_building_without_a_program_says_what_is_missing(tmp_path: Path):
 
     with pytest.raises(FileNotFoundError, match="no program yet"):
         build_project(project, directory / "build")
+
+
+def test_sprites_that_fit_the_budget_build_as_before(tmp_path: Path):
+    project = create_default_project("Trim", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    directory = ProjectStore(tmp_path).create(project)
+    asset = _add_sprite_asset(directory, "hero", frames=1)
+    project.assets = [asset]
+
+    result = render_project(project, directory / "build")
+
+    sprites_h = (result.output_dir / "src" / "sprites.h").read_text(encoding="utf-8")
+    assert "#define SPRITE_COUNT 1" in sprites_h
+
+
+def test_sprites_over_the_static_data_budget_are_refused(tmp_path: Path):
+    project = create_default_project("Bulky", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    # A small budget keeps the failing case to two sprite assets instead of
+    # dozens, while still exercising the real packer arithmetic end to end.
+    project.budgets.static_data_bytes = 1024
+    directory = ProjectStore(tmp_path).create(project)
+    big = _add_sprite_asset(directory, "hero", frames=8)
+    small = _add_sprite_asset(directory, "enemy2", frames=1)
+    project.assets = [big, small]
+
+    expected_total = sum(
+        len(packed.data) + len(packed.mask)
+        for packed in (
+            pack_spectrum(split_frames(_sprite_sheet(8), 8)),
+            pack_spectrum(split_frames(_sprite_sheet(1), 1)),
+        )
+    )
+    expected_budget = project.budgets.static_data_bytes // 2
+    assert expected_total > expected_budget  # the case is real over-budget, not contrived
+
+    with pytest.raises(ValueError, match="packed sprites are") as excinfo:
+        render_project(project, directory / "build")
+
+    message = str(excinfo.value)
+    assert f"{expected_total} bytes" in message
+    assert f"{expected_budget} bytes" in message

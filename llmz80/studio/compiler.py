@@ -101,6 +101,49 @@ def validate_design_fits_target(project: GameProject) -> None:
         raise ValueError("this design does not fit the target: " + "; ".join(unsupported))
 
 
+#: Share of `budgets.static_data_bytes` that packed sprites may occupy. The
+#: rest of that budget is not free once sprites.h exists -- it is what the
+#: program's own tables, the level grids the program writer embeds, and
+#: generated headers like game_config.h still have to fit in, and none of
+#: those are visible here to size precisely. A 50/50 split is a deliberately
+#: simple, conservative default: it leaves sprites genuine room (the 2 KB
+#: example this task was written against, eight frames across four entities,
+#: clears it comfortably against every current budget) while guaranteeing
+#: they can never eat the whole number before a line of game code exists.
+SPRITE_STATIC_DATA_SHARE = 0.5
+
+
+def packed_sprite_bytes(packed_sprites: dict[str, PackedSprite]) -> int:
+    """Total bytes `sprites.h` will emit: every sprite's data plus its mask.
+
+    Spectrum sprites keep mask separate from data (`PackedSprite.mask` is a
+    same-length array); CPC sprites interleave the mask into `data` and leave
+    `.mask` empty (see `spriting.pack_cpc`'s docstring). Summing both fields
+    unconditionally is correct either way -- on the CPC it just adds zero.
+    """
+    return sum(len(sprite.data) + len(sprite.mask) for sprite in packed_sprites.values())
+
+
+def validate_sprite_budget(project: GameProject, packed_sprites: dict[str, PackedSprite]) -> None:
+    """Refuse a design whose packed sprites alone blow the static data budget.
+
+    Only sprites are weighed against their reserved share here -- see
+    `SPRITE_STATIC_DATA_SHARE` for why sprites cannot be allowed the whole
+    budget. Nothing else Studio scaffolds is sized against this ceiling; the
+    program's own tables are the program's business.
+    """
+    sprite_bytes = packed_sprite_bytes(packed_sprites)
+    sprite_budget = int(project.budgets.static_data_bytes * SPRITE_STATIC_DATA_SHARE)
+    if sprite_bytes > sprite_budget:
+        raise ValueError(
+            f"packed sprites are {sprite_bytes} bytes but the sprite budget is "
+            f"{sprite_budget} bytes -- {int(SPRITE_STATIC_DATA_SHARE * 100)}% of the "
+            f"{project.budgets.static_data_bytes} byte budgets.static_data_bytes, the rest "
+            "reserved for the program's own tables, level grids and generated config that "
+            "share the same budget. Drop a frame or an entity, or raise static_data_bytes."
+        )
+
+
 def render_project(project: GameProject, output_dir: Path) -> SourceResult:
     """Scaffold a buildable project around the program the project owns.
 
@@ -171,6 +214,7 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
             if project.target.platform is TargetPlatform.SPECTRUM
             else pack_cpc(frames, mode=cpc_mode, palette=CPC_DEFAULT_PALETTE)
         )
+    validate_sprite_budget(project, packed_sprites)
     (source_dir / "sprites.h").write_text(render_sprite_header(packed_sprites), encoding="utf-8")
 
     owned = program_sources(project, project_dir)
