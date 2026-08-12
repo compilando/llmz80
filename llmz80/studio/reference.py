@@ -188,7 +188,12 @@ class ResponsesReferenceResearcher:
                     ),
                 },
             ],
-            tools=[{"type": "web_search"}],
+            # The pinned SDK (openai==1.75.0) types this tool as
+            # web_search_preview. The API also answers to the later
+            # "web_search" name, but sending that makes the SDK mis-parse
+            # its own request model and warn on every search. Move to the
+            # newer name when the pin moves.
+            tools=[{"type": "web_search_preview"}],
             text_format=GameReference,
         )
         parsed = response.output_parsed

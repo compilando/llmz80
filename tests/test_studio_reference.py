@@ -178,7 +178,7 @@ def test_research_asks_for_web_search_and_returns_the_dossier():
 
     assert dossier.title == "Zampa Bolas"
     call = client.responses.calls[0]
-    assert {"type": "web_search"} in call["tools"]
+    assert {"type": "web_search_preview"} in call["tools"]
     assert call["text_format"] is GameReference
     assert call["input"][0] == {"role": "system", "content": RESEARCH_SYSTEM_PROMPT}
     assert "spectrum" in call["input"][1]["content"]
