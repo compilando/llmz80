@@ -5,7 +5,13 @@ import pytest
 from llmz80.studio import editing
 from llmz80.studio.models import GenreId, TargetPlatform
 from llmz80.studio.packs import BUILTIN_PACKS, create_default_project
-from llmz80.studio.tui import StudioApp, render_map
+from llmz80.studio.screen import Stage
+from llmz80.studio.tui import (
+    StudioApp,
+    pick_stage_detail,
+    render_map,
+    render_stage_marks,
+)
 
 
 def _neighbours(cell):
@@ -42,7 +48,10 @@ async def test_creating_a_project_fills_the_editor(tmp_path: Path):
         assert app.project is not None
         assert app.query_one("#f-lives").value == str(app.project.gameplay.lives)
         assert app.query_one("#entity-table").row_count == len(app.project.entities)
-        assert "ready" in app.status_text
+        # A freshly created default project is a solvable, structured design,
+        # which is the six-stage line's "diseño" (design) stage reading done
+        # -- the direct replacement for the old one-line "ready" verdict.
+        assert "diseño ✓" in app.status_text
 
 
 @pytest.mark.asyncio
@@ -53,14 +62,15 @@ async def test_saving_applies_every_scalar_field_at_once(tmp_path: Path):
         app.action_create()
         await pilot.pause()
 
+        # `win_score` is no longer a field this screen edits at all -- it is
+        # derived, per `quality.py`, and no widget offers it any more -- so
+        # this test now only covers the fields that remain: lives and style.
         app.query_one("#f-lives").value = "5"
-        app.query_one("#f-score").value = "120"
         app.query_one("#f-style").value = "neon"
         app.action_save()
         await pilot.pause()
 
         assert app.project.gameplay.lives == 5
-        assert app.project.gameplay.win_score == 120
         assert app.project.presentation.style == "neon"
         assert app.service.open_project(tmp_path / "pilot-game").gameplay.lives == 5
 
@@ -83,7 +93,12 @@ async def test_a_refused_edit_warns_instead_of_crashing(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_the_status_line_reports_an_unsolvable_design(tmp_path: Path):
+async def test_the_stage_line_reports_an_unsolvable_design(tmp_path: Path):
+    """Formerly `test_the_status_line_reports_an_unsolvable_design`: the
+    one-line "ready"/"not releasable" verdict this asserted on is gone, but
+    the underlying fact -- an unsolvable design is refused, and says why --
+    still holds, now carried by the "diseño" stage of the new stage line
+    (`screen._design_stage` folds the same solvability failures in)."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
         app.query_one("#f-title").value = "Sealed"
@@ -95,19 +110,25 @@ async def test_the_status_line_reports_an_unsolvable_design(tmp_path: Path):
         for col, row in _neighbours(target):
             sealed = editing.set_tile(sealed, 0, col, row, "#")
         app.project = sealed
-        app._status()
+        app._refresh_stage()
         await pilot.pause()
 
         status = app.status_text
-        assert "not releasable" in status
+        assert "diseño ✗" in status
         assert "seal off" in status
 
 
 @pytest.mark.asyncio
 async def test_every_typology_can_be_chosen(tmp_path: Path):
+    """The genre `Select` now lives inside the creation panel rather than a
+    "Project" tab -- opened by ctrl+n -- but it is still queryable whether or
+    not the panel is open (hidden widgets stay in the tree), and it still
+    has to offer every built-in typology."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
+        app.action_new_dialog()
         await pilot.pause()
+        assert app.active_panel == "create"
 
         offered = {str(value) for _label, value in app.query_one("#f-genre")._options}
 
@@ -200,3 +221,198 @@ async def test_the_brief_is_saved_and_reaches_the_prompt(tmp_path: Path):
         assert "ghosts" in app.project.metadata.brief
         assert "ghosts" in design_prompt(app.project)
         assert "ghosts" in app.service.open_project(tmp_path / "zampabolas").metadata.brief
+
+
+# --- new behaviour: the panelled screen this task builds -------------------
+
+
+def test_render_stage_marks_shows_one_icon_per_stage():
+    stages = [
+        Stage("referencia", "done", "Zampa Bolas (System 4, 1990) · 8 fuentes"),
+        Stage("diseño", "done"),
+        Stage("sprites", "failed", "0/2 accepted by the blitter"),
+        Stage("programa", "pending"),
+    ]
+
+    plain = render_stage_marks(stages, colour=False)
+
+    assert plain == "referencia ✓  diseño ✓  sprites ✗  programa —"
+    assert "[red]" not in plain
+
+
+def test_render_stage_marks_colours_each_state():
+    stages = [Stage("gates", "done"), Stage("release", "pending")]
+
+    coloured = render_stage_marks(stages, colour=True)
+
+    assert "[green]✓[/green]" in coloured
+    assert "[dim]—[/dim]" in coloured
+
+
+def test_pick_stage_detail_prefers_the_first_failure():
+    stages = [
+        Stage("referencia", "done", "found it"),
+        Stage("diseño", "failed", "walls seal off 1 collectible"),
+        Stage("sprites", "failed", "0/2 accepted"),
+    ]
+
+    assert pick_stage_detail(stages) == "walls seal off 1 collectible"
+
+
+def test_pick_stage_detail_falls_back_to_a_done_stage_with_no_failure():
+    stages = [Stage("referencia", "done", "found it"), Stage("diseño", "done")]
+
+    assert pick_stage_detail(stages) == "found it"
+
+
+def test_pick_stage_detail_is_empty_with_nothing_to_report():
+    assert pick_stage_detail([Stage("referencia", "pending")]) == ""
+
+
+@pytest.mark.asyncio
+async def test_a_panel_key_opens_its_panel_and_hides_the_resting_screen(tmp_path: Path):
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Panels"
+        app.action_create()
+        await pilot.pause()
+        # Focus somewhere that does not own letter keys, the way a person
+        # would after tabbing off the title field.
+        app.query_one("#entity-table").focus()
+        await pilot.pause()
+
+        await pilot.press("e")
+        await pilot.pause()
+
+        assert app.active_panel == "entities"
+        assert app.query_one("#design").display is False
+        assert app.query_one("#panel-entities").has_class("open")
+
+        # Pressing the same key again closes it, back to the resting screen.
+        await pilot.press("e")
+        await pilot.pause()
+
+        assert app.active_panel is None
+        assert app.query_one("#design").display is True
+        assert not app.query_one("#panel-entities").has_class("open")
+
+
+@pytest.mark.asyncio
+async def test_typing_in_the_title_field_never_opens_a_panel(tmp_path: Path):
+    """Panel-toggle keys share letters with ordinary text (m, e, s, d, l);
+    while a text field owns focus, Textual's own `Input` consumes those
+    keystrokes as characters before `on_key` ever sees them, so typing a
+    project title can never be mistaken for "open the map/entities/sprites/
+    diff/log panel". This is the property that made this task's map-editing
+    keys (wasd, space, +/-) safe in the original screen too."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        title = app.query_one("#f-title")
+        title.value = ""
+        title.focus()
+        await pilot.pause()
+
+        await pilot.press("m", "e", "l", "d", "s")
+        await pilot.pause()
+
+        assert title.value == "melds"
+        assert app.active_panel is None
+
+
+@pytest.mark.asyncio
+async def test_map_editing_keys_still_toggle_a_wall(tmp_path: Path):
+    """The map editor is carried into its own panel rather than rewritten:
+    `render_map` is unchanged, and wasd/space/m/+/- still drive `editing`
+    exactly as before -- only reachable through the map panel now."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Editable"
+        app.action_create()
+        await pilot.pause()
+        app.query_one("#entity-table").focus()
+        await pilot.pause()
+        await pilot.press("m")
+        await pilot.pause()
+        assert app.active_panel == "map"
+
+        level = app.project.levels[0]
+        app.query_one("#map-grid").focus()
+        await pilot.pause()
+        # Walk the cursor to a floor cell with no spawn, then toggle it.
+        occupied = {(s.col, s.row) for s in level.spawns}
+        col = col_row = None
+        for row in range(level.height):
+            for col in range(level.width):
+                if (col, row) not in occupied and level.tiles[row][col] != "#":
+                    col_row = (col, row)
+                    break
+            if col_row:
+                break
+        assert col_row is not None
+        while app.cursor[0] != col_row[0]:
+            await pilot.press("d" if app.cursor[0] < col_row[0] else "a")
+            await pilot.pause()
+        while app.cursor[1] != col_row[1]:
+            await pilot.press("s" if app.cursor[1] < col_row[1] else "w")
+            await pilot.pause()
+
+        await pilot.press("space")
+        await pilot.pause()
+
+        assert app.project.levels[0].tiles[col_row[1]][col_row[0]] == "#"
+
+
+@pytest.mark.asyncio
+async def test_the_resting_screen_has_a_fixed_height(tmp_path: Path):
+    """The complaint this task answers: the screen used to grow with every
+    field it carried. At rest -- no project, and with one loaded -- the
+    header/brief/stage-line/shortcuts group occupies the same number of
+    rows; only an opened panel adds height, and it replaces that group
+    rather than stacking on top of it."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        empty_height = app.query_one("#design").size.height
+
+        app.query_one("#f-title").value = "Sized"
+        app.action_create()
+        await pilot.pause()
+        loaded_height = app.query_one("#design").size.height
+
+        assert empty_height == loaded_height
+
+        app.query_one("#entity-table").focus()
+        await pilot.pause()
+        await pilot.press("l")
+        await pilot.pause()
+        assert app.query_one("#design").display is False
+
+
+@pytest.mark.asyncio
+async def test_the_workspace_picker_lists_and_opens_a_project(tmp_path: Path):
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Findable"
+        app.action_create()
+        await pilot.pause()
+        created_dir = app.project_dir
+        app.project = None
+        app.project_dir = None
+        app._refresh_stage()
+
+        app.action_open_dialog()
+        await pilot.pause()
+
+        assert app.active_panel == "open"
+        listing = app.query_one("#workspace-list")
+        assert listing.option_count == 1
+
+        listing.focus()
+        listing.highlighted = 0
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.project is not None
+        assert app.project_dir == created_dir
+        assert app.active_panel is None

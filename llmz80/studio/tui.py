@@ -1,8 +1,15 @@
 """Compact terminal front end for designing, writing and proving a game.
 
-Three panes, one status line, and the actions on keys rather than buttons. The
-work is done by `StudioService` and `editing`; nothing here decides anything
-about a design, which is what keeps the same operations usable from a script.
+The resting screen is deliberately small: an identity line, the brief a
+person actually wrote, the project's six-stage progress, and the keys that
+open everything else. Everything structural -- the map, the entity roster,
+sprites, a pending diff, the log -- lives in a panel that opens over that
+resting screen, one at a time, so the screen a person leaves running never
+grows past what they need to glance at.
+
+The work is done by `StudioService`, `editing` and `screen`; nothing here
+decides anything about a design or a project's status, which is what keeps
+the same operations usable from a script.
 """
 
 from __future__ import annotations
@@ -12,24 +19,26 @@ from pathlib import Path
 
 from textual import work
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.widgets import (
+    Button,
     DataTable,
     Footer,
     Header,
     Input,
     Label,
+    OptionList,
     RichLog,
     Select,
     TextArea,
     Static,
-    TabbedContent,
-    TabPane,
 )
+from textual.widgets.option_list import Option
 
 from . import editing
 from .models import TILE_WALL, GameProject, TargetPlatform
 from .packs import BUILTIN_PACKS
+from .screen import Stage, stage_line
 from .services import StudioService
 
 #: Cell glyphs used by the map editor, keyed by what occupies the cell.
@@ -41,6 +50,29 @@ GLYPH_BY_ROLE = {
     "collectible": "*",
     "hazard": "^",
     "exit": ">",
+}
+
+#: One character per `screen.StageState`, drawn plain (for `status_text`,
+#: which tests and scripts read as a string) and wrapped in colour markup
+#: only for the widget that a person actually looks at.
+STAGE_ICON = {"done": "✓", "pending": "—", "failed": "✗"}
+STAGE_COLOR = {"done": "green", "pending": "dim", "failed": "red"}
+
+#: The five panels a key opens, and the id of the container each shows.
+PANEL_KEYS = {"m": "map", "e": "entities", "s": "sprites", "d": "diff", "l": "log"}
+#: Every panel this screen can show, keyed and toggled the same way,
+#: including the two that stand in for a create/open dialog: `create` and
+#: `open` are not in `PANEL_KEYS` since a letter key never opens them (they
+#: have their own ctrl-bindings), but they use the same single-panel-at-a-time
+#: machinery as the five that do.
+PANEL_IDS = {
+    "map": "panel-map",
+    "entities": "panel-entities",
+    "sprites": "panel-sprites",
+    "diff": "panel-diff",
+    "log": "panel-log",
+    "create": "panel-create",
+    "open": "panel-open",
 }
 
 
@@ -71,24 +103,67 @@ def render_map(project: GameProject, level_index: int, cursor: tuple[int, int]) 
     return "\n".join(lines)
 
 
+def render_stage_marks(stages: list[Stage], *, colour: bool) -> str:
+    """One line: every stage's name and its state as a single character.
+
+    `colour` picks Rich markup (for the widget a person reads) or plain text
+    (for `status_text`, so a test can search it without stripping markup).
+    A pure function over `screen.stage_line`'s own output, kept separate from
+    the widget for the same reason `render_map` is: it can be read and tested
+    without a running application.
+    """
+    parts = []
+    for stage in stages:
+        icon = STAGE_ICON[stage.state]
+        if colour:
+            icon = f"[{STAGE_COLOR[stage.state]}]{icon}[/{STAGE_COLOR[stage.state]}]"
+        parts.append(f"{stage.name} {icon}")
+    return "  ".join(parts)
+
+
+def pick_stage_detail(stages: list[Stage]) -> str:
+    """The one detail worth a person's attention, of the six a stage carries.
+
+    A failed stage explains what to fix, and the earliest failure in the
+    pipeline is usually the one blocking everything after it, so the first
+    failed stage with a detail wins. Absent any failure, the first *done*
+    stage's detail is shown instead -- typically `referencia`'s, naming the
+    game that was found -- so a healthy project is not left silent. Neither
+    exists (a brand new, unresearched, still-being-drawn project) and the
+    line is simply empty.
+    """
+    failed = next((stage for stage in stages if stage.state == "failed" and stage.detail), None)
+    if failed is not None:
+        return failed.detail
+    done = next((stage for stage in stages if stage.state == "done" and stage.detail), None)
+    return done.detail if done is not None else ""
+
+
 class StudioApp(App[None]):
     """A deliberately thin UI: domain rules remain in StudioService."""
 
     TITLE = "LLMZ80 Studio"
     CSS = """
-    #status { height: 1; padding: 0 1; background: $boost; }
-    #map-grid { height: auto; }
+    #design { height: auto; padding: 0 1; }
     .row { height: 3; }
-    .row Label { width: 14; padding: 1 0 0 0; }
+    .row Label { width: 10; padding: 1 0 0 0; }
     .row Input, .row Select { width: 1fr; }
-    RichLog { height: 1fr; border: round $primary; }
-    TabPane { padding: 0 1; }
+    #brief-box { height: 8; border: round $primary; margin: 0 0 1 0; }
+    #brief-box TextArea { height: 1fr; }
+    #stage-line { height: 1; padding: 0 1; }
+    #stage-detail { height: 1; padding: 0 1; }
+    #shortcuts { height: 1; padding: 0 1; background: $boost; }
+    .panel { display: none; height: 1fr; padding: 0 1; }
+    .panel.open { display: block; }
+    #map-grid { height: auto; }
     DataTable { height: auto; max-height: 12; }
-    TextArea { height: 6; }
+    RichLog { height: 1fr; border: round $primary; }
+    #workspace-list { height: 1fr; }
     """
     BINDINGS = [
         ("ctrl+s", "save", "Save"),
-        ("ctrl+n", "create", "New"),
+        ("ctrl+n", "new_dialog", "New"),
+        ("ctrl+o", "open_dialog", "Open"),
         ("ctrl+w", "write", "Write program"),
         ("ctrl+b", "build", "Build"),
         ("ctrl+t", "test", "Test"),
@@ -104,6 +179,10 @@ class StudioApp(App[None]):
         self.project_dir: Path | None = None
         self.level_index = 0
         self.cursor: tuple[int, int] = (0, 0)
+        #: `None` at rest; otherwise one of `PANEL_IDS`'s keys, the single
+        #: panel currently shown over the resting screen.
+        self.active_panel: str | None = None
+        self._workspace_paths: dict[str, Path] = {}
 
     # --- layout ---------------------------------------------------------
 
@@ -114,51 +193,79 @@ class StudioApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Static("No project loaded", id="status")
-        with TabbedContent(initial="project"):
-            with TabPane("Project", id="project"):
-                with VerticalScroll():
-                    yield from self._field("Title", Input(value="My Retro Game", id="f-title"))
-                    yield from self._field(
-                        "Target",
-                        Select(
-                            [("ZX Spectrum", "spectrum"), ("Amstrad CPC", "amstrad_cpc")],
-                            value="spectrum",
-                            allow_blank=False,
-                            id="f-target",
-                        ),
-                    )
-                    yield from self._field(
-                        "Type",
-                        Select(
-                            [(pack.name, pack.id) for pack in BUILTIN_PACKS],
-                            value=BUILTIN_PACKS[0].id,
-                            allow_blank=False,
-                            id="f-genre",
-                        ),
-                    )
-                    yield from self._field("Open", Input(placeholder="path", id="f-open"))
-                    yield Static(
-                        "ctrl+n new · enter in Open loads · ctrl+w write · "
-                        "ctrl+b build · ctrl+t test · ctrl+r release",
-                        id="hint",
-                    )
-                    yield from self._field("Lives", Input(id="f-lives", type="integer"))
-                    yield from self._field("Win score", Input(id="f-score", type="integer"))
-                    yield from self._field("Style", Input(id="f-style"))
-                    yield Label("What this game should be (free text)")
-                    yield TextArea(id="f-brief")
-            with TabPane("Map", id="map"):
-                with Horizontal():
-                    with Vertical():
-                        yield Static("No project loaded.", id="map-grid", markup=True)
-                        yield Static("", id="map-hint")
-                    with Vertical():
-                        yield Select([("level 1", 0)], value=0, allow_blank=False, id="f-level")
-                        yield Select([("none", -1)], value=-1, allow_blank=False, id="f-spawn")
-                        yield DataTable(id="entity-table", cursor_type="row")
-            with TabPane("Log", id="log"):
-                yield RichLog(id="log-view", wrap=True, markup=True)
+        # The resting screen: identity (Header's title/sub_title), the brief
+        # a person wrote (plus the style that only ever feeds a prompt,
+        # nested in the same group since neither is a structural panel), the
+        # six-stage progress line, and the keys that open everything else.
+        with Vertical(id="design"):
+            yield from self._field("Title", Input(value="My Retro Game", id="f-title"))
+            brief_box = Vertical(TextArea(id="f-brief"), id="brief-box")
+            brief_box.border_title = "Brief"
+            yield brief_box
+            yield from self._field("Style", Input(id="f-style"))
+        yield Static("no project loaded", id="stage-line")
+        yield Static("", id="stage-detail")
+        yield Static(
+            "[m] mapa  [e] entidades  [s] sprites  [d] diff  [l] log",
+            id="shortcuts",
+            markup=False,
+        )
+
+        # Panels: one at a time, opened by a key (map/entities/sprites/
+        # diff/log) or a ctrl-binding (create/open), hidden until then.
+        with Vertical(id="panel-create", classes="panel"):
+            yield Static(
+                "New project -- target and type are fixed once it exists."
+            )
+            yield from self._field(
+                "Target",
+                Select(
+                    [("ZX Spectrum", "spectrum"), ("Amstrad CPC", "amstrad_cpc")],
+                    value="spectrum",
+                    allow_blank=False,
+                    id="f-target",
+                ),
+            )
+            yield from self._field(
+                "Type",
+                Select(
+                    [(pack.name, pack.id) for pack in BUILTIN_PACKS],
+                    value=BUILTIN_PACKS[0].id,
+                    allow_blank=False,
+                    id="f-genre",
+                ),
+            )
+            yield Button("Create", id="create-confirm", variant="primary")
+        with Vertical(id="panel-open", classes="panel"):
+            yield Static("Open a project from the workspace.")
+            yield OptionList(id="workspace-list")
+        with Vertical(id="panel-map", classes="panel"):
+            with Horizontal():
+                with Vertical():
+                    yield Static("No project loaded.", id="map-grid", markup=True)
+                    yield Static("", id="map-hint")
+                with Vertical():
+                    yield Select([("level 1", 0)], value=0, allow_blank=False, id="f-level")
+                    yield Select([("none", -1)], value=-1, allow_blank=False, id="f-spawn")
+        with Vertical(id="panel-entities", classes="panel"):
+            yield from self._field("Lives", Input(id="f-lives", type="integer"))
+            yield DataTable(id="entity-table", cursor_type="row")
+        with Vertical(id="panel-sprites", classes="panel"):
+            # Stub: drawing and reviewing sprites lands in the next task.
+            yield Static(
+                "Sprites -- nothing to review here yet; this panel is a stub "
+                "until the next task wires up draw-sprites.",
+                id="sprites-stub",
+            )
+        with Vertical(id="panel-diff", classes="panel"):
+            # Stub: the adapt proposal's diff lands in the next task.
+            yield Static(
+                "Diff -- nothing to review here yet; this panel is a stub "
+                "until the next task wires up research/adapt.",
+                id="diff-stub",
+            )
+        with Vertical(id="panel-log", classes="panel"):
+            yield RichLog(id="log-view", wrap=True, markup=True)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -167,41 +274,66 @@ class StudioApp(App[None]):
         self.query_one("#map-hint", Static).update(
             "wasd move · space wall · m move spawn · +/- count"
         )
+        self._set_panel(None)
         found = len(self.service.store.list_projects())
         self._log(f"Workspace {self.workspace} · {found} projects")
+
+    # --- panels -----------------------------------------------------------
+
+    def _set_panel(self, name: str | None) -> None:
+        """Show `name`'s panel over the resting screen, or return to rest.
+
+        Exactly one panel is visible at a time; opening one implicitly closes
+        whichever was open, and `None` closes the open panel (if any) back to
+        the resting screen -- header, brief, stage line, shortcuts.
+        """
+        self.active_panel = name
+        self.query_one("#design", Vertical).display = name is None
+        self.query_one("#stage-line", Static).display = name is None
+        self.query_one("#stage-detail", Static).display = name is None
+        self.query_one("#shortcuts", Static).display = name is None
+        for key, widget_id in PANEL_IDS.items():
+            self.query_one(f"#{widget_id}", Vertical).set_class(key == name, "open")
+        if name == "open":
+            self._refresh_workspace_list()
+
+    def _toggle_panel(self, name: str) -> None:
+        self._set_panel(None if self.active_panel == name else name)
 
     # --- rendering ------------------------------------------------------
 
     def _log(self, message: str) -> None:
         self.query_one("#log-view", RichLog).write(message)
 
-    #: Last status text, kept so it can be read back without scraping a widget.
-    status_text: str = "No project loaded"
+    #: Last status text, plain (no Rich markup) so it can be read back and
+    #: searched by a test or a script without scraping a widget.
+    status_text: str = "no project loaded"
 
-    def _set_status(self, text: str) -> None:
-        self.status_text = text
-        self.query_one("#status", Static).update(text)
+    def _refresh_stage(self) -> None:
+        """Redraw the stage line and its detail from `screen.stage_line`.
 
-    def _status(self, message: str | None = None) -> None:
-        if message:
-            self._set_status(message)
-            return
+        This is the whole of what used to be `_status`: the six-stage line
+        replaces the old one-line "ready"/"not releasable" verdict, and the
+        identity that used to sit in a `#status` Static now sits in the
+        Header's own `sub_title`.
+        """
         if self.project is None:
-            self._set_status("No project loaded")
+            self.sub_title = ""
+            self.status_text = "no project loaded"
+            self.query_one("#stage-line", Static).update(self.status_text)
+            self.query_one("#stage-detail", Static).update("")
             return
-        state = editing.editing_status(self.project)
-        mark = "[green]ready[/green]" if state["ready"] else "[yellow]not releasable[/yellow]"
-        reasons = list(state["solvability_failures"])
-        reasons.extend(state["structure_failures"])
-        if state["backend_error"]:
-            reasons.append(state["backend_error"])
-        if state["ready"] and state.get("warnings"):
-            reasons = list(state["warnings"])
-        detail = (" · " + "; ".join(reasons)) if reasons else ""
-        self._set_status(
-            f"{self.project.metadata.title} · {self.project.target.platform.value} · "
-            f"{self.project.genre} · {mark}{detail}"
+        self.sub_title = (
+            f"{self.project.metadata.slug} · {self.project.target.platform.value} · "
+            f"{self.project.genre}"
         )
+        stages = stage_line(self.project, self.project_dir)
+        detail = pick_stage_detail(stages)
+        self.status_text = render_stage_marks(stages, colour=False)
+        if detail:
+            self.status_text += f"\n{detail}"
+        self.query_one("#stage-line", Static).update(render_stage_marks(stages, colour=True))
+        self.query_one("#stage-detail", Static).update(detail)
 
     def _refresh(self) -> None:
         if self.project is None:
@@ -209,7 +341,6 @@ class StudioApp(App[None]):
         project = self.project
         self.query_one("#f-title", Input).value = project.metadata.title
         self.query_one("#f-lives", Input).value = str(project.gameplay.lives)
-        self.query_one("#f-score", Input).value = str(project.gameplay.win_score)
         self.query_one("#f-style", Input).value = project.presentation.style
         brief = self.query_one("#f-brief", TextArea)
         if brief.text != project.metadata.brief:
@@ -246,7 +377,18 @@ class StudioApp(App[None]):
                 entity.behaviour,
                 key=entity.id,
             )
-        self._status()
+        self._refresh_stage()
+
+    def _refresh_workspace_list(self) -> None:
+        listing = self.query_one("#workspace-list", OptionList)
+        listing.clear_options()
+        projects = self.service.store.list_projects()
+        self._workspace_paths = {str(index): path for index, path in enumerate(projects)}
+        if not projects:
+            listing.add_option(Option("(no projects in this workspace yet)", id="none"))
+            return
+        for index, path in enumerate(projects):
+            listing.add_option(Option(path.name, id=str(index)))
 
     def _apply(self, operation) -> None:
         """Run an editing operation, reporting refusals instead of crashing."""
@@ -279,46 +421,99 @@ class StudioApp(App[None]):
             self.cursor = (0, 0)
             self._refresh()
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "f-open":
-            self.action_open(event.value)
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "create-confirm":
+            self.action_create()
+            self._set_panel(None)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id != "workspace-list":
+            return
+        path = self._workspace_paths.get(event.option_id or "")
+        if path is None:
+            return
+        self.action_open(str(path))
+        self._set_panel(None)
+
+    #: Widgets that own the letter keys they're typed while focused -- a
+    #: panel-toggle key or a map-editing key must never fire while someone is
+    #: naming a project or writing a brief.
+    _TEXT_ENTRY = (Input, Select, TextArea, Button, OptionList)
 
     def on_key(self, event) -> None:
-        if self.project is None or self.query_one(TabbedContent).active != "map":
+        key = event.key
+        if isinstance(self.focused, self._TEXT_ENTRY):
+            if key == "escape" and self.active_panel is not None:
+                self._set_panel(None)
+                event.stop()
             return
-        if isinstance(self.focused, (Input, Select)):
+        if key == "escape":
+            if self.active_panel is not None:
+                self._set_panel(None)
+                event.stop()
             return
-        level = self.project.levels[self.level_index]
-        col, row = self.cursor
-        moves = {"w": (0, -1), "s": (0, 1), "a": (-1, 0), "d": (1, 0)}
-        if event.key in moves:
-            step = moves[event.key]
-            self.cursor = (
-                min(max(col + step[0], 0), level.width - 1),
-                min(max(row + step[1], 0), level.height - 1),
-            )
-            self._refresh()
-        elif event.key == "space":
-            self._apply(lambda: editing.toggle_tile(self.project, self.level_index, col, row))
-        elif event.key == "m":
-            index = self.query_one("#f-spawn", Select).value
-            if isinstance(index, int) and index >= 0:
-                self._apply(
-                    lambda: editing.move_spawn(self.project, self.level_index, index, col, row)
+        if self.active_panel == "map" and self.project is not None:
+            level = self.project.levels[self.level_index]
+            col, row = self.cursor
+            moves = {"w": (0, -1), "s": (0, 1), "a": (-1, 0), "d": (1, 0)}
+            if key in moves:
+                step = moves[key]
+                self.cursor = (
+                    min(max(col + step[0], 0), level.width - 1),
+                    min(max(row + step[1], 0), level.height - 1),
                 )
-        elif event.key in {"plus", "equals_sign", "minus"}:
+                self._refresh()
+                event.stop()
+                return
+            if key == "space":
+                self._apply(lambda: editing.toggle_tile(self.project, self.level_index, col, row))
+                event.stop()
+                return
+            if key == "m":
+                index = self.query_one("#f-spawn", Select).value
+                if isinstance(index, int) and index >= 0:
+                    self._apply(
+                        lambda: editing.move_spawn(
+                            self.project, self.level_index, index, col, row
+                        )
+                    )
+                event.stop()
+                return
+        if self.active_panel == "entities" and key in {"plus", "equals_sign", "minus"}:
             entity_id = self._selected_entity()
-            if entity_id:
+            if entity_id and self.project is not None:
                 current = next(e.count for e in self.project.entities if e.id == entity_id)
-                delta = -1 if event.key == "minus" else 1
+                delta = -1 if key == "minus" else 1
                 self._apply(
                     lambda: editing.set_entity_count(self.project, entity_id, current + delta)
                 )
-        else:
+            event.stop()
             return
-        event.stop()
+        if key in PANEL_KEYS:
+            self._toggle_panel(PANEL_KEYS[key])
+            event.stop()
 
     # --- actions --------------------------------------------------------
+
+    def action_new_dialog(self) -> None:
+        """ctrl+n: open the creation panel (target and type -- fixed once a
+        project exists); pressed again while it is open, confirm and create.
+
+        Two presses stand in for a dialog's open-then-confirm without a
+        second modal screen: the panel holds exactly the fields a script
+        would also need (title stays on the resting screen, always
+        editable), so `action_create` below is unchanged either way.
+        """
+        if self.active_panel == "create":
+            self.action_create()
+            self._set_panel(None)
+        else:
+            self._set_panel("create")
+
+    def action_open_dialog(self) -> None:
+        """ctrl+o: the workspace picker, replacing a free-text path field
+        with the same list `store.list_projects()` already knows."""
+        self._toggle_panel("open")
 
     def action_create(self) -> None:
         try:
@@ -352,7 +547,6 @@ class StudioApp(App[None]):
                 self.project,
                 self.query_one("#f-title", Input).value.strip(),
                 lives=int(self.query_one("#f-lives", Input).value or 3),
-                win_score=int(self.query_one("#f-score", Input).value or 100),
                 style=self.query_one("#f-style", Input).value.strip(),
                 brief=self.query_one("#f-brief", TextArea).text.strip(),
             )
@@ -396,7 +590,7 @@ class StudioApp(App[None]):
         if self.project is None or self.project_dir is None:
             self.notify("Create or open a project first", severity="warning")
             return
-        self.query_one(TabbedContent).active = "log"
+        self._set_panel("log")
         self._log(f"[yellow]{label}...[/yellow]")
         self._busy(label)
         self._background(job, label)
@@ -417,10 +611,12 @@ class StudioApp(App[None]):
         self._finished(label)
 
     def _busy(self, label: str) -> None:
-        self._set_status(f"[yellow]{label}...[/yellow] (the interface stays usable)")
+        text = f"{label}... (the interface stays usable)"
+        self.status_text = text
+        self.query_one("#stage-detail", Static).update(f"[yellow]{text}[/yellow]")
 
     def _finished(self, label: str) -> None:
-        self._status()
+        self._refresh_stage()
 
     def action_build(self) -> None:
         def work() -> str:
