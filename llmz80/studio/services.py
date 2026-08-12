@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import logging
 import re
 import shutil
 import tempfile
@@ -14,6 +15,7 @@ from llmz80.quality.emulator_smoke import smoke_test, write_smoke_report
 from PIL import Image
 
 from .compiler import BuildResult, SourceResult, build_project, render_project
+from .feel import animation_report
 from .models import AssetSpec, EntitySpec, GameProject, GenreId, ProjectScope, TargetPlatform
 from .packs import create_default_project
 from .planner import ProjectProposal, proposal_diff
@@ -27,6 +29,8 @@ from .acceptance import runtime_script
 from .generator import write_program
 from .release import export_release
 import json
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -238,13 +242,40 @@ class StudioService:
     }
 
     def scenario_script(self, project: GameProject) -> list[dict[str, Any]]:
-        """Executable acceptance steps, with each input resolved to a real key."""
+        """Executable acceptance steps, with each input resolved to a real key.
+
+        `ScenarioHold` documents `"none"` as waiting without touching the
+        keyboard, and that is exactly what a step with no `"key"` entry does
+        in `_run_zesarux` (`llmz80.quality.emulator_smoke`): it reads
+        `step.get("key")`, and a key that is not one of `_SPECTRUM_ROWS` --
+        which `None` never is -- presses nothing but still holds for the
+        step's frames and reads the state contract. So a `"none"` hold is
+        left with no `"key"` field rather than being resolved through
+        `SWEEP_KEYS`, where it was never going to be found, and dropped.
+
+        A direction (or `"action"`) the control scheme genuinely has no key
+        for -- `"joystick"` has no `SWEEP_KEYS` entry at all -- still cannot
+        be driven through the keyboard matrix this emulator scripts, so that
+        step is dropped. But not without a trace: losing acceptance coverage
+        because a design's control scheme lacks a mapping is exactly the
+        kind of thing that hid this method's own bug, so it is logged rather
+        than silently swallowed.
+        """
         keys = dict(self.SWEEP_KEYS.get(project.controls.scheme) or {})
         keys["action"] = "space"
         steps = []
         for step in runtime_script(project):
-            key = keys.get(step["hold"])
+            hold = step["hold"]
+            if hold == "none":
+                steps.append(dict(step))
+                continue
+            key = keys.get(hold)
             if key is None:
+                logger.warning(
+                    "dropping acceptance step %r: control scheme %r has no key "
+                    "for hold %r",
+                    step["id"], project.controls.scheme, hold,
+                )
                 continue
             steps.append({**step, "key": key})
         return steps
@@ -390,7 +421,13 @@ class StudioService:
         report["state_probe"] = probes
         acceptance = self.acceptance_report(project, report)
         report["acceptance"] = acceptance
-        if probes["quality_pass"] is False or acceptance["quality_pass"] is False:
+        animation = animation_report(report)
+        report["animation"] = animation
+        if (
+            probes["quality_pass"] is False
+            or acceptance["quality_pass"] is False
+            or animation["quality_pass"] is False
+        ):
             report["quality_pass"] = False
         write_smoke_report(report, build.output_dir / "emulator_report.json")
         combined = studio_quality_report(project, build=build.report, runtime=report)

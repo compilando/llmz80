@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from llmz80.studio.acceptance import runtime_script
+from llmz80.studio.compiler import BuildResult
 from llmz80.studio.models import GenreId, TargetPlatform
 from llmz80.studio.packs import create_default_project
 from llmz80.studio.probes import (
@@ -164,9 +166,58 @@ def test_the_script_resolves_every_hold_through_the_control_scheme(tmp_path: Pat
 
     assert project.controls.scheme == "qaop_space"
     keys = {"left": "o", "right": "p", "up": "q", "down": "a", "action": "space"}
-    assert [step["id"] for step in steps] == ["start_game", "collect_scores"]
+    # The default maze_chase pack's enemy chases, so all three core criteria
+    # are executable (see test_default_projects_ship_runnable_acceptance in
+    # test_studio_acceptance.py).
+    assert [step["id"] for step in steps] == [
+        "start_game",
+        "collect_scores",
+        "enemy_costs_life",
+    ]
     for step in steps:
-        assert step["key"] == keys[step["hold"]]
+        if step["hold"] == "none":
+            assert "key" not in step
+        else:
+            assert step["key"] == keys[step["hold"]]
+
+
+def test_a_direction_resolves_to_its_key_under_both_control_schemes(tmp_path: Path):
+    service = StudioService.at(tmp_path)
+    spectrum = create_default_project("Cursors", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    spectrum.controls.scheme = "cursor_space"
+
+    steps = service.scenario_script(spectrum)
+
+    directions = {"left": "5", "right": "8", "up": "7", "down": "6"}
+    collect = next(step for step in steps if step["id"] == "collect_scores")
+    assert collect["key"] == directions[collect["hold"]]
+
+
+def test_a_none_hold_survives_as_a_waiting_step_rather_than_being_dropped(tmp_path: Path):
+    service = StudioService.at(tmp_path)
+    project = create_default_project("Chase", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+
+    steps = service.scenario_script(project)
+
+    enemy = next(step for step in steps if step["id"] == "enemy_costs_life")
+    assert enemy["hold"] == "none"
+    # No key field at all: `_run_zesarux` reads `step.get("key")`, and a
+    # missing key presses nothing but still holds and reads memory -- exactly
+    # what "waits without touching the keyboard" means.
+    assert "key" not in enemy
+
+
+def test_an_unresolvable_hold_is_dropped_but_logged(tmp_path: Path, caplog):
+    service = StudioService.at(tmp_path)
+    project = create_default_project("Stick", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project.controls.scheme = "joystick"
+
+    with caplog.at_level("WARNING"):
+        steps = service.scenario_script(project)
+
+    assert "collect_scores" not in [step["id"] for step in steps]
+    assert any("collect_scores" in record.message for record in caplog.records)
+    assert any("joystick" in record.message for record in caplog.records)
 
 
 def test_expected_state_predicts_the_score_a_sweep_must_produce(tmp_path: Path):
@@ -211,3 +262,110 @@ def test_a_high_score_that_ignores_the_run_fails_the_probe(tmp_path: Path):
 
     assert report["quality_pass"] is False
     assert "g_hiscore: expected 10, read 0" in report["mismatches"]
+
+
+def _stub_runtime_test(monkeypatch, service: StudioService, tmp_path: Path, fake_report: dict):
+    """Make `runtime_test` run its own merging logic against `fake_report`
+    without a build toolchain or emulator: `build` is stubbed to a
+    already-succeeded result rooted at `tmp_path`, and the module-level
+    `smoke_test` -- the only thing `runtime_test` calls to get a runtime --
+    is stubbed to hand back `fake_report` verbatim, the same way `probe_report`
+    and `acceptance_report` are exercised elsewhere by handing them a runtime
+    dict directly rather than one an emulator produced.
+    """
+    monkeypatch.setattr(
+        service,
+        "build",
+        lambda project, directory: BuildResult(
+            output_dir=tmp_path, success=True, artifact=None, report={"quality_pass": True}
+        ),
+    )
+    monkeypatch.setattr(
+        "llmz80.studio.services.smoke_test",
+        lambda *args, **kwargs: dict(fake_report),
+    )
+
+
+def _readings_that_satisfy_acceptance(project):
+    """`step_readings` whose `read` matches every step's own `expect` exactly,
+    so `acceptance_report` passes regardless -- plus a `g_anim_frame` on the
+    two steps `feel.animation_report` can classify (`collect_scores` moves,
+    `enemy_costs_life` sits idle), isolating the animation gate as the only
+    thing that can fail this runtime.
+
+    The default design's script holds only one moving step, so there is never
+    a second consecutive moving reading to confirm the frame advances -- the
+    gate reaches a definite failure on that missing evidence, not on any
+    particular value chosen here.
+    """
+    steps = {step["id"]: step for step in runtime_script(project)}
+    return [
+        {"id": step_id, "hold": step["hold"], "read": dict(step["expect"])}
+        for step_id, step in steps.items()
+        if step_id not in {"collect_scores", "enemy_costs_life"}
+    ] + [
+        {
+            "id": "collect_scores",
+            "hold": steps["collect_scores"]["hold"],
+            "read": {**steps["collect_scores"]["expect"], "g_anim_frame": 0},
+        },
+        {
+            "id": "enemy_costs_life",
+            "hold": steps["enemy_costs_life"]["hold"],
+            "read": {**steps["enemy_costs_life"]["expect"], "g_anim_frame": 0},
+        },
+    ]
+
+
+def test_runtime_tests_report_carries_the_animation_verdict(tmp_path, monkeypatch):
+    service = StudioService.at(tmp_path)
+    project = create_default_project("Anim", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    # `g_anim_frame` never differs across the one moving reading available,
+    # so the gate reaches a definite (failing) verdict rather than abstaining.
+    fake_report = {
+        "quality_pass": True,
+        "probe_after": {},
+        "step_readings": _readings_that_satisfy_acceptance(project),
+    }
+    _stub_runtime_test(monkeypatch, service, tmp_path, fake_report)
+
+    report = service.runtime_test(project, tmp_path)
+
+    assert report["animation"]["schema_version"] == 1
+    assert report["animation"]["observed"] is True
+    assert (tmp_path / "emulator_report.json").is_file()
+    assert json.loads((tmp_path / "emulator_report.json").read_text())["animation"] == (
+        report["animation"]
+    )
+
+
+def test_a_definite_animation_failure_lowers_the_overall_verdict(tmp_path, monkeypatch):
+    service = StudioService.at(tmp_path)
+    project = create_default_project("Anim", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    fake_report = {
+        "quality_pass": True,
+        "probe_after": {},
+        "step_readings": _readings_that_satisfy_acceptance(project),
+    }
+    _stub_runtime_test(monkeypatch, service, tmp_path, fake_report)
+
+    report = service.runtime_test(project, tmp_path)
+
+    assert report["acceptance"]["quality_pass"] is True
+    assert report["animation"]["quality_pass"] is False
+    assert report["quality_pass"] is False
+
+
+def test_an_animation_abstention_does_not_lower_the_overall_verdict(tmp_path, monkeypatch):
+    service = StudioService.at(tmp_path)
+    project = create_default_project("Anim", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    # No `step_readings` at all -- what the CPC produces, since it has no
+    # memory probe adapter -- so the gate abstains rather than judging.
+    fake_report = {"quality_pass": True, "probe_after": {}}
+    _stub_runtime_test(monkeypatch, service, tmp_path, fake_report)
+
+    report = service.runtime_test(project, tmp_path)
+
+    assert report["animation"]["quality_pass"] is None
+    assert report["animation"]["observed"] is False
+    assert report["quality_pass"] is True
