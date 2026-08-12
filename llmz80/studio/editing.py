@@ -16,6 +16,7 @@ from .compiler import validate_design_fits_target
 from .layout import default_tiles
 from .models import TILE_FLOOR, TILE_WALL, GameProject
 from .solvability import solvability_report
+from .terrain_structure import structure_report
 
 
 class EditError(ValueError):
@@ -308,11 +309,15 @@ def editing_status(project: GameProject) -> dict[str, Any]:
     """Gate state for the design as it currently stands.
 
     Model invariants are already enforced by every operation above, so this
-    reports the two an editor cannot enforce keystroke by keystroke: whether the
-    design fits the target machine, and whether its levels are solvable. Both are
-    advisory while editing and blocking at release.
+    reports the three an editor cannot enforce keystroke by keystroke: whether
+    the design fits the target machine, whether its levels are solvable, and
+    whether each level's terrain carries the structure its genre implies. All
+    three are advisory while editing and blocking at release: a maze drawn cell
+    by cell passes through states with no interior walls yet, and that is fine
+    here, exactly as an unsolvable half-drawn level already is.
     """
     solvability = solvability_report(project)
+    structure = structure_report(project)
     backend_error: str | None = None
     try:
         validate_design_fits_target(project)
@@ -322,9 +327,11 @@ def editing_status(project: GameProject) -> dict[str, Any]:
         "solvable": solvability.solvable,
         "solvability_failures": solvability.failures,
         "warnings": solvability.warnings,
+        "structured": structure.structured,
+        "structure_failures": structure.failures,
         "buildable": backend_error is None,
         "backend_error": backend_error,
-        "ready": solvability.solvable and backend_error is None,
+        "ready": solvability.solvable and structure.structured and backend_error is None,
     }
 
 

@@ -192,6 +192,7 @@ class StudioApp(App[None]):
         state = editing.editing_status(self.project)
         mark = "[green]ready[/green]" if state["ready"] else "[yellow]not releasable[/yellow]"
         reasons = list(state["solvability_failures"])
+        reasons.extend(state["structure_failures"])
         if state["backend_error"]:
             reasons.append(state["backend_error"])
         if state["ready"] and state.get("warnings"):

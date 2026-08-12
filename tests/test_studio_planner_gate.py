@@ -59,6 +59,49 @@ def test_an_unplayable_proposal_can_be_applied_deliberately(project):
     assert applied.levels[0].tiles != project.levels[0].tiles
 
 
+def _empty_room_tiles(level):
+    """Blank a level's interior to open floor, keeping its border ring solid --
+    the same shape `tests/test_terrain_structure.py` uses to build the gate's
+    own motivating failure."""
+    rows = [list(row) for row in level.tiles]
+    for row in range(1, level.height - 1):
+        for column in range(1, level.width - 1):
+            rows[row][column] = "."
+    return ["".join(row) for row in rows]
+
+
+def _empty_room_proposal(project):
+    """The motivating case the terrain-structure gate exists for: a bulk
+    proposal that guts every maze level into a trivially solvable, structurally
+    empty room."""
+    return ProjectProposal(
+        summary="open up the level layouts",
+        changes=[
+            ProjectChange(
+                path=f"/levels/{index}/tiles",
+                operation="replace",
+                value_rows=_empty_room_tiles(level),
+                reason="simplify the maze",
+            )
+            for index, level in enumerate(project.levels)
+        ],
+    )
+
+
+def test_a_proposal_that_guts_every_level_into_an_empty_room_is_refused(project):
+    proposal = _empty_room_proposal(project)
+
+    with pytest.raises(ValueError, match="would leave the game unplayable"):
+        apply_proposal(project, proposal)
+
+
+def test_the_refusal_names_the_terrain_structure_problem(project):
+    proposal = _empty_room_proposal(project)
+
+    with pytest.raises(ValueError, match="not enough interior structure"):
+        apply_proposal(project, proposal)
+
+
 def test_a_proposal_that_outgrows_the_target_grid_is_refused(project):
     level = project.levels[0]
     wide = ["." * 40 for _ in range(level.height)]

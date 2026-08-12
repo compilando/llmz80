@@ -138,8 +138,9 @@ def apply_proposal(
 ) -> GameProject:
     """Apply a reviewed proposal transactionally and revalidate the complete IR.
 
-    A proposal that rewrites terrain can seal a collectible off or outgrow the
-    target grid while still being a structurally valid document. Hand editing
+    A proposal that rewrites terrain can seal a collectible off, gut a maze
+    into an empty room with none of its genre's structure, or outgrow the
+    target grid, while still being a structurally valid document. Hand editing
     treats those as advisory because a person watches the map change cell by
     cell; a bulk change from a model gets no such supervision, so it is refused
     unless the caller opts in.
@@ -193,6 +194,7 @@ def apply_proposal(
         status = editing_status(candidate)
         if not status["ready"]:
             reasons = list(status["solvability_failures"])
+            reasons.extend(status["structure_failures"])
             if status["backend_error"]:
                 reasons.append(status["backend_error"])
             raise ValueError(

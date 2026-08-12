@@ -488,6 +488,83 @@ def test_an_unplayable_proposal_is_also_repaired(project):
     assert result.project.presentation.style == "bright maze on black"
 
 
+def _empty_room_tiles(level):
+    """Blank a level's interior to open floor, keeping its border ring solid --
+    the shape `terrain_structure.py` exists to catch."""
+    rows = [list(row) for row in level.tiles]
+    for row in range(1, level.height - 1):
+        for column in range(1, level.width - 1):
+            rows[row][column] = "."
+    return ["".join(row) for row in rows]
+
+
+def _empty_room_proposal(project) -> ProjectProposal:
+    """The motivating case for the whole gap this file closes: an AI proposal
+    that rewrites every maze level into a completely empty room. It is
+    trivially solvable and fits the target machine, so neither of
+    `editing_status`'s other two checks caught it before the terrain-structure
+    gate joined them."""
+    return ProjectProposal(
+        summary="open up the level layouts",
+        changes=[
+            ProjectChange(
+                path=f"/levels/{index}/tiles",
+                operation="replace",
+                value_rows=_empty_room_tiles(level),
+                reason="simplify the maze",
+            )
+            for index, level in enumerate(project.levels)
+        ],
+    )
+
+
+def _structured_maze_proposal(project) -> ProjectProposal:
+    """What a repaired attempt should look like: the same levels, still
+    carrying their generated maze's corridors rather than an open room."""
+    return ProjectProposal(
+        summary="restore proper maze corridors",
+        changes=[
+            ProjectChange(
+                path=f"/levels/{index}/tiles",
+                operation="replace",
+                value_rows=list(level.tiles),
+                reason="corridors and dead ends, not an open room",
+            )
+            for index, level in enumerate(project.levels)
+        ],
+    )
+
+
+def test_the_repair_loop_engages_when_a_proposal_guts_the_terrain(project):
+    """The gate built in `terrain_structure.py` and the repair loop built in
+    `propose_and_apply` were wired up separately and never met: this is the
+    end-to-end proof that they now do. The first attempt is exactly the
+    empty-room case the gate exists for; the second is a properly structured
+    maze, and it is the one that ends up applied."""
+    designer = ScriptedDesigner(_empty_room_proposal(project), _structured_maze_proposal(project))
+
+    result = propose_and_apply(project, _dossier(), designer)
+
+    assert len(designer.feedback_seen) == 2
+    assert result.proposal is designer.attempts[1]
+    assert result.project.levels[0].tiles == project.levels[0].tiles
+    assert len(result.refusals) == 1
+    assert "not enough interior structure" in result.refusals[0]
+
+
+def test_the_feedback_after_a_gutted_proposal_names_the_terrain_failure(project):
+    """Not just "unplayable" -- the specific reason, so the model has
+    something to act on other than guessing."""
+    designer = ScriptedDesigner(_empty_room_proposal(project), _structured_maze_proposal(project))
+
+    propose_and_apply(project, _dossier(), designer)
+
+    feedback = designer.feedback_seen[1]
+    assert feedback is not None
+    assert "maze terrain has wall ratio" in feedback
+    assert "not enough interior structure for a maze level" in feedback
+
+
 def test_exhausting_attempts_raises_carrying_the_last_refusal(project):
     designer = ScriptedDesigner(
         _oversized_style_proposal(), _oversized_style_proposal(), _oversized_style_proposal()
