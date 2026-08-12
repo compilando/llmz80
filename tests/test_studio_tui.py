@@ -8,6 +8,7 @@ from llmz80.studio.packs import BUILTIN_PACKS, create_default_project
 from llmz80.studio.screen import Stage
 from llmz80.studio.tui import (
     StudioApp,
+    brief_preview,
     pick_stage_detail,
     render_map,
     render_stage_marks,
@@ -285,7 +286,7 @@ async def test_a_panel_key_opens_its_panel_and_hides_the_resting_screen(tmp_path
         await pilot.pause()
 
         assert app.active_panel == "entities"
-        assert app.query_one("#design").display is False
+        assert app.query_one("#brief").display is False
         assert app.query_one("#panel-entities").has_class("open")
 
         # Pressing the same key again closes it, back to the resting screen.
@@ -293,7 +294,7 @@ async def test_a_panel_key_opens_its_panel_and_hides_the_resting_screen(tmp_path
         await pilot.pause()
 
         assert app.active_panel is None
-        assert app.query_one("#design").display is True
+        assert app.query_one("#brief").display is True
         assert not app.query_one("#panel-entities").has_class("open")
 
 
@@ -362,30 +363,121 @@ async def test_map_editing_keys_still_toggle_a_wall(tmp_path: Path):
         assert app.project.levels[0].tiles[col_row[1]][col_row[0]] == "#"
 
 
+def _resting_content_height(app: StudioApp) -> int:
+    """Header + brief-box + stage-line + stage-detail + shortcuts, in rows.
+
+    Everything the resting screen shows, excluding the docked `Footer` (which
+    Textual pins to the last row regardless of how little content sits above
+    it, so it says nothing about whether the resting screen itself grew).
+    """
+    return (
+        app.query_one("Header").size.height
+        + app.query_one("#brief").size.height
+        + app.query_one("#stage-line").size.height
+        + app.query_one("#stage-detail").size.height
+        + app.query_one("#shortcuts").size.height
+    )
+
+
+#: header(1) + brief-box(3, with its border) + stage-line(1) + stage-detail(1)
+#: + shortcuts(1) -- the mock's own seven lines, measured with
+#: `run_test(size=(120, 40))` via `Widget.size.height` on each. Editing
+#: (title, style, and the brief itself) moved into its own panel precisely so
+#: none of it adds a row here.
+RESTING_CONTENT_HEIGHT = 7
+
+
 @pytest.mark.asyncio
 async def test_the_resting_screen_has_a_fixed_height(tmp_path: Path):
     """The complaint this task answers: the screen used to grow with every
     field it carried. At rest -- no project, and with one loaded -- the
-    header/brief/stage-line/shortcuts group occupies the same number of
-    rows; only an opened panel adds height, and it replaces that group
-    rather than stacking on top of it."""
+    header/brief/stage-line/stage-detail/shortcuts group occupies the same,
+    small number of rows; only an opened panel adds height, and it replaces
+    that group rather than stacking on top of it."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
-        empty_height = app.query_one("#design").size.height
+        assert _resting_content_height(app) == RESTING_CONTENT_HEIGHT
 
         app.query_one("#f-title").value = "Sized"
         app.action_create()
         await pilot.pause()
-        loaded_height = app.query_one("#design").size.height
-
-        assert empty_height == loaded_height
+        assert _resting_content_height(app) == RESTING_CONTENT_HEIGHT
 
         app.query_one("#entity-table").focus()
         await pilot.pause()
         await pilot.press("l")
         await pilot.pause()
-        assert app.query_one("#design").display is False
+        assert app.query_one("#brief").display is False
+
+
+@pytest.mark.asyncio
+async def test_a_long_brief_does_not_make_the_resting_screen_taller(tmp_path: Path):
+    """The brief box shows one truncated line, not an editor: however long
+    the brief a person wrote, the box the resting screen shows it in stays
+    exactly as tall."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Verbose"
+        app.action_create()
+        await pilot.pause()
+
+        app.project.metadata.brief = "A very long brief. " * 40
+        app._refresh_stage()
+        await pilot.pause()
+
+        assert _resting_content_height(app) == RESTING_CONTENT_HEIGHT
+        assert app.query_one("#brief").size.height == 3
+
+
+def test_brief_preview_passes_a_short_brief_through_unchanged():
+    assert brief_preview("Four ghosts chase you.") == "Four ghosts chase you."
+
+
+def test_brief_preview_truncates_a_long_brief_with_an_ellipsis():
+    long_brief = "x" * 500
+
+    preview = brief_preview(long_brief, limit=78)
+
+    assert len(preview) == 78
+    assert preview.endswith("…")
+    assert preview[:-1] == "x" * 77
+
+
+def test_brief_preview_collapses_whitespace_so_it_stays_one_line():
+    assert brief_preview("Four ghosts.\nA big dot\tmakes them edible.") == (
+        "Four ghosts. A big dot makes them edible."
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_design_panel_holds_title_style_and_the_editable_brief(tmp_path: Path):
+    """Title, Style and the editable Brief moved off the resting screen and
+    into their own panel, opened by `g` (`diseño`) -- a key that does not
+    collide with map/entities/sprites/diff/log."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Panelled"
+        app.action_create()
+        await pilot.pause()
+        app.query_one("#entity-table").focus()
+        await pilot.pause()
+
+        await pilot.press("g")
+        await pilot.pause()
+
+        assert app.active_panel == "design"
+        assert app.query_one("#panel-design").has_class("open")
+        assert app.query_one("#brief").display is False
+        # The fields themselves are unchanged -- still #f-title/#f-style/
+        # #f-brief -- just relocated into the panel.
+        assert app.query_one("#f-title", type(app.query_one("#f-title"))) is not None
+        assert app.query_one("#f-style") is not None
+        assert app.query_one("#f-brief") is not None
+
+        await pilot.press("g")
+        await pilot.pause()
+        assert app.active_panel is None
 
 
 @pytest.mark.asyncio

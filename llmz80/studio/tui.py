@@ -1,11 +1,11 @@
 """Compact terminal front end for designing, writing and proving a game.
 
-The resting screen is deliberately small: an identity line, the brief a
-person actually wrote, the project's six-stage progress, and the keys that
-open everything else. Everything structural -- the map, the entity roster,
-sprites, a pending diff, the log -- lives in a panel that opens over that
-resting screen, one at a time, so the screen a person leaves running never
-grows past what they need to glance at.
+The resting screen is deliberately small: an identity line, a one-line
+reminder of the brief, the project's six-stage progress, and the keys that
+open everything else. Everything else -- editing the title, brief and style;
+the map; the entity roster; sprites; a pending diff; the log -- lives in a
+panel that opens over that resting screen, one at a time, so the screen a
+person leaves running never grows past what they need to glance at.
 
 The work is done by `StudioService`, `editing` and `screen`; nothing here
 decides anything about a design or a project's status, which is what keeps
@@ -58,14 +58,34 @@ GLYPH_BY_ROLE = {
 STAGE_ICON = {"done": "✓", "pending": "—", "failed": "✗"}
 STAGE_COLOR = {"done": "green", "pending": "dim", "failed": "red"}
 
-#: The five panels a key opens, and the id of the container each shows.
-PANEL_KEYS = {"m": "map", "e": "entities", "s": "sprites", "d": "diff", "l": "log"}
+#: The characters left of the brief preview's one line, before it is cut off
+#: with an ellipsis. Chosen to comfortably fit a typical terminal width
+#: without depending on the actual rendered width of the box: a fixed budget
+#: keeps the preview exactly one line regardless of window size or how long
+#: the brief itself is, which is the property that keeps the resting screen
+#: from growing.
+BRIEF_PREVIEW_LIMIT = 78
+
+#: Every key that opens a panel over the resting screen, and the id of the
+#: container each shows. `g` (diseño) is the odd one out: it is not one of
+#: the five panels named in the brief -- map/entities/sprites/diff/log -- but
+#: it is where Title, Style and the editable Brief live, since none of those
+#: belong at rest either.
+PANEL_KEYS = {
+    "g": "design",
+    "m": "map",
+    "e": "entities",
+    "s": "sprites",
+    "d": "diff",
+    "l": "log",
+}
 #: Every panel this screen can show, keyed and toggled the same way,
 #: including the two that stand in for a create/open dialog: `create` and
 #: `open` are not in `PANEL_KEYS` since a letter key never opens them (they
 #: have their own ctrl-bindings), but they use the same single-panel-at-a-time
-#: machinery as the five that do.
+#: machinery as the ones that do.
 PANEL_IDS = {
+    "design": "panel-design",
     "map": "panel-map",
     "entities": "panel-entities",
     "sprites": "panel-sprites",
@@ -139,17 +159,35 @@ def pick_stage_detail(stages: list[Stage]) -> str:
     return done.detail if done is not None else ""
 
 
+def brief_preview(brief: str, limit: int = BRIEF_PREVIEW_LIMIT) -> str:
+    """One line: `brief`, whitespace-collapsed and cut to `limit` characters.
+
+    This is what the resting screen shows -- a reminder of what the game is,
+    not an editor; editing the brief lives in the design panel. Truncating by
+    a fixed character budget rather than wrapping is deliberate: a preview
+    that wrapped would grow the resting screen taller for every project with
+    more to say, exactly the complaint this screen exists to answer, and a
+    fixed budget keeps it one line regardless of the brief's length or the
+    terminal's width.
+    """
+    text = " ".join(brief.split())
+    if len(text) <= limit:
+        return text
+    return text[: max(limit - 1, 0)].rstrip() + "…"
+
+
 class StudioApp(App[None]):
     """A deliberately thin UI: domain rules remain in StudioService."""
 
     TITLE = "LLMZ80 Studio"
     CSS = """
-    #design { height: auto; padding: 0 1; }
+    #brief { height: auto; }
+    #brief-box { height: 3; border: round $primary; margin: 0 1; padding: 0 1; }
     .row { height: 3; }
     .row Label { width: 10; padding: 1 0 0 0; }
     .row Input, .row Select { width: 1fr; }
-    #brief-box { height: 8; border: round $primary; margin: 0 0 1 0; }
-    #brief-box TextArea { height: 1fr; }
+    #brief-edit-box { height: 8; border: round $primary; margin: 0 0 1 0; }
+    #brief-edit-box TextArea { height: 1fr; }
     #stage-line { height: 1; padding: 0 1; }
     #stage-detail { height: 1; padding: 0 1; }
     #shortcuts { height: 1; padding: 0 1; background: $boost; }
@@ -193,26 +231,32 @@ class StudioApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        # The resting screen: identity (Header's title/sub_title), the brief
-        # a person wrote (plus the style that only ever feeds a prompt,
-        # nested in the same group since neither is a structural panel), the
-        # six-stage progress line, and the keys that open everything else.
-        with Vertical(id="design"):
-            yield from self._field("Title", Input(value="My Retro Game", id="f-title"))
-            brief_box = Vertical(TextArea(id="f-brief"), id="brief-box")
+        # The resting screen: identity (Header's title/sub_title), a one-line
+        # reminder of the brief, the six-stage progress line, and the keys
+        # that open everything else -- including editing the brief itself.
+        with Vertical(id="brief"):
+            brief_box = Vertical(
+                Static("no project loaded", id="brief-preview", markup=False),
+                id="brief-box",
+            )
             brief_box.border_title = "Brief"
             yield brief_box
-            yield from self._field("Style", Input(id="f-style"))
         yield Static("no project loaded", id="stage-line")
         yield Static("", id="stage-detail")
         yield Static(
-            "[m] mapa  [e] entidades  [s] sprites  [d] diff  [l] log",
+            "[g] diseño  [m] mapa  [e] entidades  [s] sprites  [d] diff  [l] log",
             id="shortcuts",
             markup=False,
         )
 
-        # Panels: one at a time, opened by a key (map/entities/sprites/
-        # diff/log) or a ctrl-binding (create/open), hidden until then.
+        # Panels: one at a time, opened by a key (design/map/entities/
+        # sprites/diff/log) or a ctrl-binding (create/open), hidden until then.
+        with Vertical(id="panel-design", classes="panel"):
+            yield from self._field("Title", Input(value="My Retro Game", id="f-title"))
+            brief_edit_box = Vertical(TextArea(id="f-brief"), id="brief-edit-box")
+            brief_edit_box.border_title = "Brief"
+            yield brief_edit_box
+            yield from self._field("Style", Input(id="f-style"))
         with Vertical(id="panel-create", classes="panel"):
             yield Static(
                 "New project -- target and type are fixed once it exists."
@@ -288,7 +332,7 @@ class StudioApp(App[None]):
         the resting screen -- header, brief, stage line, shortcuts.
         """
         self.active_panel = name
-        self.query_one("#design", Vertical).display = name is None
+        self.query_one("#brief", Vertical).display = name is None
         self.query_one("#stage-line", Static).display = name is None
         self.query_one("#stage-detail", Static).display = name is None
         self.query_one("#shortcuts", Static).display = name is None
@@ -310,7 +354,7 @@ class StudioApp(App[None]):
     status_text: str = "no project loaded"
 
     def _refresh_stage(self) -> None:
-        """Redraw the stage line and its detail from `screen.stage_line`.
+        """Redraw the brief preview, the stage line and its detail.
 
         This is the whole of what used to be `_status`: the six-stage line
         replaces the old one-line "ready"/"not releasable" verdict, and the
@@ -320,12 +364,16 @@ class StudioApp(App[None]):
         if self.project is None:
             self.sub_title = ""
             self.status_text = "no project loaded"
+            self.query_one("#brief-preview", Static).update(self.status_text)
             self.query_one("#stage-line", Static).update(self.status_text)
             self.query_one("#stage-detail", Static).update("")
             return
         self.sub_title = (
             f"{self.project.metadata.slug} · {self.project.target.platform.value} · "
             f"{self.project.genre}"
+        )
+        self.query_one("#brief-preview", Static).update(
+            brief_preview(self.project.metadata.brief)
         )
         stages = stage_line(self.project, self.project_dir)
         detail = pick_stage_detail(stages)
@@ -501,8 +549,9 @@ class StudioApp(App[None]):
 
         Two presses stand in for a dialog's open-then-confirm without a
         second modal screen: the panel holds exactly the fields a script
-        would also need (title stays on the resting screen, always
-        editable), so `action_create` below is unchanged either way.
+        would also need (title lives in the design panel, always editable
+        the same way whether or not a project exists yet), so `action_create`
+        below is unchanged either way.
         """
         if self.active_panel == "create":
             self.action_create()
