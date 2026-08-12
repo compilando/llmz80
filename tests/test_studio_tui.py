@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -5,7 +6,10 @@ import pytest
 from llmz80.studio import editing
 from llmz80.studio.models import GenreId, TargetPlatform
 from llmz80.studio.packs import BUILTIN_PACKS, create_default_project
+from llmz80.studio.planner import ProjectChange, ProjectProposal
+from llmz80.studio.reference import GameReference, ReferenceSource
 from llmz80.studio.screen import Stage
+from llmz80.studio.spriting import SPRITE_SIZE
 from llmz80.studio.tui import (
     StudioApp,
     brief_preview,
@@ -508,3 +512,357 @@ async def test_the_workspace_picker_lists_and_opens_a_project(tmp_path: Path):
         assert app.project is not None
         assert app.project_dir == created_dir
         assert app.active_panel is None
+
+
+# --- research, adapt and draw-sprites: fakes injected instead of the API ---
+#
+# `research_reference`, `propose_from_reference` and `draw_sprites` all take
+# their researcher/designer/artist as a parameter -- exactly so a caller can
+# hand them something other than the OpenAI-backed default `action_research`/
+# `action_adapt`/`action_draw_sprites` build. These fakes are that something:
+# no test in this section makes a network call or generates an image.
+
+
+class _FakeResearcher:
+    """Records how many times it was asked, and what it was asked for."""
+
+    def __init__(self, title="Zampa Bolas", publisher="System 4", year=1988, identified=True):
+        self.title, self.publisher, self.year, self.identified = title, publisher, year, identified
+        self.calls = 0
+
+    def research(self, brief, target):
+        self.calls += 1
+        sources = (
+            [
+                ReferenceSource(
+                    url="https://example.com/review",
+                    title="A review",
+                    retrieved_at=datetime.now(timezone.utc),
+                )
+            ]
+            if self.identified
+            else []
+        )
+        return GameReference(
+            identified=self.identified,
+            confidence="high",
+            title=self.title if self.identified else "",
+            publisher=self.publisher,
+            year=self.year,
+            sources=sources,
+        )
+
+
+class _FakeDesigner:
+    """Refuses its first proposal (a protected path), then succeeds -- so a
+    test can see the repair loop's refusal reach the screen."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def propose(self, project, dossier, feedback=None):
+        self.calls += 1
+        if self.calls == 1:
+            return ProjectProposal(
+                summary="touch what is not mine to touch",
+                changes=[
+                    ProjectChange(
+                        path="/schema_version",
+                        operation="replace",
+                        reason="bogus",
+                        value_number=99,
+                    )
+                ],
+            )
+        return ProjectProposal(
+            summary="dress it up like the real game",
+            changes=[
+                ProjectChange(
+                    path="/presentation/style",
+                    operation="replace",
+                    reason="matches the dossier's visual style",
+                    value_text="arcade neon",
+                )
+            ],
+        )
+
+
+class _FakeArtist:
+    """Draws one flat-coloured frame per call, recording which sprite id it
+    was asked for (`draw_sprites` calls once per distinct sprite id, handing
+    it one representative entity that wears it -- see its docstring)."""
+
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def draw_frames(self, project, entity, dossier=None):
+        from PIL import Image
+
+        self.calls.append(entity.sprite)
+        return [Image.new("RGBA", (SPRITE_SIZE, SPRITE_SIZE), (200, 40, 40, 255))]
+
+
+def _focus_away_from_text_entry(app: StudioApp) -> None:
+    app.query_one("#entity-table").focus()
+
+
+@pytest.mark.asyncio
+async def test_research_reaches_the_service_and_the_stage_line_shows_it(tmp_path: Path):
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Researched"
+        app.action_create()
+        await pilot.pause()
+
+        fake = _FakeResearcher(title="Zampa Bolas", publisher="System 4", year=1988)
+        app.researcher = fake
+        app.action_research()
+
+        for _ in range(100):
+            await pilot.pause()
+            if "Zampa Bolas" in app.status_text:
+                break
+
+        assert fake.calls == 1
+        assert (app.project_dir / "reference.yml").is_file()
+        # No panel of its own: the result surfaces on the stage line's
+        # "referencia" detail, the same place `screen.stage_line` already
+        # names a dossier's title and source count for any project.
+        assert "referencia ✓" in app.status_text
+        assert "Zampa Bolas" in app.status_text
+        assert app.active_panel != "diff" and app.active_panel != "sprites"
+
+
+@pytest.mark.asyncio
+async def test_research_asks_before_overwriting_an_existing_dossier(tmp_path: Path):
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Guarded"
+        app.action_create()
+        await pilot.pause()
+
+        first = _FakeResearcher(title="First Game")
+        app.researcher = first
+        app.action_research()
+        for _ in range(100):
+            await pilot.pause()
+            if "First Game" in app.status_text:
+                break
+        assert first.calls == 1
+        archived = (app.project_dir / "reference.yml").read_text()
+
+        # Declining (only pressing once) changes nothing on disk.
+        second = _FakeResearcher(title="Second Game")
+        app.researcher = second
+        app.action_research()
+        await pilot.pause()
+
+        assert second.calls == 0
+        assert (app.project_dir / "reference.yml").read_text() == archived
+
+        # Confirming (the same action again) replaces it.
+        app.action_research()
+        for _ in range(100):
+            await pilot.pause()
+            if "Second Game" in app.status_text:
+                break
+
+        assert second.calls == 1
+        assert (app.project_dir / "reference.yml").read_text() != archived
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_dossier_is_reported_not_crashed_on(tmp_path: Path):
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Broken"
+        app.action_create()
+        await pilot.pause()
+
+        (app.project_dir / "reference.yml").write_text("not: [valid", encoding="utf-8")
+
+        fake = _FakeResearcher()
+        app.researcher = fake
+        app.action_research()
+        await pilot.pause()
+
+        # Reported, not crashed: no API call was ever made, and a warning
+        # reached the user instead of an unhandled exception.
+        assert fake.calls == 0
+        assert any(n.severity == "error" for n in app._notifications)
+
+
+@pytest.mark.asyncio
+async def test_adapt_shows_the_diff_and_its_refusals_before_applying_anything(tmp_path: Path):
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Adaptable"
+        app.action_create()
+        await pilot.pause()
+        _focus_away_from_text_entry(app)
+        await pilot.pause()
+
+        app.researcher = _FakeResearcher(title="Real Game")
+        app.action_research()
+        for _ in range(100):
+            await pilot.pause()
+            if "Real Game" in app.status_text:
+                break
+
+        designer = _FakeDesigner()
+        app.designer = designer
+        original_style = app.project.presentation.style
+        app.action_adapt()
+        for _ in range(100):
+            await pilot.pause()
+            if app.active_panel == "diff":
+                break
+
+        # The repair loop's first attempt touched a protected path and was
+        # refused; its second succeeded. Both calls happened...
+        assert designer.calls == 2
+        # ...and the refusal is visible, not just repaired silently.
+        diff_text = app.query_one("#diff-view").content
+        assert "Attempt 1 was refused, repairing:" in diff_text
+        assert "protected path" in diff_text
+        assert "arcade neon" in diff_text
+        # Nothing is applied yet -- the diff is shown, not acted on.
+        assert app.service.open_project(app.project_dir).presentation.style == original_style
+
+        await pilot.press("y")
+        await pilot.pause()
+
+        assert app.project.presentation.style == "arcade neon"
+        assert app.service.open_project(app.project_dir).presentation.style == "arcade neon"
+
+
+@pytest.mark.asyncio
+async def test_declining_the_proposal_leaves_the_project_unchanged(tmp_path: Path):
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Declinable"
+        app.action_create()
+        await pilot.pause()
+        _focus_away_from_text_entry(app)
+        await pilot.pause()
+
+        app.researcher = _FakeResearcher(title="Real Game")
+        app.action_research()
+        for _ in range(100):
+            await pilot.pause()
+            if "Real Game" in app.status_text:
+                break
+
+        app.designer = _FakeDesigner()
+        original_style = app.project.presentation.style
+        app.action_adapt()
+        for _ in range(100):
+            await pilot.pause()
+            if app.active_panel == "diff":
+                break
+
+        await pilot.press("n")
+        await pilot.pause()
+
+        assert app.project.presentation.style == original_style
+        assert app.service.open_project(app.project_dir).presentation.style == original_style
+
+
+@pytest.mark.asyncio
+async def test_a_failing_adapt_notifies_instead_of_crashing(tmp_path: Path):
+    """No dossier exists yet, so `propose_from_reference` raises. That
+    surfaces through the same `_run`/`_background` machinery every slow
+    operation uses -- a notification, not a crash, and the diff panel never
+    opens over a proposal that does not exist."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "NoDossier"
+        app.action_create()
+        await pilot.pause()
+
+        app.designer = _FakeDesigner()
+        app.action_adapt()
+
+        for _ in range(100):
+            await pilot.pause()
+            if any(n.severity == "error" for n in app._notifications):
+                break
+
+        assert any(n.severity == "error" for n in app._notifications)
+        assert app.active_panel != "diff"
+        assert app.project is not None  # the app is still usable
+
+        # Still responsive: an ordinary field edit still works.
+        app.query_one("#f-lives").value = "6"
+        await pilot.pause()
+        assert app.query_one("#f-lives").value == "6"
+
+
+@pytest.mark.asyncio
+async def test_draw_sprites_reaches_the_service_and_registers_assets(tmp_path: Path):
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Sprited"
+        app.action_create()
+        await pilot.pause()
+        needed = sorted({entity.sprite for entity in app.project.entities})
+
+        artist = _FakeArtist()
+        app.artist = artist
+        app.action_draw_sprites()
+
+        for _ in range(100):
+            await pilot.pause()
+            if app.active_panel == "sprites":
+                break
+
+        assert app.active_panel == "sprites"
+        assert sorted(artist.calls) == needed
+        registered = {a.id for a in app.project.assets if a.kind == "sprite"}
+        assert registered == set(needed)
+        reopened = app.service.open_project(app.project_dir)
+        on_disk = {a.id for a in reopened.assets if a.kind == "sprite"}
+        assert on_disk == set(needed)
+
+
+@pytest.mark.asyncio
+async def test_draw_sprites_asks_before_overwriting_existing_art(tmp_path: Path):
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Redraw"
+        app.action_create()
+        await pilot.pause()
+
+        first_artist = _FakeArtist()
+        app.artist = first_artist
+        app.action_draw_sprites()
+        for _ in range(100):
+            await pilot.pause()
+            if app.active_panel == "sprites":
+                break
+        before = {
+            a.id: (app.project_dir / a.source).read_bytes()
+            for a in app.project.assets
+            if a.kind == "sprite"
+        }
+        assert before
+
+        # Declining (only pressing once) changes nothing on disk.
+        second_artist = _FakeArtist()
+        app.artist = second_artist
+        app.action_draw_sprites()
+        await pilot.pause()
+
+        assert second_artist.calls == []
+        for asset_id, data in before.items():
+            asset = next(a for a in app.project.assets if a.id == asset_id)
+            assert (app.project_dir / asset.source).read_bytes() == data
+
+        # Confirming (the same action again) redraws it.
+        app.action_draw_sprites()
+        for _ in range(100):
+            await pilot.pause()
+            if second_artist.calls:
+                break
+
+        assert sorted(second_artist.calls) == sorted(before.keys())

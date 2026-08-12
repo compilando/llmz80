@@ -202,6 +202,9 @@ class StudioApp(App[None]):
         ("ctrl+s", "save", "Save"),
         ("ctrl+n", "new_dialog", "New"),
         ("ctrl+o", "open_dialog", "Open"),
+        ("ctrl+f", "research", "Research"),
+        ("ctrl+a", "adapt", "Adapt"),
+        ("ctrl+d", "draw_sprites", "Draw sprites"),
         ("ctrl+w", "write", "Write program"),
         ("ctrl+b", "build", "Build"),
         ("ctrl+t", "test", "Test"),
@@ -221,6 +224,30 @@ class StudioApp(App[None]):
         #: panel currently shown over the resting screen.
         self.active_panel: str | None = None
         self._workspace_paths: dict[str, Path] = {}
+        #: `None` until a test sets one directly, which is the injection
+        #: point `research_reference`, `propose_from_reference` and
+        #: `draw_sprites` are built around: the service takes a
+        #: researcher/designer/artist as a parameter rather than building
+        #: its own, precisely so a caller -- this screen, a script, or a
+        #: test -- can hand it a fake instead of the OpenAI-backed default
+        #: each `action_*` below builds when this stays `None`.
+        self.researcher = None
+        self.designer = None
+        self.artist = None
+        #: Set by `action_research`/`action_draw_sprites` on their first
+        #: press when there is something an overwrite would destroy, naming
+        #: which of them is waiting; a second press of the *same* action
+        #: confirms it. The same two-press idiom `action_new_dialog` already
+        #: uses for creating a project, just generalised past one action.
+        self._pending_confirm: str | None = None
+        #: `(diff, updated_project, refusals)` once `action_adapt`'s job
+        #: returns, read by `_show_pending_proposal` and consumed by
+        #: `_decide_proposal` -- nothing here is saved until a person
+        #: presses [y] in the diff panel.
+        self._pending_proposal: tuple[str, GameProject, list[str]] | None = None
+        #: Assets `action_draw_sprites`'s job just registered, read by
+        #: `_show_drawn_sprites` once the job finishes.
+        self._drawn_sprites: list = []
 
     # --- layout ---------------------------------------------------------
 
@@ -295,18 +322,23 @@ class StudioApp(App[None]):
             yield from self._field("Lives", Input(id="f-lives", type="integer"))
             yield DataTable(id="entity-table", cursor_type="row")
         with Vertical(id="panel-sprites", classes="panel"):
-            # Stub: drawing and reviewing sprites lands in the next task.
+            # Where art `action_draw_sprites` generated is looked at before
+            # it is compiled -- filled in by `_show_drawn_sprites`.
             yield Static(
-                "Sprites -- nothing to review here yet; this panel is a stub "
-                "until the next task wires up draw-sprites.",
-                id="sprites-stub",
+                "No sprites drawn yet. Press ctrl+d to draw the art this "
+                "project is missing.",
+                id="sprites-view",
             )
         with Vertical(id="panel-diff", classes="panel"):
-            # Stub: the adapt proposal's diff lands in the next task.
+            # Where `action_adapt`'s proposal is reviewed and accepted or
+            # rejected -- filled in by `_show_pending_proposal`. `markup`
+            # off: this shows a model-written diff verbatim, the same reason
+            # `#shortcuts` (also literal bracketed text) turns it off.
             yield Static(
-                "Diff -- nothing to review here yet; this panel is a stub "
-                "until the next task wires up research/adapt.",
-                id="diff-stub",
+                "No proposal yet. Press ctrl+a to adapt the design to the "
+                "researched game.",
+                id="diff-view",
+                markup=False,
             )
         with Vertical(id="panel-log", classes="panel"):
             yield RichLog(id="log-view", wrap=True, markup=True)
@@ -450,6 +482,108 @@ class StudioApp(App[None]):
         except Exception as exc:
             self.notify(str(exc), severity="error")
 
+    def _confirmed(self, action: str) -> bool:
+        """True on the second call in a row naming the same `action`.
+
+        The first call remembers `action` and returns `False`, so a caller
+        can warn about what a redraw or a fresh search would overwrite and
+        wait for the same key to confirm it -- `action_new_dialog`'s
+        press-again-to-confirm, generalised past creating a project.
+        """
+        if self._pending_confirm == action:
+            self._pending_confirm = None
+            return True
+        self._pending_confirm = action
+        return False
+
+    def _show_pending_proposal(self) -> None:
+        """After `action_adapt`'s job returns, show its diff for review.
+
+        Runs as `_run`'s `on_finished`, once the job's own summary line is
+        already in the log -- this is what actually opens the diff panel,
+        with the refusals the repair loop overcame (if any) ahead of the
+        diff itself, so a person watching several model calls go by sees
+        what each repair was for. Nothing here saves anything: [y] and [n],
+        handled in `on_key`, are the only paths into `_decide_proposal`.
+        """
+        if self._pending_proposal is None:
+            return
+        diff, _updated, refusals = self._pending_proposal
+        lines = [
+            f"Attempt {number} was refused, repairing: {reason}"
+            for number, reason in enumerate(refusals, start=1)
+        ]
+        if lines:
+            lines.append("")
+        lines.append(diff)
+        lines.append("")
+        lines.append("[y] apply   [n] discard")
+        self.query_one("#diff-view", Static).update("\n".join(lines))
+        self._set_panel("diff")
+
+    def _decide_proposal(self, accept: bool) -> None:
+        """[y]/[n] in the diff panel: apply the already-validated project
+        `propose_from_reference` built, or leave the project untouched."""
+        if self._pending_proposal is None:
+            return
+        _diff, updated, _refusals = self._pending_proposal
+        self._pending_proposal = None
+        if accept:
+            self._apply(lambda: updated)
+            self.query_one("#diff-view", Static).update(
+                "Applied. Press ctrl+a to propose another adaptation."
+            )
+            self._log("[green]Adaptation applied[/green]")
+        else:
+            self.query_one("#diff-view", Static).update(
+                "Left unchanged. Press ctrl+a to propose another adaptation."
+            )
+            self._log("Left unchanged")
+
+    def _show_drawn_sprites(self) -> None:
+        """After `action_draw_sprites`'s job returns, look at what it drew.
+
+        Runs as `_run`'s `on_finished`. `image_utils.display_sprite` is the
+        terminal pixel-art renderer `llmz80 project sprites` already uses,
+        and `llmz80.cli._sprite_preview_array` is the array it renders --
+        both reused rather than re-derived. `display_sprite` writes its
+        ANSI-coloured rows straight to stdout, which would corrupt this
+        screen if it ran while Textual owns the terminal, so its output is
+        captured and read back through `rich.text.Text.from_ansi`, Rich's
+        own conversion from raw ANSI text into a renderable a `Static` can
+        display.
+        """
+        drawn = self._drawn_sprites
+        if not drawn or self.project is None or self.project_dir is None:
+            return
+        import contextlib
+        import io
+        from types import SimpleNamespace
+
+        from PIL import Image
+        from rich.console import Group
+        from rich.text import Text
+
+        from image_utils import display_sprite
+        from llmz80.cli import _sprite_preview_array
+
+        mode = None
+        if self.project.target.platform.value == "amstrad_cpc":
+            mode = "mode0" if self.project.target.video_mode.value == "cpc_mode_0" else "mode1"
+        args = SimpleNamespace(platform=self.project.target.platform.value, mode=mode)
+
+        blocks: list[Text] = []
+        for asset in drawn:
+            sheet = Image.open(self.project_dir / asset.source).convert("RGBA")
+            array = _sprite_preview_array(sheet, args)
+            captured = io.StringIO()
+            with contextlib.redirect_stdout(captured):
+                display_sprite(array, args)
+            blocks.append(Text.from_markup(f"[b]{asset.id}[/b]  {asset.source}"))
+            blocks.append(Text.from_ansi(captured.getvalue()))
+        self.query_one("#sprites-view", Static).update(Group(*blocks))
+        self._set_panel("sprites")
+
     def _selected_entity(self) -> str | None:
         table = self.query_one("#entity-table", DataTable)
         if not table.row_count:
@@ -527,6 +661,15 @@ class StudioApp(App[None]):
                     )
                 event.stop()
                 return
+        if self.active_panel == "diff" and self._pending_proposal is not None:
+            if key == "y":
+                self._decide_proposal(True)
+                event.stop()
+                return
+            if key == "n":
+                self._decide_proposal(False)
+                event.stop()
+                return
         if self.active_panel == "entities" and key in {"plus", "equals_sign", "minus"}:
             entity_id = self._selected_entity()
             if entity_id and self.project is not None:
@@ -602,18 +745,183 @@ class StudioApp(App[None]):
         )
         self._log("[green]Saved[/green]")
 
+    def action_research(self) -> None:
+        """ctrl+f: research the real game the brief names, archiving
+        reference.yml.
+
+        This searches the web and calls the OpenAI API, so it says so
+        before doing either -- the check for an existing dossier happens
+        first and costs nothing. Like `llmz80 project reference`, it asks
+        before replacing a dossier that already exists, since that file is
+        meant to be corrected by hand, not silently overwritten; and a
+        dossier that exists but cannot be read (malformed YAML) is reported
+        the same way, not crashed on.
+        """
+        if self.project is None or self.project_dir is None:
+            self.notify("Create or open a project first", severity="warning")
+            return
+        try:
+            existing = self.service.reference(self.project_dir)
+        except ValueError as exc:
+            self.notify(str(exc), severity="error")
+            self.notify(
+                "Fix or remove reference.yml before researching again.",
+                severity="warning",
+            )
+            return
+        if existing is not None and not self._confirmed("research"):
+            self.notify(
+                "An archived dossier already exists: "
+                f"{existing.title or '(unidentified)'}. Press ctrl+f again to replace it.",
+                severity="warning",
+            )
+            return
+
+        project, directory = self.project, self.project_dir
+
+        def job() -> str:
+            researcher = self.researcher
+            if researcher is None:
+                from ..cli import _openai_client_and_model
+                from .reference import ResponsesReferenceResearcher
+
+                client, model = _openai_client_and_model()
+                researcher = ResponsesReferenceResearcher(client, model=model)
+            dossier = self.service.research_reference(project, directory, researcher)
+            if not dossier.identified:
+                return "No game was identified. The design keeps its typology."
+            known = [part for part in (dossier.publisher, str(dossier.year or "")) if part]
+            on_publisher = f" ({', '.join(known)})" if known else ""
+            return (
+                f"[green]{dossier.title}{on_publisher}[/green] · "
+                f"{len(dossier.sources)} source(s). See the stage line for referencia."
+            )
+
+        self._run("Researching with the OpenAI API; this searches the web", job)
+
+    def action_adapt(self) -> None:
+        """ctrl+a: propose an adaptation to the researched game, and open
+        the diff panel to review it.
+
+        Nothing is applied here -- `propose_from_reference` only returns an
+        already-validated candidate project, and `_show_pending_proposal`
+        shows its diff (and whatever the repair loop had to overcome to
+        reach it) for a person to accept with [y] or discard with [n] in
+        the diff panel, the same restraint `llmz80 project adapt` applies
+        before it ever calls `save_project`.
+        """
+        if self.project is None or self.project_dir is None:
+            self.notify("Create or open a project first", severity="warning")
+            return
+        self._pending_proposal = None
+        project, directory = self.project, self.project_dir
+
+        def job() -> str:
+            designer = self.designer
+            if designer is None:
+                from ..cli import _openai_client_and_model
+                from .reference_design import ResponsesReferenceDesigner
+
+                client, model = _openai_client_and_model()
+                designer = ResponsesReferenceDesigner(client, model=model)
+            proposal, diff, updated, refusals = self.service.propose_from_reference(
+                project, directory, designer
+            )
+            self._pending_proposal = (diff, updated, refusals)
+            lines = [
+                f"Attempt {number} was refused, repairing: {reason}"
+                for number, reason in enumerate(refusals, start=1)
+            ]
+            lines.append("[green]Proposal ready[/green] -- review it in the diff panel.")
+            return "\n".join(lines)
+
+        self._run(
+            "Proposing an adaptation with the OpenAI API",
+            job,
+            on_finished=self._show_pending_proposal,
+        )
+
+    def action_draw_sprites(self) -> None:
+        """ctrl+d: draw the art this project is missing, and register each
+        result as an asset.
+
+        `draw_sprites` only ever fills a gap -- it never touches an entity
+        that already wears a sprite-kind asset -- so the one place this can
+        overwrite existing art is here, by evicting it first; like
+        `llmz80 project sprites`, that only happens after asking, and this
+        calls OpenAI's image API, so it says so before doing that too.
+        """
+        if self.project is None or self.project_dir is None:
+            self.notify("Create or open a project first", severity="warning")
+            return
+
+        have = {asset.id for asset in self.project.assets if asset.kind == "sprite"}
+        needed = sorted({entity.sprite for entity in self.project.entities})
+        existing = [sprite_id for sprite_id in needed if sprite_id in have]
+        if existing and not self._confirmed("sprites"):
+            self.notify(
+                "Sprite art already exists for: "
+                + ", ".join(existing)
+                + ". Press ctrl+d again to redraw it, overwriting the existing art.",
+                severity="warning",
+            )
+            return
+        if existing:
+            for sprite_id in existing:
+                asset = next(
+                    a for a in self.project.assets if a.kind == "sprite" and a.id == sprite_id
+                )
+                (self.project_dir / asset.source).unlink(missing_ok=True)
+            remaining = [
+                a for a in self.project.assets if not (a.kind == "sprite" and a.id in existing)
+            ]
+            candidate = GameProject.model_validate(
+                {
+                    **self.project.model_dump(mode="json"),
+                    "assets": [a.model_dump(mode="json") for a in remaining],
+                }
+            )
+            self.project.assets = candidate.assets
+            self.service.save_project(self.project, self.project_dir)
+
+        self._drawn_sprites = []
+        project, directory = self.project, self.project_dir
+
+        def job() -> str:
+            artist = self.artist
+            if artist is None:
+                from generators.openai_generator import OpenAIImageGenerator
+
+                from ..cli import _openai_client_and_model
+                from .sprite_artist import SpriteArtist
+
+                # `OpenAIImageGenerator` takes an API key, not a client --
+                # `llmz80 project sprites` reads it off the client
+                # `_openai_client_and_model` already built rather than
+                # loading it a second time, and this does the same.
+                client, _model = _openai_client_and_model()
+                artist = SpriteArtist(OpenAIImageGenerator(api_key=client.api_key))
+            drawn = self.service.draw_sprites(project, directory, artist)
+            self._drawn_sprites = drawn
+            if not drawn:
+                return "Every entity already has sprite art."
+            return "[green]Drawn[/green] " + ", ".join(asset.id for asset in drawn)
+
+        self._run(
+            "Drawing sprites with OpenAI's image API",
+            job,
+            on_finished=self._show_drawn_sprites,
+        )
+
     def action_write(self) -> None:
         """Have the program written. This spends money, so it says so first."""
 
         def job() -> str:
-            from openai import OpenAI
-
-            from llmz80.utils.config import load_api_key, load_config
-
+            from ..cli import _openai_client_and_model
             from .generator import ResponsesProgramWriter
 
-            model = load_config("config.yml").get("openai", {}).get("model", "gpt-5")
-            writer = ResponsesProgramWriter(OpenAI(api_key=load_api_key()), model=model)
+            client, model = _openai_client_and_model()
+            writer = ResponsesProgramWriter(client, model=model)
             report = self.service.write_program(self.project, self.project_dir, writer)
             lines = [
                 f"  attempt {attempt['number']}: build={attempt['build_passed']} "
@@ -629,12 +937,18 @@ class StudioApp(App[None]):
 
         self._run("Writing the program with the OpenAI API", job)
 
-    def _run(self, label: str, job) -> None:
+    def _run(self, label: str, job, *, on_finished=None) -> None:
         """Run a slow job off the UI thread and report it as it finishes.
 
         Building takes seconds and a runtime test takes tens of them. Run on the
         UI thread they freeze the app so completely that even the "working"
         line never appears, which reads as the command doing nothing at all.
+
+        `on_finished`, when given, runs after the job's message has already
+        been logged and the stage line redrawn -- research, adapt and
+        draw-sprites use it to open the panel their result belongs in
+        (stage line, diff, sprites respectively) without teaching this
+        generic runner anything about any one of them.
         """
         if self.project is None or self.project_dir is None:
             self.notify("Create or open a project first", severity="warning")
@@ -642,10 +956,10 @@ class StudioApp(App[None]):
         self._set_panel("log")
         self._log(f"[yellow]{label}...[/yellow]")
         self._busy(label)
-        self._background(job, label)
+        self._background(job, label, on_finished)
 
     @work(exclusive=True)
-    async def _background(self, job, label: str) -> None:
+    async def _background(self, job, label: str, on_finished=None) -> None:
         """Await the job on a thread, then update from the UI task itself.
 
         Handing the result back through the event loop rather than across
@@ -658,6 +972,8 @@ class StudioApp(App[None]):
             self.notify(str(exc), severity="error")
         self._log(message)
         self._finished(label)
+        if on_finished is not None:
+            on_finished()
 
     def _busy(self, label: str) -> None:
         text = f"{label}... (the interface stays usable)"
