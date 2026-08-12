@@ -7,6 +7,7 @@
 
 #include "platform.h"
 #include "game_config.h"
+#include "sprites.h"
 
 #if CPC_MODE == 0
 #define CELL_BYTES 4
@@ -113,11 +114,60 @@ void plat_sound(unsigned char effect) {
     (void)effect;
 }
 
-/* Stub: Task 7 gives the CPC its own masked blitter (cpct_drawSpriteMasked
- * against the interleaved mask+colour bytes pack_cpc already produces). This
- * task only wires sprites.h into every build, so a CPC program that calls
- * plat_sprite compiles and links today but draws nothing yet. */
+/* Draws one 16x16 masked sprite as two rows of two cells, through
+ * cpct_drawSpriteMasked (~/cpctelera/cpctelera/src/sprites/cpct_drawSpriteMasked.asm).
+ *
+ * Vertical boundary crossing: the CPC screen is laid out in eight interleaved
+ * 8-pixel-line blocks per character row (cpct_getScreenPtr's own formula,
+ * screen_start + 80*(y/8) + 2048*(y%8) + x -- see cpct_getScreenPtr.asm's
+ * Details section), so a naive `address += stride` per pixel line is wrong
+ * once a sprite's second half starts a new character row. That crossing is
+ * *not* this function's job to get right: cpct_drawSpriteMasked.asm's own
+ * per-line loop (labels dms_sprite_height_loop..dms_sprite_8bit_boundary_crossed,
+ * lines ~161-186) already detects it -- `and #0x38` on the recomputed high
+ * byte catches every 8th line -- and repoints DE by adding 0xC050 (three
+ * banks forward, i.e. one bank back plus 0x50) to land on the next
+ * character row. One cpct_getScreenPtr call up front is therefore enough;
+ * no fresh call is needed per half the way the Spectrum blitter needs one
+ * per third.
+ *
+ * What the callee will *not* do (documented directly above that loop, under
+ * "Known limitations" in the same .asm): no boundary check or clipping
+ * against the edge of video memory, and the crossing math it does do only
+ * ever steps forward through the current 16K bank -- it never wraps back to
+ * row 0. A sprite whose bottom half would fall past the last character row
+ * corrupts whatever memory follows the screen instead of failing loudly, so
+ * the guard below refuses that case rather than trust the call site.
+ *
+ * Bounds guard: the sprite is 2 cells wide and 2 cells tall. A row of cells
+ * is 80 bytes wide regardless of mode (mode 0: 20 cells * 4 bytes; mode 1:
+ * 40 cells * 2 bytes -- both 80), so the last column a 2-cell sprite can
+ * start at is (80 / CELL_BYTES) - 2, i.e. col must be < (80 / CELL_BYTES) - 1.
+ * The screen is 25 character rows (200 pixel lines / 8) with no third
+ * boundary of its own -- unlike the Spectrum, one bank covers the whole
+ * screen -- so the last row a 2-cell-tall sprite can start at is 23, i.e.
+ * row must be < 24.
+ *
+ * Alignment/size: cpct_drawSpriteMasked only requires whole-byte width and a
+ * byte-aligned destination (same doc, "As this function receives a
+ * byte-pointer to memory..."). Both hold here for free: col*CELL_BYTES is
+ * always a whole number of bytes because CELL_BYTES is the byte width of one
+ * cell, and SPRITE_BYTES_WIDE (8 in mode 0, 4 in mode 1) is already the
+ * sprite's width in whole bytes, not pixels. */
 void plat_sprite(unsigned char col, unsigned char row, unsigned char sprite,
                  unsigned char frame) {
+#if SPRITE_COUNT
+    u8 *screen;
+    const u8 *bytes;
+    if (sprite >= SPRITE_COUNT) return;
+    if (col >= (80 / CELL_BYTES) - 1 || row >= 24) return;
+    screen = cpct_getScreenPtr(CPCT_VMEM_START, (u8)(col * CELL_BYTES), (u8)(row * 8));
+    bytes = sprite_data[sprite] + sprite_frame_offset[sprite][frame];
+    /* SPRITE_BYTES_WIDE is 8 in mode 0 and 4 in mode 1: sixteen pixels across,
+     * at the mode's pixels per byte. The mask travels interleaved inside the
+     * data, which is what cpct_drawSpriteMasked expects. */
+    cpct_drawSpriteMasked((void *)bytes, screen, SPRITE_BYTES_WIDE, 16);
+#else
     (void)col; (void)row; (void)sprite; (void)frame;
+#endif
 }
