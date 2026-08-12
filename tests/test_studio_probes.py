@@ -31,6 +31,7 @@ DEF _g_score 0x5105
 DEF _g_worst_frame_cost 0x5107
 DEF _g_hiscore 0x5108
 DEF _g_state 0x510a
+DEF _g_anim_frame 0x510b
 """
 
 
