@@ -7,12 +7,14 @@ from llmz80.core.state_contract import (
     contract_prompt,
 )
 from llmz80.studio.acceptance import (
+    derive_scenarios,
     design_prompt,
     generation_prompt,
     runtime_script,
     scenarios_prompt,
     with_executable_scenarios,
 )
+from llmz80.studio import editing
 from llmz80.studio.editing import set_entity_behaviour
 from llmz80.studio.models import AcceptanceScenario, GenreId, TargetPlatform
 from llmz80.studio.packs import create_default_project
@@ -42,29 +44,92 @@ def test_required_symbols_are_the_ones_a_playable_design_cannot_omit():
 
 
 def test_default_projects_ship_runnable_acceptance(project):
+    # The default maze_chase pack's enemy behaviour is "chase" (see
+    # resources/genres.yml), so all three core criteria are runnable, not
+    # just the first two.
     executable = [scenario for scenario in project.acceptance if scenario.executable]
 
-    assert [scenario.id for scenario in executable] == ["start_game", "collect_scores"]
+    assert [scenario.id for scenario in executable] == [
+        "start_game",
+        "collect_scores",
+        "enemy_costs_life",
+    ]
     start = executable[0]
     assert start.hold == "action"
     assert start.expect["g_state"] == STATE_PLAYING
     collect = executable[1]
     assert collect.expect["g_score"] == project.gameplay.score_per_collectible
     assert collect.expect["g_remaining"] == 7
+    enemy = executable[2]
+    assert enemy.hold == "none"
+    assert enemy.expect["g_lives"] == project.gameplay.lives - 1
+    assert enemy.expect["g_state"] == STATE_PLAYING
 
 
 def test_a_criterion_the_design_cannot_predict_stays_prose(project):
-    enemy = next(s for s in project.acceptance if s.id == "enemy_costs_life")
+    # Chase is predictable and is covered by
+    # test_a_chasing_enemy_makes_losing_a_life_executable; guard is not a
+    # chaser and stays unpredictable exactly like a patrol.
+    edited = editing.set_entity_behaviour(project, "enemy", "guard")
+
+    enemy = next(s for s in derive_scenarios(edited) if s.id == "enemy_costs_life")
 
     assert enemy.executable is False
     assert enemy.then  # the prose is still there for a reader
 
 
+def test_a_chasing_enemy_makes_losing_a_life_executable():
+    project = create_default_project("Chase", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+
+    scenario = next(s for s in derive_scenarios(project) if s.id == "enemy_costs_life")
+
+    assert scenario.executable
+    assert scenario.hold == "none"
+    assert scenario.expect["g_lives"] == project.gameplay.lives - 1
+    assert scenario.expect["g_state"] == STATE_PLAYING
+
+
+def test_a_design_with_no_chasing_enemy_leaves_it_as_prose():
+    """A patrolling enemy's position depends on where it wandered; that is not predictable."""
+    project = create_default_project("Patrol", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = editing.set_entity_behaviour(project, "enemy", "patrol_h")
+
+    scenario = next(s for s in derive_scenarios(project) if s.id == "enemy_costs_life")
+
+    assert not scenario.executable
+
+
 def test_the_script_keeps_the_designs_order(project):
     steps = runtime_script(project)
 
-    assert [step["id"] for step in steps] == ["start_game", "collect_scores"]
+    assert [step["id"] for step in steps] == [
+        "start_game",
+        "collect_scores",
+        "enemy_costs_life",
+    ]
     assert steps[0]["frames"] > 0
+
+
+def test_the_script_enforces_scoring_before_dying_even_if_the_design_lists_it_first():
+    """`enemy_costs_life` costs a life; `collect_scores` assumes none has been
+
+    lost yet. `runtime_script` accumulates in one boot without resetting, so
+    if a design listed the criteria in the other order the emulator would
+    check "no life lost" only after one already was. This is the actual
+    enforcement point, not the pack's authoring order.
+    """
+    project = create_default_project("Reordered", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    document = project.model_dump(mode="json")
+    document["acceptance"] = list(reversed(document["acceptance"]))
+    reordered = type(project).model_validate(document)
+
+    steps = runtime_script(reordered)
+
+    assert [step["id"] for step in steps] == [
+        "start_game",
+        "collect_scores",
+        "enemy_costs_life",
+    ]
 
 
 def test_the_prompt_states_the_checks_and_the_controls(project):
@@ -101,6 +166,10 @@ def test_a_step_whose_reading_contradicts_the_design_fails(tmp_path, project):
         "step_readings": [
             {"id": "start_game", "read": {"g_state": 1, "g_level": 1, "g_score": 0}},
             {"id": "collect_scores", "read": {"g_score": 0, "g_remaining": 8}},
+            {
+                "id": "enemy_costs_life",
+                "read": {"g_lives": project.gameplay.lives - 1, "g_state": STATE_PLAYING},
+            },
         ]
     }
 

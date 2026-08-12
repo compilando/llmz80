@@ -13,7 +13,7 @@ from typing import Any
 from llmz80.core.state_contract import STATE_PLAYING, contract_prompt
 
 from .models import AcceptanceScenario, AssetSpec, GameProject
-from .solvability import sweep_plan
+from .solvability import _distances, sweep_plan
 from .spriting import is_blitter_sprite
 
 #: Frames to hold the action key before gameplay is expected to be running.
@@ -44,15 +44,57 @@ def sweep_frames(project: GameProject, plan: dict) -> int:
     return min(1000, distance * frames_per_cell(speed) + SWEEP_MARGIN_FRAMES)
 
 
+def chase_catch_frames(project: GameProject, level_index: int = 0) -> int | None:
+    """Frames for the nearest chasing enemy to reach a player who never moves.
+
+    Only `behaviour == "chase"` is predictable enough to gate on: a patrol,
+    bounce or guard's position depends on where it has moved on its own
+    account, which this design cannot know in advance, but a chaser closes
+    on the player's exact spawn by definition. `None` when no chaser has a
+    route to the player at all, which `solvability._distances` -- the same
+    breadth-first walk `sweep_plan` and `threat_report` already use -- is
+    what decides.
+    """
+    level = project.levels[level_index]
+    roles = {entity.id: entity.role for entity in project.entities}
+    chaser_speeds = {
+        entity.id: entity.speed
+        for entity in project.entities
+        if entity.role == "enemy" and entity.behaviour == "chase"
+    }
+    if not chaser_speeds:
+        return None
+    player = next(
+        ((spawn.col, spawn.row) for spawn in level.spawns if roles.get(spawn.entity) == "player"),
+        None,
+    )
+    if player is None:
+        return None
+    reach = _distances(level, player)
+    frames = [
+        reach[(spawn.col, spawn.row)] * frames_per_cell(chaser_speeds[spawn.entity])
+        for spawn in level.spawns
+        if spawn.entity in chaser_speeds and (spawn.col, spawn.row) in reach
+    ]
+    if not frames:
+        return None
+    return min(1000, min(frames) + SWEEP_MARGIN_FRAMES)
+
+
 def derive_scenarios(project: GameProject) -> list[AcceptanceScenario]:
     """Fill in the runnable half of the design's acceptance criteria.
 
     Only criteria the design can predict exactly become executable. Losing a
-    life to an enemy stays prose, because reaching an enemy depends on where it
-    has patrolled to, and a check that is only usually true is worse than none.
+    life to a patrolling, bouncing or guarding enemy stays prose, because
+    reaching it depends on where it has moved to on its own, and a check that
+    is only usually true is worse than none. A chasing enemy is the
+    exception: it comes to the player, so the encounter needs no keyboard at
+    all -- it needs waiting (`hold="none"`) for `chase_catch_frames` to work
+    out, once a route from its spawn to the player's exists.
     """
     total = sum(entity.count for entity in project.entities if entity.role == "collectible")
     plan = sweep_plan(project, 0)
+    catch_frames = chase_catch_frames(project, 0)
     scenarios: list[AcceptanceScenario] = []
     for scenario in project.acceptance:
         document = scenario.model_dump(mode="json")
@@ -77,6 +119,33 @@ def derive_scenarios(project: GameProject) -> list[AcceptanceScenario]:
                     "g_lives": project.gameplay.lives,
                 },
             )
+        elif scenario.id == "enemy_costs_life":
+            if catch_frames is not None:
+                document.update(
+                    hold="none",
+                    frames=catch_frames,
+                    expect={
+                        "g_lives": project.gameplay.lives - 1,
+                        # The runtime gate keeps CORE_STEP_ORDER, so this step
+                        # always runs after collect_scores: it is safe to
+                        # expect "still playing" rather than repeating that
+                        # step's score.
+                        "g_state": STATE_PLAYING,
+                    },
+                )
+            else:
+                # No chaser has a route to the player right now (there is no
+                # chase enemy, or none can reach the spawn). Re-deriving must
+                # revert this to prose rather than keep an executable check
+                # left over from before the design changed -- a project's own
+                # `acceptance` entry can already carry values from an earlier
+                # `derive_scenarios` call, since editing operations such as
+                # `set_entity_behaviour` do not re-derive it themselves.
+                document.update(
+                    hold=None,
+                    frames=AcceptanceScenario.model_fields["frames"].default,
+                    expect={},
+                )
         scenarios.append(AcceptanceScenario.model_validate(document))
     return scenarios
 
@@ -89,11 +158,24 @@ def with_executable_scenarios(project: GameProject) -> GameProject:
     return GameProject.model_validate(document)
 
 
+#: The order the three core steps must run in, however a design lists its
+#: scenarios. Steps accumulate in one boot without resetting (see below), so
+#: `collect_scores` has to run while `g_lives` is still full and before
+#: `enemy_costs_life` spends one -- this is what actually enforces that, not
+#: just a comment upstream that a reordered pack could silently invalidate.
+#: Any scenario id outside this tuple keeps its place after all three, in
+#: whatever order the design listed it.
+CORE_STEP_ORDER = ("start_game", "collect_scores", "enemy_costs_life")
+
+
 def runtime_script(project: GameProject) -> list[dict[str, Any]]:
     """Ordered steps for the emulator: hold an input, then read the contract.
 
     Steps run in one boot and accumulate, which is why order matters: the game
-    has to be started before anything can be collected.
+    has to be started before anything can be collected, and nothing that
+    assumes a full life total can run after the step that spends one. That
+    second constraint is enforced here, by `CORE_STEP_ORDER`, rather than
+    left to whatever order the design happens to list its scenarios in.
     """
     steps: list[dict[str, Any]] = []
     for scenario in project.acceptance:
@@ -107,6 +189,13 @@ def runtime_script(project: GameProject) -> list[dict[str, Any]]:
                 "expect": dict(scenario.expect),
             }
         )
+    steps.sort(
+        key=lambda step: (
+            CORE_STEP_ORDER.index(step["id"])
+            if step["id"] in CORE_STEP_ORDER
+            else len(CORE_STEP_ORDER)
+        )
+    )
     return steps
 
 
