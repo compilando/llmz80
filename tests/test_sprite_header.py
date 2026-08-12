@@ -85,7 +85,9 @@ def test_ragged_frame_counts_still_produce_a_rectangular_array():
     """C requires a rectangular 2D array; the short sprite's row is padded so both
     rows have the same number of columns, and the padding repeats the last real
     offset so an out-of-range read (a bug elsewhere) still lands in-bounds."""
-    text = render_sprite_header({"hero": _packed(3, width_bytes=2), "enemy": _packed(1, width_bytes=2)})
+    text = render_sprite_header(
+        {"hero": _packed(3, width_bytes=2), "enemy": _packed(1, width_bytes=2)}
+    )
 
     squeezed = text.replace("\n", " ")
     assert "{0, 32, 64}" in squeezed  # hero: three real frames
@@ -120,7 +122,9 @@ def test_mismatched_width_bytes_across_sprites_is_rejected():
     """SPRITE_BYTES_WIDE is a single, global macro; sprites packed for different
     modes (or different platforms) cannot coexist in one header."""
     with pytest.raises(ValueError, match="width_bytes"):
-        render_sprite_header({"hero": _packed(1, width_bytes=2), "enemy": _cpc_packed(1, width_bytes=8)})
+        render_sprite_header(
+            {"hero": _packed(1, width_bytes=2), "enemy": _cpc_packed(1, width_bytes=8)}
+        )
 
 
 def test_a_sprite_id_that_is_not_a_valid_c_identifier_is_rejected():
