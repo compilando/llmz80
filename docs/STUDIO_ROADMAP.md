@@ -40,7 +40,7 @@ have to be rewritten when the change lands, not quietly ignored.
 | S05 | Modular deterministic game engine | Withdrawn | Replaced by scaffolding: `resources/studio_lib` offers platform pieces with no game loop, and the program lives in the project's `program_dir`. The former engine is kept as a reference program under `resources/studio_reference` |
 | S06 | Asset pipeline | In progress | Project-owned image import and deterministic Spectrum/CPC packing; a sprite-kind 16x16 asset is packed into `sprites.h` and blittable on both targets (S12), but every other imported asset still falls back to the generic `assets.c` conversion, which no generated C references |
 | S07 | Structured AI design assistance | Implemented | Responses typed proposals, visible diff, separate apply action and protected contracts |
-| S08 | Automated gameplay QA | In progress | Design, build and runtime gates plus solvability analysis and, on Spectrum, memory-probed assertions that a scripted sweep scores exactly what the design predicts; CPC state probes and life/level transitions next |
+| S08 | Automated gameplay QA | In progress | Design, build and runtime gates plus solvability, terrain-structure and difficulty-curve analysis; on Spectrum, memory-probed assertions that a scripted sweep scores exactly what the design predicts, that a chasing enemy's catch costs exactly one life, and that `g_anim_frame` (when a program declares it) advances while moving and holds still at rest; CPC state probes and level transitions next |
 | S09 | Commercial vertical slices | In progress | Quality-gated reproducible release archive; content/presentation polish next |
 | S10 | Extension SDK | Implemented | Public typed protocols, entry-point groups, compatibility rules and installable example |
 | S11 | Real-game references driving the design | Implemented | Cited dossier in `reference.yml`, a proposal with an approvable diff, and a prompt block for the writer; adaptation is one-shot, so a refused proposal is discarded whole and retrying starts from a designer with no memory of what failed |
@@ -97,9 +97,14 @@ Still open:
   no generated or reference program in this repository calls `plat_sprite` yet — only a hand-written
   probe program in `tests/test_sprite_blitter_toolchain.py` does — and no gate checks that a written
   program actually follows the instruction.
-- Nothing yet animates. `plat_sprite` takes a frame index and `sprites.h`'s `sprite_frames[]` array
-  carries each sprite's frame count, but no generated game steps through them, and no gate observes
-  animation. That belongs to the next plan.
+- Nothing generated yet animates. `g_anim_frame` joined the state contract as an optional symbol,
+  and `llmz80/studio/feel.py` now judges it between scripted acceptance steps — the frame must
+  advance while a step holds a direction and hold still while a step waits — so a gate does observe
+  animation where a program declares the symbol. What it cannot do yet is find one to observe:
+  `plat_sprite` still takes a frame index and `sprites.h`'s `sprite_frames[]` array still carries
+  each sprite's frame count, but no generated or reference program in this repository calls
+  `plat_sprite` or declares `g_anim_frame`, so the gate abstains on every real run today. That part
+  is unchanged from before this plan.
 - `budgets.frame_budget_cycles` is still a declared number rather than a measured one. The engine
   now counts missed frames on target and shows the worst case in the HUD, but that is a pass/fail
   signal read from a captured frame, not a cycle count, and it cannot gate automatically until the
@@ -125,8 +130,13 @@ Still open:
   `CAP32_SNAPSHOT` as an autocmd: passing it types the literal characters into the emulated CPC,
   while `CAP32_EXIT` correctly maps to F10. Until a build exposes snapshot dumping, or another CPC
   emulator with a remote protocol is adopted, CPC state stays unobserved and the gate abstains.
-- The probe proves that collecting scores. It does not yet prove that a collision costs a life or
-  that clearing a level advances it; both need a scripted encounter rather than a single sweep.
+- The probe proves that collecting scores and, when the design places a chasing enemy,
+  `enemy_costs_life` now scripts the encounter too: the emulator waits for the chaser to reach the
+  player's spawn and asserts one life lost without ending the game. A patrolling, bouncing or
+  guarding enemy's position after N frames is not predictable from the design alone, so a collision
+  with one of those stays prose rather than a check that would only usually be true. Clearing a
+  level advancing it is still unproven either way — no scenario scripts it, and this plan did not
+  touch that gap.
 
 Consequence for sequencing: visual editors built before the engine is data-driven would author
 designs that `validate_backend_support` rejects. Engine expressiveness comes first.
@@ -165,7 +175,7 @@ Ordered by what unblocks what, not by product visibility.
 | P3 | Visual scene, map, entity and level editors in the TUI | vertical-slice acceptance item 9 | **Done.** `llmz80/studio/editing.py` holds every operation as a pure function; Map and Entities tabs drive it and show gate state live; an edited design builds and runs on both targets |
 | P4 | Multi-enemy engine: per-entity behaviour (horizontal and vertical patrol, greedy chase, guard, bounce) and difficulty scaling driven by `difficulty_curve` | advanced AI, genre polish | **Done.** `EntitySpec.behaviour` drives the engine; at the full 16-entity budget with all five behaviours the Spectrum reports zero missed frames on target and both machines build, run and release |
 | P5 | Audio: AY playback on CPC, beeper effects on Spectrum 48K, with a new `spectrum_128` target for real music; audio capability declared per target so unsupported requests degrade explicitly | polish | **Partly done.** The capability contract and explicit degradation are in place and Spectrum plays beeper effects for 314 bytes. CPC audio, Spectrum music and the `spectrum_128` target are **not** delivered |
-| P6 | Real playability probes: export the toolchain symbol map to `probes.json` and assert score, lives and level transitions from memory during a scripted input replay | S08 and S09 as claimed | **Partly done.** Both toolchains export `probes.json`. On Spectrum a scripted sweep collects a predicted number of items and the gate asserts the resulting score and remaining count from memory. Lives and level transitions are not scripted yet, and the CPC abstains for lack of a memory adapter |
+| P6 | Real playability probes: export the toolchain symbol map to `probes.json` and assert score, lives and level transitions from memory during a scripted input replay | S08 and S09 as claimed | **Partly done.** Both toolchains export `probes.json`. On Spectrum a scripted sweep collects a predicted number of items and the gate asserts the resulting score and remaining count from memory, and a chasing enemy's catch is scripted to cost exactly one life. Patrol/bounce/guard enemies still leave life loss as prose, level transitions are not scripted at all, and the CPC abstains for lack of a memory adapter |
 | P7 | Advanced AI design assistance over tilemaps, per-genre polish, loading screen, high-score table, tape and disk mastering | commercial release | **Partly done.** AI proposals are refused when they would leave the game unplayable, and a high score is kept and probe-verified on target. Loading screen, tape and disk mastering and per-genre polish are **not** delivered |
 
 Not yet covered anywhere above and still required for a commercial claim: loading screen, and tape
@@ -555,3 +565,50 @@ because the program moved at a playable pace instead.
 So: the program works and the design does not. Studio produced a Zampabolas
 that compiles, boots, draws its maze, scores, loses lives and reaches a game
 over screen. It is unplayably hard, and no gate here can currently say so.
+
+## 2026-08-12 (J): difficulty and animation, gated instead of declared
+
+- `llmz80/studio/difficulty.py` turns `gameplay.difficulty_curve` from a word into a check: it reads
+  `solvability.analyse_level`'s route length and each level's `time_limit_seconds` and refuses a
+  `linear` or `stepped` design whose levels never get harder, or that gets measurably easier
+  anywhere. `layout.py`'s per-typology generators were reworked to escalate on that same lever, and
+  `tests/test_difficulty_escalation.py` proves it for the whole catalogue rather than a sample: all
+  eighteen typologies in `resources/genres.yml`, on both targets, pass solvability, terrain
+  structure and the difficulty gate at every level. This is a design-level proof -- pure analysis
+  over the generated IR, no build or emulator involved, the same way (F)'s typology proof was.
+- `EntitySpec.count` still cannot vary per level -- `GameProject.validate_contract` requires every
+  level to place exactly `entity.count` instances of every entity, so "more enemies later" stays
+  inexpressible. `difficulty.py` states this as a limitation rather than a gap it papers over: route
+  length and time limit are the only two difficulty signals today's IR can actually measure.
+- `g_anim_frame` joined the state contract as an optional symbol (`llmz80/core/state_contract.py`),
+  and `llmz80/studio/feel.py` judges it between the scripted acceptance steps that already exist:
+  the frame must differ between two consecutive steps held in a direction and must not differ
+  between a moving step and a following idle one. Classification reads the step's own `hold` --
+  now threaded into `step_readings` -- rather than a naming habit on the step id, which no real
+  scenario ever followed.
+- `enemy_costs_life` moved from permanently-prose to conditionally-executable. Where a design places
+  a `behaviour == "chase"` enemy, `derive_scenarios` now scripts the encounter: hold nothing
+  (`hold="none"`) for exactly the frames `chase_catch_frames` computes from the chaser's shortest
+  route to the player's spawn, and expect `g_lives` down by one with `g_state` still playing. A
+  patrolling, bouncing or guarding enemy's position depends on where it moved on its own, so a
+  collision with one of those still cannot be predicted and stays prose.
+- Fixed the bug that would have silently defeated the bullet above: `StudioService.scenario_script`
+  resolved every scripted hold through a keyboard map and dropped whatever did not resolve --
+  including every `hold="none"` waiting step, since waiting was never going to be in that map. An
+  unresolvable hold (a control scheme with genuinely no key for a direction) is now logged rather
+  than silently dropped.
+- What this does not yet prove: no generated or reference program in the repository declares
+  `g_anim_frame` or calls `plat_sprite`, so the animation gate abstains (`observed: False`) on every
+  real run today. It was verified with synthetic `step_readings` and a mocked wiring test
+  (`test_zesarux_step_reading_carries_the_step_hold`), not against a compiled program on a real
+  emulator. Clearing a level advancing `g_level`, and a collision with any non-chasing enemy, remain
+  entirely unscripted.
+- Both runtime gates abstain on the CPC, unchanged: `_run_caprice32` builds no `step_readings` at
+  all, so the scripted encounter and the animation judgement are both unobserved there, never
+  passed.
+- The TUI's resting screen shrank further to one command screen -- header, brief-box, stage-line,
+  stage-detail, shortcuts: seven rows measured the same way as before (`Widget.size.height` under
+  `run_test`), plus a footer -- with design/map/entities/sprites/diff/log as panels opened one at a
+  time over it, and research (`ctrl+f`), adapt (`ctrl+a`) and sprite drawing (`ctrl+d`) reachable
+  from it alongside save/new/open/write/build/test/release.
+- 775 automated tests collected, 774 passing with one known-flaky emulator test deselected.

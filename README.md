@@ -64,6 +64,15 @@ documentan en [Extending LLMZ80 Studio](docs/STUDIO_EXTENSIONS.md).
 - 🕹️ **Sprites de Studio**: dibuja los sprites de un diseño al estilo del juego
   investigado, los empaqueta para cada máquina objetivo y los blitea con
   máscara; `llmz80 project sprites PATH` los genera y muestra una previsualización
+- 🎚️ **Dificultad progresiva verificada**: los niveles generados alargan la ruta
+  o ajustan el límite de tiempo según la curva declarada
+  (`flat`/`linear`/`stepped`); un diseño que la incumple se rechaza, probado en
+  las dieciocho tipologías y ambos objetivos
+- 🎞️ **Sensación de juego leída en memoria**: entre los pasos guionizados de
+  aceptación, el emulador comprueba que `g_anim_frame` (cuando el programa lo
+  declara) avanza al moverse y se detiene en reposo, y que un enemigo
+  perseguidor guionizado hace perder exactamente una vida sin acabar la
+  partida; con enemigos que solo patrullan sigue siendo texto sin comprobar
 - 📚 **Base de conocimiento**: Aprende de ejemplos de código existentes
 - 🚀 **Dos plataformas**: ZX Spectrum 48K y Amstrad CPC 464/6128
 
@@ -762,15 +771,20 @@ Run everything through the project virtual environment, as the Makefile does.
 
     make studio                     # or: make studio WORKSPACE=~/games
 
-A typology gives a starting shape; the free-text brief on the Project pane says
+A typology gives a starting shape; the free-text brief on the design panel says
 what makes this game itself, and it is the first thing the program's author is
 shown. Write "four ghosts, and a power dot makes them edible" there rather than
 hoping a genre id conveys it.
 
-Three panes. `ctrl+n` new, `ctrl+w` have the program written, `ctrl+b` build,
-`ctrl+t` test, `ctrl+r` release. On the Map pane, `wasd` moves the cursor,
-`space` toggles a wall, `m` moves the selected spawn, `+/-` change an entity
-count. The status line states whether the design is releasable and why not.
+One command screen at rest: identity, a one-line reminder of the brief, the
+project's six-stage status line with a detail naming the first stage still
+failing, and the keys that open everything else. `g` design, `m` map,
+`e` entities, `s` sprites, `d` diff, `l` log open a panel over it, one at a
+time. `ctrl+n` new, `ctrl+o` open, `ctrl+f` research the real game the brief
+names, `ctrl+a` adapt the design toward it, `ctrl+d` draw its sprites,
+`ctrl+w` have the program written, `ctrl+b` build, `ctrl+t` test, `ctrl+r`
+release. On the Map panel, `wasd` moves the cursor, `space` toggles a wall,
+`m` moves the selected spawn, `+/-` change an entity count.
 
 ### Headless
 
