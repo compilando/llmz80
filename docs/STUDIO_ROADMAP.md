@@ -38,12 +38,13 @@ have to be rewritten when the change lands, not quietly ignored.
 | S03 | Extensible target/genre/capability registries | Implemented | Built-in target/genre packs, public protocols and entry-point discovery |
 | S04 | Guided Textual TUI | In progress | Create/open/edit/save/generate vertical slice; scalar fields only, no scene/level/entity editors |
 | S05 | Modular deterministic game engine | Withdrawn | Replaced by scaffolding: `resources/studio_lib` offers platform pieces with no game loop, and the program lives in the project's `program_dir`. The former engine is kept as a reference program under `resources/studio_reference` |
-| S06 | Asset pipeline | In progress | Project-owned image import and deterministic Spectrum/CPC packing; imported assets are not yet referenced by the generated C, which draws primitives |
+| S06 | Asset pipeline | In progress | Project-owned image import and deterministic Spectrum/CPC packing; a sprite-kind 16x16 asset is packed into `sprites.h` and blittable on both targets (S12), but every other imported asset still falls back to the generic `assets.c` conversion, which no generated C references |
 | S07 | Structured AI design assistance | Implemented | Responses typed proposals, visible diff, separate apply action and protected contracts |
 | S08 | Automated gameplay QA | In progress | Design, build and runtime gates plus solvability analysis and, on Spectrum, memory-probed assertions that a scripted sweep scores exactly what the design predicts; CPC state probes and life/level transitions next |
 | S09 | Commercial vertical slices | In progress | Quality-gated reproducible release archive; content/presentation polish next |
 | S10 | Extension SDK | Implemented | Public typed protocols, entry-point groups, compatibility rules and installable example |
 | S11 | Real-game references driving the design | Implemented | Cited dossier in `reference.yml`, a proposal with an approvable diff, and a prompt block for the writer; adaptation is one-shot, so a refused proposal is discarded whole and retrying starts from a designer with no memory of what failed |
+| S12 | Masked sprite blitting | In progress | Spectrum `plat_sprite` proven byte-for-byte: drawn over a non-zero background at a display-file third boundary, all 32 bytes read back over ZEsarUX's remote protocol match `spriting.pack_spectrum`'s independently packed data. CPC `plat_sprite` compiles through the real CPCtelera path and visibly draws against a no-sprite control build, but not proven byte-for-byte — the installed Caprice32 cannot dump memory. Sprites are 16x16, four frames, one Spectrum ink per sprite from the art's dominant opaque colour on fixed `PAPER_BLACK`; CPC colour comes from a fixed four-pen approximation of what `apply_palette()` programs, not the design's still-unused `presentation.palette`. Packed sprites are refused past half of `budgets.static_data_bytes`, both numbers named in the message — a conservative split with no empirical backing beyond one 2 KB example. `design_prompt` now tells the writer to draw actors with `plat_sprite` and terrain with `plat_cell`, and `llmz80 project sprites PATH` draws and previews the art, but no generated or reference program in the repository calls `plat_sprite` yet — only a hand-written probe program does — and no gate checks that a written program follows the instruction or steps through a sprite's frames |
 
 ## Current vertical-slice acceptance
 
@@ -79,10 +80,26 @@ Closed by P1:
   `game.yml`, not a rule inside the generator, and the engine blocks movement into walls.
 - v2 documents migrate to v3 on load, authoring the layout the old generator implied.
 
+Closed by S12:
+
+- Masked sprite blitting exists and is proven on target, not just compiled: the Spectrum's
+  `plat_sprite` matches independently packed bytes exactly, byte for byte, read back from real
+  video memory over ZEsarUX's remote protocol; the CPC's compiles through the real CPCtelera path
+  and visibly draws against a no-sprite control build. A sprite-kind 16x16 asset is now packed into
+  `sprites.h` as a `SPRITE_<ID>` constant that generated C actually holds and blits — the specific
+  "packed but never referenced" gap this bullet used to name is closed for that one asset shape.
+
 Still open:
 
-- Imported assets are normalised and packed, but the engine draws built-in cell shapes and never
-  references them. Masked sprite blitting is required before assets reach the screen.
+- Terrain still draws through `plat_cell`'s built-in shapes; only actors are wired to sprites, and
+  even that is only prompted, not yet proven in a real program. `design_prompt` tells the writer to
+  draw actors with `plat_sprite` and terrain with `plat_cell` once a design has sprite assets, but
+  no generated or reference program in this repository calls `plat_sprite` yet — only a hand-written
+  probe program in `tests/test_sprite_blitter_toolchain.py` does — and no gate checks that a written
+  program actually follows the instruction.
+- Nothing yet animates. `plat_sprite` takes a frame index and `sprites.h`'s `sprite_frames[]` array
+  carries each sprite's frame count, but no generated game steps through them, and no gate observes
+  animation. That belongs to the next plan.
 - `budgets.frame_budget_cycles` is still a declared number rather than a measured one. The engine
   now counts missed frames on target and shows the worst case in the HUD, but that is a pass/fail
   signal read from a captured frame, not a cycle count, and it cannot gate automatically until the
@@ -94,7 +111,9 @@ Still open:
   and still be unfair. That needs the runtime probes from P6.
 - The time-limit check assumes the player advances one cell per frame. With `time_limit_seconds`
   bounded below at 10 seconds, a level under roughly 500 steps can never fail it.
-- `presentation.palette` is unused; both targets draw with fixed pens.
+- `presentation.palette` is unused; both targets draw with fixed pens, sprites included. CPC sprite
+  colour comes from `compiler.py`'s `CPC_DEFAULT_PALETTE`, a fixed four-entry approximation of the
+  pens the platform library's `apply_palette()` actually programs — not from the design's palette.
 - CPC mode 1 has four pens, so collectibles share the enemy pen and are distinguished by being
   drawn at half height.
 - Audio exists on the Spectrum only. The CPC declares no audio, and no target offers music, so
@@ -149,9 +168,11 @@ Ordered by what unblocks what, not by product visibility.
 | P6 | Real playability probes: export the toolchain symbol map to `probes.json` and assert score, lives and level transitions from memory during a scripted input replay | S08 and S09 as claimed | **Partly done.** Both toolchains export `probes.json`. On Spectrum a scripted sweep collects a predicted number of items and the gate asserts the resulting score and remaining count from memory. Lives and level transitions are not scripted yet, and the CPC abstains for lack of a memory adapter |
 | P7 | Advanced AI design assistance over tilemaps, per-genre polish, loading screen, high-score table, tape and disk mastering | commercial release | **Partly done.** AI proposals are refused when they would leave the game unplayable, and a high score is kept and probe-verified on target. Loading screen, tape and disk mastering and per-genre polish are **not** delivered |
 
-Not yet covered anywhere above and still required for a commercial claim: masked sprite blitting,
-loading screen, and tape and disk mastering. The high score is kept in memory only; neither target
-has storage here, so it does not survive a power cycle.
+Not yet covered anywhere above and still required for a commercial claim: loading screen, and tape
+and disk mastering. Masked sprite blitting is now S12 in the Stages table above — the blitter itself
+is proven on target, but no generated game draws an entity through it yet; see S12's evidence and
+the sprite bullets under "Known gap between the IR and the engine". The high score is kept in memory
+only; neither target has storage here, so it does not survive a power cycle.
 
 ## Architecture decisions
 

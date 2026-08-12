@@ -61,6 +61,9 @@ documentan en [Extending LLMZ80 Studio](docs/STUDIO_EXTENSIONS.md).
   únicamente el artefacto candidato para diagnóstico
 - 📈 **Aprendizaje local**: Guarda ejemplos exitosos y errores recurrentes para mejorar iteraciones futuras
 - 🎨 **Generación de sprites**: Crea sprites desde descripciones o imágenes
+- 🕹️ **Sprites de Studio**: dibuja los sprites de un diseño al estilo del juego
+  investigado, los empaqueta para cada máquina objetivo y los blitea con
+  máscara; `llmz80 project sprites PATH` los genera y muestra una previsualización
 - 📚 **Base de conocimiento**: Aprende de ejemplos de código existentes
 - 🚀 **Dos plataformas**: ZX Spectrum 48K y Amstrad CPC 464/6128
 
@@ -781,6 +784,7 @@ count. The status line states whether the design is releasable and why not.
     .venv/bin/llmz80 project reference $P             # searches the web, archives the dossier
     .venv/bin/llmz80 project adapt $P                 # proposes a design diff, asks to apply
     .venv/bin/llmz80 project write $P                 # spends money: calls the API
+    .venv/bin/llmz80 project sprites $P               # draws and previews sprite art, in the researched game's style
     .venv/bin/llmz80 project build $P
     .venv/bin/llmz80 project test $P                  # emulator, reading memory
     .venv/bin/llmz80 project release $P
