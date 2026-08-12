@@ -3,7 +3,7 @@
 import pytest
 from PIL import Image
 
-from llmz80.studio.spriting import PackedSprite, pack_spectrum
+from llmz80.studio.spriting import PackedSprite, pack_cpc, pack_spectrum
 
 
 def _square(size: int = 16) -> Image.Image:
@@ -54,3 +54,132 @@ def test_frames_are_concatenated_in_order():
 def test_a_frame_that_is_not_sixteen_by_sixteen_is_refused():
     with pytest.raises(ValueError, match="16x16"):
         pack_spectrum([Image.new("RGBA", (8, 8), (0, 0, 0, 0))])
+
+
+# --- Amstrad CPC -----------------------------------------------------------
+#
+# The values below are derived by hand from the two macros CPCtelera actually
+# ships, `cpctm_px2byteM0` and `cpctm_px2byteM1` in
+# ~/cpctelera/cpctelera/src/sprites/pixel_macros.h (lines 335-336 and
+# 380-383), not from any general theory of how the CPC packs pixels. See
+# `llmz80/studio/spriting.py` for the same derivation spelled out per bit.
+
+
+def _pixels(*dots: tuple[int, int, tuple[int, int, int]]) -> Image.Image:
+    """A transparent 16x16 frame with each `(x, y, rgb)` painted in fully opaque."""
+    frame = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    for x, y, rgb in dots:
+        frame.putpixel((x, y), (*rgb, 255))
+    return frame
+
+
+def test_a_mode_zero_frame_is_eight_bytes_wide_with_the_mask_interleaved():
+    packed = pack_cpc([_square()], mode=0, palette=[(255, 255, 255)])
+
+    assert packed.width_bytes == 8
+    # Interleaved: one mask byte and one colour byte per screen byte.
+    assert len(packed.data) == 2 * 8 * 16
+
+
+def test_a_mode_one_frame_is_four_bytes_wide():
+    packed = pack_cpc([_square()], mode=1, palette=[(255, 255, 255)])
+
+    assert packed.width_bytes == 4
+    assert len(packed.data) == 2 * 4 * 16
+
+
+def test_an_unsupported_mode_is_refused():
+    with pytest.raises(ValueError, match="mode"):
+        pack_cpc([_square()], mode=2, palette=[(255, 255, 255)])
+
+
+def test_cpc_mask_travels_inside_data_and_the_separate_mask_field_is_empty():
+    packed = pack_cpc([_square()], mode=0, palette=[(255, 255, 255)])
+
+    assert packed.mask == b""
+
+
+def test_mode_zero_a_single_opaque_pixel_lands_in_the_left_pixel_bit_positions():
+    """Pen 1 at x=0 (left pixel of the byte), everything else in the byte transparent.
+
+    cpctm_px2byteM0(X, Y) with X=left pixel's pen, Y=right pixel's pen:
+        f(P) = (P&1)<<6 | (P&2)<<1 | (P&4)<<2 | (P&8)>>3
+        byte = (f(X) << 1) | f(Y)
+    Colour: X=pen 1 -> f(1) = 1<<6 = 0x40; Y=pen 0 (transparent) -> f(0) = 0.
+        colour = (0x40 << 1) | 0 = 0x80.
+    Mask: opaque pixel -> mask pen 0 (erase); transparent pixel -> mask pen 15,
+    i.e. all four bits of the pen set, which is how "keep the background" is
+    spelled per-pixel in this bit-interleaved format.
+        f(0) = 0; f(15) = (1<<6)|(1<<1)|(1<<2)|(1) = 0x55.
+        mask = (f(0) << 1) | f(15) = 0x55.
+    """
+    palette = [(0, 0, 0), (255, 255, 255)]
+    packed = pack_cpc([_pixels((0, 0, (255, 255, 255)))], mode=0, palette=palette)
+
+    assert packed.data[0] == 0x55  # mask byte for row 0, screen byte 0
+    assert packed.data[1] == 0x80  # colour byte for row 0, screen byte 0
+
+
+def test_mode_zero_two_adjacent_pens_interleave_their_bits_not_their_nibbles():
+    """Left pixel pen 2, right pixel pen 3, both opaque.
+
+    f(2) = (2&2)<<1 = 0x04. f(3) = (3&1)<<6 | (3&2)<<1 = 0x40 | 0x04 = 0x44.
+    colour = (f(2) << 1) | f(3) = 0x08 | 0x44 = 0x4C.
+
+    This is not the tidy "0x23" a naive two-nibbles-per-byte scheme would give;
+    the CPC interleaves the pens' bits across the byte, which is the whole
+    reason this encoding cannot be derived from first principles.
+    """
+    palette = [(0, 0, 0), (255, 255, 255), (0, 0, 255), (255, 0, 0)]
+    packed = pack_cpc(
+        [_pixels((0, 0, (0, 0, 255)), (1, 0, (255, 0, 0)))], mode=0, palette=palette
+    )
+
+    assert packed.data[0] == 0x00  # both pixels opaque: nothing of the background kept
+    assert packed.data[1] == 0x4C
+
+
+def test_mode_zero_a_fully_transparent_frame_keeps_the_whole_background():
+    packed = pack_cpc([Image.new("RGBA", (16, 16), (0, 0, 0, 0))], mode=0, palette=[(0, 0, 0)])
+
+    assert packed.data[0] == 0xFF  # mask: every bit says "keep the background here"
+    assert packed.data[1] == 0x00  # colour: irrelevant under an all-keeping mask, but tidy
+
+
+def test_mode_one_four_adjacent_pens_pack_bit_zero_then_bit_one_of_each():
+    """Pens 0, 1, 2, 3 at x=0..3, all opaque.
+
+    cpctm_px2byteM1(A, B, C, D) with g(P) = (P&1)<<4 | (P&2)>>1:
+        byte = (g(A)<<3) | (g(B)<<2) | (g(C)<<1) | g(D)
+    g(0)=0x00, g(1)=0x10, g(2)=0x01, g(3)=0x11.
+    byte = (0x00<<3) | (0x10<<2) | (0x01<<1) | 0x11 = 0x00 | 0x40 | 0x02 | 0x11 = 0x53.
+    """
+    palette = [(0, 0, 0), (85, 85, 85), (170, 170, 170), (255, 255, 255)]
+    packed = pack_cpc(
+        [_pixels((0, 0, palette[0]), (1, 0, palette[1]), (2, 0, palette[2]), (3, 0, palette[3]))],
+        mode=1,
+        palette=palette,
+    )
+
+    assert packed.data[0] == 0x00  # all four pixels opaque
+    assert packed.data[1] == 0x53
+
+
+def test_mode_one_a_fully_transparent_frame_keeps_the_whole_background():
+    packed = pack_cpc([Image.new("RGBA", (16, 16), (0, 0, 0, 0))], mode=1, palette=[(0, 0, 0)])
+
+    assert packed.data[0] == 0xFF
+    assert packed.data[1] == 0x00
+
+
+def test_cpc_nearest_pen_uses_euclidean_distance_in_rgb():
+    """A pixel closer to palette[1] than palette[0], but not an exact match,
+    must still resolve to pen 1 -- the packer does its own nearest-colour
+    matching rather than requiring exact palette hits."""
+    palette = [(0, 0, 0), (255, 255, 255)]
+    packed = pack_cpc([_pixels((0, 0, (200, 200, 200)))], mode=0, palette=palette)
+
+    # Same derivation as the single-opaque-pixel test above, with pen 1 for the
+    # opaque pixel: colour = 0x80, mask = 0x55.
+    assert packed.data[0] == 0x55
+    assert packed.data[1] == 0x80
