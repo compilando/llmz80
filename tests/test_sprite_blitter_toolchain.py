@@ -56,7 +56,7 @@ from PIL import Image
 from llm_z80 import resolve_cpct_path
 from llmz80.quality.emulator_smoke import smoke_test
 from llmz80.studio import compiler as compiler_module
-from llmz80.studio.models import AssetSpec, GenreId, TargetPlatform
+from llmz80.studio.models import AssetSpec, TargetPlatform
 from llmz80.studio.services import StudioService
 from llmz80.studio.spriting import pack_spectrum
 
@@ -71,9 +71,7 @@ zesarux_missing = pytest.mark.skipif(
     shutil.which("zesarux") is None, reason="ZEsarUX is not installed"
 )
 make_missing = pytest.mark.skipif(shutil.which("make") is None, reason="make is not installed")
-cpct_missing = pytest.mark.skipif(
-    resolve_cpct_path() is None, reason="CPCtelera is not installed"
-)
+cpct_missing = pytest.mark.skipif(resolve_cpct_path() is None, reason="CPCtelera is not installed")
 cap32_missing = pytest.mark.skipif(
     shutil.which("cap32") is None and shutil.which("caprice32") is None,
     reason="no Caprice32 binary (cap32/caprice32) is installed",
@@ -95,9 +93,7 @@ def _sprite_image() -> Image.Image:
     pixels = image.load()
     for y in range(16):
         for x in range(16):
-            opaque = ((x + y) % 3 == 0) or (
-                4 <= x <= 11 and 4 <= y <= 11 and (x + y) % 2 == 0
-            )
+            opaque = ((x + y) % 3 == 0) or (4 <= x <= 11 and 4 <= y <= 11 and (x + y) % 2 == 0)
             pixels[x, y] = (255, 255, 255, 255) if opaque else (0, 0, 0, 0)
     return image
 
@@ -106,9 +102,7 @@ def _build_sprite_project(tmp_path: Path):
     """Render and build a Spectrum project whose program draws one sprite."""
     workspace = tmp_path / "projects"
     service = StudioService.at(workspace)
-    project, directory = service.create_project(
-        "SpriteProbe", TargetPlatform.SPECTRUM, GenreId.SINGLE_SCREEN_COLLECT
-    )
+    project, directory = service.create_project("SpriteProbe", TargetPlatform.SPECTRUM)
 
     sprite_path = tmp_path / "hero.png"
     _sprite_image().save(sprite_path)
@@ -210,14 +204,29 @@ def test_spectrum_blitter_draws_the_exact_packed_bytes(tmp_path: Path):
 
     port = _free_local_port()
     command = [
-        "zesarux", "--noconfigfile", "--machine", "48k",
-        "--vo", "null", "--ao", "null",
-        "--fastautoload", "--quickexit",
-        "--enable-remoteprotocol", "--remoteprotocol-port", str(port),
-        "--exit-after", "16", str(artifact),
+        "zesarux",
+        "--noconfigfile",
+        "--machine",
+        "48k",
+        "--vo",
+        "null",
+        "--ao",
+        "null",
+        "--fastautoload",
+        "--quickexit",
+        "--enable-remoteprotocol",
+        "--remoteprotocol-port",
+        str(port),
+        "--exit-after",
+        "16",
+        str(artifact),
     ]
     process = subprocess.Popen(
-        command, cwd=artifact.parent, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        command,
+        cwd=artifact.parent,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
     )
     try:
         connection = _connect_zrcp(port, time.monotonic() + 3.0)
@@ -268,9 +277,7 @@ def _build_cpc_project(tmp_path: Path, *, draw_sprite: bool):
     """
     workspace = tmp_path / f"projects_{draw_sprite}"
     service = StudioService.at(workspace)
-    project, directory = service.create_project(
-        "CpcSpriteProbe", TargetPlatform.AMSTRAD_CPC, GenreId.SINGLE_SCREEN_COLLECT
-    )
+    project, directory = service.create_project("CpcSpriteProbe", TargetPlatform.AMSTRAD_CPC)
 
     if draw_sprite:
         sprite_path = tmp_path / "cpc_hero.png"
@@ -309,8 +316,9 @@ def test_cpc_sprite_project_compiles_and_links(tmp_path: Path):
     assert build.artifact.stat().st_size > 0
     sprites_h = (build.output_dir / "src" / "sprites.h").read_text(encoding="utf-8")
     assert "#define SPRITE_COUNT 1" in sprites_h
-    # The default CPC video mode is mode 1 (see packs.py); its cells pack
-    # four pixels per byte, so a 16-pixel-wide sprite is 4 bytes wide.
+    # The default CPC video mode is mode 1 (see samples.blank_project); its
+    # cells pack four pixels per byte, so a 16-pixel-wide sprite is 4 bytes
+    # wide.
     assert "#define SPRITE_BYTES_WIDE 4" in sprites_h
 
 
@@ -348,9 +356,9 @@ def test_cpc_blitter_visibly_draws_where_the_control_build_does_not(tmp_path: Pa
     assert sprite_build.success, sprite_build.report.get("stderr") or sprite_build.report.get(
         "stdout"
     )
-    assert control_build.success, control_build.report.get(
-        "stderr"
-    ) or control_build.report.get("stdout")
+    assert control_build.success, control_build.report.get("stderr") or control_build.report.get(
+        "stdout"
+    )
 
     sprite_report = smoke_test(sprite_build.output_dir, "amstrad_cpc", full=True, seconds=3)
     control_report = smoke_test(control_build.output_dir, "amstrad_cpc", full=True, seconds=3)
@@ -391,6 +399,7 @@ def test_cpc_blitter_visibly_draws_where_the_control_build_does_not(tmp_path: Pa
 # `error: duplicate definition: main_c::_sprite_data` and four siblings.
 # ---------------------------------------------------------------------------
 
+
 def _add_sprite_fixture(directory: Path, asset_id: str, fixture_name: str, *, frames: int = 4):
     """Copy a real fixture sheet into the project's assets/ under `asset_id`."""
     assets_dir = directory / "assets"
@@ -412,9 +421,7 @@ def _build_multi_sprite_project(tmp_path: Path, platform: TargetPlatform):
     """
     workspace = tmp_path / f"projects_{platform.value}"
     service = StudioService.at(workspace)
-    project, directory = service.create_project(
-        "MultiSprite", platform, GenreId.SINGLE_SCREEN_COLLECT
-    )
+    project, directory = service.create_project("MultiSprite", platform)
     project.assets = [
         _add_sprite_fixture(directory, "hero", "sprite_sheet_profanacion_hero.png"),
         _add_sprite_fixture(directory, "enemy", "sprite_sheet_profanacion_enemy.png"),
@@ -555,9 +562,7 @@ def test_a_reintroduced_definition_in_the_header_fails_the_real_link(
     link, the same way it refused the real failed run this whole test module
     exists to guard against. If this test ever passes, the guard is gone.
     """
-    monkeypatch.setattr(
-        compiler_module, "render_sprite_header", _pre_split_render_sprite_header
-    )
+    monkeypatch.setattr(compiler_module, "render_sprite_header", _pre_split_render_sprite_header)
     # Also revert sprites.c to a no-op include, matching the pre-fix repo
     # exactly: one file (sprites.h) carrying the definitions, pulled into two
     # translation units (platform.c and this test's main.c). Leaving the real
