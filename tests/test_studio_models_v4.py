@@ -4,11 +4,16 @@ import pytest
 from pydantic import ValidationError
 
 from llmz80.studio.models import (
+    AssetSpec,
+    AudioSpec,
     ControlsSpec,
     EntitySpec,
     ObservableSpec,
     ScreenSpec,
+    TargetPlatform,
+    TargetSpec,
     TileSpec,
+    VideoMode,
 )
 
 
@@ -19,10 +24,18 @@ def test_a_tile_declares_its_own_character_and_free_traits():
 
 
 def test_a_tile_character_is_exactly_one_printable_character():
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="char"):
         TileSpec(id="ancho", char="HH")
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="char"):
         TileSpec(id="vacio", char="")
+    with pytest.raises(ValidationError, match="char"):
+        TileSpec(id="blanco", char=" ")
+    with pytest.raises(ValidationError, match="char"):
+        TileSpec(id="acento", char="ñ")
+    with pytest.raises(ValidationError, match="char"):
+        TileSpec(id="comilla", char="'")
+    with pytest.raises(ValidationError, match="char"):
+        TileSpec(id="barra", char="\\")
 
 
 def test_an_entity_kind_is_free_vocabulary_not_a_role():
@@ -41,14 +54,33 @@ def test_bindings_are_named_by_the_design_not_by_studio():
 
 
 def test_more_than_eight_bindings_do_not_fit_one_input_byte():
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="bindings"):
         ControlsSpec(bindings={f"key{index}": "SPACE" for index in range(9)})
+
+
+def test_a_binding_name_must_be_a_usable_identifier():
+    with pytest.raises(ValidationError, match="not a usable identifier"):
+        ControlsSpec(bindings={"1jump": "SPACE"})
+    with pytest.raises(ValidationError, match="not a usable identifier"):
+        ControlsSpec(bindings={"Jump": "SPACE"})
+
+
+def test_a_binding_key_must_be_a_recognized_label():
+    with pytest.raises(ValidationError, match="recognized key label"):
+        ControlsSpec(bindings={"jump": "F1"})
+    with pytest.raises(ValidationError, match="recognized key label"):
+        ControlsSpec(bindings={"jump": "space"})
+
+
+def test_two_bindings_cannot_share_one_key():
+    with pytest.raises(ValidationError, match="bound to more than one action"):
+        ControlsSpec(bindings={"left": "O", "jump": "O"})
 
 
 def test_an_observable_must_look_like_a_contract_symbol():
     observable = ObservableSpec(symbol="g_keys", width=1, meaning="llaves recogidas")
     assert observable.symbol == "g_keys"
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="symbol"):
         ObservableSpec(symbol="keys", width=1, meaning="sin prefijo")
 
 
@@ -67,7 +99,7 @@ def test_a_screen_carries_its_exits():
 
 
 def test_a_screen_row_that_is_not_its_declared_width_is_refused():
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="characters"):
         ScreenSpec(
             id="rota",
             name="ROTA",
@@ -77,6 +109,55 @@ def test_a_screen_row_that_is_not_its_declared_width_is_refused():
                    "#......#", "#......#", "#......#", "########"],
             spawns=[{"entity": "hero", "col": 1, "row": 1}],
         )
+
+
+def test_a_screen_with_the_wrong_number_of_rows_is_refused():
+    # One row over height=8, but still >= the field's own min_length=8, so
+    # this exercises validate_grid's own count check, not the field bound.
+    with pytest.raises(ValidationError, match="rows"):
+        ScreenSpec(
+            id="filas_de_mas",
+            name="FILAS DE MAS",
+            width=8,
+            height=8,
+            tiles=["########", "#......#", "#......#", "#......#",
+                   "#......#", "#......#", "#......#", "#......#",
+                   "########"],
+            spawns=[{"entity": "hero", "col": 1, "row": 1}],
+        )
+
+
+def test_a_spawn_outside_the_grid_is_refused():
+    with pytest.raises(ValidationError, match="outside its"):
+        ScreenSpec(
+            id="spawn_fuera",
+            name="SPAWN FUERA",
+            width=8,
+            height=8,
+            tiles=["########", "#......#", "#......#", "#......#",
+                   "#......#", "#......#", "#......#", "########"],
+            spawns=[{"entity": "hero", "col": 20, "row": 1}],
+        )
+
+
+def test_a_target_must_pair_its_platform_with_its_own_video_modes():
+    TargetSpec(platform=TargetPlatform.SPECTRUM, video_mode=VideoMode.SPECTRUM_BITMAP)
+    with pytest.raises(ValidationError, match="only has spectrum_bitmap"):
+        TargetSpec(platform=TargetPlatform.SPECTRUM, video_mode=VideoMode.CPC_MODE_0)
+    with pytest.raises(ValidationError, match="cpc_mode_0 and cpc_mode_1"):
+        TargetSpec(platform=TargetPlatform.AMSTRAD_CPC, video_mode=VideoMode.SPECTRUM_BITMAP)
+
+
+def test_an_asset_sheet_must_hold_whole_frames():
+    AssetSpec(id="hero", kind="sprite", source="assets/hero.png", width=32, height=16, frames=2)
+    with pytest.raises(ValidationError, match="cannot hold"):
+        AssetSpec(id="hero", kind="sprite", source="assets/hero.png", width=33, height=16, frames=2)
+
+
+def test_audio_effects_must_be_unique():
+    AudioSpec(music=True, effects=["collect", "hit"])
+    with pytest.raises(ValidationError, match="unique"):
+        AudioSpec(effects=["collect", "collect"])
 
 
 def test_the_removed_vocabulary_is_really_gone():
