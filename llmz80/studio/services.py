@@ -137,8 +137,22 @@ class StudioService:
         have = {asset.id for asset in project.assets if asset.kind == "sprite"}
         wanted: dict[str, EntitySpec] = {}
         for entity in project.entities:
-            if entity.sprite not in have:
-                wanted.setdefault(entity.sprite, entity)
+            # `sprite` is optional on `EntitySpec` -- a fresh v4 project's
+            # entity carries none until a designer assigns one (v3 always
+            # had a genre pack do that for it). But `structure.py` refuses a
+            # document where `entity.sprite` names an id no asset declares
+            # (see its `test_an_entity_sprite_must_name_a_declared_asset`),
+            # so there is no way to *pre*-assign one before the art exists --
+            # any attempt to save that half-finished state would be rejected
+            # the moment it round-trips through `GameProject.model_validate`.
+            # The only way this ever balances is doing both at once: an
+            # entity with no sprite yet wants its own id as its sprite id,
+            # the same default a designer naming a new entity by hand would
+            # reach for, and the loop below writes it onto `entity` in the
+            # same breath `add_asset` registers the asset it now names.
+            sprite_id = entity.sprite or entity.id
+            if sprite_id not in have:
+                wanted.setdefault(sprite_id, entity)
 
         drawn: list[AssetSpec] = []
         for sprite_id, entity in wanted.items():
@@ -157,6 +171,16 @@ class StudioService:
                     "not a valid asset identifier (expected lowercase letters, "
                     "digits and underscores, starting with a letter)"
                 )
+            if entity.sprite is None:
+                # Assigning it now, before the frames are even drawn, means
+                # a `SpriteDrawFailure` below leaves `entity.sprite` set to
+                # an id with no asset behind it -- exactly the state
+                # `structure.py` refuses -- but nothing saves `project` on
+                # that path (see the `except` clause immediately below), so
+                # it never reaches disk; `add_asset`'s own save, a few lines
+                # down, is the first (and only) point this project is
+                # persisted, and by then the asset exists too.
+                entity.sprite = sprite_id
             try:
                 frames = artist.draw_frames(project, entity, dossier)
             except ValueError as exc:

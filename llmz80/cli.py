@@ -13,8 +13,8 @@ def _print_help() -> None:
         "\n"
         "  llmz80 studio [WORKSPACE]\n"
         "  llmz80 project new WORKSPACE TITLE [spectrum|amstrad_cpc]"
-        " [TYPE] ['what this game should be']\n"
-        "  llmz80 project types\n"
+        " ['what this game should be']\n"
+        "  llmz80 project types             (kinds of game that exist, for inspiration)\n"
         "  llmz80 project validate PATH\n"
         "  llmz80 project contract PATH\n"
         "  llmz80 project reference PATH    (searches the web, calls the OpenAI API)\n"
@@ -98,13 +98,12 @@ def _sprite_preview_array(sheet, args: SimpleNamespace):
 
 
 def _new_command(arguments: list[str]) -> int:
-    """project new WORKSPACE TITLE [TARGET] [TYPE] [BRIEF]"""
-    if not 2 <= len(arguments) <= 5:
+    """project new WORKSPACE TITLE [TARGET] [BRIEF]"""
+    if not 2 <= len(arguments) <= 4:
         _print_help()
         return 2
-    brief = arguments[4] if len(arguments) > 4 else ""
+    brief = arguments[3] if len(arguments) > 3 else ""
     from llmz80.studio.models import TargetPlatform
-    from llmz80.studio.packs import PACKS_BY_ID
     from llmz80.studio.services import StudioService
 
     workspace, title = Path(arguments[0]).expanduser().resolve(), arguments[1]
@@ -113,14 +112,8 @@ def _new_command(arguments: list[str]) -> int:
     except ValueError as exc:
         print(f"ERROR: {exc}")
         return 2
-    genre = arguments[3] if len(arguments) > 3 else "maze_chase"
-    if genre not in PACKS_BY_ID:
-        print(f"ERROR: unknown game type '{genre}'. Available:")
-        for pack in PACKS_BY_ID.values():
-            print(f"  {pack.id:24} {pack.description}")
-        return 2
     service = StudioService.at(workspace)
-    project, directory = service.create_project(title, platform, genre)
+    project, directory = service.create_project(title, platform)
     if brief:
         from llmz80.studio.editing import rename_project
 
@@ -134,10 +127,9 @@ def _project_command(arguments: list[str]) -> int:
     if arguments and arguments[0] == "new":
         return _new_command(arguments[1:])
     if arguments and arguments[0] == "types":
-        from llmz80.studio.packs import BUILTIN_PACKS
+        from llmz80.studio.typologies import typology_hints
 
-        for pack in BUILTIN_PACKS:
-            print(f"  {pack.id:24} {pack.terrain:10} {pack.description}")
+        print(typology_hints())
         return 0
     if len(arguments) != 2 or arguments[0] not in {
         "validate",
@@ -292,7 +284,6 @@ def _project_command(arguments: list[str]) -> int:
         print(directory / "write_report.json")
         return 0 if report["accepted"] else 1
     if arguments[0] == "sprites":
-        from llmz80.studio.models import GameProject
         from llmz80.studio.sprite_artist import SpriteArtist
 
         # `draw_sprites` only ever fills a gap -- it never touches an id that
@@ -313,20 +304,24 @@ def _project_command(arguments: list[str]) -> int:
                 asset = next(a for a in project.assets if a.kind == "sprite" and a.id == sprite_id)
                 (directory / asset.source).unlink(missing_ok=True)
             remaining = [a for a in project.assets if not (a.kind == "sprite" and a.id in existing)]
-            candidate = GameProject.model_validate(
-                {
-                    **project.model_dump(mode="json"),
-                    "assets": [a.model_dump(mode="json") for a in remaining],
-                }
-            )
-            project.assets = candidate.assets
+            # Not GameProject.model_validate(...): between evicting the old
+            # asset and draw_sprites registering its replacement, an entity
+            # legitimately names a sprite id no asset declares yet -- exactly
+            # what structure.py's reference check refuses (see services.py's
+            # draw_sprites docstring on the same point) -- so this step must
+            # not re-run whole-document validation. model_copy skips it, the
+            # same way draw_sprites' own atomic add_asset call resolves the
+            # transient state a moment later.
+            project = project.model_copy(update={"assets": remaining})
             service.save_project(project, directory)
 
         client, _ = _openai_client_and_model()
         print("Drawing sprites with OpenAI's image API; this calls the OpenAI API.")
         from generators.openai_generator import OpenAIImageGenerator
 
-        artist = SpriteArtist(OpenAIImageGenerator(api_key=client.api_key, model=_openai_image_model()))
+        artist = SpriteArtist(
+            OpenAIImageGenerator(api_key=client.api_key, model=_openai_image_model())
+        )
         try:
             drawn = service.draw_sprites(project, directory, artist)
         except ValueError as exc:
