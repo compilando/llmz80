@@ -24,7 +24,7 @@ from llmz80.studio.packs import create_default_project
 from llmz80.studio.services import StudioService
 from llmz80.studio.sprite_artist import FRAMES_PER_SHEET, SpriteArtist
 from llmz80.studio.sprite_sheet import split_frames
-from llmz80.studio.spriting import pack_spectrum
+from llmz80.studio.spriting import SPRITE_SIZE, pack_spectrum
 
 _FIXTURE_SHEET = Path(__file__).parent / "fixtures" / "sprite_sheet_running_figure.png"
 
@@ -103,3 +103,61 @@ def test_draw_sprites_round_trip_through_disk_keeps_a_recognisable_silhouette(tm
         assert count not in (0, 256), (
             f"frame {index} packed to {count}/256 set pixels after the disk round trip"
         )
+
+
+# --- Keeping the evidence: the raw sheet, saved beside the asset it produced --
+#
+# Nothing used to save what the model actually returned -- only the cleaned,
+# packed 16x16-per-frame sheet ever reached disk, so a run like the one
+# against *Abu Simbel Profanation* (two of three sprites coming back as dark
+# art on a near-black background) left nothing to look at afterwards except
+# the ruined result. `SpriteArtist.draw_frames` now returns a `DrawnFrames`
+# carrying the winning attempt's raw, unprocessed response as `.sheet`; these
+# tests check `draw_sprites` writes it to `assets/<sprite id>.raw.png`.
+
+
+def test_draw_sprites_saves_the_raw_sheet_beside_the_registered_asset(tmp_path: Path):
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project(
+        "Raw Sheet", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE
+    )
+    artist = _FixtureArtist()
+
+    drawn = service.draw_sprites(project, directory, artist)
+
+    asset = drawn[0]
+    asset_path = directory / asset.source
+    raw_path = asset_path.with_name(f"{asset_path.stem}.raw.png")
+    assert raw_path.is_file(), "the raw response must be saved beside the registered asset"
+    assert raw_path.parent == asset_path.parent
+
+    with Image.open(raw_path) as raw, Image.open(_FIXTURE_SHEET) as original:
+        assert raw.size == original.size
+        assert raw.convert("RGB").tobytes() == original.convert("RGB").tobytes(), (
+            "the saved file must be the model's raw response, not a cleaned/packed frame"
+        )
+
+
+def test_draw_sprites_tolerates_an_artist_that_carries_no_raw_sheet(tmp_path: Path):
+    """A caller's own fake artist -- several exist across the test suite --
+    can return a bare `list[Image.Image]` from `draw_frames`, carrying no
+    raw sheet at all (only the real `SpriteArtist` carries one). Registering
+    the asset must not depend on it being there.
+    """
+
+    class _BareArtist:
+        def draw_frames(self, project, entity, dossier=None):
+            return [Image.new("RGBA", (SPRITE_SIZE, SPRITE_SIZE), (200, 40, 40, 255))]
+
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project(
+        "Bare Artist", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE
+    )
+
+    drawn = service.draw_sprites(project, directory, _BareArtist())
+
+    asset = drawn[0]
+    asset_path = directory / asset.source
+    assert asset_path.is_file()
+    raw_path = asset_path.with_name(f"{asset_path.stem}.raw.png")
+    assert not raw_path.is_file()

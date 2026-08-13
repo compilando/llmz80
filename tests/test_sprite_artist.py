@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
@@ -17,13 +18,17 @@ from llmz80.studio.models import GameProject, GenreId, TargetPlatform, VideoMode
 from llmz80.studio.packs import create_default_project
 from llmz80.studio.reference import GameReference, ReferenceSource
 from llmz80.studio.sprite_artist import (
+    BACKGROUND_TOLERANCE,
     FRAMES_PER_SHEET,
+    MAX_DRAW_ATTEMPTS,
     REQUEST_HEIGHT,
     REQUEST_WIDTH,
     SHEET_HEIGHT,
     SHEET_WIDTH,
     TECHNICAL_REQUIREMENTS_HEADING,
     SpriteArtist,
+    _frame_from_column,
+    _sheet_columns,
     compose_prompt,
 )
 from llmz80.studio.spriting import SPRITE_SIZE, pack_cpc, pack_spectrum
@@ -42,6 +47,53 @@ from llmz80.studio.spriting import SPRITE_SIZE, pack_cpc, pack_spectrum
 _FIXTURE_SHEET = Path(__file__).parent / "fixtures" / "sprite_sheet_running_figure.png"
 
 
+def _dark_background_sheet() -> Image.Image:
+    """The real fixture (`_FIXTURE_SHEET`), recoloured so the same running
+    figure sits on a near-black background instead of white -- built from
+    the real fixture rather than hand-drawn, so this reproduces the actual
+    failure a real run against *Abu Simbel Profanation* showed: two of three
+    sprites came back as dark grey art on a near-black background, and
+    `_key_out_background`'s old fixed-white assumption packed the entire
+    frame as one solid opaque block because nothing in it was close enough
+    to white to key out.
+
+    The fixture's own background is near-white (some JPEG-ish noise sits a
+    few levels below 255); every pixel at least that bright is recoloured to
+    a near-black "Egyptian" background, and everything else -- the drawn
+    figure -- to a dark grey a few shades lighter, so the two stay
+    distinguishable from each other exactly the way the real broken
+    responses were (a *dark grey smear*, not a black one, *on* near-black --
+    not indistinguishable from it).
+    """
+    with Image.open(_FIXTURE_SHEET) as original:
+        rgb = np.asarray(original.convert("RGB")).astype(np.int16)
+    is_background = rgb.mean(axis=2) > 200
+    dark = np.empty_like(rgb)
+    dark[is_background] = (12, 12, 16)
+    dark[~is_background] = (90, 90, 96)
+    return Image.fromarray(dark.astype(np.uint8), mode="RGB")
+
+
+def _solid_block_sheet() -> Image.Image:
+    """A raw sheet with one *filled* rectangle per column, on white --
+    unlike `_four_pose_sheet`'s ellipses, a filled rectangle leaves no
+    background inside its own bounding box, so `_clean_image`'s tight crop
+    to that box comes back with every pixel opaque: 256 of 256, a solid
+    block. A stand-in for a badly botched generation (the model drew a flat
+    shape instead of a figure), used as the *first*, failing attempt in the
+    retry tests below.
+    """
+    column_width = 200
+    height = 200
+    width = column_width * FRAMES_PER_SHEET
+    sheet = Image.new("RGBA", (width, height), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(sheet)
+    for index, colour in enumerate(_POSE_COLOURS):
+        offset = index * column_width
+        draw.rectangle((offset + 10, 10, offset + column_width - 10, height - 10), fill=colour)
+    return sheet
+
+
 class _FakeGenerator:
     """Returns one fixed image and remembers every prompt it was asked for."""
 
@@ -52,6 +104,23 @@ class _FakeGenerator:
     def generate_image(self, prompt: str) -> Image.Image:
         self.prompts.append(prompt)
         return self.image
+
+
+class _SequenceGenerator:
+    """Returns one image per call, in order -- the fake this file's retry
+    tests need, since `SpriteArtist.draw_frames` must ask again after a
+    judged failure and the second ask has to actually get something
+    different back. Remembers every prompt too, so a test can read the
+    feedback appended to the second one.
+    """
+
+    def __init__(self, images: list[Image.Image]) -> None:
+        self.images = list(images)
+        self.prompts: list[str] = []
+
+    def generate_image(self, prompt: str) -> Image.Image:
+        self.prompts.append(prompt)
+        return self.images[len(self.prompts) - 1]
 
 
 def _project(platform: TargetPlatform = TargetPlatform.SPECTRUM) -> GameProject:
@@ -104,7 +173,7 @@ _POSE_COLOURS = [
 ]
 
 
-def _four_pose_sheet() -> Image.Image:
+def _four_pose_sheet(colours: list[tuple[int, int, int, int]] = _POSE_COLOURS) -> Image.Image:
     """A raw sheet with one solid, differently sized and positioned, non-
     touching blob per column -- a stand-in for four genuinely different
     animation poses side by side, which is exactly what the composed prompt
@@ -115,6 +184,16 @@ def _four_pose_sheet() -> Image.Image:
     so run across the whole sheet it would keep one pose and blank the other
     three. Run per column, after splitting (`SpriteArtist.draw_frames`), it
     keeps all four -- see `test_draw_frames_keeps_all_four_distinct_poses`.
+
+    Each blob is an *ellipse*, not a filled rectangle -- an earlier version
+    of this fixture used rectangles, and `_judge_frames` (added for the same
+    real run that added `_detect_background`) correctly refused every frame
+    they produced: `_clean_image` crops tightly to a shape's own bounding
+    box, and a solid rectangle has no background left inside that box once
+    cropped -- it reads as a 256-of-256 solid block, indistinguishable from
+    the real defect this module now catches. An ellipse leaves its own
+    bounding box's corners as genuine background, the way a real character's
+    silhouette (limbs apart, gaps around the body) always does.
     """
     column_width = 200
     height = 200
@@ -122,7 +201,8 @@ def _four_pose_sheet() -> Image.Image:
     sheet = Image.new("RGBA", (width, height), (255, 255, 255, 255))
     draw = ImageDraw.Draw(sheet)
     # A different size and position per column, so no single bounding-box
-    # crop could coincidentally cover more than one of them.
+    # crop could coincidentally cover more than one of them, and so frames
+    # cannot come out pixel-identical even where two columns share a colour.
     boxes = [
         (20, 20, 60, 60),  # small, top-left of its column
         (30, 120, 170, 180),  # wide, low in its column
@@ -131,7 +211,7 @@ def _four_pose_sheet() -> Image.Image:
     ]
     for index, (x0, y0, x1, y1) in enumerate(boxes):
         offset = index * column_width
-        draw.rectangle((offset + x0, y0, offset + x1, y1), fill=_POSE_COLOURS[index])
+        draw.ellipse((offset + x0, y0, offset + x1, y1), fill=colours[index % len(colours)])
     return sheet
 
 
@@ -271,12 +351,7 @@ def test_prompt_with_an_unidentified_dossier_also_falls_back():
 def test_draw_frames_returns_four_sprite_sized_frames():
     project = _project()
     entity = next(e for e in project.entities if e.role == "player")
-    image = _solid_image((900, 900), (255, 255, 255, 255))
-    pixels = image.load()
-    for y in range(300, 600):
-        for x in range(200, 700):
-            pixels[x, y] = (255, 0, 0, 255)
-    artist = SpriteArtist(_FakeGenerator(image))
+    artist = SpriteArtist(_FakeGenerator(_four_pose_sheet()))
 
     frames = artist.draw_frames(project, entity)
 
@@ -287,7 +362,7 @@ def test_draw_frames_returns_four_sprite_sized_frames():
 def test_draw_frames_asks_the_generator_for_the_composed_prompt():
     project = _project()
     entity = next(e for e in project.entities if e.role == "player")
-    generator = _FakeGenerator(_solid_image((512, 128), (0, 0, 0, 255)))
+    generator = _FakeGenerator(_four_pose_sheet())
     artist = SpriteArtist(generator)
 
     artist.draw_frames(project, entity)
@@ -295,32 +370,50 @@ def test_draw_frames_asks_the_generator_for_the_composed_prompt():
     assert generator.prompts == [compose_prompt(project, entity, None)]
 
 
+# --- Pathological sheet sizes -------------------------------------------------
+#
+# `_sheet_columns`'s own contract -- always return `FRAMES_PER_SHEET` equal
+# columns, however oddly the raw response is sized -- is a different concern
+# from whether the *content* those columns hold is a sprite (`_judge_frames`'s
+# job). A tiny (1x1) or entirely-flat response has no content to judge as a
+# sprite at all -- `_judge_frames` correctly refuses it, retries, and (with a
+# generator that always returns the same flat image) eventually raises; see
+# `test_a_persistently_bad_response_raises_with_the_last_reason`. What is
+# tested here is narrower and does not go through `draw_frames`/the judge at
+# all: that `_sheet_columns` itself never raises and always returns the right
+# number of columns, regardless of how the model sized its response.
+
+
 @pytest.mark.parametrize(
-    "size,colour",
-    [
-        ((1, 1), (10, 20, 30, 255)),
-        ((37, 501), (10, 20, 30, 255)),
-        ((2000, 2000), (10, 20, 30, 255)),
-        ((500, 500), (255, 255, 255, 255)),  # entirely background: no object at all
-    ],
+    "size",
+    [(1, 1), (37, 501), (2000, 2000), (500, 500)],
 )
-def test_a_wrongly_sized_image_still_yields_valid_frames(
-    size: tuple[int, int], colour: tuple[int, int, int, int]
-):
-    """Neither a tiny image, an oddly-proportioned one, an oversized one, nor
-    one with nothing drawn on it (all background) should ever reach
-    `split_frames` in a shape it cannot cut cleanly -- `draw_frames` forces the
-    sheet to its real, final size before splitting, precisely so a
-    badly-sized response cannot silently produce broken frames.
+def test_sheet_columns_handles_pathological_sizes(size: tuple[int, int]):
+    sheet = _solid_image(size, (10, 20, 30, 255))
+
+    columns = _sheet_columns(sheet, FRAMES_PER_SHEET)
+
+    assert len(columns) == FRAMES_PER_SHEET
+
+
+def test_draw_frames_survives_an_oddly_sized_but_real_response():
+    """A real model response is under no obligation to honour
+    `REQUEST_WIDTH`/`REQUEST_HEIGHT` -- an oddly-proportioned or oversized
+    reply is routine, not pathological, and unlike the sizes above it still
+    carries real, judgeable content. `draw_frames` must reduce it to
+    `FRAMES_PER_SHEET` real frames without needing a retry.
     """
     project = _project()
     entity = next(e for e in project.entities if e.role == "player")
-    artist = SpriteArtist(_FakeGenerator(_solid_image(size, colour)))
+    odd = _four_pose_sheet().resize((999, 333), Image.Resampling.NEAREST)
+    generator = _FakeGenerator(odd)
+    artist = SpriteArtist(generator)
 
     frames = artist.draw_frames(project, entity)
 
     assert len(frames) == FRAMES_PER_SHEET
     assert all(frame.size == (SPRITE_SIZE, SPRITE_SIZE) for frame in frames)
+    assert len(generator.prompts) == 1, "real, judgeable content should not need a retry"
 
 
 def test_draw_frames_keeps_all_four_distinct_poses():
@@ -492,10 +585,161 @@ def test_coloured_art_still_yields_its_own_colour_not_the_monochrome_fallback():
     """
     project = _project(TargetPlatform.SPECTRUM)
     entity = next(e for e in project.entities if e.role == "player")
-    cyan = _solid_image((512, 128), (0, 255, 255, 255))
-    artist = SpriteArtist(_FakeGenerator(cyan))
+    cyan = (0, 255, 255, 255)
+    artist = SpriteArtist(_FakeGenerator(_four_pose_sheet([cyan, cyan, cyan, cyan])))
 
     frames = artist.draw_frames(project, entity)
     packed = pack_spectrum(frames)
 
     assert packed.attribute == 0x45  # INK_CYAN | BRIGHT, unchanged by the fallback
+
+
+# --- Judging a generated sheet, and retrying a bad one ------------------------
+#
+# The real run against *Abu Simbel Profanation* returned two sprites -- out
+# of three -- as dark grey art on a near-black background, and the pipeline
+# as it stood then had no way to notice: it keyed a fixed white out of every
+# frame regardless of what the frame actually showed, so a dark frame packed
+# as a solid 16x16 block. `_detect_background` (read the real background off
+# each frame's own border) and `_judge_frames` (catch a solid, blank, or
+# all-identical sheet and retry with feedback) exist because of that run.
+
+
+def test_a_dark_background_response_still_yields_usable_frames():
+    """The exact failure the real run showed: art drawn on a near-black
+    background instead of the requested pure white. The old, fixed-white
+    `_key_out_background` packed a frame like this as one solid opaque
+    block, because nothing in it was close enough to white to key out.
+    `_detect_background` reads the frame's own border instead of assuming
+    white, so this must come back as a real silhouette -- and, since
+    detection gets it right immediately, with no retry needed.
+    """
+    project = _project(TargetPlatform.SPECTRUM)
+    entity = next(e for e in project.entities if e.role == "player")
+    generator = _FakeGenerator(_dark_background_sheet())
+    artist = SpriteArtist(generator)
+
+    frames = artist.draw_frames(project, entity)
+
+    assert len(frames) == FRAMES_PER_SHEET
+    total = SPRITE_SIZE * SPRITE_SIZE
+    for index, frame in enumerate(frames):
+        opaque = int((np.asarray(frame)[..., 3] >= 128).sum())
+        assert 0 < opaque < total, (
+            f"frame {index} packed to {opaque}/{total} -- still a solid block or blank"
+        )
+    assert len(generator.prompts) == 1, "a correctly detected background needs no retry"
+
+
+def test_a_solid_block_is_retried_and_the_feedback_names_the_problem():
+    """A first attempt that comes back as a solid block (`_solid_block_sheet`)
+    must be retried, not packed as-is -- and the second request must carry
+    feedback that names exactly what was wrong, the way
+    `reference_design.repair_feedback` names a refused proposal's specific
+    fields rather than just saying "try again".
+    """
+    project = _project(TargetPlatform.SPECTRUM)
+    entity = next(e for e in project.entities if e.role == "player")
+    good = _four_pose_sheet()
+    generator = _SequenceGenerator([_solid_block_sheet(), good])
+    artist = SpriteArtist(generator)
+
+    frames = artist.draw_frames(project, entity)
+
+    assert len(frames) == FRAMES_PER_SHEET
+    assert len(generator.prompts) == 2, "the solid-block first attempt must be retried once"
+    assert generator.prompts[0] == compose_prompt(project, entity, None)
+    feedback = generator.prompts[1]
+    assert "THE SHEET WAS REJECTED" in feedback
+    assert "solid block" in feedback
+    assert "256 of 256" in feedback
+    assert frames.attempts == 2
+    assert frames.sheet is good
+    assert len(frames.repairs) == 1
+    assert "solid block" in frames.repairs[0]
+
+
+def test_a_persistently_bad_response_raises_with_the_last_reason():
+    """Once `MAX_DRAW_ATTEMPTS` are exhausted without a judged-valid sheet,
+    `draw_frames` must raise rather than pack the last bad attempt anyway --
+    the same shape `reference_design.propose_and_apply` raises in when a
+    proposal cannot be repaired in its own attempt budget, carrying the last
+    refusal reason forward instead of a generic failure.
+    """
+    project = _project(TargetPlatform.SPECTRUM)
+    entity = next(e for e in project.entities if e.role == "player")
+    generator = _FakeGenerator(_solid_block_sheet())
+    artist = SpriteArtist(generator)
+
+    with pytest.raises(ValueError) as excinfo:
+        artist.draw_frames(project, entity)
+
+    assert len(generator.prompts) == MAX_DRAW_ATTEMPTS
+    message = str(excinfo.value)
+    assert f"{MAX_DRAW_ATTEMPTS} attempts" in message
+    assert "solid block" in message
+    assert "256 of 256" in message
+
+
+def test_a_sheet_of_four_identical_frames_is_judged_and_named_as_such():
+    """A sheet that draws one pose and repeats it four times is just as much
+    "not a sprite" as a solid block or a blank frame -- no animation was
+    actually drawn. This is checked independently of the pixel-count check:
+    a repeated pose need not pack to 0 or 256 to still be a single frame
+    wearing four different filenames.
+    """
+    project = _project(TargetPlatform.SPECTRUM)
+    entity = next(e for e in project.entities if e.role == "player")
+    repeated = _solid_image((512, 128), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(repeated)
+    for index in range(FRAMES_PER_SHEET):
+        offset = index * (repeated.width // FRAMES_PER_SHEET)
+        draw.ellipse((offset + 20, 20, offset + 108, 108), fill=(0, 0, 0, 255))
+    generator = _FakeGenerator(repeated)
+    artist = SpriteArtist(generator)
+
+    with pytest.raises(ValueError) as excinfo:
+        artist.draw_frames(project, entity)
+
+    assert len(generator.prompts) == MAX_DRAW_ATTEMPTS
+    assert "EVERY FRAME IS THE SAME IMAGE" in str(excinfo.value)
+
+
+def test_a_sprite_touching_its_frame_edge_is_not_destroyed_by_background_detection():
+    """`_detect_background` reads the majority colour of a frame's border,
+    which is only correct while the figure does not dominate that border --
+    true of every current sprite prompt, which centres a figure well inside
+    its frame, but worth pinning down explicitly: a figure whose feet touch
+    the very edge of its frame must still come out as a real silhouette, not
+    be wiped out as "it must all be background" nor kept whole as "it must
+    all be figure".
+
+    Built from the real fixture (`_FIXTURE_SHEET`) rather than hand-drawn:
+    each of its four real poses is cropped to remove its own bottom margin,
+    so the figure's lowest real pixels sit exactly on the new bottom edge --
+    a genuine silhouette that touches an edge, not a stand-in shape that
+    only resembles one.
+    """
+    with Image.open(_FIXTURE_SHEET) as sheet:
+        sheet = sheet.convert("RGB")
+    width = sheet.width // FRAMES_PER_SHEET
+    total = SPRITE_SIZE * SPRITE_SIZE
+    for index in range(FRAMES_PER_SHEET):
+        column = sheet.crop((index * width, 0, (index + 1) * width, sheet.height))
+        arr = np.asarray(column).astype(np.int16)
+        is_figure = ~np.all(np.abs(arr - 255) <= BACKGROUND_TOLERANCE, axis=2)
+        figure_rows, _ = np.where(is_figure)
+        edge_column = column.crop((0, 0, column.width, int(figure_rows.max()) + 1))
+
+        frame = _frame_from_column(edge_column)
+
+        alpha = np.asarray(frame)[..., 3]
+        opaque = int((alpha >= 128).sum())
+        assert 0 < opaque < total, (
+            f"frame {index}: {opaque}/{total} opaque -- the figure must survive as a "
+            "real silhouette, neither wiped out nor kept whole as background"
+        )
+        assert (alpha[-1, :] >= 128).any(), (
+            f"frame {index}: the pixels touching the frame's own bottom edge must "
+            "remain part of the figure, not be keyed away as background"
+        )

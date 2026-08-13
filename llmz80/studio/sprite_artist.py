@@ -11,6 +11,22 @@ optionally the dossier `llmz80.studio.reference` researched about a real
 1980s game, it composes a prompt an image model can act on and turns whatever
 comes back into frames `spriting.py` can pack.
 
+A real run against *Abu Simbel Profanation* showed that "whatever comes
+back" cannot be trusted at face value: two of three sprites came back as
+dark grey art on a near-black background, despite the prompt demanding pure
+white, and the pipeline as it stood then had no way to notice -- it keyed a
+fixed white out of every frame regardless of what the frame actually showed,
+so a dark frame keyed nothing out and packed as a solid 16x16 block. Three
+things in this module exist because of that run: `_detect_background` reads
+the real background off each frame's own border instead of assuming white
+(see its docstring, and `_key_out_background`'s); `_judge_frames` catches a
+solid or blank frame -- or a sheet whose four frames are all the same
+picture -- as evidence the generation failed, not as a sprite to pack
+anyway; and `SpriteArtist.draw_frames` retries a judged failure with
+feedback naming what was wrong, up to `MAX_DRAW_ATTEMPTS` times, the way
+`generator.write_program` and `reference_design.propose_and_apply` already
+retry their own failures instead of accepting the first answer unconditionally.
+
 Two things this module deliberately does *not* do, because getting them wrong
 by guessing would be worse than not having them at all:
 
@@ -31,6 +47,10 @@ by guessing would be worse than not having them at all:
   `_process_image` -- `compiler.py` already documented, in `CPC_DEFAULT_PALETTE`,
   that the platform colour table those pull in has real gaps -- but no such
   problem exists for the two pixel-geometry helpers this module actually uses.
+  `_clean_image` already accepts the background colour to isolate against as
+  a parameter; this module supplies the colour it detected rather than the
+  fixed white `_clean_image`'s own default happens to be, so fixing the "wrong
+  background" defect never required touching `image_utils.py` at all.
 
   `_clean_image` in particular keeps only the *single largest* connected
   non-background component and discards the rest -- exactly right for
@@ -55,7 +75,7 @@ from image_utils import _clean_image, _scale_image
 from llmz80.studio.models import EntitySpec, GameProject, TargetPlatform, VideoMode
 from llmz80.studio.reference import GameReference
 from llmz80.studio.sprite_sheet import split_frames
-from llmz80.studio.spriting import SPRITE_SIZE
+from llmz80.studio.spriting import ALPHA_THRESHOLD, SPRITE_SIZE
 
 #: One sheet holds a walk/patrol cycle: four poses is enough for every current
 #: entity role (see `llmz80.studio.models.EntitySpec.role`) without inflating
@@ -77,17 +97,37 @@ REQUEST_HEIGHT = REQUEST_FRAME_SIZE
 SHEET_WIDTH = FRAMES_PER_SHEET * SPRITE_SIZE
 SHEET_HEIGHT = SPRITE_SIZE
 
-#: The background colour and match tolerance every `resources/sprite_prompt_*.txt`
-#: template asks the model for -- see e.g. `sprite_prompt_spectrum.txt`'s "pure
-#: white background (RGB 255,255,255)" and `sprite_prompt_generic.txt`'s "100%
-#: solid white". `image_utils._clean_image` already uses this exact pair
-#: (they are its own defaults) to decide what counts as background when
-#: isolating a pose from the sheet; `_key_out_background` below reuses the
-#: same numbers for the same decision, so "background" means one thing
-#: across both steps instead of two thresholds that could quietly drift
-#: apart.
+#: The background colour every `resources/sprite_prompt_*.txt` template asks
+#: the model for -- see e.g. `sprite_prompt_spectrum.txt`'s "pure white
+#: background (RGB 255,255,255)" and `sprite_prompt_generic.txt`'s "100%
+#: solid white". Kept here as a record of what is *requested*, not as what
+#: this module *trusts*: a real run showed the model does not always comply
+#: (see the module docstring), so nothing below keys this fixed colour out
+#: any more -- `_detect_background` reads the colour a frame actually has
+#: instead. `BACKGROUND_TOLERANCE` is still a live constant: `_detect_background`
+#: uses it to decide which border pixels count as "the same colour" as each
+#: other, and `_key_out_background` uses it, on whatever colour detection
+#: found, to decide which frame pixels match it.
 BACKGROUND_COLOR = (255, 255, 255)
 BACKGROUND_TOLERANCE = 10
+
+#: How many times `SpriteArtist.draw_frames` will ask the model again after a
+#: judged failure (see `_judge_frames`) before giving up. Set against its two
+#: siblings, not picked in isolation: `generator.write_program` gets five
+#: attempts because a failed build's diagnostics are concrete and cheap to
+#: react to; `reference_design.propose_and_apply` gets three because a
+#: refused proposal is validated locally, with no external call in the
+#: repair itself. A judged sprite failure sits at the expensive end of that
+#: spectrum -- every attempt is a full image generation, slower and pricier
+#: than either sibling's retry step, and the feedback a judged failure can
+#: give ("this frame is a solid block") is coarser than a compiler
+#: diagnostic, so there is less reason to expect attempt five to do
+#: meaningfully better than attempt three would not already have shown. Three
+#: attempts -- one real chance to recover from a one-off bad draw, plus one
+#: more in case the first repair overcorrects -- was chosen over five for
+#: that reason: it costs at most two extra image generations per sprite
+#: instead of four.
+MAX_DRAW_ATTEMPTS = 3
 
 #: Prompt templates, one per target/mode, live beside the other Studio
 #: resources (`resources/genres.yml`, `resources/studio_lib`, ...). Each
@@ -186,12 +226,14 @@ def _technical_constraints() -> str:
 
     Every one of these lines is not a preference but a downstream contract:
 
-    - Pure white background: `image_utils._clean_image` isolates a frame's
-      drawn pose by comparing against white, and this module's own
-      `_key_out_background` keys that exact white to alpha 0 right
-      afterwards (see its docstring). Art on any other background either
-      gets treated as all-figure (nothing keyed out -- the solid-block
-      defect this fixes) or has its real background wrongly keyed away.
+    - Pure white background: still asked for, because a clean white
+      background is easier for `_clean_image` to isolate a figure against
+      than any other colour would be, and most responses do comply. It is no
+      longer *trusted*, though: `_detect_background` reads whatever colour a
+      frame's own border actually shows, white or not, so a response that
+      ignores this line is judged and retried (see `_judge_frames`) rather
+      than silently packed as a solid block -- see the module docstring for
+      the run that made this necessary.
     - No anti-aliasing: `_key_out_background` keys pixels by exact-colour
       tolerance, not by blending -- a soft edge leaves a halo of pixels that
       are neither background nor drawn figure.
@@ -262,25 +304,75 @@ def compose_prompt(
     )
 
 
+def _detect_background(
+    frame: Image.Image, tolerance: int = BACKGROUND_TOLERANCE
+) -> tuple[int, int, int]:
+    """The colour that actually dominates `frame`'s border pixels -- the
+    honest evidence of what background the model drew, whatever it is: pure
+    white as the prompt asks, or the dark grey a real run against *Abu
+    Simbel Profanation* showed it can drift to instead (see the module
+    docstring).
+
+    Every `resources/sprite_prompt_*.txt` template asks for one full-canvas
+    background and one figure roughly centred in it, so under a compliant
+    response the border is background almost everywhere. This takes every
+    pixel around all four edges, not just one corner or one edge, and votes:
+    pixels are bucketed to the nearest multiple of `2 * tolerance + 1` (so
+    near-identical background pixels -- the JPEG-grade noise real model
+    output carries even on a flat background -- collapse into the same
+    bucket instead of each being counted as its own, individually-rare
+    colour), and the winning bucket's real pixels are averaged back out to a
+    single RGB triple.
+
+    A figure that only touches *part* of its frame's edge -- a foot reaching
+    the bottom row, say -- still leaves the border majority-background, so
+    the vote still finds the true background even then; see
+    `test_a_sprite_touching_its_frame_edge_is_not_destroyed_by_background_detection`.
+    What this cannot survive is a figure that covers *most* of the border:
+    a sprite drawn edge-to-edge on all four sides would make its own colour
+    the majority vote, and the two would swap -- the real background would
+    be kept as opaque "figure", and the real figure would be keyed away as
+    "background". No border-only method can tell that case apart from a
+    frame that is genuinely all background; nothing here claims to.
+    """
+    rgb = np.asarray(frame.convert("RGB"), dtype=np.int16)
+    border = np.concatenate([rgb[0, :], rgb[-1, :], rgb[:, 0], rgb[:, -1]], axis=0)
+    bucket = max(1, tolerance * 2 + 1)
+    quantised = (border // bucket) * bucket
+    colours, counts = np.unique(quantised, axis=0, return_counts=True)
+    dominant = colours[np.argmax(counts)]
+    in_bucket = np.all(quantised == dominant, axis=1)
+    real = border[in_bucket].mean(axis=0)
+    return tuple(int(round(channel)) for channel in real)
+
+
 def _key_out_background(
     frame: Image.Image,
-    background_color: tuple[int, int, int] = BACKGROUND_COLOR,
+    background_color: tuple[int, int, int],
     tolerance: int = BACKGROUND_TOLERANCE,
 ) -> Image.Image:
-    """Turn a frame's white background transparent, and leave its drawn
-    pixels opaque.
+    """Turn `frame`'s background transparent, and leave its drawn pixels
+    opaque.
 
     This is the fix for the defect that made every packed sprite a solid
-    16x16 block: `gpt-image-1` draws a monochrome figure as black-on-white,
-    with no alpha channel at all, and `_clean_image`/`_scale_image` (which
-    `draw_frames` already runs every frame through) preserve that -- they
-    return RGB, not RGBA. `spriting.pack_spectrum` and `spriting.pack_cpc`
-    both decide whether a pixel is drawn from *alpha*
-    (`pixels[x, y][3] >= ALPHA_THRESHOLD`), so a plain `.convert("RGBA")`
-    upstream of them (which is exactly what `spriting._checked` does) hands
-    every pixel alpha 255 regardless of whether it is figure or background --
-    both packers then read every pixel as opaque and pack the whole sprite as
-    set.
+    16x16 block: `gpt-image-1` draws a monochrome figure with no alpha
+    channel at all, and `_clean_image`/`_scale_image` (which `draw_frames`
+    already runs every frame through) preserve that -- they return RGB, not
+    RGBA. `spriting.pack_spectrum` and `spriting.pack_cpc` both decide
+    whether a pixel is drawn from *alpha* (`pixels[x, y][3] >=
+    ALPHA_THRESHOLD`), so a plain `.convert("RGBA")` upstream of them (which
+    is exactly what `spriting._checked` does) hands every pixel alpha 255
+    regardless of whether it is figure or background -- both packers then
+    read every pixel as opaque and pack the whole sprite as set.
+
+    `background_color` is not defaulted to white any more, deliberately: a
+    real run showed the model does not always draw the white background the
+    prompt asks for, and a fixed assumption here silently packed that failure
+    as a solid block instead of catching it (see the module docstring). Every
+    caller in this module now passes whatever `_detect_background` found for
+    this exact frame, so the two decisions -- "what is background" and "key
+    it out" -- always agree with each other, and with what the frame actually
+    shows rather than with what the prompt merely asked for.
 
     Three places could have carried this fix instead, and each was rejected:
 
@@ -300,17 +392,14 @@ def _key_out_background(
       for art that legitimately has a white foreground on a non-white
       background, and `spriting.py` has no way to know which case it is
       looking at. Only the caller that wrote the prompt -- this module --
-      knows the background is guaranteed white.
+      knows the background is what it detected it to be.
 
     - This module *is* well placed for it, because it is the one place that
-      knows, by construction (see every `resources/sprite_prompt_*.txt`
-      template), that the background it asked the model to draw is pure
-      white. So this runs once, explicitly, right after `_scale_image`
-      reduces a frame to its final 16x16 size, converting the frame to RGBA
-      and keying `background_color` out to alpha 0 -- using the exact
-      colour/tolerance pair `_clean_image` itself already uses to tell figure
-      from background (see `BACKGROUND_COLOR`/`BACKGROUND_TOLERANCE` above),
-      so the two decisions cannot disagree.
+      knows what colour to key, whether that came from the prompt's own
+      request or (now) from `_detect_background` reading the frame itself.
+      So this runs once, explicitly, right after `_scale_image` reduces a
+      frame to its final 16x16 size, converting the frame to RGBA and keying
+      `background_color` out to alpha 0.
 
     Running after `_scale_image` rather than before costs nothing: the
     nearest-neighbour resampling both use never blends two source pixels
@@ -334,6 +423,93 @@ def _key_out_background(
     is_background = np.all(np.abs(rgb - bg) <= tolerance, axis=-1)
     rgba[..., 3] = np.where(is_background, 0, 255)
     return Image.fromarray(rgba, mode="RGBA")
+
+
+def _frame_from_column(column: Image.Image) -> Image.Image:
+    """One raw sheet column, reduced to the real, final 16x16 RGBA frame.
+
+    Detecting the background once per column (`_detect_background`) and
+    threading that same colour through both `_clean_image` -- which needs it
+    to isolate the drawn pose -- and `_key_out_background` -- which needs it
+    to key that pose's background to alpha 0 -- is what keeps the two
+    decisions from disagreeing with each other, the way a caller passing a
+    fixed white to one and something else to the other could.
+    """
+    background = _detect_background(column, BACKGROUND_TOLERANCE)
+    cleaned = _clean_image(column, background_color=background, tolerance=BACKGROUND_TOLERANCE)
+    scaled = _scale_image(cleaned, SPRITE_SIZE, SPRITE_SIZE)
+    return _key_out_background(scaled, background, BACKGROUND_TOLERANCE)
+
+
+def _set_pixel_count(frame: Image.Image) -> int:
+    """How many of `frame`'s pixels `spriting.py`'s packers would read as
+    drawn -- the same alpha threshold `pack_spectrum`/`pack_cpc` use
+    (`spriting.ALPHA_THRESHOLD`), so a frame `_judge_frames` calls valid is
+    valid by the same rule the packer itself will apply to it.
+    """
+    alpha = np.asarray(frame.convert("RGBA"))[..., 3]
+    return int(np.count_nonzero(alpha >= ALPHA_THRESHOLD))
+
+
+def _solid_or_blank_feedback(bad: list[tuple[int, int]], total: int) -> str:
+    lines = ["THE SHEET WAS REJECTED: THESE FRAMES ARE NOT A SPRITE", ""]
+    for index, count in bad:
+        kind = "a solid block" if count == total else "blank"
+        lines.append(f"  frame {index + 1}: {kind} -- {count} of {total} pixels opaque")
+    lines.append("")
+    lines.append(
+        "A pixel count of 0 or 256 means the whole frame was read as either all "
+        "background or all figure -- not a drawn silhouette with a real edge. This "
+        "happens when the background is not the unmistakably pure white asked for "
+        "(a dark or grey background reads as figure everywhere), or when the figure "
+        "leaves no background gap around it at all (reads as background everywhere)."
+    )
+    lines.append("")
+    lines.append(
+        "Redraw the sheet on an unmistakably pure white background (RGB 255,255,255) "
+        "with nothing else behind the figure -- no shading, no texture, no near-white "
+        "or near-black grey standing in for white -- and leave a visible gap of "
+        "background around each figure."
+    )
+    return "\n".join(lines)
+
+
+def _identical_frames_feedback(frame_count: int) -> str:
+    return (
+        "THE SHEET WAS REJECTED: EVERY FRAME IS THE SAME IMAGE\n\n"
+        f"All {frame_count} frames came back pixel-for-pixel identical, which means no "
+        "animation was actually drawn -- one pose was repeated across the sheet instead "
+        "of a walk/patrol cycle.\n\n"
+        "Redraw the sheet with visibly different poses of the same character in each "
+        "frame, laid out side by side exactly as asked."
+    )
+
+
+def _judge_frames(frames: list[Image.Image]) -> str | None:
+    """Whether `frames` are demonstrably not a sprite, and if so, feedback
+    naming what was wrong and what to do about it -- the register
+    `reference_design.repair_feedback` already uses for a refused design
+    proposal: a heading naming the failure, the specific evidence, and an
+    instruction for the next attempt.
+
+    Two failures are checked, each real: a frame that packs to 0 or
+    `SPRITE_SIZE * SPRITE_SIZE` set pixels is a blank or a solid block, not a
+    silhouette -- exactly what the *Abu Simbel Profanation* run's `enemy` and
+    `pellet` sprites came back as (see the module docstring). A sheet whose
+    frames are all pixel-identical drew one pose and repeated it, not a
+    cycle. The first check runs first: a sheet failing it usually fails
+    because every column was keyed the same broken way, which the solid/blank
+    message already explains more specifically than "frames are identical"
+    would.
+    """
+    total = SPRITE_SIZE * SPRITE_SIZE
+    counts = [_set_pixel_count(frame) for frame in frames]
+    bad = [(index, count) for index, count in enumerate(counts) if count in (0, total)]
+    if bad:
+        return _solid_or_blank_feedback(bad, total)
+    if len({frame.tobytes() for frame in frames}) == 1:
+        return _identical_frames_feedback(len(frames))
+    return None
 
 
 def _sheet_columns(sheet: Image.Image, frames: int) -> list[Image.Image]:
@@ -365,6 +541,45 @@ def _sheet_columns(sheet: Image.Image, frames: int) -> list[Image.Image]:
     return split_frames(sheet, frames)
 
 
+class DrawnFrames(list):
+    """What `SpriteArtist.draw_frames` returns: a `list[Image.Image]` in
+    every way that matters to existing callers (`len()`, iteration,
+    `spriting.pack_spectrum`/`pack_cpc`, `services.draw_sprites`'s tiling
+    loop all only ever index, iterate or measure it), carrying three more
+    things alongside the frames for the caller that wants them:
+
+    - `sheet`: the raw, unprocessed image the generator returned for the
+      attempt that finally passed `_judge_frames` -- what `services.py`
+      saves beside the asset it produced (see its own docstring for why).
+    - `attempts`: how many times the model was asked, 1 if the first
+      response already passed.
+    - `repairs`: the feedback text given after each earlier, judged-failed
+      attempt, oldest first -- empty if `attempts == 1`.
+
+    A plain `list` subclass, rather than a dataclass wrapping a list, is
+    what lets every existing caller keep treating the result as frames and
+    nothing else: `_FakeArtist`/`_FixtureArtist` fakes elsewhere in the test
+    suite return a bare `list[Image.Image]` from their own `draw_frames`,
+    and `services.draw_sprites` reads `getattr(frames, "sheet", None)`
+    rather than assuming every artist provides one -- so this richer return
+    type is additive, not a breaking change to the `draw_frames` contract
+    those fakes implement.
+    """
+
+    def __init__(
+        self,
+        frames: list[Image.Image] = (),
+        *,
+        sheet: Image.Image,
+        attempts: int,
+        repairs: list[str],
+    ) -> None:
+        super().__init__(frames)
+        self.sheet = sheet
+        self.attempts = attempts
+        self.repairs = repairs
+
+
 class SpriteArtist:
     """Draws one entity's sprite sheet, ready for `spriting.py`'s packer.
 
@@ -375,37 +590,54 @@ class SpriteArtist:
     it does not know or care which model answered.
     """
 
-    def __init__(self, generator: BaseImageGenerator) -> None:
+    def __init__(self, generator: BaseImageGenerator, *, attempts: int = MAX_DRAW_ATTEMPTS) -> None:
         self.generator = generator
+        self.attempts = max(1, attempts)
 
     def draw_frames(
         self, project: GameProject, entity: EntitySpec, dossier: GameReference | None = None
-    ) -> list[Image.Image]:
+    ) -> DrawnFrames:
         """One entity's sheet, cut into `FRAMES_PER_SHEET` frames of
-        `spriting.SPRITE_SIZE` x `spriting.SPRITE_SIZE` pixels each.
+        `spriting.SPRITE_SIZE` x `spriting.SPRITE_SIZE` pixels each, judged
+        and, if the judgement fails, redrawn -- up to `self.attempts` times
+        in total -- the way `generator.write_program` repairs a program that
+        fails to build instead of shipping it anyway.
 
-        The raw response is split into its `FRAMES_PER_SHEET` columns first
-        (`_sheet_columns`), on whatever size the model actually returned --
-        it is under no obligation to honour `REQUEST_WIDTH`/`REQUEST_HEIGHT`,
-        and routinely does not. Only then is each column, on its own, trimmed
-        to its drawn pose (`_clean_image`) and forced down to
-        `SPRITE_SIZE` x `SPRITE_SIZE` with nearest-neighbour resampling
-        (`_scale_image`). Cleaning per column rather than across the whole
-        sheet is what keeps one pose's `_clean_image` result from crowding
-        out the other three (see the module docstring); forcing each column's
-        exact final size, rather than trusting whatever the model sent, is
-        what keeps a wrongly-sized response from ever producing a frame that
-        is not exactly 16x16.
+        Each attempt: ask the generator for a sheet (the composed prompt,
+        with the previous attempt's judged feedback appended once there is
+        one); split the raw response into its `FRAMES_PER_SHEET` columns
+        first (`_sheet_columns`), on whatever size the model actually
+        returned -- it is under no obligation to honour
+        `REQUEST_WIDTH`/`REQUEST_HEIGHT`, and routinely does not; then clean,
+        scale and key each column on its own (`_frame_from_column`).
+        Cleaning per column rather than across the whole sheet is what keeps
+        one pose's `_clean_image` result from crowding out the other three
+        (see the module docstring).
 
-        The last step, `_key_out_background`, is what keeps the drawn
-        silhouette from being lost between here and `spriting.py`'s packers:
-        see its docstring for why keying the white background out to real
-        alpha belongs here rather than in `image_utils.py` or `spriting.py`.
+        `_judge_frames` then decides whether the result is demonstrably not a
+        sprite -- a solid or blank frame, or four identical poses. A pass
+        returns immediately, as `DrawnFrames` (see its docstring for what it
+        carries beyond the frames themselves). A judged failure feeds that
+        feedback into the next attempt's prompt and tries again; once
+        `self.attempts` is exhausted, the last judgement's feedback is raised
+        as a `ValueError`, the way `reference_design.propose_and_apply` raises
+        the last refusal once its own attempts run out.
         """
         prompt = compose_prompt(project, entity, dossier)
-        sheet = self.generator.generate_image(prompt)
-        columns = _sheet_columns(sheet, FRAMES_PER_SHEET)
-        return [
-            _key_out_background(_scale_image(_clean_image(column), SPRITE_SIZE, SPRITE_SIZE))
-            for column in columns
-        ]
+        repairs: list[str] = []
+        reason: str | None = None
+        for attempt in range(1, self.attempts + 1):
+            request = prompt if reason is None else (
+                prompt + "\n\nYOUR PREVIOUS SHEET WAS REJECTED\n\n" + reason
+            )
+            sheet = self.generator.generate_image(request)
+            columns = _sheet_columns(sheet, FRAMES_PER_SHEET)
+            frames = [_frame_from_column(column) for column in columns]
+            reason = _judge_frames(frames)
+            if reason is None:
+                return DrawnFrames(frames, sheet=sheet, attempts=attempt, repairs=repairs)
+            repairs.append(reason)
+        raise ValueError(
+            f"the sprite sheet could not be drawn in {self.attempts} attempt"
+            f"{'s' if self.attempts != 1 else ''}; the last reason was: " + reason
+        )

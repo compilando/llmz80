@@ -168,16 +168,49 @@ class StudioService:
                     "digits and underscores, starting with a letter)"
                 )
             frames = artist.draw_frames(project, entity, dossier)
-            sheet = Image.new("RGBA", (SPRITE_SIZE * len(frames), SPRITE_SIZE))
+            packed_sheet = Image.new("RGBA", (SPRITE_SIZE * len(frames), SPRITE_SIZE))
             for index, frame in enumerate(frames):
-                sheet.paste(frame, (index * SPRITE_SIZE, 0))
+                packed_sheet.paste(frame, (index * SPRITE_SIZE, 0))
             with tempfile.TemporaryDirectory() as scratch:
                 staged = Path(scratch) / f"{sprite_id}.png"
-                sheet.save(staged)
+                packed_sheet.save(staged)
                 asset = self.add_asset(project, directory, staged, frames=len(frames))
+            self._save_raw_sheet(directory, asset, frames)
             have.add(sprite_id)
             drawn.append(asset)
         return drawn
+
+    @staticmethod
+    def _save_raw_sheet(directory: Path, asset: AssetSpec, frames: list[Image.Image]) -> None:
+        """Keep what the model actually returned, beside the asset it
+        produced.
+
+        Nothing used to save this: only the cleaned, packed 16x16-per-frame
+        sheet ever reached disk, so a run like the one against *Abu Simbel
+        Profanation* -- two sprites out of three coming back as dark art on a
+        near-black background -- left nothing to look at afterwards except
+        the ruined result. `SpriteArtist.draw_frames` now carries the winning
+        attempt's raw, unprocessed response as `frames.sheet` (see
+        `sprite_artist.DrawnFrames`); this writes it to
+        `assets/<sprite id>.raw.png`, next to the `assets/<sprite id>.png`
+        `add_asset` just registered -- the same directory every other sprite
+        asset already lives in, named so it sorts beside the file it explains
+        rather than in a separate, easy-to-forget location. It is deliberately
+        not registered as an `AssetSpec`: it is not art the build ever reads,
+        only evidence for a person debugging a bad generation.
+
+        `frames` is whatever `draw_frames` returned; only `SpriteArtist`'s
+        own `DrawnFrames` carries a `.sheet` at all; a caller's fake artist
+        (several exist across the test suite, returning a bare
+        `list[Image.Image]`) carries none, and this is skipped for those --
+        there being no raw response to save is not an error.
+        """
+        raw_sheet = getattr(frames, "sheet", None)
+        if raw_sheet is None:
+            return
+        asset_path = directory / asset.source
+        raw_path = asset_path.with_name(f"{asset_path.stem}.raw.png")
+        raw_sheet.save(raw_path)
 
     def research_reference(
         self, project: GameProject, directory: Path, researcher: ReferenceResearcher

@@ -458,6 +458,15 @@ def _sprite_sheet_image():
     and its own test suite's `_four_pose_sheet`) needs to survive
     `image_utils._clean_image`/`_scale_image` and come back as four distinct
     16x16 frames rather than three blank ones.
+
+    Each blob is an ellipse, not a filled rectangle: `sprite_artist._judge_frames`
+    now refuses any frame that packs to 0 or 256 of 256 opaque pixels (a real
+    run showed that is exactly what a broken generation looks like -- see
+    `sprite_artist.py`'s module docstring), and a filled rectangle crops, via
+    `image_utils._clean_image`'s tight bounding-box crop, to a frame with no
+    background left inside it at all -- a false positive for that same
+    check. An ellipse leaves its own bounding box's corners as real
+    background, the way a real character's silhouette always does.
     """
     from PIL import Image, ImageDraw
 
@@ -469,7 +478,7 @@ def _sprite_sheet_image():
     colours = [(255, 0, 0, 255), (0, 128, 0, 255), (0, 0, 255, 255), (255, 165, 0, 255)]
     for index, colour in enumerate(colours):
         offset = index * column_width
-        draw.rectangle((offset + 5, 5, offset + column_width - 5, height - 5), fill=colour)
+        draw.ellipse((offset + 5, 5, offset + column_width - 5, height - 5), fill=colour)
     return sheet
 
 
