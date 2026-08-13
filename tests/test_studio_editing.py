@@ -4,17 +4,17 @@ from llmz80.studio.editing import (
     EditError,
     add_entity,
     editing_status,
-    fill_level,
+    fill_screen,
     move_spawn,
+    open_char,
     remove_entity,
-    rename_level,
-    resize_level,
-    set_entity_behaviour,
+    rename_screen,
+    resize_screen,
     set_entity_count,
-    set_entity_speed,
     set_scene_next,
+    set_screen_time_limit,
     set_tile,
-    set_time_limit,
+    solid_char,
     toggle_tile,
 )
 from llmz80.studio.models import GameProject, TargetPlatform
@@ -26,15 +26,39 @@ def project():
     return blank_project("Editing", TargetPlatform.SPECTRUM)
 
 
-def _free_cell(project, level_index=0):
-    taken = {(spawn.col, spawn.row) for spawn in project.levels[level_index].spawns}
-    level = project.levels[level_index]
+def _free_cell(project, screen_index=0):
+    screen = project.screens[screen_index]
+    taken = {(spawn.col, spawn.row) for spawn in screen.spawns}
+    free = open_char(project)
     return next(
         (col, row)
-        for row, line in enumerate(level.tiles)
+        for row, line in enumerate(screen.tiles)
         for col, tile in enumerate(line)
-        if tile == "." and (col, row) not in taken
+        if tile == free and (col, row) not in taken
     )
+
+
+def test_painting_uses_a_character_the_design_declared():
+    project = blank_project("Paint", TargetPlatform.SPECTRUM)
+    painted = set_tile(project, 0, 2, 2, "#")
+    assert painted.screens[0].tiles[2][2] == "#"
+    with pytest.raises(EditError):
+        set_tile(project, 0, 2, 2, "Z")
+
+
+def test_painting_uses_a_character_a_third_tile_declared():
+    """A design with a ladder can paint ladders, without Studio knowing what
+    a ladder is."""
+    document = blank_project("Ladders", TargetPlatform.SPECTRUM).model_dump(mode="json")
+    document["tiles"].append({"id": "ladder", "char": "H", "traits": ["climbable"]})
+    project = GameProject.model_validate(document)
+    assert set_tile(project, 0, 3, 3, "H").screens[0].tiles[3][3] == "H"
+
+
+def test_editing_status_reports_only_what_it_can_know():
+    status = editing_status(blank_project("Status", TargetPlatform.SPECTRUM))
+    assert set(status) == {"buildable", "backend_error", "ready"}
+    assert status["ready"] is True
 
 
 def test_painting_a_wall_updates_only_that_cell(project):
@@ -42,14 +66,13 @@ def test_painting_a_wall_updates_only_that_cell(project):
 
     edited = set_tile(project, 0, col, row, "#")
 
-    assert edited.levels[0].tiles[row][col] == "#"
-    assert edited.levels[1].tiles == project.levels[1].tiles
+    assert edited.screens[0].tiles[row][col] == "#"
     unchanged = sum(
         1
-        for index, line in enumerate(edited.levels[0].tiles)
-        if line == project.levels[0].tiles[index]
+        for index, line in enumerate(edited.screens[0].tiles)
+        if line == project.screens[0].tiles[index]
     )
-    assert unchanged == project.levels[0].height - 1
+    assert unchanged == project.screens[0].height - 1
 
 
 def test_toggle_returns_terrain_to_its_previous_state(project):
@@ -58,39 +81,8 @@ def test_toggle_returns_terrain_to_its_previous_state(project):
     once = toggle_tile(project, 0, col, row)
     twice = toggle_tile(once, 0, col, row)
 
-    assert once.levels[0].tiles[row][col] == "#"
-    assert twice.levels[0].tiles == project.levels[0].tiles
-
-
-def test_walling_a_cell_that_holds_a_spawn_is_refused(project):
-    spawn = project.levels[0].spawns[0]
-
-    with pytest.raises(EditError, match=f"move {spawn.entity} before walling"):
-        set_tile(project, 0, spawn.col, spawn.row, "#")
-
-
-def test_painting_outside_the_grid_is_refused(project):
-    with pytest.raises(EditError, match="outside the 20x16 grid"):
-        set_tile(project, 0, 99, 0, "#")
-
-
-def test_moving_a_spawn_into_a_wall_is_refused(project):
-    wall = next(
-        (col, row)
-        for row, line in enumerate(project.levels[0].tiles)
-        for col, tile in enumerate(line)
-        if tile == "#"
-    )
-
-    with pytest.raises(EditError, match="inside a wall"):
-        move_spawn(project, 0, 0, wall[0], wall[1])
-
-
-def test_moving_a_spawn_onto_another_is_refused(project):
-    other = project.levels[0].spawns[1]
-
-    with pytest.raises(EditError, match="two spawns on cell"):
-        move_spawn(project, 0, 0, other.col, other.row)
+    assert once.screens[0].tiles[row][col] == solid_char(project)
+    assert twice.screens[0].tiles == project.screens[0].tiles
 
 
 def test_moving_a_spawn_to_free_floor_succeeds(project):
@@ -98,132 +90,112 @@ def test_moving_a_spawn_to_free_floor_succeeds(project):
 
     edited = move_spawn(project, 0, 0, col, row)
 
-    assert (edited.levels[0].spawns[0].col, edited.levels[0].spawns[0].row) == (col, row)
+    assert (edited.screens[0].spawns[0].col, edited.screens[0].spawns[0].row) == (col, row)
 
 
-def test_increasing_an_entity_count_places_new_spawns_on_every_level(project):
-    edited = set_entity_count(project, "enemy", 4)
-
-    assert next(e for e in edited.entities if e.id == "enemy").count == 4
-    for level in edited.levels:
-        placed = [spawn for spawn in level.spawns if spawn.entity == "enemy"]
-        assert len(placed) == 4
-        assert len({(spawn.col, spawn.row) for spawn in placed}) == 4
-        assert all(level.tiles[spawn.row][spawn.col] == "." for spawn in placed)
+def test_moving_a_spawn_outside_the_grid_is_refused(project):
+    with pytest.raises(EditError, match="outside the 20x14 grid"):
+        move_spawn(project, 0, 0, 99, 0)
 
 
-def test_decreasing_an_entity_count_drops_spawns_on_every_level(project):
-    edited = set_entity_count(project, "collectible", 3)
+def test_increasing_an_entity_count_places_a_spawn_on_every_screen(project):
+    edited = set_entity_count(project, "actor", 3)
 
-    for level in edited.levels:
-        assert len([s for s in level.spawns if s.entity == "collectible"]) == 3
+    assert next(e for e in edited.entities if e.id == "actor").count == 3
+    for screen in edited.screens:
+        placed = [spawn for spawn in screen.spawns if spawn.entity == "actor"]
+        assert len(placed) == 3
+        assert len({(spawn.col, spawn.row) for spawn in placed}) == 3
+        assert all(screen.tiles[spawn.row][spawn.col] == open_char(edited) for spawn in placed)
+
+
+def test_decreasing_an_entity_count_drops_spawns_on_every_screen(project):
+    grown = set_entity_count(project, "actor", 4)
+
+    edited = set_entity_count(grown, "actor", 2)
+
+    for screen in edited.screens:
+        assert len([s for s in screen.spawns if s.entity == "actor"]) == 2
 
 
 def test_entity_count_beyond_the_budget_is_refused(project):
-    with pytest.raises(EditError, match="entity count exceeds"):
-        set_entity_count(project, "collectible", 20)
+    with pytest.raises(EditError, match="exceeds the max_entities budget"):
+        set_entity_count(project, "actor", 20)
 
 
-def test_adding_and_removing_an_entity_keeps_every_level_consistent(project):
-    added = add_entity(project, "guard", "enemy", count=2, speed=2)
+def test_adding_and_removing_an_entity_keeps_every_screen_consistent(project):
+    added = add_entity(project, "guard", "enemy", count=2)
 
     assert any(entity.id == "guard" for entity in added.entities)
-    for level in added.levels:
-        assert len([spawn for spawn in level.spawns if spawn.entity == "guard"]) == 2
+    for screen in added.screens:
+        assert len([spawn for spawn in screen.spawns if spawn.entity == "guard"]) == 2
 
     removed = remove_entity(added, "guard")
 
     assert not any(entity.id == "guard" for entity in removed.entities)
-    for level in removed.levels:
-        assert not any(spawn.entity == "guard" for spawn in level.spawns)
+    for screen in removed.screens:
+        assert not any(spawn.entity == "guard" for spawn in screen.spawns)
 
 
-def test_the_player_entity_cannot_be_removed(project):
-    with pytest.raises(EditError, match="player entity cannot be removed"):
-        remove_entity(project, "player")
-
-
-def test_speed_outside_the_supported_range_is_refused(project):
-    assert set_entity_speed(project, "enemy", 4).entities[1].speed == 4
-
-    with pytest.raises(EditError):
-        set_entity_speed(project, "enemy", 9)
+def test_removing_an_unknown_entity_is_refused(project):
+    with pytest.raises(EditError, match="no entity"):
+        remove_entity(project, "ghost")
 
 
 def test_resizing_keeps_surviving_terrain_and_rehomes_displaced_spawns(project):
     painted = set_tile(project, 0, 3, 3, "#")
 
-    edited = resize_level(painted, 0, 12, 10)
+    edited = resize_screen(painted, 0, 12, 10)
 
-    assert edited.levels[0].width == 12
-    assert edited.levels[0].height == 10
-    assert all(len(row) == 12 for row in edited.levels[0].tiles)
-    assert edited.levels[0].tiles[3][3] == "#"
-    for spawn in edited.levels[0].spawns:
+    assert edited.screens[0].width == 12
+    assert edited.screens[0].height == 10
+    assert all(len(row) == 12 for row in edited.screens[0].tiles)
+    assert edited.screens[0].tiles[3][3] == "#"
+    for spawn in edited.screens[0].spawns:
         assert spawn.col < 12 and spawn.row < 10
-        assert edited.levels[0].tiles[spawn.row][spawn.col] == "."
-    placed = {(spawn.col, spawn.row) for spawn in edited.levels[0].spawns}
-    assert len(placed) == len(edited.levels[0].spawns)
+        assert edited.screens[0].tiles[spawn.row][spawn.col] == open_char(edited)
+    placed = {(spawn.col, spawn.row) for spawn in edited.screens[0].spawns}
+    assert len(placed) == len(edited.screens[0].spawns)
 
 
 def test_resizing_below_the_space_the_entities_need_is_refused(project):
-    document = project.model_dump()
+    document = project.model_dump(mode="json")
     document["budgets"]["max_entities"] = 64
     roomy = GameProject.model_validate(document)
-    crowded = set_entity_count(set_entity_count(roomy, "collectible", 32), "enemy", 31)
+    crowded = add_entity(roomy, "guard", "enemy", count=60)
 
     with pytest.raises(EditError, match="free floor cells"):
-        resize_level(crowded, 0, 8, 8)
+        resize_screen(crowded, 0, 8, 8)
 
 
-def test_filling_a_level_with_open_floor_keeps_spawns_valid(project):
-    edited = fill_level(project, 0, ".")
+def test_filling_a_screen_with_open_floor_keeps_spawns_valid(project):
+    edited = fill_screen(project, 0, ".")
 
-    assert set("".join(edited.levels[0].tiles)) == {"."}
-    assert len(edited.levels[0].spawns) == len(project.levels[0].spawns)
+    assert set("".join(edited.screens[0].tiles)) == {"."}
+    assert len(edited.screens[0].spawns) == len(project.screens[0].spawns)
+
+
+def test_filling_a_screen_with_an_undeclared_tile_is_refused(project):
+    with pytest.raises(EditError):
+        fill_screen(project, 0, "Z")
 
 
 def test_renaming_and_time_limit_round_trip(project):
-    edited = set_time_limit(rename_level(project, 0, "CAVERN"), 0, 120)
+    edited = set_screen_time_limit(rename_screen(project, 0, "CAVERN"), 0, 120)
 
-    assert edited.levels[0].name == "CAVERN"
-    assert edited.levels[0].time_limit_seconds == 120
+    assert edited.screens[0].name == "CAVERN"
+    assert edited.screens[0].time_limit_seconds == 120
 
 
 def test_scene_link_to_an_unknown_scene_is_refused(project):
-    with pytest.raises(EditError, match="unknown scene references"):
+    with pytest.raises(EditError, match="unknown scene"):
         set_scene_next(project, 1, "nowhere")
 
 
-def test_status_reports_solvability_and_buildability_live(project):
-    assert editing_status(project)["ready"] is True
-
-    occupied = {(s.col, s.row) for s in project.levels[0].spawns}
-    def neighbours(cell):
-        return [(cell[0]+1, cell[1]), (cell[0]-1, cell[1]),
-                (cell[0], cell[1]+1), (cell[0], cell[1]-1)]
-    target = next(
-        (spawn.col, spawn.row) for spawn in project.levels[0].spawns
-        if spawn.entity == "collectible"
-        and not any(n in occupied for n in neighbours((spawn.col, spawn.row)))
-    )
-    sealed = project
-    for col, row in neighbours(target):
-        sealed = set_tile(sealed, 0, col, row, "#")
-
-    status = editing_status(sealed)
-
-    assert status["solvable"] is False
-    assert status["buildable"] is True
-    assert status["ready"] is False
-    assert any("seal off" in reason for reason in status["solvability_failures"])
-
-
 def test_every_edit_leaves_a_project_the_backend_still_accepts(project):
-    edited = set_entity_count(project, "enemy", 3)
-    edited = set_entity_speed(edited, "enemy", 2)
-    edited = resize_level(edited, 0, 18, 14)
-    edited = rename_level(edited, 0, "FIRST")
+    edited = set_entity_count(project, "actor", 3)
+    edited = resize_screen(edited, 0, 18, 12)
+    edited = rename_screen(edited, 0, "FIRST")
     col, row = _free_cell(edited)
     edited = set_tile(edited, 0, col, row, "#")
 
@@ -232,29 +204,12 @@ def test_every_edit_leaves_a_project_the_backend_still_accepts(project):
     assert status["ready"] is True, status
 
 
-@pytest.mark.parametrize("behaviour", ["patrol_h", "patrol_v", "bounce", "chase", "guard"])
-def test_enemy_behaviour_is_a_design_choice(project, behaviour):
-    edited = set_entity_behaviour(project, "enemy", behaviour)
-
-    assert next(e for e in edited.entities if e.id == "enemy").behaviour == behaviour
-
-
-def test_only_enemies_may_declare_a_behaviour(project):
-    with pytest.raises(EditError, match="cannot declare a movement behaviour"):
-        set_entity_behaviour(project, "collectible", "chase")
-
-
-def test_an_unknown_behaviour_is_refused(project):
-    with pytest.raises(EditError):
-        set_entity_behaviour(project, "enemy", "teleport")
-
-
 def test_setting_the_count_an_entity_already_has_is_a_no_op(project):
     """Asking for the current count divided by zero before this was fixed."""
-    current = next(e.count for e in project.entities if e.id == "enemy")
+    current = next(e.count for e in project.entities if e.id == "actor")
 
-    result = set_entity_count(project, "enemy", current)
+    result = set_entity_count(project, "actor", current)
 
-    assert next(e.count for e in result.entities if e.id == "enemy") == current
-    for level in result.levels:
-        assert len([s for s in level.spawns if s.entity == "enemy"]) == current
+    assert next(e.count for e in result.entities if e.id == "actor") == current
+    for screen in result.screens:
+        assert len([s for s in screen.spawns if s.entity == "actor"]) == current

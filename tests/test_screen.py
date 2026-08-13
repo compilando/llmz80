@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from llmz80.studio.editing import fill_level
+from llmz80.studio.editing import fill_screen
 from llmz80.studio.models import AssetSpec, TargetPlatform
 from llmz80.studio.reference import GameReference, save_reference
 from llmz80.studio.samples import blank_project
@@ -110,9 +110,7 @@ def test_referencia_is_done_and_names_the_title_and_source_count(project, tmp_pa
 
 
 def test_referencia_is_failed_when_the_search_found_nothing(project, tmp_path):
-    save_reference(
-        _dossier(identified=False, confidence="low", title="", sources=[]), tmp_path
-    )
+    save_reference(_dossier(identified=False, confidence="low", title="", sources=[]), tmp_path)
 
     stage = _by_name(stage_line(project, tmp_path))["referencia"]
 
@@ -132,9 +130,7 @@ def test_referencia_distinguishes_absent_from_unidentified(project, tmp_path):
     """An unsearched project and one that searched and found nothing are not the same state."""
     absent = _by_name(stage_line(project, tmp_path))["referencia"]
 
-    save_reference(
-        _dossier(identified=False, confidence="low", title="", sources=[]), tmp_path
-    )
+    save_reference(_dossier(identified=False, confidence="low", title="", sources=[]), tmp_path)
     unidentified = _by_name(stage_line(project, tmp_path))["referencia"]
 
     assert absent.state == "pending"
@@ -152,7 +148,7 @@ def test_diseno_is_done_for_a_solvable_structured_design(project):
 
 
 def test_diseno_is_failed_when_the_terrain_loses_its_shape(project):
-    unstructured = fill_level(project, 0, ".")
+    unstructured = fill_screen(project, 0, ".")
 
     stage = _by_name(stage_line(unstructured, None))["diseño"]
 
@@ -389,7 +385,7 @@ def test_next_step_prefers_an_earlier_failure_over_a_later_pending_stage(project
     """A broken design blocks the pipeline even though referencia -- earlier
     in STAGE_NAMES -- is merely unstarted, not broken; pointing at "research"
     while the design itself is unsolvable would not fix anything."""
-    unstructured = fill_level(project, 0, ".")
+    unstructured = fill_screen(project, 0, ".")
 
     stage = next_step(stage_line(unstructured, tmp_path))
 
