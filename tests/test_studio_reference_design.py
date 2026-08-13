@@ -2,9 +2,10 @@
 
 import pytest
 
+from llmz80.studio.editing import rename_project
 from llmz80.studio.models import PresentationSpec, TargetPlatform
 from llmz80.studio.planner import ProjectChange, ProjectProposal, apply_proposal
-from llmz80.studio.reference import GameReference
+from llmz80.studio.reference import GameReference, load_reference, save_reference
 from llmz80.studio.reference_design import (
     DESIGN_SYSTEM_PROMPT,
     ResponsesReferenceDesigner,
@@ -12,13 +13,7 @@ from llmz80.studio.reference_design import (
     repair_feedback,
 )
 from llmz80.studio.samples import blank_project
-
-#: `StudioService` is out of this file's reach: `services.py` still imports
-#: the abolished `GenreId` from `models.py` and cannot be imported at all
-#: until it is migrated (a separate task). Every test below exercises
-#: `reference_design.py`'s own surface -- the prompt, `ResponsesReferenceDesigner`,
-#: `repair_feedback` and `propose_and_apply` -- directly against a
-#: `blank_project`, with no dependency on the service layer.
+from llmz80.studio.services import StudioService
 
 
 def _dossier(**overrides) -> GameReference:
@@ -191,6 +186,147 @@ def test_a_call_that_returns_nothing_parsed_is_not_silently_accepted(project):
     assert len(client.responses.calls) == 1
 
 
+# --- reached through the service ---------------------------------------
+#
+# Recovered from before task 11b had to delete them: `services.py` still
+# imported the abolished `GenreId` and could not be collected at all, so
+# every test that went through `StudioService` was dropped along with it.
+# Ported here to `create_project`'s v4 signature (title, platform -- no
+# genre) now that services.py itself is migrated.
+
+
+def test_researching_archives_the_dossier_in_the_project(tmp_path):
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Zampa", TargetPlatform.SPECTRUM)
+
+    class _Researcher:
+        def research(self, brief, target):
+            return _dossier()
+
+    dossier = service.research_reference(project, directory, _Researcher())
+
+    assert dossier.title == "Zampa Bolas"
+    assert load_reference(directory).title == "Zampa Bolas"
+
+
+def test_researching_archives_an_unidentified_dossier_too(tmp_path):
+    """A recorded empty search is worth as much as a dossier: it stops every
+    later action re-running the same search, so it is archived just the same."""
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Zampa", TargetPlatform.SPECTRUM)
+
+    class _Researcher:
+        def research(self, brief, target):
+            return GameReference(identified=False, confidence="low")
+
+    dossier = service.research_reference(project, directory, _Researcher())
+
+    assert dossier.identified is False
+    archived = load_reference(directory)
+    assert archived is not None
+    assert archived.identified is False
+
+
+def test_a_reference_proposal_is_returned_with_its_diff(tmp_path):
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Zampa", TargetPlatform.SPECTRUM)
+    proposal = ProjectProposal(
+        summary="match the original",
+        changes=[
+            ProjectChange(
+                path="/presentation/style",
+                operation="replace",
+                value_text="bright maze on black",
+                reason="the original drew a bright maze on black",
+            )
+        ],
+    )
+
+    class _Designer:
+        def propose(self, project, dossier, feedback=None):
+            return proposal
+
+    returned, diff, updated, refusals = service.propose_from_reference(
+        project, directory, _Designer(), _dossier()
+    )
+
+    assert returned is proposal
+    assert "presentation/style" in diff
+    assert updated.presentation.style == "bright maze on black"
+    assert refusals == []
+
+
+def test_proposing_without_a_dossier_says_so(tmp_path):
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Zampa", TargetPlatform.SPECTRUM)
+
+    class _Designer:
+        def propose(self, project, dossier, feedback=None):
+            raise AssertionError("must not be called")
+
+    with pytest.raises(ValueError, match="no researched game"):
+        service.propose_from_reference(project, directory, _Designer(), None)
+
+
+def test_proposing_without_a_dossier_argument_falls_back_to_the_archived_one(tmp_path):
+    """The only real caller, `project adapt`, never passes a dossier: it always
+    relies on `load_reference(directory)` picking up what was researched
+    earlier. Prove that fallback itself works, not just the explicit-None case."""
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Zampa", TargetPlatform.SPECTRUM)
+    save_reference(_dossier(), directory)
+
+    received = []
+
+    class _Designer:
+        def propose(self, project, dossier, feedback=None):
+            received.append(dossier)
+            return ProjectProposal(summary="match the original", changes=[])
+
+    service.propose_from_reference(project, directory, _Designer())
+
+    assert len(received) == 1
+    assert received[0].title == "Zampa Bolas"
+
+
+def test_proposing_from_an_unidentified_archived_dossier_says_so(tmp_path):
+    """The service's own guard, distinct from the designer's equivalent one:
+    it must refuse before the designer is ever invoked."""
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Zampa", TargetPlatform.SPECTRUM)
+
+    class _Designer:
+        def propose(self, project, dossier, feedback=None):
+            raise AssertionError("must not be called")
+
+    with pytest.raises(ValueError, match="no researched game was identified"):
+        service.propose_from_reference(
+            project, directory, _Designer(), _dossier(identified=False, sources=[], title="")
+        )
+
+
+def test_researching_sends_the_brief_and_the_platform_value(tmp_path):
+    """A wrong field, or the enum instead of its `.value`, must fail a test
+    here rather than surface only against a live API call."""
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Zampa", TargetPlatform.SPECTRUM)
+    project = rename_project(project, project.metadata.title, brief="a maze full of ghosts")
+
+    received = []
+
+    class _Researcher:
+        def research(self, brief, target):
+            received.append((brief, target))
+            return _dossier()
+
+    service.research_reference(project, directory, _Researcher())
+
+    assert received == [("a maze full of ghosts", "spectrum")]
+    # TargetPlatform is a str Enum, so it compares equal to its own .value;
+    # only checking the type catches passing the enum member itself.
+    assert type(received[0][1]) is str
+
+
 # --- the repair loop -------------------------------------------------------
 #
 # The live run's ten-change proposal was thrown away whole over two
@@ -320,3 +456,19 @@ def test_a_proposal_that_applies_first_time_makes_exactly_one_model_call(project
 
     assert designer.feedback_seen == [None]
     assert result.refusals == []
+
+
+def test_the_service_repairs_a_refused_proposal_before_returning_it(tmp_path):
+    """Proves the loop is actually reachable through the service both front
+    ends call, not just the module-level function directly."""
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Zampa", TargetPlatform.SPECTRUM)
+    save_reference(_dossier(), directory)
+    designer = ScriptedDesigner(_oversized_style_proposal(), _fixed_style_proposal())
+
+    proposal, diff, updated, refusals = service.propose_from_reference(project, directory, designer)
+
+    assert proposal is designer.attempts[1]
+    assert updated.presentation.style == "bright maze on black"
+    assert len(refusals) == 1
+    assert "presentation/style" in diff
