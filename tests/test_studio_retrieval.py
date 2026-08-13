@@ -76,4 +76,6 @@ def test_examples_are_optional_in_the_writing_prompt(project):
     # The contract must survive either way; examples are help, not the brief.
     for prompt in (with_examples, without):
         assert "OBSERVABLE STATE CONTRACT" in prompt
-        assert "RUNTIME ACCEPTANCE" in prompt
+        # There is no acceptance section any more: deriving one assumed a
+        # pellet sweeper, and the examiner that replaces it is phase 2.
+        assert "Terrain characters" in prompt

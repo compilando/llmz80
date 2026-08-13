@@ -65,12 +65,13 @@ def test_storing_a_program_replaces_what_was_there(tmp_path: Path, project):
     assert "second" in (program / "main.c").read_text()
 
 
-def test_the_writing_prompt_carries_contract_design_acceptance_and_hazards(project):
+def test_the_writing_prompt_carries_contract_design_and_hazards(project):
     prompt = writing_prompt(project)
 
     assert "OBSERVABLE STATE CONTRACT" in prompt
     assert "DESIGN" in prompt
-    assert "RUNTIME ACCEPTANCE" in prompt
+    # No acceptance section: task 10 removed the derivation that wrote one.
+    assert "Terrain characters" in prompt
     assert "PLATFORM NOTES" in prompt
     assert "ROM frame counter" in prompt
     assert str(project.budgets.binary_bytes) in prompt
