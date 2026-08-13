@@ -22,6 +22,7 @@ from llmz80.studio.sprite_artist import (
     REQUEST_WIDTH,
     SHEET_HEIGHT,
     SHEET_WIDTH,
+    TECHNICAL_REQUIREMENTS_HEADING,
     SpriteArtist,
     compose_prompt,
 )
@@ -194,6 +195,58 @@ def test_prompt_without_a_dossier_falls_back_to_role_and_presentation_style():
 
     assert entity.role in prompt
     assert project.presentation.style in prompt
+
+
+def test_technical_requirements_come_after_the_style_block_and_close_the_prompt():
+    """The fix for the real defect a run for *Abu Simbel Profanation*
+    exposed: the dossier's own style block used to sit last in the prompt,
+    so an image model read that game's palette description as the final,
+    most heavily weighted word and drew a dark sheet on a dark background.
+    The pipeline's technical constraints -- pure white background, no
+    anti-aliasing, exact frame layout -- must come after the style block and
+    must be the last thing the prompt says, not the other way round.
+
+    Written to fail if someone reorders `compose_prompt`'s parts: swapping
+    style and technical constraints back would either put
+    `TECHNICAL_REQUIREMENTS_HEADING` before "REFERENCE GAME" (failing the
+    first assertion) or leave the style block's own closing sentence as the
+    prompt's last text instead of the technical block's (failing the
+    second).
+    """
+    project = _project()
+    entity = next(e for e in project.entities if e.role == "player")
+    dossier = _dossier()
+
+    prompt = compose_prompt(project, entity, dossier)
+
+    style_index = prompt.index("REFERENCE GAME")
+    technical_index = prompt.index(TECHNICAL_REQUIREMENTS_HEADING)
+    assert style_index < technical_index, (
+        "the style block must be read before the technical requirements"
+    )
+    assert prompt.rstrip().endswith("Studio colours the sprite itself afterwards."), (
+        "the technical requirements must be the last thing the prompt says"
+    )
+
+
+def test_source_urls_do_not_reach_the_image_prompt():
+    """A dossier's source URLs (see `reference.reference_prompt`) are for a
+    person auditing the dossier, not for an image model -- to a model they
+    are noise sitting at the prompt's most heavily weighted position.
+    `compose_prompt` composes its own, shorter style block instead of
+    reusing `reference_prompt` wholesale, precisely so those URLs never
+    reach the model at all.
+    """
+    project = _project()
+    entity = next(e for e in project.entities if e.role == "player")
+    dossier = _dossier()
+    assert dossier.sources, "the fixture dossier must actually carry sources to be a real check"
+
+    prompt = compose_prompt(project, entity, dossier)
+
+    for source in dossier.sources:
+        assert source.url not in prompt
+    assert "Researched from" not in prompt
 
 
 def test_prompt_with_an_unidentified_dossier_also_falls_back():
@@ -399,3 +452,50 @@ def test_the_same_real_sheet_does_not_pack_as_a_solid_block_for_the_cpc_either()
     assert len(opaque_counts) == FRAMES_PER_SHEET
     for index, count in enumerate(opaque_counts):
         assert count not in (0, 256), f"frame {index} packed to {count}/256 opaque pixels"
+
+
+def test_the_real_black_on_white_fixture_yields_a_visible_attribute():
+    """The second half of the same real-run defect: `pack_spectrum` derives
+    the Spectrum attribute from the frames' dominant *opaque* colour (see
+    `spriting._dominant_opaque_rgb`). Once `_key_out_background` keys this
+    fixture's white away, that dominant colour is the black figure itself,
+    which used to pack to PAPER_BLACK | INK_BLACK (0x00) -- a correctly
+    shaped sprite nobody could ever see, on this exact fixture.
+
+    "attribute != 0" would not actually prove the sprite is visible (a lone
+    FLASH bit is nonzero and still invisible, for instance), so this
+    decomposes the byte into paper, ink and bright and checks that ink and
+    paper genuinely differ -- see `spriting._MONOCHROME_FALLBACK_INK`.
+    """
+    project = _project(TargetPlatform.SPECTRUM)
+    entity = next(e for e in project.entities if e.role == "player")
+    with Image.open(_FIXTURE_SHEET) as sheet:
+        artist = SpriteArtist(_FakeGenerator(sheet.copy()))
+        frames = artist.draw_frames(project, entity)
+
+    packed = pack_spectrum(frames)
+    ink = packed.attribute & 0x07
+    paper = (packed.attribute >> 3) & 0x07
+    bright = bool(packed.attribute & 0x40)
+
+    assert paper == 0x00  # PAPER_BLACK, as every current typology draws on
+    assert ink != paper, f"ink ({ink}) must differ from paper ({paper}) to be visible at all"
+    assert ink == 0x07  # INK_WHITE: max contrast, since this fixture's figure is black
+    assert bright is True
+
+
+def test_coloured_art_still_yields_its_own_colour_not_the_monochrome_fallback():
+    """The monochrome fallback (`spriting._MONOCHROME_FALLBACK_INK`) must
+    trigger only for art whose dominant opaque colour is genuinely black --
+    real colour, the kind CPC mode 0 art is meant to carry, must still win
+    exactly as it did before this fix.
+    """
+    project = _project(TargetPlatform.SPECTRUM)
+    entity = next(e for e in project.entities if e.role == "player")
+    cyan = _solid_image((512, 128), (0, 255, 255, 255))
+    artist = SpriteArtist(_FakeGenerator(cyan))
+
+    frames = artist.draw_frames(project, entity)
+    packed = pack_spectrum(frames)
+
+    assert packed.attribute == 0x45  # INK_CYAN | BRIGHT, unchanged by the fallback

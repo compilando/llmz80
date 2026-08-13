@@ -95,6 +95,32 @@ _CHANNEL_ON_THRESHOLD = 128
 #: colour and a genuine bright one land on opposite sides of it.
 _BRIGHT_THRESHOLD = 230
 
+#: Ink to fall back to when the dominant opaque colour reads as plain black
+#: (see `_spectrum_attribute`). `resources/sprite_prompt_spectrum.txt` asks
+#: for "strictly monochrome, black figure on white"; once
+#: `sprite_artist._key_out_background` keys the white away, the dominant
+#: *opaque* colour left in the frame is that black figure -- and INK_BLACK
+#: on `_PAPER_BLACK` draws nothing at all: a correctly-shaped sprite that no
+#: player can ever see, confirmed against the real `gpt-image-1` fixture in
+#: `tests/fixtures/sprite_sheet_running_figure.png` before this fallback
+#: existed. Bright white is the natural stand-in, not an arbitrary pick: it
+#: is the maximum-contrast ink against `_PAPER_BLACK`, so the silhouette
+#: this module already isolated survives exactly as a silhouette, just
+#: inverted -- the same figure a black-on-white sheet would show if the
+#: paper and ink swapped.
+#:
+#: This is decided here, from the pixel data alone, rather than by reaching
+#: for the entity's `role`, the dossier's `visual_style`, or
+#: `PresentationSpec.palette` (all real candidates -- see the caller-side
+#: alternatives `sprite_artist.py` considered for keying out the
+#: background). Every one of those lives above this module's own layer:
+#: this file's module docstring already commits `spriting.py` to knowing
+#: about pixels and about two machines and nothing else -- "not where the
+#: image came from, not which entity wears it" -- and role/dossier context
+#: is exactly the kind of provenance that commitment rules out. A fallback
+#: computed from the frame's own pixels keeps that boundary intact.
+_MONOCHROME_FALLBACK_INK = _INK_BRIGHT_BIT | 0x07  # INK_WHITE | BRIGHT
+
 
 def _spectrum_ink(rgb: tuple[int, int, int]) -> int:
     """The ink+BRIGHT bits (not yet combined with a paper) for one opaque
@@ -135,15 +161,32 @@ def _dominant_opaque_rgb(frames: list[Image.Image]) -> tuple[int, int, int] | No
 
 def _spectrum_attribute(frames: list[Image.Image]) -> int:
     """The one Spectrum attribute byte (PAPER_BLACK | ink [| BRIGHT]) a
-    sprite's frames resolve to. A frame with no opaque pixels at all -- an
-    edge case, not the normal case, since a sprite that draws nothing has
-    nothing to be seen -- falls back to plain PAPER_BLACK | INK_BLACK (0)
-    rather than crashing on an empty Counter.
+    sprite's frames resolve to.
+
+    Two different things both look like "nothing to show" here, and only one
+    of them actually is:
+
+    - A frame with no opaque pixels at all -- an edge case, not the normal
+      case, since a sprite that draws nothing has nothing to be seen --
+      falls back to plain PAPER_BLACK | INK_BLACK (0) rather than crashing
+      on an empty Counter. That sprite is genuinely blank; 0 is correct.
+    - A frame whose dominant *opaque* colour reads as black (ink bits all
+      zero once `_spectrum_ink` classifies it) is not blank -- it has real
+      drawn pixels, they are just dark. Returning INK_BLACK here would pack
+      exactly the same 0 byte as the genuinely-empty case above, but for a
+      sprite that visibly drew a figure: PAPER_BLACK | INK_BLACK is
+      invisible against its own paper, so a correctly-shaped sprite would
+      never be seen. `_MONOCHROME_FALLBACK_INK` (see its own comment) is
+      substituted instead, so only the first, truly-empty case ever reaches
+      plain 0.
     """
     dominant = _dominant_opaque_rgb(frames)
     if dominant is None:
         return _PAPER_BLACK
-    return _PAPER_BLACK | _spectrum_ink(dominant)
+    ink = _spectrum_ink(dominant)
+    if ink & 0x07 == 0:
+        ink = _MONOCHROME_FALLBACK_INK
+    return _PAPER_BLACK | ink
 
 
 @dataclass(frozen=True)

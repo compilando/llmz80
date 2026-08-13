@@ -53,7 +53,7 @@ from PIL import Image
 from generators.base import BaseImageGenerator
 from image_utils import _clean_image, _scale_image
 from llmz80.studio.models import EntitySpec, GameProject, TargetPlatform, VideoMode
-from llmz80.studio.reference import GameReference, reference_prompt
+from llmz80.studio.reference import GameReference
 from llmz80.studio.sprite_sheet import split_frames
 from llmz80.studio.spriting import SPRITE_SIZE
 
@@ -106,12 +106,52 @@ def _template_filename(project: GameProject) -> str:
     return "sprite_prompt_amstrad_cpc_mode1.txt"
 
 
+def _dossier_style_block(dossier: GameReference) -> str:
+    """Only the visual half of an identified dossier, phrased so an image
+    model reads it as inspiration for the *referenced* game's own screen --
+    never as an instruction for the sheet being drawn right now.
+
+    `reference_prompt` (see `reference.py`) renders far more than an image
+    model has any use for: mechanics, pacing, screen layout and level
+    structure are about how the *game* plays, not about one small sprite
+    sheet's look, and its trailing "Researched from: <urls>" line exists for
+    a person auditing the dossier, not for a model. Reusing that block here
+    verbatim would put gameplay prose and a list of links at the very end of
+    the prompt -- the position a model reads with the most weight -- crowding
+    out the one thing that actually has to land there instead, the pipeline's
+    own technical constraints (see `_technical_constraints`). This function
+    keeps only `title`/`publisher`/`year` (for context) and `visual_style`
+    (the only field that is actually about how something looks), and states
+    outright that the description is of the referenced game's own screen, not
+    of this sheet. `reference_prompt` itself is untouched -- the program
+    writer (`generator.py`) still relies on its full, source-cited form.
+    """
+    year = str(dossier.year) if dossier.year else ""
+    known = [part for part in (dossier.publisher, year) if part]
+    on_publisher = f" ({', '.join(known)})" if known else ""
+    lines = [
+        "REFERENCE GAME",
+        "",
+        f"This project is inspired by {dossier.title}{on_publisher}.",
+    ]
+    if dossier.visual_style.strip():
+        lines.extend(["", "How that game looked on its own screen:", f"  {dossier.visual_style}"])
+    lines.extend(
+        [
+            "",
+            "That description is of the referenced game, on its own screen -- it "
+            "does not describe the sheet you are drawing now. See TECHNICAL "
+            "REQUIREMENTS below for what this sheet itself must look like; those "
+            "requirements win over anything above.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _style_context(project: GameProject, entity: EntitySpec, dossier: GameReference | None) -> str:
     """What is known about how this should look.
 
-    `reference_prompt` (see `reference.py`) already renders an identified
-    dossier's `publisher` and `visual_style`, among other fields, and already
-    returns nothing for a dossier that was never identified -- so an
+    An identified dossier renders through `_dossier_style_block`; an
     unidentified dossier and no dossier at all fall through to the same
     fallback here, which is correct: an unidentified dossier's `visual_style`
     and `publisher` are themselves blank (see `RESEARCH_SYSTEM_PROMPT`), so
@@ -120,9 +160,8 @@ def _style_context(project: GameProject, entity: EntitySpec, dossier: GameRefere
     needs art: it draws on the one thing every project always has, its own
     design -- the entity's `role` and the design's `presentation.style`.
     """
-    block = reference_prompt(dossier)
-    if block:
-        return block
+    if dossier is not None and dossier.identified:
+        return _dossier_style_block(dossier)
     return (
         "REFERENCE GAME\n\n"
         "No specific 1980s game has been identified for this project, so draw "
@@ -131,17 +170,83 @@ def _style_context(project: GameProject, entity: EntitySpec, dossier: GameRefere
     )
 
 
+#: The heading `_technical_constraints` opens with. Named so the ordering
+#: test can find it without duplicating the literal string, and so a future
+#: edit to the wording cannot silently break the test that pins its position.
+TECHNICAL_REQUIREMENTS_HEADING = "TECHNICAL REQUIREMENTS"
+
+
+def _technical_constraints() -> str:
+    """The pipeline's non-negotiable requirements, stated last and stated as
+    overriding anything a style description said above -- this is the fix
+    for the defect a real run exposed: a reference dossier's own palette
+    describes *that game's* screen, and when it sat last in the prompt (see
+    the old `compose_prompt`, before this function existed) an image model
+    read it as the final word and drew a dark sheet on a dark background.
+
+    Every one of these lines is not a preference but a downstream contract:
+
+    - Pure white background: `image_utils._clean_image` isolates a frame's
+      drawn pose by comparing against white, and this module's own
+      `_key_out_background` keys that exact white to alpha 0 right
+      afterwards (see its docstring). Art on any other background either
+      gets treated as all-figure (nothing keyed out -- the solid-block
+      defect this fixes) or has its real background wrongly keyed away.
+    - No anti-aliasing: `_key_out_background` keys pixels by exact-colour
+      tolerance, not by blending -- a soft edge leaves a halo of pixels that
+      are neither background nor drawn figure.
+    - Exactly `FRAMES_PER_SHEET` frames, one character each, side by side:
+      `_sheet_columns` cuts the sheet into that many equal columns by
+      arithmetic, before any cleaning happens (see the module docstring) --
+      a different frame count or a second figure sharing a column corrupts
+      every column split from it, not just the wrong one.
+
+    The colour a referenced game's own dossier describes is deliberately
+    left out of this list: Studio colours the sprite itself afterwards
+    (`spriting.pack_spectrum`/`pack_cpc`), so the sheet drawn here only ever
+    needs to be a clean silhouette, regardless of what any reference game's
+    screen looked like.
+    """
+    return (
+        f"{TECHNICAL_REQUIREMENTS_HEADING} (these apply no matter what any style note "
+        "above says, and override it where the two disagree):\n\n"
+        "- Pure white background (RGB 255,255,255), and nothing else behind the "
+        "figure -- no gradient, no texture, no second colour of any kind.\n"
+        "- No anti-aliasing: every edge is a hard, blocky pixel boundary; no "
+        "soft, blended or intermediate-coloured pixels anywhere.\n"
+        f"- Exactly {FRAMES_PER_SHEET} animation frames of the same character, side "
+        "by side in a single row, and nothing drawn outside those frames.\n"
+        "- Exactly one character per frame: no duplicate figure, no partial or "
+        "cropped figure, no second character sharing a frame.\n\n"
+        "A referenced game's own palette, above, describes that game on its own "
+        "screen -- it does not describe this sheet. Draw the silhouette only, on "
+        "the pure white background specified here; Studio colours the sprite "
+        "itself afterwards."
+    )
+
+
 def compose_prompt(
     project: GameProject, entity: EntitySpec, dossier: GameReference | None = None
 ) -> str:
     """The prompt an image model is asked to draw one entity's sheet from.
 
-    Three things are folded together: the target machine's real constraints
-    (the matching `resources/sprite_prompt_*.txt` template), an explicit
-    request for a `FRAMES_PER_SHEET`-frame sheet at the large size this module
-    actually asks for (see the module docstring on why not the sprite's true
-    size), and whatever is known about how the game should look, from
-    `_style_context`.
+    Four things are folded together, in this order: the target machine's
+    real constraints (the matching `resources/sprite_prompt_*.txt`
+    template), an explicit request for a `FRAMES_PER_SHEET`-frame sheet at
+    the large size this module actually asks for (see the module docstring
+    on why not the sprite's true size), whatever is known about how the game
+    should look (`_style_context`), and, last, the pipeline's own technical
+    constraints (`_technical_constraints`).
+
+    That last position is deliberate, not incidental: an image model reads a
+    long prompt with the most weight given to what it reads last, and the
+    reference dossier's own palette/visual-style description used to sit
+    there (see `_technical_constraints`'s docstring for the real run this
+    broke). The style block dresses the sprite; the technical constraints
+    that make the pipeline work at all -- a white background `_clean_image`
+    and `_key_out_background` both depend on, no anti-aliasing, the exact
+    frame layout `_sheet_columns` expects -- must win, so they are what the
+    model reads last.
     """
     template = (_RESOURCES / _template_filename(project)).read_text(encoding="utf-8")
     subject = f"{entity.sprite}, a {entity.role} character"
@@ -152,7 +257,9 @@ def compose_prompt(
         f"{REQUEST_FRAME_SIZE}x{REQUEST_FRAME_SIZE} pixels, so the whole sheet "
         f"image is {REQUEST_WIDTH}x{REQUEST_HEIGHT} pixels."
     )
-    return "\n\n".join([body, sheet, _style_context(project, entity, dossier)])
+    return "\n\n".join(
+        [body, sheet, _style_context(project, entity, dossier), _technical_constraints()]
+    )
 
 
 def _key_out_background(

@@ -333,6 +333,31 @@ def test_a_fully_transparent_frame_does_not_crash_and_gets_plain_black():
     assert packed.attribute == 0x00
 
 
+def test_a_solid_black_frame_does_not_pack_to_an_invisible_ink():
+    """A frame whose only opaque colour is black is not the same case as the
+    fully transparent frame above: it drew real pixels, just dark ones.
+    `resources/sprite_prompt_spectrum.txt` asks for exactly this -- "strictly
+    monochrome, black figure on white" -- so once the white background is
+    keyed to transparency (see `sprite_artist._key_out_background`), the
+    dominant opaque colour left in the frame is black. PAPER_BLACK |
+    INK_BLACK would be a correctly shaped sprite nobody can see, because ink
+    and paper are the same colour; `_MONOCHROME_FALLBACK_INK` must stop that
+    from ever being the result. Checked by decomposing the attribute byte
+    into paper, ink and bright rather than only asserting it is nonzero,
+    since a nonzero byte (e.g. FLASH alone) need not actually be visible.
+    """
+    packed = pack_spectrum([_solid((0, 0, 0))])
+
+    ink = packed.attribute & 0x07
+    paper = (packed.attribute >> 3) & 0x07
+    bright = bool(packed.attribute & 0x40)
+
+    assert paper == 0x00  # PAPER_BLACK, as every current typology draws on
+    assert ink != paper, f"ink ({ink}) must differ from paper ({paper}) to be visible at all"
+    assert ink == 0x07  # INK_WHITE: maximum contrast against black paper
+    assert bright is True
+
+
 def test_cpc_packing_leaves_the_attribute_at_its_unused_default():
     """The CPC has no attribute byte -- colour lives in the pixel data via
     `palette` -- so `pack_cpc` must not invent one."""
