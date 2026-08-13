@@ -4,10 +4,10 @@ from pathlib import Path
 import pytest
 
 from llmz80.studio import editing
-from llmz80.studio.models import GenreId, TargetPlatform
-from llmz80.studio.packs import BUILTIN_PACKS, create_default_project
+from llmz80.studio.models import TargetPlatform
 from llmz80.studio.planner import ProjectChange, ProjectProposal
 from llmz80.studio.reference import GameReference, ReferenceSource
+from llmz80.studio.samples import blank_project
 from llmz80.studio.screen import Stage
 from llmz80.studio.spriting import SPRITE_SIZE
 from llmz80.studio.tui import (
@@ -142,7 +142,7 @@ async def test_every_typology_can_be_chosen(tmp_path: Path):
 
 
 def test_render_map_draws_terrain_spawns_and_cursor():
-    project = create_default_project("Map", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Map", TargetPlatform.SPECTRUM)
     level = project.levels[0]
     player = next(
         spawn for spawn in level.spawns
@@ -160,7 +160,7 @@ def test_render_map_draws_terrain_spawns_and_cursor():
 
 
 def test_render_map_marks_the_cursor_wherever_it_sits():
-    project = create_default_project("Cursor", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Cursor", TargetPlatform.SPECTRUM)
 
     drawn = render_map(project, 0, (3, 2)).splitlines()
 

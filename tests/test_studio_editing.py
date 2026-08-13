@@ -17,13 +17,13 @@ from llmz80.studio.editing import (
     set_time_limit,
     toggle_tile,
 )
-from llmz80.studio.models import GameProject, GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import GameProject, TargetPlatform
+from llmz80.studio.samples import blank_project
 
 
 @pytest.fixture
 def project():
-    return create_default_project("Editing", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    return blank_project("Editing", TargetPlatform.SPECTRUM)
 
 
 def _free_cell(project, level_index=0):

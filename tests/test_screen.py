@@ -7,15 +7,15 @@ import json
 import pytest
 
 from llmz80.studio.editing import fill_level
-from llmz80.studio.models import AssetSpec, GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import AssetSpec, TargetPlatform
 from llmz80.studio.reference import GameReference, save_reference
+from llmz80.studio.samples import blank_project
 from llmz80.studio.screen import STAGE_KEY, STAGE_NAMES, Stage, next_step, stage_line
 
 
 @pytest.fixture
 def project():
-    return create_default_project("Zampabolas", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    return blank_project("Zampabolas", TargetPlatform.SPECTRUM)
 
 
 def _by_name(stages: list[Stage]) -> dict[str, Stage]:
@@ -59,7 +59,7 @@ def test_a_fresh_project_with_no_directory_is_pending_except_its_design(project)
 
     assert set(stages) == set(STAGE_NAMES)
     assert stages["referencia"].state == "pending"
-    assert stages["diseño"].state == "done"  # create_default_project starts solvable and structured
+    assert stages["diseño"].state == "done"  # blank_project starts solvable and structured
     assert stages["sprites"].state == "pending"
     assert stages["programa"].state == "pending"
     assert stages["gates"].state == "pending"

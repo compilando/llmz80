@@ -15,9 +15,9 @@ import pytest
 from PIL import Image, ImageDraw
 
 from image_utils import _clean_image
-from llmz80.studio.models import GameProject, GenreId, TargetPlatform, VideoMode
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import GameProject, TargetPlatform, VideoMode
 from llmz80.studio.reference import GameReference, ReferenceSource
+from llmz80.studio.samples import blank_project
 from llmz80.studio.sprite_artist import (
     BACKGROUND_TOLERANCE,
     FRAMES_PER_SHEET,
@@ -163,11 +163,11 @@ class _SequenceGenerator:
 
 
 def _project(platform: TargetPlatform = TargetPlatform.SPECTRUM) -> GameProject:
-    return create_default_project("Test Game", platform, GenreId.MAZE_CHASE)
+    return blank_project("Test Game", platform)
 
 
 def _cpc_mode0_project() -> GameProject:
-    """`create_default_project` always builds CPC projects in mode 1; mode 0
+    """`blank_project` always builds CPC projects in mode 1; mode 0
     is reached the same way `test_studio_models.py` reaches an alternate
     video mode -- dump, edit, revalidate -- since nothing else in Studio
     constructs one directly.
@@ -330,7 +330,7 @@ def test_prompt_states_cpc_mode0s_sixteen_pens():
 
 
 def test_prompt_states_cpc_mode1s_four_pens():
-    project = _project(TargetPlatform.AMSTRAD_CPC)  # create_default_project builds mode 1
+    project = _project(TargetPlatform.AMSTRAD_CPC)  # blank_project builds mode 1
     assert project.target.video_mode is VideoMode.CPC_MODE_1
     entity = next(e for e in project.entities if e.role == "player")
 

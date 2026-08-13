@@ -17,14 +17,14 @@ from llmz80.studio.acceptance import (
 from llmz80.studio import editing
 from llmz80.studio.editing import set_entity_behaviour
 from llmz80.studio.feel import animation_report
-from llmz80.studio.models import AcceptanceScenario, GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import AcceptanceScenario, TargetPlatform
+from llmz80.studio.samples import blank_project
 from llmz80.studio.services import StudioService
 
 
 @pytest.fixture
 def project():
-    return create_default_project("Contract", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    return blank_project("Contract", TargetPlatform.SPECTRUM)
 
 
 def test_the_contract_prompt_names_every_symbol_and_its_type():
@@ -80,7 +80,7 @@ def test_a_criterion_the_design_cannot_predict_stays_prose(project):
 
 
 def test_a_chasing_enemy_makes_losing_a_life_executable():
-    project = create_default_project("Chase", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Chase", TargetPlatform.SPECTRUM)
 
     scenario = next(s for s in derive_scenarios(project) if s.id == "enemy_costs_life")
 
@@ -92,7 +92,7 @@ def test_a_chasing_enemy_makes_losing_a_life_executable():
 
 def test_a_design_with_no_chasing_enemy_leaves_it_as_prose():
     """A patrolling enemy's position depends on where it wandered; that is not predictable."""
-    project = create_default_project("Patrol", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Patrol", TargetPlatform.SPECTRUM)
     project = editing.set_entity_behaviour(project, "enemy", "patrol_h")
 
     scenario = next(s for s in derive_scenarios(project) if s.id == "enemy_costs_life")
@@ -124,7 +124,7 @@ def test_the_script_enforces_scoring_before_dying_even_if_the_design_lists_it_fi
     check "no life lost" only after one already was. This is the actual
     enforcement point, not the pack's authoring order.
     """
-    project = create_default_project("Reordered", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Reordered", TargetPlatform.SPECTRUM)
     document = project.model_dump(mode="json")
     document["acceptance"] = list(reversed(document["acceptance"]))
     reordered = type(project).model_validate(document)
@@ -171,7 +171,7 @@ def test_a_design_without_a_chasing_enemy_still_gets_two_moving_and_one_waiting_
     however well it animated. This is the actual fix for that: the probes are
     unconditional, not dependent on any enemy's behaviour.
     """
-    project = create_default_project("Patrol", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Patrol", TargetPlatform.SPECTRUM)
     patrol = with_executable_scenarios(editing.set_entity_behaviour(project, "enemy", "patrol_h"))
     # enemy_costs_life stays prose for a patrol -- confirms this design really
     # is the case the old script could never satisfy.
@@ -214,7 +214,7 @@ def test_the_animation_expectation_does_not_depend_on_target(project):
     # not memory), but that is a fact about which checker is wired up, not
     # about what a correct CPC program looks like -- so the instruction must
     # not vanish for a CPC target.
-    cpc_project = create_default_project("Contract", TargetPlatform.AMSTRAD_CPC, GenreId.MAZE_CHASE)
+    cpc_project = blank_project("Contract", TargetPlatform.AMSTRAD_CPC)
 
     assert "g_anim_frame" in scenarios_prompt(cpc_project)
 
@@ -255,7 +255,7 @@ def test_the_animation_gate_reaches_a_verdict_for_a_design_with_no_chaser():
     all -- exactly the shape the real run's project (`platform_single_screen`,
     patrolling enemies) had.
     """
-    project = create_default_project("Patrol", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Patrol", TargetPlatform.SPECTRUM)
     patrol = with_executable_scenarios(editing.set_entity_behaviour(project, "enemy", "patrol_h"))
     steps = runtime_script(patrol)
 

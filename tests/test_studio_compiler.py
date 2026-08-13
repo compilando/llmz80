@@ -9,7 +9,7 @@ from llmz80.studio.acceptance import blitter_sprites
 from llmz80.studio.compiler import build_project, render_project, validate_design_fits_target
 from llmz80.studio.layout import relayout
 from llmz80.studio.models import AssetSpec, GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.samples import blank_project
 from llmz80.studio.services import StudioService
 from llmz80.studio.spriting import pack_spectrum
 from llmz80.studio.sprite_sheet import split_frames
@@ -57,7 +57,7 @@ def _add_sprite_asset(directory: Path, asset_id: str, frames: int) -> AssetSpec:
 def test_scaffolding_contributes_library_and_contracts_not_gameplay(
     tmp_path: Path, platform: TargetPlatform
 ):
-    project = create_default_project("Scaffold", platform, GenreId.MAZE_CHASE)
+    project = blank_project("Scaffold", platform)
     directory = ProjectStore(tmp_path).create(project)
 
     result = render_project(project, directory / "build")
@@ -73,7 +73,7 @@ def test_scaffolding_contributes_library_and_contracts_not_gameplay(
 
 
 def test_a_project_without_a_program_scaffolds_and_says_so(tmp_path: Path):
-    project = create_default_project("Empty", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Empty", TargetPlatform.SPECTRUM)
     directory = ProjectStore(tmp_path).create(project)
 
     result = render_project(project, directory / "build")
@@ -85,7 +85,7 @@ def test_a_project_without_a_program_scaffolds_and_says_so(tmp_path: Path):
 
 
 def test_the_projects_own_sources_reach_the_build(tmp_path: Path):
-    project = create_default_project("Owned", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Owned", TargetPlatform.SPECTRUM)
     directory = ProjectStore(tmp_path).create(project)
     _with_program(project, directory, TargetPlatform.SPECTRUM)
 
@@ -105,7 +105,7 @@ def test_sprites_h_reaches_src_as_declarations_and_sprites_c_as_definitions(tmp_
     because it is included by both platform.c and the program's own main.c;
     the actual definitions belong in sprites.c, compiled exactly once.
     """
-    project = create_default_project("SplitHeader", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("SplitHeader", TargetPlatform.SPECTRUM)
     directory = ProjectStore(tmp_path).create(project)
     asset = _add_sprite_asset(directory, "hero", frames=1)
     project.assets = [asset]
@@ -127,7 +127,7 @@ def test_a_program_may_not_shadow_a_studio_generated_file(tmp_path: Path):
     one -- that is how `SPRITE_PELLET` and friends have gone missing before
     while the build still (mostly) succeeded. Refuse it loudly instead.
     """
-    project = create_default_project("Shadow", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Shadow", TargetPlatform.SPECTRUM)
     directory = ProjectStore(tmp_path).create(project)
     program_dir = directory / project.program_dir
     program_dir.mkdir(parents=True, exist_ok=True)
@@ -141,7 +141,7 @@ def test_a_program_may_not_shadow_a_studio_generated_file(tmp_path: Path):
 
 
 def test_a_removed_source_does_not_survive_the_next_scaffold(tmp_path: Path):
-    project = create_default_project("Stale", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Stale", TargetPlatform.SPECTRUM)
     directory = ProjectStore(tmp_path).create(project)
     _with_program(project, directory, TargetPlatform.SPECTRUM)
     render_project(project, directory / "build")
@@ -154,7 +154,7 @@ def test_a_removed_source_does_not_survive_the_next_scaffold(tmp_path: Path):
 
 
 def test_the_config_header_states_the_target_and_the_design(tmp_path: Path):
-    project = create_default_project("Config", TargetPlatform.AMSTRAD_CPC, GenreId.MAZE_CHASE)
+    project = blank_project("Config", TargetPlatform.AMSTRAD_CPC)
     project.gameplay.score_per_collectible = 25
 
     header = (
@@ -168,7 +168,7 @@ def test_the_config_header_states_the_target_and_the_design(tmp_path: Path):
 
 
 def test_the_state_header_declares_the_whole_contract(tmp_path: Path):
-    project = create_default_project("State", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("State", TargetPlatform.SPECTRUM)
 
     header = (
         render_project(project, tmp_path / "build").output_dir / "src" / "game_state.h"
@@ -180,7 +180,7 @@ def test_the_state_header_declares_the_whole_contract(tmp_path: Path):
 
 
 def test_a_level_larger_than_the_target_grid_is_refused(tmp_path: Path):
-    project = create_default_project("Oversized", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Oversized", TargetPlatform.SPECTRUM)
     project = relayout(project, width=40)
 
     with pytest.raises(ValueError, match="offers 32x22 playable cells"):
@@ -188,7 +188,7 @@ def test_a_level_larger_than_the_target_grid_is_refused(tmp_path: Path):
 
 
 def test_scaffolding_is_byte_identical_across_runs(tmp_path: Path):
-    project = create_default_project("Determinism", TargetPlatform.AMSTRAD_CPC, GenreId.MAZE_CHASE)
+    project = blank_project("Determinism", TargetPlatform.AMSTRAD_CPC)
 
     first = render_project(project, tmp_path / "build")
     snapshot = {
@@ -222,7 +222,7 @@ def test_imported_asset_is_owned_padded_and_target_packed(tmp_path: Path, platfo
 
 
 def test_building_without_a_program_says_what_is_missing(tmp_path: Path):
-    project = create_default_project("Empty", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Empty", TargetPlatform.SPECTRUM)
     directory = ProjectStore(tmp_path).create(project)
 
     with pytest.raises(FileNotFoundError, match="no program yet"):
@@ -230,7 +230,7 @@ def test_building_without_a_program_says_what_is_missing(tmp_path: Path):
 
 
 def test_sprites_that_fit_the_budget_build_as_before(tmp_path: Path):
-    project = create_default_project("Trim", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Trim", TargetPlatform.SPECTRUM)
     directory = ProjectStore(tmp_path).create(project)
     asset = _add_sprite_asset(directory, "hero", frames=1)
     project.assets = [asset]
@@ -256,7 +256,7 @@ def test_sprites_h_and_blitter_sprites_agree_on_every_asset(tmp_path: Path):
     of the two places -- the exact regression this guards against -- would
     make one of them disagree with the header the other module wrote.
     """
-    project = create_default_project("Mix", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Mix", TargetPlatform.SPECTRUM)
     directory = ProjectStore(tmp_path).create(project)
     assets_dir = directory / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
@@ -294,7 +294,7 @@ def test_sprites_h_and_blitter_sprites_agree_on_every_asset(tmp_path: Path):
 
 
 def test_sprites_over_the_static_data_budget_are_refused(tmp_path: Path):
-    project = create_default_project("Bulky", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Bulky", TargetPlatform.SPECTRUM)
     # A small budget keeps the failing case to two sprite assets instead of
     # dozens, while still exercising the real packer arithmetic end to end.
     project.budgets.static_data_bytes = 1024

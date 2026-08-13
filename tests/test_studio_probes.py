@@ -3,8 +3,8 @@ from pathlib import Path
 
 from llmz80.studio.acceptance import runtime_script
 from llmz80.studio.compiler import BuildResult
-from llmz80.studio.models import GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import TargetPlatform
+from llmz80.studio.samples import blank_project
 from llmz80.studio.probes import (
     PROBE_SYMBOLS,
     parse_sdcc_noi,
@@ -68,7 +68,7 @@ def test_probe_report_records_what_could_not_be_located(tmp_path: Path):
 
 def test_expected_state_mirrors_the_design(tmp_path: Path):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Probe", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Probe", TargetPlatform.SPECTRUM)
 
     expected = service.expected_state(project)
 
@@ -87,7 +87,7 @@ def test_expected_state_mirrors_the_design(tmp_path: Path):
 
 def test_a_reading_that_contradicts_the_design_fails_the_probe(tmp_path: Path):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Probe", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Probe", TargetPlatform.SPECTRUM)
     reading = dict(service.expected_state(project))
     reading["g_remaining"] = 5
 
@@ -99,7 +99,7 @@ def test_a_reading_that_contradicts_the_design_fails_the_probe(tmp_path: Path):
 
 def test_a_missed_frame_fails_the_probe(tmp_path: Path):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Probe", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Probe", TargetPlatform.SPECTRUM)
     reading = dict(service.expected_state(project))
     reading["g_worst_frame_cost"] = 2
 
@@ -111,7 +111,7 @@ def test_a_missed_frame_fails_the_probe(tmp_path: Path):
 
 def test_a_target_without_probes_abstains_instead_of_passing(tmp_path: Path):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Probe", TargetPlatform.AMSTRAD_CPC, GenreId.MAZE_CHASE)
+    project = blank_project("Probe", TargetPlatform.AMSTRAD_CPC)
 
     report = service.probe_report(project, {"probe_after": {}})
 
@@ -121,7 +121,7 @@ def test_a_target_without_probes_abstains_instead_of_passing(tmp_path: Path):
 
 
 def test_sweep_plan_picks_a_direction_that_collects(tmp_path: Path):
-    project = create_default_project("Sweep", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Sweep", TargetPlatform.SPECTRUM)
 
     plan = sweep_plan(project, 0)
 
@@ -130,7 +130,7 @@ def test_sweep_plan_picks_a_direction_that_collects(tmp_path: Path):
 
 
 def test_sweep_stops_at_a_wall_and_counts_only_what_it_passes():
-    project = create_default_project("Sweep", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Sweep", TargetPlatform.SPECTRUM)
     roles = {entity.id: entity.role for entity in project.entities}
     level = project.levels[0]
     player = next(
@@ -160,7 +160,7 @@ def test_sweep_stops_at_a_wall_and_counts_only_what_it_passes():
 
 def test_the_script_resolves_every_hold_through_the_control_scheme(tmp_path: Path):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Keys", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Keys", TargetPlatform.SPECTRUM)
 
     steps = service.scenario_script(project)
 
@@ -186,7 +186,7 @@ def test_the_script_resolves_every_hold_through_the_control_scheme(tmp_path: Pat
 
 def test_a_direction_resolves_to_its_key_under_both_control_schemes(tmp_path: Path):
     service = StudioService.at(tmp_path)
-    spectrum = create_default_project("Cursors", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    spectrum = blank_project("Cursors", TargetPlatform.SPECTRUM)
     spectrum.controls.scheme = "cursor_space"
 
     steps = service.scenario_script(spectrum)
@@ -198,7 +198,7 @@ def test_a_direction_resolves_to_its_key_under_both_control_schemes(tmp_path: Pa
 
 def test_a_none_hold_survives_as_a_waiting_step_rather_than_being_dropped(tmp_path: Path):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Chase", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Chase", TargetPlatform.SPECTRUM)
 
     steps = service.scenario_script(project)
 
@@ -212,7 +212,7 @@ def test_a_none_hold_survives_as_a_waiting_step_rather_than_being_dropped(tmp_pa
 
 def test_an_unresolvable_hold_is_dropped_but_logged(tmp_path: Path, caplog):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Stick", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Stick", TargetPlatform.SPECTRUM)
     project.controls.scheme = "joystick"
 
     with caplog.at_level("WARNING"):
@@ -225,7 +225,7 @@ def test_an_unresolvable_hold_is_dropped_but_logged(tmp_path: Path, caplog):
 
 def test_expected_state_predicts_the_score_a_sweep_must_produce(tmp_path: Path):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Predict", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Predict", TargetPlatform.SPECTRUM)
 
     expected = service.expected_state(project, collected=3)
 
@@ -235,7 +235,7 @@ def test_expected_state_predicts_the_score_a_sweep_must_produce(tmp_path: Path):
 
 def test_a_sweep_that_scores_nothing_fails_the_probe(tmp_path: Path):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Silent", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Silent", TargetPlatform.SPECTRUM)
     # The engine never awarded the point the design says the sweep must earn.
     reading = dict(service.expected_state(project, collected=0))
 
@@ -248,7 +248,7 @@ def test_a_sweep_that_scores_nothing_fails_the_probe(tmp_path: Path):
 
 def test_high_score_is_expected_to_track_the_run(tmp_path: Path):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Hi", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Hi", TargetPlatform.SPECTRUM)
 
     expected = service.expected_state(project, collected=2)
 
@@ -257,7 +257,7 @@ def test_high_score_is_expected_to_track_the_run(tmp_path: Path):
 
 def test_a_high_score_that_ignores_the_run_fails_the_probe(tmp_path: Path):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Hi", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Hi", TargetPlatform.SPECTRUM)
     reading = dict(service.expected_state(project, collected=1))
     reading["g_hiscore"] = 0
 
@@ -310,7 +310,7 @@ def _readings_that_satisfy_acceptance(project):
 
 def test_runtime_tests_report_carries_the_animation_verdict(tmp_path, monkeypatch):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Anim", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Anim", TargetPlatform.SPECTRUM)
     # `g_anim_frame` never differs across the one moving reading available,
     # so the gate reaches a definite (failing) verdict rather than abstaining.
     fake_report = {
@@ -332,7 +332,7 @@ def test_runtime_tests_report_carries_the_animation_verdict(tmp_path, monkeypatc
 
 def test_a_definite_animation_failure_lowers_the_overall_verdict(tmp_path, monkeypatch):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Anim", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Anim", TargetPlatform.SPECTRUM)
     fake_report = {
         "quality_pass": True,
         "probe_after": {},
@@ -349,7 +349,7 @@ def test_a_definite_animation_failure_lowers_the_overall_verdict(tmp_path, monke
 
 def test_an_animation_abstention_does_not_lower_the_overall_verdict(tmp_path, monkeypatch):
     service = StudioService.at(tmp_path)
-    project = create_default_project("Anim", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Anim", TargetPlatform.SPECTRUM)
     # No `step_readings` at all -- what the CPC produces, since it has no
     # memory probe adapter -- so the gate abstains rather than judging.
     fake_report = {"quality_pass": True, "probe_after": {}}

@@ -4,8 +4,8 @@ import pytest
 
 from llmz80.studio.editing import set_entity_behaviour
 from llmz80.studio.generator import writing_prompt
-from llmz80.studio.models import GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import TargetPlatform
+from llmz80.studio.samples import blank_project
 from llmz80.studio.retrieval import (
     MAX_EXAMPLE_CHARS,
     catalog_examples,
@@ -17,7 +17,7 @@ from llmz80.studio.retrieval import (
 
 @pytest.fixture
 def project():
-    return create_default_project("Retrieved", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    return blank_project("Retrieved", TargetPlatform.SPECTRUM)
 
 
 def test_the_query_describes_the_design_not_the_title(project):
@@ -37,7 +37,7 @@ def test_a_designed_behaviour_widens_the_query(project):
 
 @pytest.mark.parametrize("platform", list(TargetPlatform))
 def test_examples_come_from_the_projects_own_platform(platform):
-    project = create_default_project("Platform", platform, GenreId.MAZE_CHASE)
+    project = blank_project("Platform", platform)
 
     found = catalog_examples(project)
 
@@ -51,7 +51,7 @@ def test_examples_come_from_the_projects_own_platform(platform):
 
 def test_the_reference_program_is_offered_for_both_targets():
     for platform in TargetPlatform:
-        project = create_default_project("Ref", platform, GenreId.MAZE_CHASE)
+        project = blank_project("Ref", platform)
 
         found = reference_program(project)
 

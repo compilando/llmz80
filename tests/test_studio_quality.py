@@ -1,7 +1,7 @@
 from llmz80.studio.editing import set_audio
-from llmz80.studio.models import GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import TargetPlatform
 from llmz80.studio.quality import design_quality_report, studio_quality_report
+from llmz80.studio.samples import blank_project
 from llmz80.studio.solvability import solvability_report
 
 
@@ -28,7 +28,7 @@ def _isolated_collectible(project):
 
 
 def test_builtin_design_passes_commercial_design_gates():
-    project = create_default_project("Quality", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Quality", TargetPlatform.SPECTRUM)
 
     report = design_quality_report(project)
 
@@ -37,7 +37,7 @@ def test_builtin_design_passes_commercial_design_gates():
 
 
 def test_unachievable_score_is_rejected():
-    project = create_default_project("Impossible", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Impossible", TargetPlatform.SPECTRUM)
     project.gameplay.win_score = 9999
 
     report = design_quality_report(project)
@@ -47,7 +47,7 @@ def test_unachievable_score_is_rejected():
 
 
 def test_release_gate_requires_design_build_and_runtime_evidence():
-    project = create_default_project("Release", TargetPlatform.AMSTRAD_CPC, GenreId.MAZE_CHASE)
+    project = blank_project("Release", TargetPlatform.AMSTRAD_CPC)
     passed = {"quality_pass": True}
 
     assert studio_quality_report(project, build=passed, runtime=passed)["quality_pass"] is True
@@ -67,20 +67,19 @@ def _wall_off(project, level_index, cells):
 
 def test_default_projects_are_solvable():
     for platform in TargetPlatform:
-        for genre in GenreId:
-            project = create_default_project("Solvable", platform, genre)
+        project = blank_project("Solvable", platform)
 
-            report = solvability_report(project)
+        report = solvability_report(project)
 
-            assert report.solvable, report.failures
-            for level in report.levels:
-                assert level.reachable_floor == level.total_floor
-                assert level.minimum_steps > 0
-                assert level.estimated_steps >= level.minimum_steps
+        assert report.solvable, report.failures
+        for level in report.levels:
+            assert level.reachable_floor == level.total_floor
+            assert level.minimum_steps > 0
+            assert level.estimated_steps >= level.minimum_steps
 
 
 def test_a_collectible_sealed_behind_walls_fails_the_design_gate():
-    project = create_default_project("Sealed", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Sealed", TargetPlatform.SPECTRUM)
     target = _isolated_collectible(project)
     # Wall in every orthogonal neighbour of one collectible, leaving it stranded.
     sealed = _wall_off(project, 0, _neighbours(target))
@@ -124,7 +123,7 @@ def _serpentine_level(project, entities_by_role):
 
 
 def test_an_impossible_time_limit_fails_the_design_gate():
-    project = create_default_project("Rushed", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Rushed", TargetPlatform.SPECTRUM)
     by_role = {entity.role: entity.id for entity in project.entities}
     by_role["enemy_count"] = next(e.count for e in project.entities if e.role == "enemy")
     document = _serpentine_level(project, by_role)
@@ -147,7 +146,7 @@ def test_an_impossible_time_limit_fails_the_design_gate():
 
 
 def test_passing_build_and_runtime_cannot_release_an_unsolvable_design():
-    project = create_default_project("Sealed", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Sealed", TargetPlatform.SPECTRUM)
     target = _isolated_collectible(project)
     sealed = _wall_off(project, 0, _neighbours(target))
 
@@ -160,7 +159,7 @@ def test_passing_build_and_runtime_cannot_release_an_unsolvable_design():
 
 
 def test_spectrum_effects_are_supported_but_music_is_not():
-    project = create_default_project("Beeper", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Beeper", TargetPlatform.SPECTRUM)
 
     assert design_quality_report(project)["checks"]["audio_is_supported_by_target"] is True
 
@@ -173,7 +172,7 @@ def test_spectrum_effects_are_supported_but_music_is_not():
 
 
 def test_cpc_projects_start_silent_and_refuse_effects_by_name():
-    project = create_default_project("Silent", TargetPlatform.AMSTRAD_CPC, GenreId.MAZE_CHASE)
+    project = blank_project("Silent", TargetPlatform.AMSTRAD_CPC)
 
     assert project.audio.effects == []
     assert design_quality_report(project)["quality_pass"] is True
@@ -202,7 +201,7 @@ def _swap_level_content(project, i, j):
 
 
 def test_a_design_whose_levels_do_not_escalate_fails_the_difficulty_gate():
-    project = create_default_project("Flat", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Flat", TargetPlatform.SPECTRUM)
     scrambled = _swap_level_content(project, 0, len(project.levels) - 1)
 
     report = design_quality_report(scrambled)
@@ -213,22 +212,18 @@ def test_a_design_whose_levels_do_not_escalate_fails_the_difficulty_gate():
     assert report["quality_pass"] is False
 
 
-def test_freshly_created_projects_of_several_genres_honor_their_difficulty_curve():
-    for genre in ("maze_chase", "single_screen_collect", "sokoban", "boss_arena"):
-        for platform in TargetPlatform:
-            project = create_default_project("Curve", platform, genre)
+def test_freshly_created_projects_of_every_platform_honor_their_difficulty_curve():
+    for platform in TargetPlatform:
+        project = blank_project("Curve", platform)
 
-            report = design_quality_report(project)
+        report = design_quality_report(project)
 
-            assert report["checks"]["every_level_honors_the_difficulty_curve"] is True, (
-                genre,
-                platform,
-            )
-            assert report["difficulty_failures"] == []
+        assert report["checks"]["every_level_honors_the_difficulty_curve"] is True, platform
+        assert report["difficulty_failures"] == []
 
 
 def test_the_difficulty_report_is_annexed_with_per_level_detail():
-    project = create_default_project("Annex", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Annex", TargetPlatform.SPECTRUM)
 
     report = design_quality_report(project)
 

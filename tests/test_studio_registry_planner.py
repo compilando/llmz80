@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 from openai.lib._pydantic import to_strict_json_schema
 
-from llmz80.studio.models import GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import TargetPlatform
+from llmz80.studio.samples import blank_project
 import pytest
 
 from llmz80.studio.planner import (
@@ -66,7 +66,7 @@ def test_target_registry_declares_modes_budgets_and_emulators():
 
     assert spectrum.binary_budget == 24576
     assert (
-        spectrum.validate(create_default_project("ZX", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE))
+        spectrum.validate(blank_project("ZX", TargetPlatform.SPECTRUM))
         == []
     )
     assert {mode.value for mode in cpc.video_modes} == {"cpc_mode_0", "cpc_mode_1"}
@@ -93,13 +93,13 @@ def test_responses_planner_requests_typed_proposal():
             return SimpleNamespace(output_parsed=proposal)
 
     planner = ResponsesProjectPlanner(SimpleNamespace(responses=FakeResponses()))
-    project = create_default_project("Maze", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Maze", TargetPlatform.SPECTRUM)
 
     assert planner.propose(project, "Make it harder") == proposal
 
 
 def test_reviewed_proposal_is_transactional_and_validated():
-    project = create_default_project("Maze", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Maze", TargetPlatform.SPECTRUM)
     proposal = ProjectProposal(
         summary="Tune difficulty",
         changes=[
@@ -121,7 +121,7 @@ def test_reviewed_proposal_is_transactional_and_validated():
 
 @pytest.mark.parametrize("path", ["/schema_version", "/target/platform", "/acceptance/0"])
 def test_ai_cannot_change_protected_contract(path):
-    project = create_default_project("Maze", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Maze", TargetPlatform.SPECTRUM)
     proposal = ProjectProposal(
         summary="Unsafe change",
         changes=[{"path": path, "operation": "replace", "value_number": 1, "reason": "test"}],
@@ -132,7 +132,7 @@ def test_ai_cannot_change_protected_contract(path):
 
 
 def test_budget_change_requires_explicit_approval():
-    project = create_default_project("Maze", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Maze", TargetPlatform.SPECTRUM)
     proposal = ProjectProposal(
         summary="Larger binary",
         changes=[

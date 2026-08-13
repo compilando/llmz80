@@ -1,8 +1,8 @@
 import pytest
 
-from llmz80.studio.models import GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import TargetPlatform
 from llmz80.studio.planner import ProjectChange, ProjectProposal, apply_proposal
+from llmz80.studio.samples import blank_project
 
 
 def _sealing_proposal(project):
@@ -34,7 +34,7 @@ def _sealing_proposal(project):
 
 @pytest.fixture
 def project():
-    return create_default_project("Planner", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    return blank_project("Planner", TargetPlatform.SPECTRUM)
 
 
 def test_a_proposal_that_seals_a_collectible_is_refused(project):

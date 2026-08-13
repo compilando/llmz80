@@ -21,7 +21,7 @@ import pytest
 from PIL import Image
 
 from llmz80.studio.models import GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.samples import blank_project
 from llmz80.studio.services import StudioService
 from llmz80.studio.sprite_artist import FRAMES_PER_SHEET, MAX_DRAW_ATTEMPTS, SpriteArtist
 from llmz80.studio.sprite_sheet import split_frames
@@ -51,7 +51,7 @@ class _FixtureArtist:
     """
 
     def __init__(self) -> None:
-        project = create_default_project("Fixture", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+        project = blank_project("Fixture", TargetPlatform.SPECTRUM)
         entity = next(e for e in project.entities if e.role == "player")
         with Image.open(_FIXTURE_SHEET) as sheet:
             real_artist = SpriteArtist(_FakeGenerator(sheet.copy()))
