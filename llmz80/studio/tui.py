@@ -38,7 +38,7 @@ from textual.widgets.option_list import Option
 from . import editing
 from .models import TILE_WALL, GameProject, TargetPlatform
 from .packs import BUILTIN_PACKS
-from .screen import Stage, stage_line
+from .screen import STAGE_KEY, Stage, next_step, stage_line
 from .services import StudioService
 
 #: Cell glyphs used by the map editor, keyed by what occupies the cell.
@@ -159,6 +159,26 @@ def pick_stage_detail(stages: list[Stage]) -> str:
     return done.detail if done is not None else ""
 
 
+def next_step_hint(stages: list[Stage]) -> str:
+    """One short sentence naming the key that advances the pipeline, or ""
+    once nothing is left to advance.
+
+    This is what turns `#stage-detail` from a read-only status line into a
+    "what to do next" line: `screen.next_step` picks which stage matters
+    most right now, `screen.STAGE_KEY` -- the one place that mapping is
+    written -- names the key and verb for it, and this only formats the
+    two into a sentence. No brackets: unlike `#shortcuts`, `#stage-detail`
+    keeps Rich markup enabled (its own text is never bracketed), and a
+    literal `[ctrl+r]` would be read as an unknown style tag rather than
+    shown as text.
+    """
+    stage = next_step(stages)
+    if stage is None:
+        return ""
+    key, verb = STAGE_KEY[stage.name]
+    return f"press {key} to {verb}"
+
+
 def brief_preview(brief: str, limit: int = BRIEF_PREVIEW_LIMIT) -> str:
     """One line: `brief`, whitespace-collapsed and cut to `limit` characters.
 
@@ -188,6 +208,8 @@ class StudioApp(App[None]):
     .row Input, .row Select { width: 1fr; }
     #brief-edit-box { height: 8; border: round $primary; margin: 0 0 1 0; }
     #brief-edit-box TextArea { height: 1fr; }
+    #create-brief-box { height: 8; border: round $primary; margin: 0 0 1 0; }
+    #create-brief-box TextArea { height: 1fr; }
     #stage-line { height: 1; padding: 0 1; }
     #stage-detail { height: 1; padding: 0 1; }
     #shortcuts { height: 1; padding: 0 1; background: $boost; }
@@ -286,7 +308,9 @@ class StudioApp(App[None]):
             yield from self._field("Style", Input(id="f-style"))
         with Vertical(id="panel-create", classes="panel"):
             yield Static(
-                "New project -- target and type are fixed once it exists."
+                "New project -- target and type are fixed once it exists. The "
+                "brief is what research reads to identify the game and what "
+                "the program writer is told to build; worth writing now."
             )
             yield from self._field(
                 "Target",
@@ -306,6 +330,9 @@ class StudioApp(App[None]):
                     id="f-genre",
                 ),
             )
+            create_brief_box = Vertical(TextArea(id="f-create-brief"), id="create-brief-box")
+            create_brief_box.border_title = "Brief (optional, editable later)"
+            yield create_brief_box
             yield Button("Create", id="create-confirm", variant="primary")
         with Vertical(id="panel-open", classes="panel"):
             yield Static("Open a project from the workspace.")
@@ -392,6 +419,15 @@ class StudioApp(App[None]):
         replaces the old one-line "ready"/"not releasable" verdict, and the
         identity that used to sit in a `#status` Static now sits in the
         Header's own `sub_title`.
+
+        `#stage-detail` carries two things joined by " · ": the detail
+        `pick_stage_detail` already picked (a dossier's title, or why a
+        stage failed) and, from `next_step_hint`, the key that advances
+        whatever `screen.next_step` judges most worth doing right now.
+        Either half can be empty on its own -- a brand new project has no
+        detail yet, and a fully released one has no key left to press --
+        and the line degrades to whichever half remains rather than
+        showing a dangling separator.
         """
         if self.project is None:
             self.sub_title = ""
@@ -409,11 +445,13 @@ class StudioApp(App[None]):
         )
         stages = stage_line(self.project, self.project_dir)
         detail = pick_stage_detail(stages)
+        hint = next_step_hint(stages)
+        combined = " · ".join(part for part in (detail, hint) if part)
         self.status_text = render_stage_marks(stages, colour=False)
-        if detail:
-            self.status_text += f"\n{detail}"
+        if combined:
+            self.status_text += f"\n{combined}"
         self.query_one("#stage-line", Static).update(render_stage_marks(stages, colour=True))
-        self.query_one("#stage-detail", Static).update(detail)
+        self.query_one("#stage-detail", Static).update(combined)
 
     def _refresh(self) -> None:
         if self.project is None:
@@ -708,12 +746,24 @@ class StudioApp(App[None]):
         self._toggle_panel("open")
 
     def action_create(self) -> None:
+        """ctrl+n's second press: create the project, then -- like
+        `llmz80 project new`'s own trailing BRIEF argument -- apply
+        whatever brief was written in the creation panel through the same
+        `editing.rename_project` `action_save` uses, so this screen is at
+        least as capable as the command line at asking for the one field
+        that matters most and is easiest to forget.
+        """
         try:
+            title = self.query_one("#f-title", Input).value.strip()
             self.project, self.project_dir = self.service.create_project(
-                self.query_one("#f-title", Input).value.strip(),
+                title,
                 TargetPlatform(str(self.query_one("#f-target", Select).value)),
                 str(self.query_one("#f-genre", Select).value),
             )
+            brief = self.query_one("#f-create-brief", TextArea).text.strip()
+            if brief:
+                self.project = editing.rename_project(self.project, title, brief=brief)
+                self.service.save_project(self.project, self.project_dir)
             self.level_index, self.cursor = 0, (0, 0)
             self._refresh()
             self._log(f"[green]Created[/green] {self.project_dir / 'game.yml'}")

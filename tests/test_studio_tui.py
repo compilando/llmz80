@@ -13,6 +13,7 @@ from llmz80.studio.spriting import SPRITE_SIZE
 from llmz80.studio.tui import (
     StudioApp,
     brief_preview,
+    next_step_hint,
     pick_stage_detail,
     render_map,
     render_stage_marks,
@@ -274,6 +275,25 @@ def test_pick_stage_detail_is_empty_with_nothing_to_report():
     assert pick_stage_detail([Stage("referencia", "pending")]) == ""
 
 
+def test_next_step_hint_names_the_key_of_the_first_pending_stage():
+    stages = [
+        Stage("referencia", "done", "found it"),
+        Stage("diseño", "done"),
+        Stage("sprites", "pending"),
+    ]
+
+    hint = next_step_hint(stages)
+
+    assert "ctrl+d" in hint
+    assert "sprite" in hint
+
+
+def test_next_step_hint_is_empty_once_every_stage_is_done():
+    stages = [Stage("referencia", "done", "found it"), Stage("release", "done", "game.zip")]
+
+    assert next_step_hint(stages) == ""
+
+
 @pytest.mark.asyncio
 async def test_a_panel_key_opens_its_panel_and_hides_the_resting_screen(tmp_path: Path):
     app = StudioApp(tmp_path)
@@ -432,6 +452,134 @@ async def test_a_long_brief_does_not_make_the_resting_screen_taller(tmp_path: Pa
 
         assert _resting_content_height(app) == RESTING_CONTENT_HEIGHT
         assert app.query_one("#brief").size.height == 3
+
+
+@pytest.mark.asyncio
+async def test_the_stage_detail_line_names_the_key_that_advances_the_pipeline(tmp_path: Path):
+    """`#stage-detail` doubles as a "what to press next" line: it names the
+    key for whichever stage `screen.next_step` judges most worth doing, and
+    that key changes as the project moves through the pipeline -- checked
+    at two distinct points, not just the first."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Guided"
+        app.action_create()
+        await pilot.pause()
+
+        # A brand new project: nothing has been researched yet.
+        assert "ctrl+f" in app.query_one("#stage-detail").content
+
+        fake = _FakeResearcher(title="Real Game")
+        app.researcher = fake
+        app.action_research()
+        for _ in range(100):
+            await pilot.pause()
+            if "Real Game" in app.status_text:
+                break
+
+        # Researched, and diseño already reads done for a fresh default
+        # project -- the existing detail (the game found) survives, and the
+        # hint has moved on to the next stage, sprites.
+        detail = app.query_one("#stage-detail").content
+        assert "Real Game" in detail
+        assert "ctrl+d" in detail
+
+
+@pytest.mark.asyncio
+async def test_a_fully_done_project_shows_no_dangling_hint(tmp_path: Path):
+    """Once every stage is done there is nothing left to press; the detail
+    line falls back to whatever `pick_stage_detail` already shows rather
+    than leaving a stray separator or an instruction with nothing to name."""
+    import json
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Finished"
+        app.action_create()
+        await pilot.pause()
+
+        directory = app.project_dir
+        from datetime import datetime, timezone
+
+        from llmz80.studio.reference import GameReference, ReferenceSource, save_reference
+
+        save_reference(
+            GameReference(
+                identified=True,
+                confidence="high",
+                title="Finished Game",
+                sources=[
+                    ReferenceSource(
+                        url="https://example.com/review",
+                        title="A review",
+                        retrieved_at=datetime.now(timezone.utc),
+                    )
+                ],
+            ),
+            directory,
+        )
+        program_dir = directory / app.project.program_dir
+        program_dir.mkdir(parents=True, exist_ok=True)
+        (program_dir / "main.c").write_text("int main(void) { return 0; }\n")
+        build_dir = directory / "build"
+        build_dir.mkdir(parents=True, exist_ok=True)
+        (build_dir / "studio_quality_report.json").write_text(
+            json.dumps({"gates": {"design": True}, "quality_pass": True})
+        )
+        releases = directory / "releases"
+        releases.mkdir()
+        name = f"{app.project.metadata.slug}-{app.project.target.platform.value}.zip"
+        (releases / name).write_bytes(b"PK\x03\x04")
+        # No sprite assets exist for this genre's entities, so sprites would
+        # otherwise stay pending -- give every entity one to reach "done".
+        from llmz80.studio.models import AssetSpec
+
+        sprites = [
+            AssetSpec(id=sprite_id, kind="sprite", source=f"assets/{sprite_id}.png", width=16, height=16, frames=1)
+            for sprite_id in sorted({e.sprite for e in app.project.entities})
+        ]
+        app.project.assets = sprites
+
+        app._refresh_stage()
+        await pilot.pause()
+
+        detail = app.query_one("#stage-detail").content
+        assert "press" not in detail
+        assert detail  # not empty: the existing detail (the game found) remains
+        assert not detail.endswith(" · ")
+        assert not detail.startswith(" · ")
+
+
+@pytest.mark.asyncio
+async def test_creating_a_project_from_the_screen_applies_the_brief(tmp_path: Path):
+    """The least discoverable step in the old flow -- create with ctrl+n,
+    then separately open the design panel to type the brief and save -- is
+    now one step: the creation panel itself has a Brief field, and creating
+    applies it the same way `llmz80 project new`'s trailing BRIEF argument
+    does, through `editing.rename_project`."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Briefed"
+        app.query_one("#f-create-brief").text = "Four ghosts. A big dot makes them edible."
+        app.action_create()
+        await pilot.pause()
+
+        assert "ghosts" in app.project.metadata.brief
+        assert "ghosts" in app.service.open_project(tmp_path / "briefed").metadata.brief
+
+
+@pytest.mark.asyncio
+async def test_creating_a_project_from_the_screen_without_a_brief_still_works(tmp_path: Path):
+    """The brief field is optional -- leaving it blank must not break
+    creation, the same as `llmz80 project new` without a trailing BRIEF."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Unbriefed"
+        app.action_create()
+        await pilot.pause()
+
+        assert app.project is not None
+        assert app.project.metadata.brief == ""
 
 
 def test_brief_preview_passes_a_short_brief_through_unchanged():
