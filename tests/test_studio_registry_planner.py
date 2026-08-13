@@ -78,10 +78,7 @@ def test_target_registry_declares_modes_budgets_and_emulators():
     cpc = registry.get("amstrad_cpc")
 
     assert spectrum.binary_budget == 24576
-    assert (
-        spectrum.validate(blank_project("ZX", TargetPlatform.SPECTRUM))
-        == []
-    )
+    assert spectrum.validate(blank_project("ZX", TargetPlatform.SPECTRUM)) == []
     assert {mode.value for mode in cpc.video_modes} == {"cpc_mode_0", "cpc_mode_1"}
     assert "cap32" in cpc.emulator_adapters
 
@@ -114,22 +111,22 @@ def test_responses_planner_requests_typed_proposal():
 def test_reviewed_proposal_is_transactional_and_validated():
     project = blank_project("Maze", TargetPlatform.SPECTRUM)
     proposal = ProjectProposal(
-        summary="Tune difficulty",
+        summary="Tune the HUD",
         changes=[
             {
-                "path": "/gameplay/lives",
+                "path": "/presentation/hud_rows",
                 "operation": "replace",
-                "value_number": 2,
-                "reason": "Create a more demanding commercial mode.",
+                "value_number": 1,
+                "reason": "Free up a row for a taller playfield.",
             }
         ],
     )
 
     changed = apply_proposal(project, proposal)
 
-    assert changed.gameplay.lives == 2
-    assert project.gameplay.lives == 3
-    assert "REPLACE /gameplay/lives = 2" in proposal_diff(proposal)
+    assert changed.presentation.hud_rows == 1
+    assert project.presentation.hud_rows == 2
+    assert "REPLACE /presentation/hud_rows = 1" in proposal_diff(proposal)
 
 
 @pytest.mark.parametrize("path", ["/schema_version", "/target/platform", "/acceptance/0"])
