@@ -112,6 +112,35 @@ def test_repair_prompt_prefers_the_most_specific_evidence():
     assert "holding down for 60 frames" in behaved
 
 
+def test_repair_prompt_names_a_failing_animation_gate():
+    prompt = repair_prompt(
+        {"quality_pass": True},
+        {"quality_pass": True},
+        None,
+        {
+            "quality_pass": False,
+            "failures": [
+                "g_anim_frame never advanced across the moving steps "
+                "(anim_probe_move)"
+            ],
+        },
+    )
+
+    assert "ANIMATION" in prompt
+    assert "g_anim_frame never advanced across the moving steps (anim_probe_move)" in prompt
+    assert "Memory was read directly" in prompt
+
+
+def test_repair_prompt_says_nothing_about_animation_when_the_gate_abstained():
+    # `quality_pass: None` is abstention (no adapter, or the symbol was never
+    # declared) -- not evidence of a bug, so it must not be reported as one.
+    prompt = repair_prompt(
+        {"quality_pass": True}, {"quality_pass": True}, None, {"quality_pass": None}
+    )
+
+    assert "ANIMATION" not in prompt
+
+
 def test_a_first_attempt_that_passes_stops_the_loop(tmp_path: Path, project):
     writer = ScriptedWriter(_sources("good"))
 
@@ -176,6 +205,94 @@ def test_a_program_that_builds_but_misbehaves_is_repaired_from_memory_reads(
     assert result.accepted is True
     assert result.attempts[0].acceptance_passed is False
     assert "g_score: expected 10, read 0" in writer.feedback_seen[1]
+
+
+def test_a_failing_animation_gate_is_fed_back_and_the_repair_accepted(
+    tmp_path: Path, project
+):
+    """The defect a real run exposed: `runtime_test` already lowered its own
+    `quality_pass` when the animation gate failed, but `write_program` only
+    ever looked at `evidence["acceptance"]`, so the failing verdict never
+    reached the writer and a program that failed a runtime gate was accepted
+    on attempt one. This is the fix -- a failing animation verdict must now
+    reject the attempt and its reason must reach the next one's feedback.
+    """
+    writer = ScriptedWriter(_sources("frozen"), _sources("animating"))
+    calls = {"n": 0}
+
+    def verify(_project, _directory):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {
+                "build": {"quality_pass": True},
+                "acceptance": {"quality_pass": True},
+                "animation": {
+                    "quality_pass": False,
+                    "observed": True,
+                    "failures": [
+                        "g_anim_frame never advanced across the moving steps "
+                        "(anim_probe_move)"
+                    ],
+                },
+            }
+        return {
+            "build": {"quality_pass": True},
+            "acceptance": {"quality_pass": True},
+            "animation": {"quality_pass": True, "observed": True, "failures": []},
+        }
+
+    result = write_program(project, tmp_path, writer, verify)
+
+    assert result.accepted is True
+    assert result.attempts[0].animation_passed is False
+    assert result.attempts[0].acceptance_passed is True
+    assert "g_anim_frame never advanced" in writer.feedback_seen[1]
+    assert "animating" in (tmp_path / project.program_dir / "main.c").read_text()
+
+
+def test_an_abstaining_animation_gate_does_not_block_acceptance(tmp_path: Path, project):
+    """A CPC run (no memory probe adapter) or a design that never declared
+    g_anim_frame both make the gate abstain (`quality_pass: None`), exactly
+    like `acceptance` already does for an unobservable target -- that must
+    stay non-fatal, the same way a plain build-only pass already was.
+    """
+    writer = ScriptedWriter(_sources("cpc"))
+
+    result = write_program(
+        project,
+        tmp_path,
+        writer,
+        lambda p, d: {
+            "build": {"quality_pass": True},
+            "acceptance": {"quality_pass": None},
+            "animation": {"quality_pass": None, "observed": False},
+        },
+    )
+
+    assert result.accepted is True
+    assert result.attempts[0].animation_passed is None
+
+
+def test_a_design_with_no_animation_evidence_is_accepted_exactly_as_before(
+    tmp_path: Path, project
+):
+    """A design with no sprites and no g_anim_frame gives `verify_program` no
+    "animation" key at all (its evidence dict predates this gate, or the
+    caller simply never populated it) -- `evidence.get("animation")` is then
+    `None`, and acceptance must not regress relative to the behaviour before
+    the animation verdict was wired in at all.
+    """
+    writer = ScriptedWriter(_sources("plain"))
+
+    result = write_program(
+        project,
+        tmp_path,
+        writer,
+        lambda p, d: {"build": {"quality_pass": True}, "acceptance": {"quality_pass": True}},
+    )
+
+    assert result.accepted is True
+    assert result.attempts[0].animation_passed is None
 
 
 def test_the_loop_gives_up_after_the_agreed_number_of_attempts(tmp_path: Path, project):

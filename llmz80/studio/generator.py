@@ -144,7 +144,10 @@ Write no build files, no Makefile and no prose outside code comments.
 
 
 def repair_prompt(
-    build: dict[str, Any] | None, acceptance: dict[str, Any] | None, probes: dict[str, Any] | None
+    build: dict[str, Any] | None,
+    acceptance: dict[str, Any] | None,
+    probes: dict[str, Any] | None,
+    animation: dict[str, Any] | None = None,
 ) -> str:
     """Turn gate output into the most specific instruction the evidence allows."""
     sections: list[str] = []
@@ -172,6 +175,19 @@ def repair_prompt(
                 lines.append(f"    {mismatch}")
         lines.append("")
         lines.append("Memory was read directly, so these are facts about your program.")
+        sections.append("\n".join(lines))
+    if animation and animation.get("quality_pass") is False:
+        lines = ["THE ANIMATION FRAME DID NOT BEHAVE AS DECLARED", ""]
+        for reason in animation.get("failures") or []:
+            lines.append(f"  {reason}")
+        lines.append("")
+        lines.append(
+            "g_anim_frame must change between two consecutive readings taken while "
+            "the player is moving, and stay the same between two readings taken "
+            "while it is not. Update it whenever you redraw a moving actor, and "
+            "leave it untouched on a step where no direction is held. Memory was "
+            "read directly, so these are facts about your program."
+        )
         sections.append("\n".join(lines))
     return "\n\n".join(sections)
 
@@ -220,6 +236,10 @@ class Attempt:
     files: list[str]
     build_passed: bool | None = None
     acceptance_passed: bool | None = None
+    #: `None` means the animation gate abstained (no adapter, or the design
+    #: never declared g_anim_frame) -- exactly as unobserved as `acceptance`'s
+    #: own abstention, and just as non-fatal. See `write_program`.
+    animation_passed: bool | None = None
     feedback: str = ""
 
 
@@ -289,15 +309,26 @@ def write_program(
         build = evidence.get("build")
         acceptance = evidence.get("acceptance")
         probes = evidence.get("probes")
+        animation = evidence.get("animation")
         attempt.build_passed = bool(build and build.get("quality_pass"))
         attempt.acceptance_passed = (acceptance or {}).get("quality_pass")
+        attempt.animation_passed = (animation or {}).get("quality_pass")
 
         # An unobservable target cannot confirm behaviour, so a clean build is
         # as far as the evidence goes; it is recorded as such, not as a pass.
-        if attempt.build_passed and attempt.acceptance_passed is not False:
+        # `is not False` treats an abstaining gate (`quality_pass: None`,
+        # which the CPC always produces since it has no memory probe adapter)
+        # the same way for both acceptance and animation: not a pass earned,
+        # but not a refusal either. Only a definite `False` -- a gate that
+        # actually watched and found something wrong -- blocks acceptance.
+        if (
+            attempt.build_passed
+            and attempt.acceptance_passed is not False
+            and attempt.animation_passed is not False
+        ):
             result.accepted = True
             return result
-        feedback = repair_prompt(build, acceptance, probes)
+        feedback = repair_prompt(build, acceptance, probes, animation)
         attempt.feedback = feedback
         if not feedback:
             result.last_error = "the program was rejected without any diagnostic to act on"

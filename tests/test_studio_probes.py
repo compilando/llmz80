@@ -168,11 +168,14 @@ def test_the_script_resolves_every_hold_through_the_control_scheme(tmp_path: Pat
     keys = {"left": "o", "right": "p", "up": "q", "down": "a", "action": "space"}
     # The default maze_chase pack's enemy chases, so all three core criteria
     # are executable (see test_default_projects_ship_runnable_acceptance in
-    # test_studio_acceptance.py).
+    # test_studio_acceptance.py); two more steps probe g_anim_frame alone
+    # (see acceptance._animation_probe_steps).
     assert [step["id"] for step in steps] == [
         "start_game",
         "collect_scores",
         "enemy_costs_life",
+        "anim_probe_move",
+        "anim_probe_idle",
     ]
     for step in steps:
         if step["hold"] == "none":
@@ -288,32 +291,20 @@ def _stub_runtime_test(monkeypatch, service: StudioService, tmp_path: Path, fake
 
 def _readings_that_satisfy_acceptance(project):
     """`step_readings` whose `read` matches every step's own `expect` exactly,
-    so `acceptance_report` passes regardless -- plus a `g_anim_frame` on the
-    two steps `feel.animation_report` can classify (`collect_scores` moves,
-    `enemy_costs_life` sits idle), isolating the animation gate as the only
-    thing that can fail this runtime.
+    so `acceptance_report` passes regardless -- plus a uniform `g_anim_frame`
+    reading on every step, the way a real emulator read actually behaves: it
+    returns the whole known state at each step, not a subset tailored to that
+    step's own `expect` (see `_read_probes` in `emulator_smoke.py`), so the
+    two animation-probe steps (`acceptance.ANIM_PROBE_MOVE_ID`, `..._IDLE_ID`)
+    get a reading too even though they assert nothing of their own.
 
-    The default design's script holds only one moving step, so there is never
-    a second consecutive moving reading to confirm the frame advances -- the
-    gate reaches a definite failure on that missing evidence, not on any
-    particular value chosen here.
+    Held constant at 0 throughout: the animation gate must still reach a
+    definite failure on that evidence -- the same shape of bug the real
+    failing run showed, where `g_anim_frame` read 0 at every scripted step.
     """
-    steps = {step["id"]: step for step in runtime_script(project)}
     return [
-        {"id": step_id, "hold": step["hold"], "read": dict(step["expect"])}
-        for step_id, step in steps.items()
-        if step_id not in {"collect_scores", "enemy_costs_life"}
-    ] + [
-        {
-            "id": "collect_scores",
-            "hold": steps["collect_scores"]["hold"],
-            "read": {**steps["collect_scores"]["expect"], "g_anim_frame": 0},
-        },
-        {
-            "id": "enemy_costs_life",
-            "hold": steps["enemy_costs_life"]["hold"],
-            "read": {**steps["enemy_costs_life"]["expect"], "g_anim_frame": 0},
-        },
+        {"id": step["id"], "hold": step["hold"], "read": {**step["expect"], "g_anim_frame": 0}}
+        for step in runtime_script(project)
     ]
 
 

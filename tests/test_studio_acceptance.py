@@ -16,6 +16,7 @@ from llmz80.studio.acceptance import (
 )
 from llmz80.studio import editing
 from llmz80.studio.editing import set_entity_behaviour
+from llmz80.studio.feel import animation_report
 from llmz80.studio.models import AcceptanceScenario, GenreId, TargetPlatform
 from llmz80.studio.packs import create_default_project
 from llmz80.studio.services import StudioService
@@ -102,10 +103,15 @@ def test_a_design_with_no_chasing_enemy_leaves_it_as_prose():
 def test_the_script_keeps_the_designs_order(project):
     steps = runtime_script(project)
 
+    # The two animation-probe steps always land last -- see
+    # test_the_animation_probes_come_after_every_core_step below for why
+    # that position is asserted, not assumed.
     assert [step["id"] for step in steps] == [
         "start_game",
         "collect_scores",
         "enemy_costs_life",
+        "anim_probe_move",
+        "anim_probe_idle",
     ]
     assert steps[0]["frames"] > 0
 
@@ -129,7 +135,54 @@ def test_the_script_enforces_scoring_before_dying_even_if_the_design_lists_it_fi
         "start_game",
         "collect_scores",
         "enemy_costs_life",
+        "anim_probe_move",
+        "anim_probe_idle",
     ]
+
+
+def test_the_animation_probes_come_after_every_core_step(project):
+    """The probes move the player and then wait; if they ran before
+    `collect_scores` or `enemy_costs_life`, they would change the state
+    those steps' `expect` values assume (score, remaining, lives). Asserted
+    from the script's actual order and from `collect_scores`'s own expected
+    values surviving untouched, not merely from where the code that builds
+    the script happens to append them.
+    """
+    steps = runtime_script(project)
+
+    ids = [step["id"] for step in steps]
+    assert ids.index("anim_probe_move") > ids.index("enemy_costs_life")
+    assert ids.index("anim_probe_idle") > ids.index("anim_probe_move")
+
+    collect_alone = next(s for s in derive_scenarios(project) if s.id == "collect_scores")
+    collect_in_script = next(step for step in steps if step["id"] == "collect_scores")
+    assert collect_in_script["expect"] == collect_alone.expect
+    assert collect_in_script["hold"] == collect_alone.hold
+    assert collect_in_script["frames"] == collect_alone.frames
+
+
+def test_a_design_without_a_chasing_enemy_still_gets_two_moving_and_one_waiting_step():
+    """The animation gate needs two readings it can classify "moving" and at
+    least one it can classify "idle" (see `feel.animation_report`). Before
+    the probe steps existed, only a chasing enemy's `enemy_costs_life` ever
+    supplied a waiting step, and `collect_scores` alone is a single moving
+    reading with nothing to compare it to -- so a design whose enemies patrol,
+    bounce, or guard (or that has no enemy at all) could never pass the gate,
+    however well it animated. This is the actual fix for that: the probes are
+    unconditional, not dependent on any enemy's behaviour.
+    """
+    project = create_default_project("Patrol", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    patrol = with_executable_scenarios(editing.set_entity_behaviour(project, "enemy", "patrol_h"))
+    # enemy_costs_life stays prose for a patrol -- confirms this design really
+    # is the case the old script could never satisfy.
+    assert not next(s for s in patrol.acceptance if s.id == "enemy_costs_life").executable
+
+    steps = runtime_script(patrol)
+
+    moving = [step for step in steps if step["hold"] in {"left", "right", "up", "down"}]
+    waiting = [step for step in steps if step["hold"] == "none"]
+    assert len(moving) >= 2
+    assert len(waiting) >= 1
 
 
 def test_the_prompt_states_the_checks_and_the_controls(project):
@@ -176,15 +229,49 @@ def test_a_none_hold_reads_as_waiting_not_as_a_keypress(project):
     assert "without pressing anything" in prompt
 
 
-def test_a_design_with_no_chasing_enemy_gets_no_waiting_step_text(project):
+def test_a_design_with_no_chasing_enemy_still_gets_a_waiting_step_in_the_prompt(project):
+    """Before the animation probes existed, a patrol enemy left the script
+    with no waiting step at all, and the prompt said so explicitly. Now the
+    probes supply one unconditionally, so the writer is told about it exactly
+    as it would be for a chaser -- this is the prompt-visible half of the fix
+    for the defect a real run exposed (see acceptance.py's
+    `_animation_probe_steps`).
+    """
     patrol = editing.set_entity_behaviour(project, "enemy", "patrol_h")
     patrol = with_executable_scenarios(patrol)
 
     prompt = scenarios_prompt(patrol)
 
-    assert "without pressing anything" not in prompt
-    # Only start_game and collect_scores remain executable; no third step.
-    assert "  3." not in prompt
+    assert "without pressing anything" in prompt
+    # start_game, collect_scores, anim_probe_move, anim_probe_idle: four steps.
+    assert "  4." in prompt
+    assert "  5." not in prompt
+
+
+def test_the_animation_gate_reaches_a_verdict_for_a_design_with_no_chaser():
+    """The whole point of the probe steps: given plausible readings, the gate
+    that used to abstain for lack of evidence (see the docstring above) now
+    reaches a definite verdict, for a design that has no chasing enemy at
+    all -- exactly the shape the real run's project (`platform_single_screen`,
+    patrolling enemies) had.
+    """
+    project = create_default_project("Patrol", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    patrol = with_executable_scenarios(editing.set_entity_behaviour(project, "enemy", "patrol_h"))
+    steps = runtime_script(patrol)
+
+    # A frame that genuinely advances while moving and holds while idle.
+    value = 0
+    readings = []
+    for step in steps:
+        if step["hold"] in {"left", "right", "up", "down"}:
+            value += 1
+        readings.append({"id": step["id"], "hold": step["hold"], "read": {"g_anim_frame": value}})
+
+    report = animation_report({"step_readings": readings})
+
+    assert report["observed"] is True
+    assert report["quality_pass"] is True
+    assert report["failures"] == []
 
 
 def test_a_design_without_runnable_criteria_produces_no_script(project):

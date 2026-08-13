@@ -384,6 +384,16 @@ class StudioService:
                 for name, value in sorted(step["expect"].items())
                 if read.get(name) != value
             ]
+            # `bool(read)` guards against a step whose reading never arrived
+            # inheriting a pass by vacuous truth -- but that guard only means
+            # something for a step that actually predicts a contract value.
+            # The two animation-probe steps (`acceptance.ANIM_PROBE_MOVE_ID`,
+            # `..._IDLE_ID`) predict nothing here on purpose: they exist for
+            # `feel.animation_report`, which reads `step_readings` itself.
+            # Judging them by whether *this* gate happened to receive a
+            # reading would fail a program for a step this gate never made a
+            # claim about.
+            passed = not mismatches and (bool(read) or not step["expect"])
             results.append(
                 {
                     "id": step["id"],
@@ -392,7 +402,7 @@ class StudioService:
                     "expect": step["expect"],
                     "read": read,
                     "mismatches": mismatches,
-                    "passed": not mismatches and bool(read),
+                    "passed": passed,
                 }
             )
         return {
@@ -509,11 +519,18 @@ class StudioService:
         Returned as evidence rather than as a verdict: the repair loop needs the
         diagnostics, not a boolean.
         """
-        evidence: dict[str, Any] = {"build": None, "acceptance": None, "probes": None}
+        evidence: dict[str, Any] = {
+            "build": None,
+            "acceptance": None,
+            "probes": None,
+            "animation": None,
+        }
         build = self.build(project, directory)
         evidence["build"] = build.report
         evidence["probes"] = build.report.get("probes")
         if not build.success:
+            # No emulator has run yet, so there is no animation verdict either
+            # -- a build failure is refused on the build diagnostics alone.
             return evidence
         try:
             runtime = self.runtime_test(project, directory)
@@ -522,6 +539,7 @@ class StudioService:
             return evidence
         evidence["runtime"] = runtime
         evidence["acceptance"] = runtime.get("acceptance")
+        evidence["animation"] = runtime.get("animation")
         return evidence
 
     def write_program(

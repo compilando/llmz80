@@ -164,8 +164,73 @@ def with_executable_scenarios(project: GameProject) -> GameProject:
 #: `enemy_costs_life` spends one -- this is what actually enforces that, not
 #: just a comment upstream that a reordered pack could silently invalidate.
 #: Any scenario id outside this tuple keeps its place after all three, in
-#: whatever order the design listed it.
+#: whatever order the design listed it -- which is also, deliberately, where
+#: the two animation-probe steps below land: after every core step, never
+#: between them.
 CORE_STEP_ORDER = ("start_game", "collect_scores", "enemy_costs_life")
+
+#: Ids of the two scripted steps that exist only to give `feel.animation_report`
+#: the evidence its verdict needs, not named in `project.acceptance` because
+#: they are never `AcceptanceScenario` objects -- see `_animation_probe_steps`.
+ANIM_PROBE_MOVE_ID = "anim_probe_move"
+ANIM_PROBE_IDLE_ID = "anim_probe_idle"
+
+#: Frames each animation probe step holds its input for. Short on purpose: an
+#: emulator run pays real wall-clock for every step of every runtime test, and
+#: confirming `g_anim_frame` changed (or did not) needs only long enough for
+#: one write to land on each side, not a sweep across the level.
+ANIM_PROBE_FRAMES = 8
+
+
+def _animation_probe_steps(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Two more steps so `feel.animation_report` never abstains for lack of
+    evidence, whatever the design's enemies do.
+
+    `animation_report` needs at least two readings classified "moving" (to
+    compare consecutive values) and at least one classified "idle" -- see its
+    own docstring. `enemy_costs_life` supplies an idle reading, but only for a
+    chasing enemy (`chase_catch_frames` is the only case `derive_scenarios`
+    can predict); every other behaviour -- patrol, bounce, guard, or no enemy
+    at all -- leaves that step as prose, and `collect_scores` alone is one
+    moving reading with nothing to compare it to. So the gate could never
+    reach a verdict for those designs, not because their animation was wrong,
+    but because the script never gave it two things to compare. These two
+    steps are unconditional evidence, independent of what any enemy does.
+
+    They carry no `expect`: they assert nothing about score or lives, only
+    about `g_anim_frame`, and that comparison is not the `expect`/reading
+    equality this module's other steps use -- `feel.animation_report` reads
+    `step_readings` directly and compares consecutive values itself. Giving
+    them an `expect` would misstate what they are for, and would make them
+    executable `AcceptanceScenario` criteria they are not: they are raw script
+    entries, appended here rather than added to `project.acceptance`, so
+    `derive_scenarios` keeps sole ownership of the criteria that predict a
+    contract value.
+
+    The direction is whatever `collect_scores` already holds when it is
+    executable: reusing it means both moving readings the gate compares come
+    from a direction `sweep_plan` already confirmed the level has room for,
+    so this never walks the player into a wall. The "right" fallback only
+    matters for a design with no reachable collectible at all, where no
+    direction has been confirmed either way.
+    """
+    direction = next(
+        (step["hold"] for step in steps if step["id"] == "collect_scores"), None
+    ) or "right"
+    return [
+        {
+            "id": ANIM_PROBE_MOVE_ID,
+            "hold": direction,
+            "frames": ANIM_PROBE_FRAMES,
+            "expect": {},
+        },
+        {
+            "id": ANIM_PROBE_IDLE_ID,
+            "hold": "none",
+            "frames": ANIM_PROBE_FRAMES,
+            "expect": {},
+        },
+    ]
 
 
 def runtime_script(project: GameProject) -> list[dict[str, Any]]:
@@ -176,6 +241,13 @@ def runtime_script(project: GameProject) -> list[dict[str, Any]]:
     assumes a full life total can run after the step that spends one. That
     second constraint is enforced here, by `CORE_STEP_ORDER`, rather than
     left to whatever order the design happens to list its scenarios in.
+
+    When the design has any executable criteria at all, two more steps are
+    appended for the animation gate alone (`_animation_probe_steps`) -- always
+    last, after every core step, so they cannot disturb what `collect_scores`
+    or `enemy_costs_life` expect to still be true when they run. A design with
+    nothing executable (every scenario left as prose) gets an empty script, as
+    before: there is no boot to append a probe to.
     """
     steps: list[dict[str, Any]] = []
     for scenario in project.acceptance:
@@ -196,6 +268,8 @@ def runtime_script(project: GameProject) -> list[dict[str, Any]]:
             else len(CORE_STEP_ORDER)
         )
     )
+    if steps:
+        steps.extend(_animation_probe_steps(steps))
     return steps
 
 
@@ -238,7 +312,14 @@ def scenarios_prompt(project: GameProject) -> str:
             if step["hold"] == "none"
             else f"hold {step['hold']} for {step['frames']} frames"
         )
-        lines.append(f"  {index}. {action} -> {expectations}")
+        # The two animation-probe steps carry no `expect` at all (see
+        # `_animation_probe_steps`): the g_anim_frame sentence above already
+        # covers them, so there is nothing to append after the action, not an
+        # empty "-> " with nothing following it.
+        line = f"  {index}. {action}"
+        if expectations:
+            line += f" -> {expectations}"
+        lines.append(line)
     lines.append("")
     lines.append(
         "The controls are: "
