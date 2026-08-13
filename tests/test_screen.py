@@ -6,7 +6,6 @@ import json
 
 import pytest
 
-from llmz80.studio.editing import fill_screen
 from llmz80.studio.models import AssetSpec, TargetPlatform
 from llmz80.studio.reference import GameReference, save_reference
 from llmz80.studio.samples import blank_project
@@ -147,13 +146,36 @@ def test_diseno_is_done_for_a_solvable_structured_design(project):
     assert stage.state == "done"
 
 
-def test_diseno_is_failed_when_the_terrain_loses_its_shape(project):
-    unstructured = fill_screen(project, 0, ".")
+def _oversized(project):
+    """A screen wider than its target's playfield, bypassing GameProject's
+    own construction-time validation (`model_copy` runs no validators) --
+    the one way `editing_status`'s `backend_error` can be reached at all,
+    since `structure._fit_errors` already refuses this same thing whenever a
+    project is actually constructed or edited through `editing.py`.
+    """
+    original = project.screens[0]
+    width = 35  # wider than spectrum_bitmap's 32-column playfield
+    top = "#" * width
+    middle = "#" + "." * (width - 2) + "#"
+    oversized = original.model_copy(
+        update={"width": width, "tiles": [top] + [middle] * (original.height - 2) + [top]}
+    )
+    return project.model_copy(update={"screens": [oversized]})
 
-    stage = _by_name(stage_line(unstructured, None))["diseño"]
+
+def test_diseno_is_failed_when_a_screen_does_not_fit_the_target(project):
+    """v4 has no notion of a design losing its "shape" any more -- solvability
+    and terrain structure were retired along with the rules that only made
+    sense for one kind of game (see `editing.editing_status`'s docstring).
+    The one thing `diseño` can still fail on is a screen too big for its
+    target's playable grid.
+    """
+    unfit = _oversized(project)
+
+    stage = _by_name(stage_line(unfit, None))["diseño"]
 
     assert stage.state == "failed"
-    assert stage.detail  # names why, from editing_status's own failures
+    assert stage.detail  # names why, from editing_status's own backend_error
 
 
 # --- sprites ------------------------------------------------------------
@@ -384,10 +406,10 @@ def test_next_step_moves_on_as_earlier_stages_complete(project, tmp_path):
 def test_next_step_prefers_an_earlier_failure_over_a_later_pending_stage(project, tmp_path):
     """A broken design blocks the pipeline even though referencia -- earlier
     in STAGE_NAMES -- is merely unstarted, not broken; pointing at "research"
-    while the design itself is unsolvable would not fix anything."""
-    unstructured = fill_screen(project, 0, ".")
+    while the design does not even fit its target would not fix anything."""
+    unfit = _oversized(project)
 
-    stage = next_step(stage_line(unstructured, tmp_path))
+    stage = next_step(stage_line(unfit, tmp_path))
 
     assert stage is not None
     assert stage.name == "diseño"
