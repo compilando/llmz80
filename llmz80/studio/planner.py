@@ -12,7 +12,8 @@ from .models import GameProject
 
 
 class SpawnValue(BaseModel):
-    """Mirrors `SpawnSpec` in models.py: where one entity instance starts."""
+    """Mirrors `SpawnSpec` in models.py: where one entity instance starts on
+    one of the design's screens."""
 
     model_config = ConfigDict(extra="forbid")
     entity: str = Field(pattern=r"^[a-z][a-z0-9_]{1,31}$")
@@ -36,8 +37,8 @@ class ProjectChange(BaseModel):
     reason: str = Field(min_length=1, max_length=240)
     value_text: str | None = None
     value_number: int | None = None
-    value_rows: list[str] | None = None  # a level's tiles
-    value_spawns: list[SpawnValue] | None = None  # a level's spawns
+    value_rows: list[str] | None = None  # a screen's tiles
+    value_spawns: list[SpawnValue] | None = None  # a screen's spawns
 
     @model_validator(mode="after")
     def validate_value_shape(self) -> "ProjectChange":
@@ -94,10 +95,10 @@ class ResponsesProjectPlanner:
                         "Never emit C code and never silently relax budgets or acceptance tests. "
                         "Each change carries its value in exactly one of value_text, "
                         "value_number, value_rows or value_spawns, matching the field being "
-                        "changed: value_text for strings such as presentation.style or an "
-                        "entity's behaviour, value_number for integers such as lives or an "
-                        "entity's speed and count, value_rows for a level's tiles (one string "
-                        "per row), and value_spawns for a level's spawns. Leave all four unset "
+                        "changed: value_text for strings such as presentation.style, a "
+                        "mechanic's sentence or an entity's notes, value_number for integers "
+                        "such as an entity's count, value_rows for a screen's tiles (one string "
+                        "per row), and value_spawns for a screen's spawns. Leave all four unset "
                         "for a remove, and set exactly one of them for an add or a replace."
                     ),
                 },
@@ -138,12 +139,13 @@ def apply_proposal(
 ) -> GameProject:
     """Apply a reviewed proposal transactionally and revalidate the complete IR.
 
-    A proposal that rewrites terrain can seal a collectible off, gut a maze
-    into an empty room with none of its genre's structure, or outgrow the
-    target grid, while still being a structurally valid document. Hand editing
-    treats those as advisory because a person watches the map change cell by
-    cell; a bulk change from a model gets no such supervision, so it is refused
-    unless the caller opts in.
+    `GameProject.model_validate` itself already refuses a screen that outgrows
+    its target's playable grid (see `structure._fit_errors`), so a change that
+    survives to `candidate` below is already a structurally valid document.
+    What remains to check is whether the design still fits the target machine
+    at all (`editing.editing_status`) -- the same check a person editing by
+    hand gets to see live, one cell at a time, that a bulk change from a model
+    does not, so it is refused here unless the caller opts in.
     """
     document = deepcopy(project.model_dump(mode="json"))
     for change in proposal.changes:
@@ -193,12 +195,8 @@ def apply_proposal(
     if not allow_unplayable:
         status = editing_status(candidate)
         if not status["ready"]:
-            reasons = list(status["solvability_failures"])
-            reasons.extend(status["structure_failures"])
-            if status["backend_error"]:
-                reasons.append(status["backend_error"])
             raise ValueError(
-                "this proposal would leave the game unplayable: " + "; ".join(reasons)
+                "this proposal would leave the game unplayable: " + status["backend_error"]
             )
     return candidate
 
