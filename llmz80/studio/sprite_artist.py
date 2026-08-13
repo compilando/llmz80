@@ -102,7 +102,7 @@ from llmz80.studio.sprite_sheet import split_frames
 from llmz80.studio.spriting import ALPHA_THRESHOLD, SPRITE_SIZE
 
 #: One sheet holds a walk/patrol cycle: four poses is enough for every current
-#: entity role (see `llmz80.studio.models.EntitySpec.role`) without inflating
+#: entity kind (see `llmz80.studio.models.EntitySpec.kind`) without inflating
 #: the static-data budget `spriting.py`'s packer already enforces.
 FRAMES_PER_SHEET = 4
 
@@ -257,14 +257,14 @@ def _style_context(project: GameProject, entity: EntitySpec, dossier: GameRefere
     there would be nothing to carry either way. The fallback still has to
     describe *some* style, because a project with no identified game still
     needs art: it draws on the one thing every project always has, its own
-    design -- the entity's `role` and the design's `presentation.style`.
+    design -- the entity's `kind` and the design's `presentation.style`.
     """
     if dossier is not None and dossier.identified:
         return _dossier_style_block(dossier)
     return (
         "REFERENCE GAME\n\n"
         "No specific 1980s game has been identified for this project, so draw "
-        f"from the design itself: this is a {entity.role} entity, and the "
+        f"from the design itself: this is a {entity.kind} entity, and the "
         f'game\'s overall visual style is described as "{project.presentation.style}".'
     )
 
@@ -348,9 +348,19 @@ def compose_prompt(
     and `_key_out_background` both depend on, no anti-aliasing, the exact
     frame layout `_sheet_columns` expects -- must win, so they are what the
     model reads last.
+
+    The subject itself is named by `entity.kind` -- the design's own word for
+    what this actor is ("a door", "a perseguidor character"), not one of a
+    fixed handful of labels -- and, where the design bothered to write one,
+    by `entity.notes`: prose about what this particular actor *does*
+    ("opens once the player is holding the key") that a fixed vocabulary had
+    no field for at all. Both come from the entity itself, so they apply
+    whether or not a dossier was identified for this project.
     """
     template = (_RESOURCES / _template_filename(project)).read_text(encoding="utf-8")
-    subject = f"{entity.sprite}, a {entity.role} character"
+    subject = f"{entity.sprite}, a {entity.kind} character"
+    if entity.notes.strip():
+        subject += f" ({entity.notes.strip()})"
     body = template.format(prompt=subject, width=REQUEST_WIDTH, height=REQUEST_HEIGHT)
     sheet = (
         f"Lay the art out as a sprite sheet of exactly {FRAMES_PER_SHEET} animation "
@@ -550,15 +560,15 @@ def _fit_to_frame(
     that actually satisfies both: never bigger than the frame allows, never
     bigger than what the object actually was relative to its own column.
 
-    This is still a deliberately *role-blind* rule: both factors look only
+    This is still a deliberately *kind-blind* rule: both factors look only
     at geometry -- `cleaned`'s own size and the column it came from -- never
-    at `EntitySpec.role`, so a `pellet` and a `hero` are sized by exactly
-    the same arithmetic. A role-aware alternative -- "collectibles stay
-    small, player characters fill more of the frame" -- was considered and
+    at `EntitySpec.kind`, so a `pellet` and a `hero` are sized by exactly
+    the same arithmetic. A kind-aware alternative -- "small pickups stay
+    small, tall characters fill more of the frame" -- was considered and
     rejected: it would need a second source of truth about how big each
-    role "ought" to look, alongside whatever the game's own design already
+    kind "ought" to look, alongside whatever the game's own design already
     implies, the same objection `_judge_frames`'s docstring raises against
-    gating on role at all.
+    gating on kind at all.
 
     The result is centred on a `frame_size` x `frame_size` canvas of
     `background_color`, leaving whatever margin is left over -- on one axis
@@ -721,9 +731,9 @@ def _judge_frames(frames: list[Image.Image]) -> str | None:
     drawing a non-animating thing identically four times drew it *correctly*,
     and the check cost three wasted image generations, then raised, on
     exactly the response that should have been accepted on the first one.
-    Gating the check on `EntitySpec.role` was considered and rejected too --
+    Gating the check on `EntitySpec.kind` was considered and rejected too --
     it would need this function, or its caller, to carry a growing list of
-    "which roles animate", a second source of truth alongside whatever the
+    "which kinds animate", a second source of truth alongside whatever the
     game's own design already implies, to catch a failure mode nothing in a
     real run has ever actually shown. The 0/256 check above does not have
     that problem: it fires on concrete, load-bearing evidence -- a frame with
@@ -891,8 +901,10 @@ class SpriteArtist:
         repairs: list[str] = []
         reason: str | None = None
         for attempt in range(1, self.attempts + 1):
-            request = prompt if reason is None else (
-                prompt + "\n\nYOUR PREVIOUS SHEET WAS REJECTED\n\n" + reason
+            request = (
+                prompt
+                if reason is None
+                else (prompt + "\n\nYOUR PREVIOUS SHEET WAS REJECTED\n\n" + reason)
             )
             sheet = self.generator.generate_image(request)
             sheets.append(sheet)
