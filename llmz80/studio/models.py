@@ -113,6 +113,11 @@ class PresentationSpec(StrictModel):
     palette: list[PaletteEntry] = Field(default_factory=list, max_length=16)
     show_score: bool = True
     show_lives: bool = True
+    #: Character rows reserved at the top for a HUD. Two is what a score and
+    #: lives line needs, not a fact about the machine: a design that shows
+    #: neither can have the rows back, and one that wants a bigger status area
+    #: can take more.
+    hud_rows: int = Field(default=2, ge=0, le=4)
 
 
 class ControlsSpec(StrictModel):
@@ -168,6 +173,9 @@ class EntitySpec(StrictModel):
     poses: list[Annotated[str, StringConstraints(pattern=ID_PATTERN)]] = Field(
         default_factory=list, max_length=8
     )
+    #: How many instances of this entity the design has to spend; `structure.py`
+    #: reads it as the per-screen budget, so a screen may place at most this
+    #: many spawns of one entity, across however many screens it likes.
     count: int = Field(default=1, ge=1, le=64)
     colour: str | None = Field(default=None, pattern=ID_PATTERN)
     #: What this actor does, for the writer and the examiner to read.
@@ -325,5 +333,5 @@ class GameProject(StrictModel):
 
         errors = structural_errors(self)
         if errors:
-            raise ValueError("; ".join(errors))
+            raise ValueError("\n".join(errors))
         return self
