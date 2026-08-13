@@ -1,434 +1,125 @@
-"""Acceptance criteria that are executed, and shown to whoever writes the code.
+"""The design, in the form whoever writes the program needs it.
 
-One definition serves three readers: a person reading prose, the runtime gate
-executing the step, and a generator being told in advance exactly what its
-program will be tested against. Handing the test over before the code is written
-is deliberate; a generator that knows the check tends to satisfy it.
+What this module used to also do -- derive a runnable acceptance script from
+the design -- assumed one kind of game: an actor stepping through a grid at a
+fixed cadence, scoring one collectible at a time. That assumption is what made
+any other kind of game fail verification, so it is gone. Deriving the script is
+the examiner's job (phase 2), and until it exists `runtime_script` returns
+nothing and the runtime gate abstains, exactly as it already abstains on a
+target with no memory probe.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from llmz80.core.state_contract import STATE_PLAYING, contract_prompt
+from llmz80.core.state_contract import contract_prompt
 
-from .models import AcceptanceScenario, AssetSpec, GameProject
-from .solvability import _distances, sweep_plan
+from .models import AssetSpec, GameProject
 from .spriting import is_blitter_sprite
-
-#: Frames to hold the action key before gameplay is expected to be running.
-START_FRAMES = 30
-
-#: Display frames an actor of speed 1 takes to advance one cell. Speed 4 moves
-#: every frame. This is the design's meaning of "speed" and the program is told
-#: it, because an acceptance step that counts collected items is only decidable
-#: if how fast the player travels is agreed in advance.
-FRAMES_PER_CELL = (4, 3, 2, 1)
-
-#: Extra frames allowed on top of the exact travel time, absorbing a program's
-#: start-up and any rounding in its own pacing.
-SWEEP_MARGIN_FRAMES = 25
-
-
-def frames_per_cell(speed: int) -> int:
-    return FRAMES_PER_CELL[min(max(speed, 1), 4) - 1]
-
-
-def sweep_frames(project: GameProject, plan: dict) -> int:
-    """Frames to hold a direction so the planned collectibles are reachable."""
-    player = next(
-        (entity for entity in project.entities if entity.role == "player"), None
-    )
-    speed = player.speed if player else 1
-    distance = int(plan.get("distance") or 0)
-    return min(1000, distance * frames_per_cell(speed) + SWEEP_MARGIN_FRAMES)
-
-
-def chase_catch_frames(project: GameProject, level_index: int = 0) -> int | None:
-    """Frames for the nearest chasing enemy to reach a player who never moves.
-
-    Only `behaviour == "chase"` is predictable enough to gate on: a patrol,
-    bounce or guard's position depends on where it has moved on its own
-    account, which this design cannot know in advance, but a chaser closes
-    on the player's exact spawn by definition. `None` when no chaser has a
-    route to the player at all, which `solvability._distances` -- the same
-    breadth-first walk `sweep_plan` and `threat_report` already use -- is
-    what decides.
-    """
-    level = project.levels[level_index]
-    roles = {entity.id: entity.role for entity in project.entities}
-    chaser_speeds = {
-        entity.id: entity.speed
-        for entity in project.entities
-        if entity.role == "enemy" and entity.behaviour == "chase"
-    }
-    if not chaser_speeds:
-        return None
-    player = next(
-        ((spawn.col, spawn.row) for spawn in level.spawns if roles.get(spawn.entity) == "player"),
-        None,
-    )
-    if player is None:
-        return None
-    reach = _distances(level, player)
-    frames = [
-        reach[(spawn.col, spawn.row)] * frames_per_cell(chaser_speeds[spawn.entity])
-        for spawn in level.spawns
-        if spawn.entity in chaser_speeds and (spawn.col, spawn.row) in reach
-    ]
-    if not frames:
-        return None
-    return min(1000, min(frames) + SWEEP_MARGIN_FRAMES)
-
-
-def derive_scenarios(project: GameProject) -> list[AcceptanceScenario]:
-    """Fill in the runnable half of the design's acceptance criteria.
-
-    Only criteria the design can predict exactly become executable. Losing a
-    life to a patrolling, bouncing or guarding enemy stays prose, because
-    reaching it depends on where it has moved to on its own, and a check that
-    is only usually true is worse than none. A chasing enemy is the
-    exception: it comes to the player, so the encounter needs no keyboard at
-    all -- it needs waiting (`hold="none"`) for `chase_catch_frames` to work
-    out, once a route from its spawn to the player's exists.
-    """
-    total = sum(entity.count for entity in project.entities if entity.role == "collectible")
-    plan = sweep_plan(project, 0)
-    catch_frames = chase_catch_frames(project, 0)
-    scenarios: list[AcceptanceScenario] = []
-    for scenario in project.acceptance:
-        document = scenario.model_dump(mode="json")
-        if scenario.id == "start_game":
-            document.update(
-                hold="action",
-                frames=START_FRAMES,
-                expect={"g_state": STATE_PLAYING, "g_level": 1, "g_score": 0},
-            )
-        elif scenario.id == "collect_scores" and plan.get("collected"):
-            collected = plan["collected"]
-            document.update(
-                hold=plan["direction"],
-                frames=sweep_frames(project, plan),
-                expect={
-                    "g_score": collected * project.gameplay.score_per_collectible,
-                    "g_remaining": total - collected,
-                    # Scoring while dying is not playing. A design that kills the
-                    # player during its own opening move has to fail here, or the
-                    # only gate that notices is a coarser one further on.
-                    "g_state": STATE_PLAYING,
-                    "g_lives": project.gameplay.lives,
-                },
-            )
-        elif scenario.id == "enemy_costs_life":
-            if catch_frames is not None:
-                document.update(
-                    hold="none",
-                    frames=catch_frames,
-                    expect={
-                        "g_lives": project.gameplay.lives - 1,
-                        # The runtime gate keeps CORE_STEP_ORDER, so this step
-                        # always runs after collect_scores: it is safe to
-                        # expect "still playing" rather than repeating that
-                        # step's score.
-                        "g_state": STATE_PLAYING,
-                    },
-                )
-            else:
-                # No chaser has a route to the player right now (there is no
-                # chase enemy, or none can reach the spawn). Re-deriving must
-                # revert this to prose rather than keep an executable check
-                # left over from before the design changed -- a project's own
-                # `acceptance` entry can already carry values from an earlier
-                # `derive_scenarios` call, since editing operations such as
-                # `set_entity_behaviour` do not re-derive it themselves.
-                document.update(
-                    hold=None,
-                    frames=AcceptanceScenario.model_fields["frames"].default,
-                    expect={},
-                )
-        scenarios.append(AcceptanceScenario.model_validate(document))
-    return scenarios
-
-
-def with_executable_scenarios(project: GameProject) -> GameProject:
-    document = project.model_dump(mode="json")
-    document["acceptance"] = [
-        scenario.model_dump(mode="json") for scenario in derive_scenarios(project)
-    ]
-    return GameProject.model_validate(document)
-
-
-#: The order the three core steps must run in, however a design lists its
-#: scenarios. Steps accumulate in one boot without resetting (see below), so
-#: `collect_scores` has to run while `g_lives` is still full and before
-#: `enemy_costs_life` spends one -- this is what actually enforces that, not
-#: just a comment upstream that a reordered pack could silently invalidate.
-#: Any scenario id outside this tuple keeps its place after all three, in
-#: whatever order the design listed it -- which is also, deliberately, where
-#: the two animation-probe steps below land: after every core step, never
-#: between them.
-CORE_STEP_ORDER = ("start_game", "collect_scores", "enemy_costs_life")
-
-#: Ids of the two scripted steps that exist only to give `feel.animation_report`
-#: the evidence its verdict needs, not named in `project.acceptance` because
-#: they are never `AcceptanceScenario` objects -- see `_animation_probe_steps`.
-ANIM_PROBE_MOVE_ID = "anim_probe_move"
-ANIM_PROBE_IDLE_ID = "anim_probe_idle"
-
-#: Frames each animation probe step holds its input for. Short on purpose: an
-#: emulator run pays real wall-clock for every step of every runtime test, and
-#: confirming `g_anim_frame` changed (or did not) needs only long enough for
-#: one write to land on each side, not a sweep across the level.
-ANIM_PROBE_FRAMES = 8
-
-
-def _animation_probe_steps(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Two more steps so `feel.animation_report` never abstains for lack of
-    evidence, whatever the design's enemies do.
-
-    `animation_report` needs at least two readings classified "moving" (to
-    compare consecutive values) and at least one classified "idle" -- see its
-    own docstring. `enemy_costs_life` supplies an idle reading, but only for a
-    chasing enemy (`chase_catch_frames` is the only case `derive_scenarios`
-    can predict); every other behaviour -- patrol, bounce, guard, or no enemy
-    at all -- leaves that step as prose, and `collect_scores` alone is one
-    moving reading with nothing to compare it to. So the gate could never
-    reach a verdict for those designs, not because their animation was wrong,
-    but because the script never gave it two things to compare. These two
-    steps are unconditional evidence, independent of what any enemy does.
-
-    They carry no `expect`: they assert nothing about score or lives, only
-    about `g_anim_frame`, and that comparison is not the `expect`/reading
-    equality this module's other steps use -- `feel.animation_report` reads
-    `step_readings` directly and compares consecutive values itself. Giving
-    them an `expect` would misstate what they are for, and would make them
-    executable `AcceptanceScenario` criteria they are not: they are raw script
-    entries, appended here rather than added to `project.acceptance`, so
-    `derive_scenarios` keeps sole ownership of the criteria that predict a
-    contract value.
-
-    The direction is whatever `collect_scores` already holds when it is
-    executable: reusing it means both moving readings the gate compares come
-    from a direction `sweep_plan` already confirmed the level has room for,
-    so this never walks the player into a wall. The "right" fallback only
-    matters for a design with no reachable collectible at all, where no
-    direction has been confirmed either way.
-    """
-    direction = next(
-        (step["hold"] for step in steps if step["id"] == "collect_scores"), None
-    ) or "right"
-    return [
-        {
-            "id": ANIM_PROBE_MOVE_ID,
-            "hold": direction,
-            "frames": ANIM_PROBE_FRAMES,
-            "expect": {},
-        },
-        {
-            "id": ANIM_PROBE_IDLE_ID,
-            "hold": "none",
-            "frames": ANIM_PROBE_FRAMES,
-            "expect": {},
-        },
-    ]
-
-
-def runtime_script(project: GameProject) -> list[dict[str, Any]]:
-    """Ordered steps for the emulator: hold an input, then read the contract.
-
-    Steps run in one boot and accumulate, which is why order matters: the game
-    has to be started before anything can be collected, and nothing that
-    assumes a full life total can run after the step that spends one. That
-    second constraint is enforced here, by `CORE_STEP_ORDER`, rather than
-    left to whatever order the design happens to list its scenarios in.
-
-    When the design has any executable criteria at all, two more steps are
-    appended for the animation gate alone (`_animation_probe_steps`) -- always
-    last, after every core step, so they cannot disturb what `collect_scores`
-    or `enemy_costs_life` expect to still be true when they run. A design with
-    nothing executable (every scenario left as prose) gets an empty script, as
-    before: there is no boot to append a probe to.
-    """
-    steps: list[dict[str, Any]] = []
-    for scenario in project.acceptance:
-        if not scenario.executable:
-            continue
-        steps.append(
-            {
-                "id": scenario.id,
-                "hold": scenario.hold,
-                "frames": scenario.frames,
-                "expect": dict(scenario.expect),
-            }
-        )
-    steps.sort(
-        key=lambda step: (
-            CORE_STEP_ORDER.index(step["id"])
-            if step["id"] in CORE_STEP_ORDER
-            else len(CORE_STEP_ORDER)
-        )
-    )
-    if steps:
-        steps.extend(_animation_probe_steps(steps))
-    return steps
-
-
-def scenarios_prompt(project: GameProject) -> str:
-    """The acceptance half of a generation prompt.
-
-    The g_anim_frame sentence below runs regardless of `project.target`, even
-    though `llmz80.studio.feel.animation_report` currently only ever gets a
-    reading on the Spectrum -- the Amstrad CPC adapter (`_run_caprice32`)
-    captures screenshots, not memory, so the gate abstains there today. That
-    is a fact about which emulator adapter exists, not about what a correct
-    CPC program looks like, and a program the writer only made to pass a
-    check that happens to be watching is exactly the failure mode this
-    module's docstring warns against. Silence is for a step the script
-    genuinely has none of (see the "none" hold below); it is not for a
-    correctness rule that still applies to a platform the checker cannot see
-    yet.
-    """
-    steps = runtime_script(project)
-    if not steps:
-        return ""
-    lines = [
-        "RUNTIME ACCEPTANCE",
-        "",
-        "After the program loads, an emulator holds each input below for the",
-        "stated number of 50 Hz frames, in this order and without resetting",
-        "between steps. It then reads the state contract from memory. Every",
-        "expected value must match exactly. If you declared g_anim_frame, it",
-        "is also read at every step: it must have changed since the previous",
-        "reading after a step held in a direction, and stayed the same after",
-        "a step that waits.",
-        "",
-    ]
-    for index, step in enumerate(steps, start=1):
-        expectations = ", ".join(
-            f"{name} == {value}" for name, value in sorted(step["expect"].items())
-        )
-        action = (
-            f"wait {step['frames']} frames without pressing anything"
-            if step["hold"] == "none"
-            else f"hold {step['hold']} for {step['frames']} frames"
-        )
-        # The two animation-probe steps carry no `expect` at all (see
-        # `_animation_probe_steps`): the g_anim_frame sentence above already
-        # covers them, so there is nothing to append after the action, not an
-        # empty "-> " with nothing following it.
-        line = f"  {index}. {action}"
-        if expectations:
-            line += f" -> {expectations}"
-        lines.append(line)
-    lines.append("")
-    lines.append(
-        "The controls are: "
-        + ", ".join(
-            f"{name} = {getattr(project.controls, name)}"
-            for name in ("left", "right", "up", "down", "action")
-        )
-        + "."
-    )
-    return "\n".join(lines)
 
 
 def blitter_sprites(project: GameProject) -> list[AssetSpec]:
-    """Assets that `render_project` (see `compiler.py`) actually packs into
-    `sprites.h` as a `SPRITE_<ID>`.
-
-    Telling the writer about a constant that will not exist would be a wrong
-    prompt, so this calls the exact same rule `render_project` packs against --
-    `spriting.is_blitter_sprite` -- rather than keeping a second copy of it
-    here that could silently drift from the compiler's.
-    """
+    """Assets that `render_project` will really emit a SPRITE_<ID> for."""
     return [asset for asset in project.assets if is_blitter_sprite(asset)]
 
 
-def design_prompt(project: GameProject) -> str:
-    """The design itself, in the form a program author needs it.
+def runtime_script(project: GameProject) -> list[dict[str, Any]]:
+    """No scripted steps yet: the examiner that derives them lands in phase 2.
 
-    Levels are shown as the same grid the designer edited rather than as a byte
-    table, because the author has to reason about the shape before choosing how
-    to store it.
+    Returning an empty script makes the runtime gate abstain rather than pass:
+    `services.acceptance_report` reports an unobserved gate, which is what an
+    unexamined program honestly is.
     """
+    return []
+
+
+def design_prompt(project: GameProject) -> str:
+    """The design itself, in the vocabulary the design coined for it."""
     lines = ["DESIGN", ""]
     if project.metadata.brief.strip():
-        # The designer's own words come first: the structured fields below say
-        # what the game is made of, but only this says what it should be like.
-        lines.extend(
-            ["What this game should be:", "", project.metadata.brief.strip(), ""]
-        )
+        lines.extend(["What this game should be:", "", project.metadata.brief.strip(), ""])
     lines += [
         f"Title: {project.metadata.title}",
         f"Target: {project.target.platform.value}, {project.target.video_mode.value}, "
         f"{project.target.frame_hz} Hz",
-        f"Genre: {project.genre}",
         f"Presentation: {project.presentation.style}",
-        f"Lives: {project.gameplay.lives}    "
-        f"Points per collectible: {project.gameplay.score_per_collectible}    "
-        f"Levels: {project.gameplay.level_count}",
-        f"Difficulty curve: {project.gameplay.difficulty_curve}",
         "",
-        "Entities:",
     ]
-    for entity in project.entities:
-        behaviour = "" if entity.behaviour == "auto" else f", moves {entity.behaviour}"
-        pace = frames_per_cell(entity.speed)
-        lines.append(
-            f"  {entity.id}: {entity.role} x{entity.count}, speed {entity.speed} "
-            f"(one cell every {pace} frame{'s' if pace != 1 else ''}){behaviour}"
-        )
+    if project.mechanics:
+        lines.append("Mechanics this game must have:")
+        lines.extend(f"  - {sentence}" for sentence in project.mechanics)
+        lines.append("")
+
+    lines.append("Controls. game_config.h defines one bit per binding:")
+    for name, key in project.controls.bindings.items():
+        lines.append(f"  INPUT_{name.upper():<12} key {key}")
     lines.append("")
-    lines.append(
-        "Speed is a pace, not a distance: an actor of speed 1 advances one cell "
-        "every 4 frames, speed 2 every 3, speed 3 every 2, and speed 4 every "
-        "frame. The runtime acceptance below times its inputs by this rule, so a "
-        "program that moves faster or slower than its design says will fail it."
-    )
+
+    lines.append("Terrain characters, as they appear in the screens below:")
+    for tile in project.tiles:
+        traits = f" [{', '.join(tile.traits)}]" if tile.traits else ""
+        lines.append(f"  '{tile.char}' is {tile.id}{traits}")
+    lines.append("")
+
+    lines.append("Actors:")
+    for entity in project.entities:
+        poses = f", poses {', '.join(entity.poses)}" if entity.poses else ""
+        notes = f" -- {entity.notes}" if entity.notes else ""
+        lines.append(f"  {entity.id}: {entity.kind} x{entity.count}{poses}{notes}")
+    lines.append("")
+
+    if project.observables:
+        lines.append("Extra state this design exposes, declared in game_state.h:")
+        for observable in project.observables:
+            lines.append(f"  {observable.symbol}: {observable.meaning}")
+        lines.append("")
+
     sprites = blitter_sprites(project)
     if sprites:
-        lines.append("")
         lines.append(
             "Sprites: actors are drawn with plat_sprite(col, row, sprite, frame); "
-            "terrain cells are drawn with plat_cell. Each sprite below is a "
-            "SPRITE_<ID> constant and a frame count from sprites.h."
+            "terrain is drawn with plat_cell(col, row, character). Each sprite "
+            "below is a SPRITE_<ID> constant and a frame count from sprites.h."
         )
         for asset in sprites:
-            identifier = f"SPRITE_{asset.id.upper()}"
-            frame_word = "frame" if asset.frames == 1 else "frames"
             wearers = [entity.id for entity in project.entities if entity.sprite == asset.id]
-            worn_by = f", worn by {', '.join(wearers)}" if wearers else ""
-            lines.append(f"  {asset.id}: {identifier}, {asset.frames} {frame_word}{worn_by}")
+            worn = f", worn by {', '.join(wearers)}" if wearers else ""
+            lines.append(f"  {asset.id}: SPRITE_{asset.id.upper()}, {asset.frames} frames{worn}")
+        lines.append("")
 
     if project.audio.effects:
+        lines.append(
+            "Sound effects, played with plat_sound(SOUND_<NAME>) from game_config.h: "
+            + ", ".join(project.audio.effects)
+        )
         lines.append("")
-        lines.append("Sound effects to play: " + ", ".join(project.audio.effects))
 
-    for level in project.levels:
+    lines.append(f"The game starts on screen {project.initial_screen}.")
+    for screen in project.screens:
         limit = (
-            f", time limit {level.time_limit_seconds}s"
-            if level.time_limit_seconds is not None
+            f", time limit {screen.time_limit_seconds}s"
+            if screen.time_limit_seconds is not None
             else ""
         )
         lines.extend(
-            [
-                "",
-                f"Level {level.id} \"{level.name}\", {level.width}x{level.height}{limit}",
-                "  '#' is wall, '.' is floor:",
-            ]
+            ["", f'Screen {screen.id} "{screen.name}", ' f"{screen.width}x{screen.height}{limit}"]
         )
-        lines.extend(f"    {row}" for row in level.tiles)
-        lines.append("  Starting positions (column, row):")
-        for spawn in level.spawns:
-            lines.append(f"    {spawn.entity} at ({spawn.col}, {spawn.row})")
+        lines.extend(f"    {row}" for row in screen.tiles)
+        if screen.spawns:
+            lines.append("  Starting positions (column, row):")
+            for spawn in screen.spawns:
+                lines.append(f"    {spawn.entity} at ({spawn.col}, {spawn.row})")
+        for direction, destination in screen.exits.items():
+            lines.append(f"  Exit {direction} -> {destination}")
 
     lines.extend(
         [
             "",
-            "Studio writes game_config.h with these values as constants, and",
-            "game_state.h declaring the contract, into the same directory as your",
-            "sources. A platform library is there too: platform.h documents what",
-            "it offers. Use it or don't.",
+            "Studio writes game_config.h with these constants, and game_state.h",
+            "declaring the contract and this design's observables, into the same",
+            "directory as your sources. A platform library is there too:",
+            "platform.h documents what it offers. Use it or don't.",
         ]
     )
     return "\n".join(lines)
@@ -436,5 +127,4 @@ def design_prompt(project: GameProject) -> str:
 
 def generation_prompt(project: GameProject) -> str:
     """Everything a generator is owed before it writes the program."""
-    parts = [contract_prompt(), design_prompt(project), scenarios_prompt(project)]
-    return "\n\n".join(part for part in parts if part)
+    return "\n\n".join([contract_prompt(), design_prompt(project)])
