@@ -204,3 +204,16 @@ def test_draw_sprites_tolerates_an_artist_that_carries_no_raw_sheet(tmp_path: Pa
     assert asset_path.is_file()
     raw_path = asset_path.with_name(f"{asset_path.stem}.raw.png")
     assert not raw_path.is_file()
+
+
+def test_a_v3_document_is_refused_with_a_message_that_says_what_to_do(tmp_path):
+    from llmz80.studio.store import ProjectStore
+
+    path = tmp_path / "old" / "game.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text("schema_version: 3\nmetadata: {}\n", encoding="utf-8")
+    with pytest.raises(ValueError) as error:
+        ProjectStore(tmp_path).load(path)
+    message = str(error.value)
+    assert "schema version 3" in message
+    assert "v4" in message
