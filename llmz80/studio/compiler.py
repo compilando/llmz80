@@ -16,12 +16,11 @@ from llmz80.utils.config import load_config
 
 from .acceptance import blitter_sprites, generation_prompt
 from .codegen import (
-    SUPPORTED_ROLES,
     library_sources,
-    playfield,
     render_config_header,
     render_state_header,
 )
+from .structure import playfield
 from .models import GameProject, TargetPlatform, VideoMode
 from .probes import write_probe_report
 from .sprite_header import render_sprite_header, render_sprite_source
@@ -49,9 +48,9 @@ from .spriting import PackedSprite, is_blitter_sprite, pack_cpc, pack_spectrum
 #: these same four pen indices too, since no more hardware pens are actually
 #: set). Real per-design colour selection belongs to a later task.
 CPC_DEFAULT_PALETTE: list[tuple[int, int, int]] = [
-    (0, 0, 0),        # HW_BLACK
-    (0, 0, 255),      # HW_BLUE
-    (255, 255, 0),    # HW_BRIGHT_YELLOW
+    (0, 0, 0),  # HW_BLACK
+    (0, 0, 255),  # HW_BLUE
+    (255, 255, 0),  # HW_BRIGHT_YELLOW
     (255, 255, 255),  # HW_WHITE
 ]
 
@@ -84,27 +83,24 @@ def program_sources(project: GameProject, project_dir: Path) -> list[Path]:
 def validate_design_fits_target(project: GameProject) -> None:
     """Refuse designs the target machine cannot show, whoever writes the code.
 
-    This is about the hardware, not about any particular program: a level wider
-    than the character grid cannot be drawn however the program is written.
+    This is about the hardware and nothing else: a screen wider than the
+    character grid cannot be drawn however the program is written. What kinds
+    of entity a design invents is not this function's business, and used to be.
     """
-    unsupported: list[str] = []
-    unknown = sorted({entity.role for entity in project.entities} - SUPPORTED_ROLES)
-    if unknown:
-        unsupported.append("unsupported entity roles: " + ", ".join(unknown))
     columns, rows = playfield(project)
-    for level in project.levels:
-        if level.width > columns or level.height > rows:
-            unsupported.append(
-                f"level {level.id} is {level.width}x{level.height} but "
-                f"{project.target.video_mode.value} offers {columns}x{rows} playable cells"
-            )
+    unsupported = [
+        f"screen {screen.id} is {screen.width}x{screen.height} but "
+        f"{project.target.video_mode.value} offers {columns}x{rows} playable cells"
+        for screen in project.screens
+        if screen.width > columns or screen.height > rows
+    ]
     if unsupported:
         raise ValueError("this design does not fit the target: " + "; ".join(unsupported))
 
 
 #: Share of `budgets.static_data_bytes` that packed sprites may occupy. The
 #: rest of that budget is not free once sprites.h exists -- it is what the
-#: program's own tables, the level grids the program writer embeds, and
+#: program's own tables, the screen grids the program writer embeds, and
 #: generated headers like game_config.h still have to fit in, and none of
 #: those are visible here to size precisely. A 50/50 split is a deliberately
 #: simple, conservative default: it leaves sprites genuine room (the 2 KB
@@ -140,7 +136,7 @@ def validate_sprite_budget(project: GameProject, packed_sprites: dict[str, Packe
             f"packed sprites are {sprite_bytes} bytes but the sprite budget is "
             f"{sprite_budget} bytes -- {int(SPRITE_STATIC_DATA_SHARE * 100)}% of the "
             f"{project.budgets.static_data_bytes} byte budgets.static_data_bytes, the rest "
-            "reserved for the program's own tables, level grids and generated config that "
+            "reserved for the program's own tables, screen grids and generated config that "
             "share the same budget. Drop a frame or an entity, or raise static_data_bytes."
         )
 
@@ -200,8 +196,10 @@ def sprite_usage_errors(project: GameProject, sources: dict[str, str]) -> list[s
     or a string the program happens to print, cannot satisfy it. It is
     cheap and deterministic, and it is also shallow on purpose -- proving a
     sprite reached the screen needs the emulator, the way
-    `feel.animation_report` and the acceptance scenarios already do for the
-    claims only runtime evidence can settle. What this cannot catch: a call
+    `feel.animation_report` does for the claims only runtime evidence can
+    settle. (The acceptance scenarios this once leaned on for the same kind
+    of proof are gone in this schema -- deriving them is deferred to phase 2,
+    see `acceptance.runtime_script`.) What this cannot catch: a call
     inside dead code (an `if (0)`, a branch the scripted acceptance inputs
     never take, a function nothing calls). That is a real gap, but it is the
     same gap every other capability check in
@@ -278,7 +276,7 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
     for piece in library_sources(project):
         shutil.copy2(piece, source_dir / piece.name)
     (source_dir / "game_config.h").write_text(render_config_header(project), encoding="utf-8")
-    (source_dir / "game_state.h").write_text(render_state_header(), encoding="utf-8")
+    (source_dir / "game_state.h").write_text(render_state_header(project), encoding="utf-8")
 
     # sprites.h is written unconditionally -- render_sprite_header({}) is a
     # valid, SPRITE_COUNT-0 header, and every project's platform.c includes
@@ -347,12 +345,11 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
     if (project_dir / "game.yml").exists():
         shutil.copy2(project_dir / "game.yml", design / "game.yml")
     manifest = {
-        "schema_version": 3,
-        "source_of_truth": "game.yml for the design, "
-        f"{project.program_dir}/ for the program",
+        "schema_version": 4,
+        "source_of_truth": "game.yml for the design, " f"{project.program_dir}/ for the program",
         "generated": False,
         "target": project.target.platform.value,
-        "genre": project.genre,
+        "screens": len(project.screens),
         "library": sorted(path.name for path in library_sources(project)),
         "written_headers": ["game_config.h", "game_state.h"],
         "program": sorted(path.name for path in owned),
@@ -367,7 +364,11 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
             {
                 "schema_version": 2,
                 "platform": project.target.platform.value,
-                "archetype": project.genre,
+                # No "archetype" here: that was v3's genre in another spelling,
+                # read only by the pre-Studio pipeline's SemanticValidator and
+                # runtime_contracts (llmz80.core), which Studio's build_project
+                # never calls -- see build_quality.build_report, which reads
+                # only this file's "budgets" key. v4 has no genre to report.
                 "budgets": {
                     "program_binary_bytes": project.budgets.binary_bytes,
                     "static_data_bytes": project.budgets.static_data_bytes,
