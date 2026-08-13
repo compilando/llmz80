@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -13,7 +14,7 @@ from llmz80.core.project_mode import create_project_layout
 from llmz80.core.build_quality import build_report, select_fresh_artifact, write_build_report
 from llmz80.utils.config import load_config
 
-from .acceptance import generation_prompt
+from .acceptance import blitter_sprites, generation_prompt
 from .codegen import (
     SUPPORTED_ROLES,
     library_sources,
@@ -142,6 +143,93 @@ def validate_sprite_budget(project: GameProject, packed_sprites: dict[str, Packe
             "reserved for the program's own tables, level grids and generated config that "
             "share the same budget. Drop a frame or an entity, or raise static_data_bytes."
         )
+
+
+#: Matches a `//` remark, a `/* ... */` block, or a quoted string/char
+#: literal, so `sprite_usage_errors` can blank each out before searching for
+#: a real call -- a comment or string that merely mentions `plat_sprite` is
+#: not a call to it. `re.DOTALL` lets the block-comment branch span lines;
+#: `.count("\n")` in the substitution keeps line numbers meaningless here
+#: (nothing downstream reports a line) but keeps the code roughly the same
+#: length, which costs nothing and avoids joining two real statements that
+#: happened to sit either side of a stripped comment.
+_COMMENT_OR_STRING_RE = re.compile(
+    r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\n]*|/\*.*?\*/', re.DOTALL
+)
+
+#: A call to `plat_sprite`, the one function `resources/studio_lib/*/platform.c`
+#: exposes for drawing an entity's art (see `platform.h`'s declaration and
+#: `acceptance.py`'s "Sprites:" prompt line, which tells the writer this exact
+#: name). Matched with a word boundary and an open paren so a substring like
+#: `my_plat_sprite_helper(` does not count.
+_SPRITE_CALL_RE = re.compile(r"\bplat_sprite\s*\(")
+
+
+def _blanked(code: str) -> str:
+    """`code` with every comment and string/char literal replaced by blanks."""
+    return _COMMENT_OR_STRING_RE.sub(lambda match: "\n" * match.group(0).count("\n"), code)
+
+
+def sprite_usage_errors(project: GameProject, sources: dict[str, str]) -> list[str]:
+    """Refuse a program that has drawable sprites and never draws with any of them.
+
+    A real end-to-end run exposed exactly this gap: a project with three
+    generated sprites, a writing prompt that named each one by its
+    `SPRITE_<ID>` constant and told the model to draw actors with
+    `plat_sprite`, and an accepted program that called `plat_cell` seven
+    times and `plat_sprite` zero. Nothing in the existing gates catches
+    that -- the build compiles, the acceptance scenarios read state the
+    program updates without ever putting the sprite on screen, and the
+    animation gate (`feel.animation_report`) correctly abstains rather than
+    fail when `g_anim_frame` was never declared, because abstaining is the
+    only honest answer for a target (the CPC) whose emulator cannot read
+    memory at all. This check is not that gate and does not touch its rule;
+    it is the narrower, source-level fact that a project which *has* sprites
+    the blitter would accept (`spriting.is_blitter_sprite`, via
+    `acceptance.blitter_sprites` -- the one place that question is answered,
+    see that function's own docstring) and a program that never once calls
+    the function named to draw them are not a game that used its art.
+
+    `sources` is the program's own files only (name -> body), never the
+    library Studio copies in beside them: `resources/studio_lib/*/platform.c`
+    both declares and calls `plat_sprite` internally, so scanning it would
+    make this check pass unconditionally and catch nothing.
+
+    Strictness: this is a source-level grep, after blanking out comments and
+    string literals (`_blanked`) so a remark that merely mentions the name,
+    or a string the program happens to print, cannot satisfy it. It is
+    cheap and deterministic, and it is also shallow on purpose -- proving a
+    sprite reached the screen needs the emulator, the way
+    `feel.animation_report` and the acceptance scenarios already do for the
+    claims only runtime evidence can settle. What this cannot catch: a call
+    inside dead code (an `if (0)`, a branch the scripted acceptance inputs
+    never take, a function nothing calls). That is a real gap, but it is the
+    same gap every other capability check in
+    `llmz80.core.semantic_validation.SemanticValidator` already accepts (its
+    frame-pacing and input checks are the same kind of "is the call present"
+    grep) rather than a new one invented here, and closing it needs the same
+    machinery the animation gate uses, not a second copy of it.
+
+    `g_anim_frame` is deliberately not required here. Whether the art
+    animates is the animation gate's question, already answered correctly
+    (including its abstain-on-CPC rule, which this must not disturb); whether
+    the art is drawn at all is this one. A design can legitimately have a
+    single-frame sprite that never animates, and conflating the two would
+    make this check fail designs the animation gate was never meant to
+    reject.
+    """
+    sprites = blitter_sprites(project)
+    if not sprites:
+        return []
+    code = "\n".join(_blanked(body) for body in sources.values())
+    if _SPRITE_CALL_RE.search(code):
+        return []
+    names = ", ".join(f"SPRITE_{asset.id.upper()}" for asset in sprites)
+    return [
+        f"this design has sprites ({names}) packed into sprites.h, but the program "
+        "never calls plat_sprite -- draw at least one entity with "
+        "plat_sprite(col, row, sprite, frame) instead of only plat_cell."
+    ]
 
 
 def render_project(project: GameProject, output_dir: Path) -> SourceResult:
@@ -302,7 +390,8 @@ def build_project(
     output_dir = output_dir.expanduser().resolve()
     if not (output_dir / "main.c").exists():
         render_project(project, output_dir)
-    if not program_sources(project, output_dir.parent):
+    owned = program_sources(project, output_dir.parent)
+    if not owned:
         # Without this the toolchain reports "undefined symbol: _main", which
         # says nothing about the project actually being empty.
         raise FileNotFoundError(
@@ -310,8 +399,33 @@ def build_project(
             f"{project.program_dir}/, or run `llmz80 project write` to have them "
             f"written. The contract they must satisfy is in build/CONTRACT.md"
         )
-    config = load_config(str(config_path))
     platform = project.target.platform.value
+    sprite_errors = sprite_usage_errors(
+        project, {path.name: path.read_text(encoding="utf-8") for path in owned}
+    )
+    if sprite_errors:
+        # Refused without spending a compile: the toolchain has nothing to add
+        # to a fact already visible in the sources, and `build_report` is
+        # reused rather than hand-shaped so this refusal is a `quality_pass:
+        # False` build report exactly like any other, which is what carries
+        # it into `generator.repair_prompt`'s "THE BUILD FAILED" section --
+        # the writer sees it and gets another attempt, instead of the whole
+        # repair loop crashing on an uncaught exception.
+        report = build_report(
+            platform=platform,
+            output_dir=output_dir,
+            command=[],
+            return_code=1,
+            stdout="",
+            stderr="\n".join(sprite_errors),
+            artifacts=[],
+        )
+        report["stdout"] = ""
+        report["stderr"] = "\n".join(sprite_errors)
+        report["sprite_usage_errors"] = sprite_errors
+        write_build_report(report, output_dir / "build_report.json")
+        return BuildResult(output_dir=output_dir, success=False, artifact=None, report=report)
+    config = load_config(str(config_path))
     cpct_path = None
     if platform == "spectrum":
         compiler = config.get("compiler", {}).get("spectrum", {})
