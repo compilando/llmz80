@@ -14,12 +14,14 @@ import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
+from image_utils import _clean_image
 from llmz80.studio.models import GameProject, GenreId, TargetPlatform, VideoMode
 from llmz80.studio.packs import create_default_project
 from llmz80.studio.reference import GameReference, ReferenceSource
 from llmz80.studio.sprite_artist import (
     BACKGROUND_TOLERANCE,
     FRAMES_PER_SHEET,
+    HALO_TOLERANCE,
     MAX_DRAW_ATTEMPTS,
     REQUEST_HEIGHT,
     REQUEST_WIDTH,
@@ -27,8 +29,11 @@ from llmz80.studio.sprite_artist import (
     SHEET_WIDTH,
     TECHNICAL_REQUIREMENTS_HEADING,
     SpriteArtist,
+    _binarize_against_background,
+    _detect_background,
     _fit_to_frame,
     _frame_from_column,
+    _key_out_background,
     _sheet_columns,
     compose_prompt,
 )
@@ -46,6 +51,26 @@ from llmz80.studio.spriting import SPRITE_SIZE, pack_cpc, pack_spectrum
 #: code, because the noise a real model leaves behind (compression artefacts,
 #: near-white and near-black outliers) is part of what the fix has to survive.
 _FIXTURE_SHEET = Path(__file__).parent / "fixtures" / "sprite_sheet_running_figure.png"
+
+#: One real column, cropped straight out of the `hero.raw.png` sheet a real
+#: run against *Abu Simbel Profanation* produced -- the actual response that
+#: exposed the halo defect `_binarize_against_background` fixes (see its
+#: docstring and `HALO_TOLERANCE`'s), not a hand-drawn stand-in for one. The
+#: detected background here is (70, 70, 71) -- the model drew on grey, not
+#: the pure white the prompt asked for, a separate, already-fixed defect
+#: (`_detect_background`) -- and the figure fades into it through a broad,
+#: soft vignette rather than a hard edge: exactly the "no anti-aliasing"
+#: violation this fixture exists to prove the fix survives.
+_HALOED_HERO_COLUMN = Path(__file__).parent / "fixtures" / "sprite_sheet_haloed_hero_column.png"
+
+#: One real column, cropped out of the same run's `enemy.raw.png` sheet --
+#: the sprite the module docstring already calls out as "genuinely good",
+#: whose thin limbs are the real risk `HALO_TOLERANCE` has to respect: a
+#: threshold generous enough to discount `hero`'s halo but careless with a
+#: thin, low-contrast limb edge would trade one bad sprite for another.
+_ENEMY_THIN_LIMB_COLUMN = (
+    Path(__file__).parent / "fixtures" / "sprite_sheet_enemy_thin_limb_column.png"
+)
 
 
 def _dark_background_sheet() -> Image.Image:
@@ -192,6 +217,20 @@ def _column_with_object(
     image = Image.new("RGBA", size, (255, 255, 255, 255))
     ImageDraw.Draw(image).rectangle(box, fill=colour)
     return image
+
+
+def _old_frame_from_column(column: Image.Image) -> Image.Image:
+    """`_frame_from_column` exactly as it read before `_binarize_against_background`
+    existed: `_clean_image` runs straight on the raw column, with no halo
+    discounted first. Kept here, reconstructed rather than imported, only so
+    the halo tests below can show the defect the fix replaced is still
+    reachable to compare against -- not as a second implementation anything
+    else depends on.
+    """
+    background = _detect_background(column, BACKGROUND_TOLERANCE)
+    cleaned = _clean_image(column, background_color=background, tolerance=BACKGROUND_TOLERANCE)
+    fitted = _fit_to_frame(cleaned, SPRITE_SIZE, background, reference_width=column.width)
+    return _key_out_background(fitted, background, BACKGROUND_TOLERANCE)
 
 
 def _opaque_bbox(frame: Image.Image) -> tuple[int, int] | None:
@@ -792,6 +831,86 @@ def test_a_sprite_touching_its_frame_edge_is_not_destroyed_by_background_detecti
             f"frame {index}: the pixels touching the frame's own bottom edge must "
             "remain part of the figure, not be keyed away as background"
         )
+
+
+# --- Discounting an anti-aliased halo before `_clean_image` sees it --------
+#
+# A real run against *Abu Simbel Profanation* left `hero`'s sheet with a
+# soft, out-of-spec halo around the drawn figure -- a vignette fading
+# gradually from the detected background toward the figure, in violation of
+# `_technical_constraints`'s explicit "no anti-aliasing" line. `_clean_image`
+# (see `image_utils.py`) counts every pixel that differs from the detected
+# background by more than `BACKGROUND_TOLERANCE` as figure, and keeps the
+# *bounding box* of whatever connected region that produces -- so a halo
+# wide enough to keep differing from background past that tolerance, all the
+# way to a frame's edge, drags the bounding box out to the full column width
+# even though the actually-drawn pose is far narrower. Fitting a box that
+# wide into `SPRITE_SIZE` leaves a bar, not a figure.
+# `_binarize_against_background` is the fix: snap everything within
+# `HALO_TOLERANCE` of the background to that exact colour before
+# `_clean_image` ever runs, so a halo that would have dragged the bounding
+# box out no longer can -- while a threshold `HALO_TOLERANCE` genuinely
+# comfortably clears (a limb drawn, like the rest of a compliant sheet, at
+# full contrast) survives untouched.
+
+
+def test_binarizing_a_haloed_column_tightens_the_bounding_box_the_old_path_left_wide():
+    """The core regression test for the `hero` defect: run the same real,
+    haloed column through the pre-fix path (`_clean_image` straight on the
+    raw column, exactly what `_frame_from_column` did before this fix) and
+    through the new one (`_binarize_against_background` first), and compare
+    the bounding boxes `_clean_image` crops to.
+
+    The old path is reconstructed here, not imported, because it no longer
+    exists as its own function -- `_frame_from_column` *is* the fix now (see
+    its docstring). Rebuilding the two calls it used to make is what lets
+    this test show the old behaviour is still there to compare against, not
+    just assert a number against the current code's own output.
+    """
+    column = Image.open(_HALOED_HERO_COLUMN).convert("RGB")
+    background = _detect_background(column, BACKGROUND_TOLERANCE)
+
+    old_cleaned = _clean_image(column, background_color=background, tolerance=BACKGROUND_TOLERANCE)
+    binarized = _binarize_against_background(column, background, HALO_TOLERANCE)
+    new_cleaned = _clean_image(binarized, background_color=background, tolerance=BACKGROUND_TOLERANCE)
+
+    assert old_cleaned.width == column.width, (
+        "sanity check on the fixture itself: the old path must still reproduce the "
+        f"known defect (a bounding box as wide as the column, {column.width}px) -- got "
+        f"{old_cleaned.width}px; the fixture may no longer carry a real halo"
+    )
+    assert new_cleaned.width < old_cleaned.width, (
+        f"binarizing first should tighten the bounding box the old path left at "
+        f"{old_cleaned.size}; got {new_cleaned.size}, no narrower"
+    )
+    assert new_cleaned.width * new_cleaned.height < old_cleaned.width * old_cleaned.height
+
+
+def test_a_thin_limb_survives_the_halo_threshold():
+    """`HALO_TOLERANCE`'s other side: a real sprite with genuine thin limbs
+    (the module docstring's `enemy` -- "four recognisable humanoid creature
+    silhouettes with posture and limbs") must come through
+    `_binarize_against_background` essentially unchanged, not eroded the way
+    a too-aggressive threshold would erode exactly this kind of thin,
+    lower-contrast detail.
+
+    Compares the same real column's old- and new-path opaque counts, both
+    carried all the way through fitting and keying (`_old_frame_from_column`
+    vs `_frame_from_column`) so the two are measured on equal footing. The
+    bound is tight -- within 2 pixels, not just "still nonzero" -- because a
+    threshold that quietly ate half a limb would still pass a weaker check;
+    on the real fixture the two paths in fact differ by exactly one pixel.
+    """
+    column = Image.open(_ENEMY_THIN_LIMB_COLUMN).convert("RGB")
+
+    old_count = int((np.asarray(_old_frame_from_column(column))[..., 3] >= 128).sum())
+    new_count = int((np.asarray(_frame_from_column(column))[..., 3] >= 128).sum())
+
+    assert new_count > 0, "the limb-bearing figure must survive as a real silhouette"
+    assert abs(new_count - old_count) <= 2, (
+        f"a thin limb must not be eaten by the halo threshold: old path kept "
+        f"{old_count} opaque pixels once fitted and keyed, new path kept {new_count}"
+    )
 
 
 # --- Fitting a cleaned pose into its 16x16 frame without distorting it ------

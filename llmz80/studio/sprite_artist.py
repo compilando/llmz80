@@ -135,6 +135,41 @@ SHEET_HEIGHT = SPRITE_SIZE
 BACKGROUND_COLOR = (255, 255, 255)
 BACKGROUND_TOLERANCE = 10
 
+#: How far a pixel may differ from the detected background before
+#: `_binarize_against_background` still treats it as background, discounting
+#: an anti-aliased halo rather than letting `_clean_image` count it as
+#: figure. Deliberately not `BACKGROUND_TOLERANCE`: that constant is tuned
+#: for exact-colour keying -- compression noise on an otherwise flat
+#: background, the kind `tests/fixtures/sprite_sheet_running_figure.png`
+#: (a compliant, hard-edged response) carries a little of even where the
+#: prompt was obeyed -- and a real haloed response blows straight past it.
+#: The *Abu Simbel Profanation* `hero` sheet (see the module docstring) is
+#: the real failure this constant exists for: its detected background sits
+#: at (70, 70, 71), only 71 units of maximum per-channel difference away
+#: from the figure's pure black, and its halo -- a soft vignette, not a
+#: crisp edge -- fills that entire gap gradually. A per-column histogram of
+#: that difference shows why 40 and not some other number: counts climb
+#: through the noise band under 15 (compression grain, same shape as the
+#: compliant fixture's), rise again through a broad hump from roughly 16 to
+#: 49 (thousands of halo pixels, the gradient itself), then fall to a sparse
+#: trickle from 50 to 69 (a few dozen to a couple hundred pixels per value --
+#: the halo's faint tail, already thin), before spiking at 70-71 into tens
+#: of thousands of pixels (the figure's own solid interior, uniformly at
+#: maximum contrast because it is drawn as flat, unblended black). 40 sits
+#: inside the hump, past the noise band and short of the sparse tail --
+#: comfortably past what compression grain or a `BACKGROUND_TOLERANCE`-sized
+#: edge could produce, without reaching into the valley where real content
+#: starts costing something.
+#:
+#: What a too-aggressive choice eats was checked directly, not assumed:
+#: raising this past roughly 60 starts silently shortening the `hero`
+#: sheet's second frame -- its cleaned crop drops from 561px tall to 403px,
+#: losing the lower leg the same way a thin limb would be lost, because a
+#: limb this pipeline never asked the model to draw with any less contrast
+#: than its torso is, once drawn, exactly as far from the background as a
+#: faint halo edge is. 40 leaves a wide margin below that break.
+HALO_TOLERANCE = 40
+
 #: How many times `SpriteArtist.draw_frames` will ask the model again after a
 #: judged failure (see `_judge_frames`) before giving up. Set against its two
 #: siblings, not picked in isolation: `generator.write_program` gets five
@@ -549,23 +584,87 @@ def _fit_to_frame(
     return canvas
 
 
+def _binarize_against_background(
+    column: Image.Image,
+    background_color: tuple[int, int, int],
+    tolerance: int = HALO_TOLERANCE,
+) -> Image.Image:
+    """Snap every pixel of `column` within `tolerance` of `background_color`
+    to that exact colour, before `_clean_image` ever sees the column --
+    the fix for the defect that made the *Abu Simbel Profanation* run's
+    `hero` sheet pack as a vertical bar instead of a figure (see the module
+    docstring and `HALO_TOLERANCE`'s).
+
+    `_clean_image` (see `image_utils.py`) keeps the single largest connected
+    component whose pixels differ from `background_color` by more than its
+    own, much smaller `tolerance` (`BACKGROUND_TOLERANCE`, tuned for
+    near-exact colour matching -- see its own docstring), and crops to that
+    component's bounding box. `_technical_constraints` asks the model for
+    hard pixel edges and nothing behind the figure but flat background, so
+    under a compliant response every pixel is either background or figure
+    and that bounding box is the figure's true extent. A response that
+    violates that -- a soft anti-aliasing halo, a vignette fading gradually
+    from background toward the figure -- leaves a ring of pixels that are
+    neither: too far from `background_color` for `_clean_image`'s tolerance
+    to exclude, so they join the figure's connected component and drag its
+    bounding box out to wherever the gradient happens to fade below that
+    tolerance, which for a soft-enough halo can be most of the column.
+    Fitting a bounding box that wide into `SPRITE_SIZE` leaves a bar, not a
+    figure -- the pipeline doing exactly what `_fit_to_frame` promises with
+    the wrong input, not a bug in fitting itself.
+
+    This function is what makes that bounding box trustworthy again,
+    without touching `_clean_image`'s own tolerance -- which stays at
+    `BACKGROUND_TOLERANCE` everywhere else in this module, keyed against
+    the *fixture* `test_a_sprite_touching_its_frame_edge_is_not_destroyed_by_background_detection`
+    already depends on it protecting: a figure that only grazes its frame's
+    edge. Snapping halo pixels to the exact background colour first, at the
+    wider `HALO_TOLERANCE`, means `_clean_image` never has to be told to
+    tolerate more -- every pixel it sees is already either exactly
+    `background_color` (diff 0, always excluded, whatever its own tolerance
+    is) or a pixel this function judged genuinely too far from background to
+    be halo (necessarily further than `BACKGROUND_TOLERANCE` too, since
+    `HALO_TOLERANCE` is the larger of the two), so the two tolerances never
+    have to be reconciled against each other -- only `background_color`
+    itself does the double duty, threaded through both calls the same way
+    `_frame_from_column` already threads it through `_fit_to_frame` and
+    `_key_out_background`.
+
+    Run once, on the raw column, ahead of `_clean_image`: cleaning first and
+    binarizing the crop after would already have let the halo inflate the
+    bounding box `_clean_image` crops to, which is the one thing this
+    function exists to prevent.
+    """
+    rgb = np.asarray(column.convert("RGB"))
+    bg = np.asarray(background_color, dtype=np.int16)
+    diff = np.abs(rgb.astype(np.int16) - bg)
+    is_background = np.all(diff <= tolerance, axis=-1)
+    binarized = rgb.copy()
+    binarized[is_background] = np.asarray(background_color, dtype=np.uint8)
+    return Image.fromarray(binarized, mode="RGB")
+
+
 def _frame_from_column(column: Image.Image) -> Image.Image:
     """One raw sheet column, reduced to the real, final 16x16 RGBA frame.
 
     Detecting the background once per column (`_detect_background`) and
-    threading that same colour through `_clean_image` -- which needs it to
-    isolate the drawn pose -- `_fit_to_frame` -- which needs it to pad
-    whatever margin is left once the pose is scaled without distortion --
-    and `_key_out_background` -- which needs it to key that pose's
-    background to alpha 0 -- is what keeps the three decisions from
-    disagreeing with each other, the way a caller passing a fixed white to
-    one and something else to the others could. `column.width` is threaded
-    through too, as `_fit_to_frame`'s `reference_width` -- see its docstring
-    for why the column this pose was cut from, not just the pose's own crop,
-    is what decides how big the pose should end up looking.
+    threading that same colour through `_binarize_against_background` --
+    which needs it to tell a soft halo from the figure it surrounds, before
+    `_clean_image` ever sees either (see that function's docstring) --
+    `_clean_image` -- which needs it to isolate the drawn pose -- `_fit_to_frame`
+    -- which needs it to pad whatever margin is left once the pose is scaled
+    without distortion -- and `_key_out_background` -- which needs it to key
+    that pose's background to alpha 0 -- is what keeps all four decisions
+    from disagreeing with each other, the way a caller passing a fixed white
+    to one and something else to the others could. `column.width` is
+    threaded through too, as `_fit_to_frame`'s `reference_width` -- see its
+    docstring for why the column this pose was cut from, not just the
+    pose's own crop, is what decides how big the pose should end up
+    looking.
     """
     background = _detect_background(column, BACKGROUND_TOLERANCE)
-    cleaned = _clean_image(column, background_color=background, tolerance=BACKGROUND_TOLERANCE)
+    binarized = _binarize_against_background(column, background, HALO_TOLERANCE)
+    cleaned = _clean_image(binarized, background_color=background, tolerance=BACKGROUND_TOLERANCE)
     fitted = _fit_to_frame(cleaned, SPRITE_SIZE, background, reference_width=column.width)
     return _key_out_background(fitted, background, BACKGROUND_TOLERANCE)
 
