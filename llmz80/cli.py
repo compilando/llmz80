@@ -46,6 +46,21 @@ def _openai_client_and_model() -> tuple[object, str]:
     return OpenAI(api_key=load_api_key()), model
 
 
+def _openai_image_model() -> str:
+    """Resolve the configured OpenAI image model.
+
+    Kept separate from `_openai_client_and_model`: that function's "model" is
+    the text/reasoning model three unrelated subcommands share, and reading
+    the two out of the same call would make a caller that wants one always
+    pay for looking up the other. `config.yml`'s `openai.image_model`
+    defaults to `gpt-image-1` there already; the fallback here only matters
+    for a config.yml that predates that key.
+    """
+    from llmz80.utils.config import load_config
+
+    return load_config("config.yml").get("openai", {}).get("image_model", "gpt-image-1")
+
+
 def _sprite_preview_array(sheet, args: SimpleNamespace):
     """A palette-index grid `image_utils.display_sprite` can render.
 
@@ -311,7 +326,7 @@ def _project_command(arguments: list[str]) -> int:
         print("Drawing sprites with OpenAI's image API; this calls the OpenAI API.")
         from generators.openai_generator import OpenAIImageGenerator
 
-        artist = SpriteArtist(OpenAIImageGenerator(api_key=client.api_key))
+        artist = SpriteArtist(OpenAIImageGenerator(api_key=client.api_key, model=_openai_image_model()))
         try:
             drawn = service.draw_sprites(project, directory, artist)
         except ValueError as exc:

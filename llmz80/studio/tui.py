@@ -892,15 +892,19 @@ class StudioApp(App[None]):
             if artist is None:
                 from generators.openai_generator import OpenAIImageGenerator
 
-                from ..cli import _openai_client_and_model
+                from ..cli import _openai_client_and_model, _openai_image_model
                 from .sprite_artist import SpriteArtist
 
                 # `OpenAIImageGenerator` takes an API key, not a client --
                 # `llmz80 project sprites` reads it off the client
                 # `_openai_client_and_model` already built rather than
-                # loading it a second time, and this does the same.
+                # loading it a second time, and this does the same; the
+                # image model comes from `_openai_image_model` for the same
+                # reason `llmz80 project sprites` does.
                 client, _model = _openai_client_and_model()
-                artist = SpriteArtist(OpenAIImageGenerator(api_key=client.api_key))
+                artist = SpriteArtist(
+                    OpenAIImageGenerator(api_key=client.api_key, model=_openai_image_model())
+                )
             drawn = self.service.draw_sprites(project, directory, artist)
             self._drawn_sprites = drawn
             if not drawn:

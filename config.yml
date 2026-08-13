@@ -7,6 +7,10 @@ openai:
   # Reasoning effort: minimal | low | medium | high | xhigh (only used by reasoning models)
   reasoning_effort: medium
   embedding_model: text-embedding-3-small
+  # Sprite sheets are quantized down to 16x16 frames for 8-bit hardware, so
+  # this needs a model that actually obeys "no anti-aliasing, blocky pixels" --
+  # dall-e-3 does not. gpt-image-1 does; see generators/openai_generator.py.
+  image_model: gpt-image-1
 
 examples:
   max_examples: 8
