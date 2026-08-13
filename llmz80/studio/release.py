@@ -46,8 +46,7 @@ def export_release(project: GameProject, directory: Path, destination: Path | No
     notes = (
         f"{project.metadata.title}\n"
         f"Target: {project.target.platform.value}\n"
-        f"Genre: {project.genre}\n"
-        f"Levels: {project.gameplay.level_count}\n"
+        f"Screens: {len(project.screens)}\n"
         "Built and runtime-verified by LLMZ80 Studio.\n"
     ).encode("utf-8")
     entries["RELEASE_NOTES.txt"] = notes
