@@ -2,9 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from llmz80.studio.editing import set_entity_behaviour
 from llmz80.studio.generator import writing_prompt
-from llmz80.studio.models import TargetPlatform
+from llmz80.studio.models import GameProject, TargetPlatform
 from llmz80.studio.samples import blank_project
 from llmz80.studio.retrieval import (
     MAX_EXAMPLE_CHARS,
@@ -20,19 +19,15 @@ def project():
     return blank_project("Retrieved", TargetPlatform.SPECTRUM)
 
 
-def test_the_query_describes_the_design_not_the_title(project):
-    query = retrieval_query(project)
-
-    assert "maze chase" in query
-    assert "player" in query and "enemy" in query
-    assert "tile map walls" in query
-    assert project.metadata.title.lower() not in query
-
-
-def test_a_designed_behaviour_widens_the_query(project):
-    edited = set_entity_behaviour(project, "enemy", "chase")
-
-    assert "chase" in retrieval_query(edited)
+def test_the_retrieval_query_is_built_from_the_designs_own_words():
+    document = blank_project("Query", TargetPlatform.SPECTRUM).model_dump(mode="json")
+    document["metadata"]["brief"] = "laberinto de piedra"
+    document["mechanics"] = ["el jugador salta"]
+    document["entities"][0]["kind"] = "explorador"
+    query = retrieval_query(GameProject.model_validate(document))
+    assert "laberinto de piedra" in query
+    assert "explorador" in query
+    assert "salta" in query
 
 
 @pytest.mark.parametrize("platform", list(TargetPlatform))

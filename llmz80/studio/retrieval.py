@@ -12,7 +12,6 @@ from pathlib import Path
 from llmz80.core.example_catalog import ExampleCatalog
 
 from .models import GameProject
-from .packs import PACKS_BY_ID
 
 EXAMPLES_ROOT = Path(__file__).resolve().parents[2] / "examples"
 REFERENCE_ROOT = Path(__file__).resolve().parents[2] / "resources" / "studio_reference"
@@ -27,25 +26,21 @@ MAX_EXAMPLE_CHARS = 9000
 
 
 def retrieval_query(project: GameProject) -> str:
-    """Describe the design in the vocabulary the catalog indexes."""
-    roles = sorted({entity.role for entity in project.entities})
-    behaviours = sorted(
-        {entity.behaviour for entity in project.entities if entity.behaviour != "auto"}
-    )
-    pack = PACKS_BY_ID.get(project.genre)
+    """Describe the design in the vocabulary the catalog indexes.
+
+    Built from what the design says about itself -- its brief, its mechanics,
+    the kinds of actor it declares -- rather than from a typology's keywords,
+    which no longer exist to be looked up.
+    """
+    kinds = sorted({entity.kind for entity in project.entities})
     parts = [
         project.metadata.brief,
-        project.genre.replace("_", " "),
-        # The typology's own keywords describe the game in the corpus's terms,
-        # which its id rarely does: "breakout" retrieves less than "ball bat".
-        " ".join(pack.capabilities) if pack else "",
+        " ".join(project.mechanics),
         project.presentation.style,
         "keyboard input sprite movement collision score lives",
-        " ".join(roles),
-        " ".join(behaviours),
+        " ".join(kinds),
+        "tile map walls",
     ]
-    if any(level.tiles for level in project.levels):
-        parts.append("tile map walls")
     if project.audio.effects:
         parts.append("sound effects beeper")
     return " ".join(part for part in parts if part)
