@@ -54,7 +54,7 @@ def test_bindings_are_named_by_the_design_not_by_studio():
 
 
 def test_more_than_eight_bindings_do_not_fit_one_input_byte():
-    with pytest.raises(ValidationError, match="bindings"):
+    with pytest.raises(ValidationError, match="at most 8 items"):
         ControlsSpec(bindings={f"key{index}": "SPACE" for index in range(9)})
 
 
@@ -164,5 +164,6 @@ def test_the_removed_vocabulary_is_really_gone():
     import llmz80.studio.models as models
 
     for name in ("GenreId", "ProjectKind", "ProjectScope", "GameplaySpec",
-                 "LevelSpec", "AcceptanceScenario", "TILE_WALL", "TILE_FLOOR"):
+                 "LevelSpec", "AcceptanceScenario", "TILE_WALL", "TILE_FLOOR",
+                 "SceneKind", "AUDIO_EFFECTS"):
         assert not hasattr(models, name), f"{name} survives the v4 cut"

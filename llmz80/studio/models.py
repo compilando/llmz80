@@ -13,6 +13,7 @@ consistently and whether the result fits the machine.
 from __future__ import annotations
 
 import string
+from collections import Counter
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Annotated, Literal
@@ -42,12 +43,12 @@ ID_PATTERN = r"^[a-z][a-z0-9_]{0,31}$"
 #: because it doubles as a filesystem/URL-safe directory name.
 SLUG_PATTERN = r"^[a-z0-9][a-z0-9-]{0,47}$"
 
-#: An observable's C symbol: like an id, but fixed to the `g_` prefix the
-#: generated state contract expects.
+#: An observable's C symbol: the `g_` prefix the generated state contract
+#: expects, and unlike an id it has a floor of two characters after it.
 SYMBOL_PATTERN = r"^g_[a-z][a-z0-9_]{1,29}$"
 
-#: A control binding's name: like an id, but capped shorter since it is
-#: read back as a bit name in the input byte, not stored as data.
+#: A control binding's name: capped shorter than an id since it is read
+#: back as a bit name in the input byte, and floored at two characters.
 BINDING_PATTERN = r"^[a-z][a-z0-9_]{1,15}$"
 
 #: An asset source path: rooted under assets/, unlike an id, because it
@@ -56,8 +57,10 @@ PATH_PATTERN = r"^assets/[A-Za-z0-9_.-]+$"
 
 #: Key labels a binding may name. Kept small and machine-independent; the
 #: per-target scancode each one maps to lives in `codegen.KEY_CODES`.
-KEY_LABELS: tuple[str, ...] = tuple(string.ascii_uppercase) + tuple(string.digits) + (
-    "SPACE", "ENTER", "LEFT", "RIGHT", "UP", "DOWN"
+KEY_LABELS: tuple[str, ...] = (
+    tuple(string.ascii_uppercase)
+    + tuple(string.digits)
+    + ("SPACE", "ENTER", "LEFT", "RIGHT", "UP", "DOWN")
 )
 
 #: One input byte carries one bit per binding, so eight is the hard ceiling.
@@ -130,8 +133,8 @@ class ControlsSpec(StrictModel):
                     f"binding {name!r} names key {key!r}, which is not a "
                     "recognized key label (see KEY_LABELS)"
                 )
-        repeated = sorted({key for key in self.bindings.values()
-                           if list(self.bindings.values()).count(key) > 1})
+        counted = Counter(self.bindings.values())
+        repeated = sorted(key for key, times in counted.items() if times > 1)
         if repeated:
             raise ValueError("these keys are bound to more than one action: " + ", ".join(repeated))
         return self
@@ -207,8 +210,7 @@ class ScreenSpec(StrictModel):
     def validate_grid(self) -> "ScreenSpec":
         if len(self.tiles) != self.height:
             raise ValueError(
-                f"screen {self.id} declares height {self.height} "
-                f"but has {len(self.tiles)} rows"
+                f"screen {self.id} declares height {self.height} " f"but has {len(self.tiles)} rows"
             )
         for index, row in enumerate(self.tiles):
             if len(row) != self.width:
@@ -277,8 +279,7 @@ class AssetSpec(StrictModel):
     def validate_frames(self) -> "AssetSpec":
         if self.width % self.frames:
             raise ValueError(
-                f"{self.id}: a sheet {self.width} wide cannot hold "
-                f"{self.frames} whole frames"
+                f"{self.id}: a sheet {self.width} wide cannot hold " f"{self.frames} whole frames"
             )
         return self
 
@@ -309,12 +310,10 @@ class GameProject(StrictModel):
     screens: list[ScreenSpec] = Field(min_length=1, max_length=64)
     initial_screen: str = Field(pattern=ID_PATTERN)
     scenes: list[SceneSpec] = Field(min_length=2, max_length=16)
-    initial_scene: str = "title"
+    initial_scene: str = Field(default="title", pattern=ID_PATTERN)
     audio: AudioSpec = Field(default_factory=AudioSpec)
     assets: list[AssetSpec] = Field(default_factory=list, max_length=32)
-    program_dir: str = Field(
-        default="program", pattern=r"^[A-Za-z0-9_][A-Za-z0-9_./-]{0,63}$"
-    )
+    program_dir: str = Field(default="program", pattern=r"^[A-Za-z0-9_][A-Za-z0-9_./-]{0,63}$")
 
     @model_validator(mode="after")
     def validate_structure(self) -> "GameProject":
