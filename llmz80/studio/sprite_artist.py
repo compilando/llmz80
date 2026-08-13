@@ -47,6 +47,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 
 from generators.base import BaseImageGenerator
@@ -75,6 +76,18 @@ REQUEST_HEIGHT = REQUEST_FRAME_SIZE
 #: docstring) -- it names the same total, reached one column at a time.
 SHEET_WIDTH = FRAMES_PER_SHEET * SPRITE_SIZE
 SHEET_HEIGHT = SPRITE_SIZE
+
+#: The background colour and match tolerance every `resources/sprite_prompt_*.txt`
+#: template asks the model for -- see e.g. `sprite_prompt_spectrum.txt`'s "pure
+#: white background (RGB 255,255,255)" and `sprite_prompt_generic.txt`'s "100%
+#: solid white". `image_utils._clean_image` already uses this exact pair
+#: (they are its own defaults) to decide what counts as background when
+#: isolating a pose from the sheet; `_key_out_background` below reuses the
+#: same numbers for the same decision, so "background" means one thing
+#: across both steps instead of two thresholds that could quietly drift
+#: apart.
+BACKGROUND_COLOR = (255, 255, 255)
+BACKGROUND_TOLERANCE = 10
 
 #: Prompt templates, one per target/mode, live beside the other Studio
 #: resources (`resources/genres.yml`, `resources/studio_lib`, ...). Each
@@ -142,6 +155,80 @@ def compose_prompt(
     return "\n\n".join([body, sheet, _style_context(project, entity, dossier)])
 
 
+def _key_out_background(
+    frame: Image.Image,
+    background_color: tuple[int, int, int] = BACKGROUND_COLOR,
+    tolerance: int = BACKGROUND_TOLERANCE,
+) -> Image.Image:
+    """Turn a frame's white background transparent, and leave its drawn
+    pixels opaque.
+
+    This is the fix for the defect that made every packed sprite a solid
+    16x16 block: `gpt-image-1` draws a monochrome figure as black-on-white,
+    with no alpha channel at all, and `_clean_image`/`_scale_image` (which
+    `draw_frames` already runs every frame through) preserve that -- they
+    return RGB, not RGBA. `spriting.pack_spectrum` and `spriting.pack_cpc`
+    both decide whether a pixel is drawn from *alpha*
+    (`pixels[x, y][3] >= ALPHA_THRESHOLD`), so a plain `.convert("RGBA")`
+    upstream of them (which is exactly what `spriting._checked` does) hands
+    every pixel alpha 255 regardless of whether it is figure or background --
+    both packers then read every pixel as opaque and pack the whole sprite as
+    set.
+
+    Three places could have carried this fix instead, and each was rejected:
+
+    - `image_utils._clean_image`/`_process_image` (repository root) are
+      shared with the standalone `llm_sprites.py` script, which is not part
+      of Studio and has its own downstream pipeline (`_process_image`
+      re-converts to RGB and quantises against a platform palette). Changing
+      what those return would change a contract a script outside this
+      module's ownership relies on, to fix a problem that is specific to how
+      *this* module's prompts are written.
+
+    - `spriting.pack_spectrum`/`pack_cpc` could fall back to luminance when a
+      frame carries no real alpha (`_checked`'s `.convert("RGBA")` makes every
+      pixel opaque either way, so "no real alpha" cannot even be detected
+      there any more -- but even fixed to look earlier, in `draw_frames`, a
+      luminance fallback is *implicit*: it would silently do the wrong thing
+      for art that legitimately has a white foreground on a non-white
+      background, and `spriting.py` has no way to know which case it is
+      looking at. Only the caller that wrote the prompt -- this module --
+      knows the background is guaranteed white.
+
+    - This module *is* well placed for it, because it is the one place that
+      knows, by construction (see every `resources/sprite_prompt_*.txt`
+      template), that the background it asked the model to draw is pure
+      white. So this runs once, explicitly, right after `_scale_image`
+      reduces a frame to its final 16x16 size, converting the frame to RGBA
+      and keying `background_color` out to alpha 0 -- using the exact
+      colour/tolerance pair `_clean_image` itself already uses to tell figure
+      from background (see `BACKGROUND_COLOR`/`BACKGROUND_TOLERANCE` above),
+      so the two decisions cannot disagree.
+
+    Running after `_scale_image` rather than before costs nothing: the
+    nearest-neighbour resampling both use never blends two source pixels
+    together, so every pixel of the scaled frame is still either exactly
+    `background_color` or a genuine drawn pixel -- there is no antialiased
+    middle ground for a tolerance-based threshold to get wrong.
+
+    The resulting RGBA frames are what keeps the fix intact all the way to
+    packed bytes: `services.draw_sprites` tiles them into a sheet with
+    `Image.paste` (which copies an RGBA source's alpha channel verbatim, no
+    mask needed), the sheet is saved as a PNG (a format that stores alpha
+    losslessly), and `compiler.render_project` re-opens that PNG and asks for
+    `"RGBA"` again -- a no-op on a file that already carries the real alpha
+    this function put there. Every one of those steps would have discarded an
+    implicit, un-stored decision; only real alpha, set once and carried in
+    the pixels themselves, survives the round trip through disk.
+    """
+    rgba = np.asarray(frame.convert("RGBA")).copy()
+    rgb = rgba[..., :3].astype(np.int16)
+    bg = np.asarray(background_color, dtype=np.int16)
+    is_background = np.all(np.abs(rgb - bg) <= tolerance, axis=-1)
+    rgba[..., 3] = np.where(is_background, 0, 255)
+    return Image.fromarray(rgba, mode="RGBA")
+
+
 def _sheet_columns(sheet: Image.Image, frames: int) -> list[Image.Image]:
     """Split a raw, arbitrarily-sized sheet into `frames` equal columns, by
     arithmetic, on whatever width the model actually returned -- before any
@@ -202,8 +289,16 @@ class SpriteArtist:
         exact final size, rather than trusting whatever the model sent, is
         what keeps a wrongly-sized response from ever producing a frame that
         is not exactly 16x16.
+
+        The last step, `_key_out_background`, is what keeps the drawn
+        silhouette from being lost between here and `spriting.py`'s packers:
+        see its docstring for why keying the white background out to real
+        alpha belongs here rather than in `image_utils.py` or `spriting.py`.
         """
         prompt = compose_prompt(project, entity, dossier)
         sheet = self.generator.generate_image(prompt)
         columns = _sheet_columns(sheet, FRAMES_PER_SHEET)
-        return [_scale_image(_clean_image(column), SPRITE_SIZE, SPRITE_SIZE) for column in columns]
+        return [
+            _key_out_background(_scale_image(_clean_image(column), SPRITE_SIZE, SPRITE_SIZE))
+            for column in columns
+        ]

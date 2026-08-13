@@ -8,6 +8,7 @@ for `ResponsesProgramWriter`'s client.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw
@@ -24,7 +25,20 @@ from llmz80.studio.sprite_artist import (
     SpriteArtist,
     compose_prompt,
 )
-from llmz80.studio.spriting import SPRITE_SIZE
+from llmz80.studio.spriting import SPRITE_SIZE, pack_cpc, pack_spectrum
+
+#: A real sheet captured from `gpt-image-1`: four running-figure poses, black
+#: on a pure white background, no alpha channel, no anti-aliasing -- exactly
+#: the shape that exposed the "every packed sprite is a solid block" defect
+#: (see `sprite_artist._key_out_background`'s docstring for the mechanism).
+#: Every other fixture in this file is synthetic RGBA built with
+#: `ImageDraw`, which could never have caught that bug: it is already the
+#: RGBA `spriting.py`'s packers expect, so it was never exposed to the
+#: "opaque RGB with no alpha at all" shape a real model response actually
+#: has. This one is real output, kept as a file rather than reconstructed in
+#: code, because the noise a real model leaves behind (compression artefacts,
+#: near-white and near-black outliers) is part of what the fix has to survive.
+_FIXTURE_SHEET = Path(__file__).parent / "fixtures" / "sprite_sheet_running_figure.png"
 
 
 class _FakeGenerator:
@@ -289,3 +303,99 @@ def test_the_sheet_and_request_sizes_are_consistent_with_the_packer():
     assert SHEET_WIDTH == FRAMES_PER_SHEET * SPRITE_SIZE
     assert SHEET_HEIGHT == SPRITE_SIZE
     assert REQUEST_WIDTH % FRAMES_PER_SHEET == 0
+
+
+# --- The real defect: a genuine model response, packed all the way to bytes ---
+#
+# Every test above builds its own RGBA fixtures. That is exactly why none of
+# them could have caught the defect this module was fixed for: `gpt-image-1`
+# returns opaque RGB with no alpha channel whatsoever, and `_clean_image` /
+# `_scale_image` (image_utils.py) preserve that -- they never introduce
+# transparency. `spriting.pack_spectrum` and `pack_cpc` both decide "is this
+# pixel drawn" from alpha, so an RGB frame handed to `spriting._checked`'s
+# blanket `.convert("RGBA")` reads as opaque everywhere, and every sprite
+# packs as a solid rectangle. Only a real, no-alpha fixture run through the
+# real chain -- `SpriteArtist.draw_frames` to `spriting.pack_spectrum`/
+# `pack_cpc` -- can catch that; see `_FIXTURE_SHEET` above.
+
+
+def _spectrum_set_bits_per_frame(packed) -> list[int]:
+    return [
+        sum(
+            bin(byte).count("1")
+            for byte in packed.data[index * packed.bytes_per_frame : (index + 1) * packed.bytes_per_frame]
+        )
+        for index in range(packed.frames)
+    ]
+
+
+def _cpc_mode1_opaque_pixels_per_frame(packed) -> list[int]:
+    """How many of a mode-1 CPC frame's 256 pixels are opaque (pen != 3, the
+    all-set "keep the background" pen `pack_cpc` gives every transparent
+    pixel).
+
+    Inverts `spriting._pack_byte_m1`'s `g(pen) = (pen&1)<<4 | (pen&2)>>1` /
+    `byte = g(a)<<3 | g(b)<<2 | g(c)<<1 | g(d)` bit for bit: pen `pos`'s low
+    bit lands at byte bit `7 - pos`, its high bit at byte bit `3 - pos`. This
+    mirrors `pack_cpc` itself rather than re-deriving the layout by guessing,
+    and was checked, while writing this test, against this exact fixture's
+    known per-pixel alpha (`frame.getdata()`) before being trusted here.
+    """
+    counts = []
+    for index in range(packed.frames):
+        frame_bytes = packed.data[index * packed.bytes_per_frame : (index + 1) * packed.bytes_per_frame]
+        opaque = 0
+        for mask_byte in frame_bytes[0::2]:  # every other byte is the mask; see pack_cpc's docstring
+            for pos in range(4):
+                low_bit = (mask_byte >> (7 - pos)) & 1
+                high_bit = (mask_byte >> (3 - pos)) & 1
+                pen = low_bit | (high_bit << 1)
+                if pen != 3:
+                    opaque += 1
+        counts.append(opaque)
+    return counts
+
+
+def test_a_real_black_on_white_sheet_packs_as_a_recognisable_silhouette_not_a_solid_block():
+    """The regression test for the defect itself: a real `gpt-image-1`
+    response, run through `SpriteArtist.draw_frames` and
+    `spriting.pack_spectrum` exactly as `compiler.render_project` does,
+    must come out as a running figure -- not a solid rectangle (256 set
+    pixels, the bug) and not a blank frame (0 set pixels, the same bug's
+    mirror image: a fix that keyed out the figure along with the background
+    would be just as broken and just as invisible to a test that only
+    checked "not 256").
+    """
+    project = _project(TargetPlatform.SPECTRUM)
+    entity = next(e for e in project.entities if e.role == "player")
+    with Image.open(_FIXTURE_SHEET) as sheet:
+        artist = SpriteArtist(_FakeGenerator(sheet.copy()))
+        frames = artist.draw_frames(project, entity)
+
+    packed = pack_spectrum(frames)
+    set_bits = _spectrum_set_bits_per_frame(packed)
+
+    assert len(set_bits) == FRAMES_PER_SHEET
+    for index, count in enumerate(set_bits):
+        assert count not in (0, 256), f"frame {index} packed to {count}/256 set pixels"
+
+
+def test_the_same_real_sheet_does_not_pack_as_a_solid_block_for_the_cpc_either():
+    """`pack_cpc` makes the same alpha-threshold decision `pack_spectrum`
+    does (see `spriting.ALPHA_THRESHOLD` and both packers' `a >=
+    ALPHA_THRESHOLD` checks), on the same frames -- so it was checked for the
+    same defect on the same input, and the same fix (`_key_out_background`)
+    covers it without any change to `pack_cpc` itself.
+    """
+    project = _project(TargetPlatform.AMSTRAD_CPC)
+    entity = next(e for e in project.entities if e.role == "player")
+    with Image.open(_FIXTURE_SHEET) as sheet:
+        artist = SpriteArtist(_FakeGenerator(sheet.copy()))
+        frames = artist.draw_frames(project, entity)
+
+    packed = pack_cpc(frames, mode=1, palette=[(0, 0, 0), (255, 255, 255)])
+    opaque_counts = _cpc_mode1_opaque_pixels_per_frame(packed)
+
+    assert len(opaque_counts) == FRAMES_PER_SHEET
+    for index, count in enumerate(opaque_counts):
+        assert count not in (0, 256), f"frame {index} packed to {count}/256 opaque pixels"
