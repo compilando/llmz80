@@ -16,67 +16,64 @@ from pydantic import ValidationError
 from .models import GameProject
 from .planner import ProjectProposal, apply_proposal
 from .reference import GameReference
+from .typologies import typology_hints
 
 #: Everything the designer is told. It is pointed at the fields that carry a
 #: game's presentation, and warned off both the ones that carry the design's
 #: own identity and the ones that carry Studio's guarantees: a proposal
-#: touching a protected path is refused on apply anyway, and one that seals a
-#: level off is refused by the playability gate, so spending changes there
-#: only wastes the twenty a proposal is allowed.
+#: touching a protected path is refused on apply anyway, and one that
+#: outgrows the target's playable grid is refused by `GameProject`'s own
+#: validation, so spending changes there only wastes the twenty a proposal
+#: is allowed.
 DESIGN_SYSTEM_PROMPT = """\
 You dress a game design in the look, pacing and feel of a real 1980s game
 that has been researched for you. The design already decided what this game
-is -- its genre, each entity's role, and how its scenes flow from title to
-game over are settled and not yours to change. The dossier does not get a
+is -- each entity's kind, the mechanics it declares, and how its screens
+connect are settled and not yours to change. The dossier does not get a
 vote on any of that. A comecocos named after the real game stays a
 comecocos, wearing that game's clothes.
 
 Read the dossier against the design before proposing anything. Where the
-dossier describes a fundamentally different game -- a different genre, a
-different cast of actors, structure or progression the design does not
-have -- that is a sign the two are not the same kind of game under the same
-name, not licence to rebuild one into the other. The right response there is
-a small proposal, or none at all, never a reinterpretation.
+dossier is a different kind of game -- a different cast of actors,
+structure or progression the design does not have -- that is a sign the
+two are not the same kind of game under the same name, not licence to
+rebuild one into the other. The right response there is a small proposal,
+or none at all, never a reinterpretation.
 
 Propose JSON-pointer changes to the supplied GameProject. You get at most 20
 changes in total, so spend them on whole arrays and whole objects -- a
-level's entire `tiles` list, an entity's whole spawn list -- rather than one
+screen's entire `tiles` list, an entity's whole spawn list -- rather than one
 row, cell or spawn at a time. Aim them at how the game presents itself, never
 at what it is:
-  /levels/N/tiles          the maze or screen layout, as rows of '#' and '.'  -> value_rows
-  /levels/N/spawns         where each actor starts                           -> value_spawns
-  /entities/N/speed        pacing; 1 is slowest, 4 moves every frame (1-4)   -> value_number
-  /entities/N/behaviour    chase, patrol_h, patrol_v, bounce, guard, auto;
-                           only an enemy entity may carry a non-"auto" one   -> value_text
-  /presentation/style      how it should look, in a short phrase, at most 80
-                           characters -- the dossier's own visual_style can
-                           run to 600; do not paste it in whole              -> value_text
-  /gameplay/lives          lives the player starts with (1-9)                -> value_number
+  /screens/N/tiles          the screen layout, as rows of the design's own
+                             tile characters                             -> value_rows
+  /screens/N/spawns         where each actor starts                      -> value_spawns
+  /mechanics                what the game does, one sentence each        -> value_rows
+  /entities/N/notes         what this actor does                         -> value_text
+  /presentation/style       how it should look, in a short phrase, at most 80
+                             characters -- the dossier's own visual_style can
+                             run to 600; do not paste it in whole         -> value_text
 
-/entities/N/count and /gameplay/difficulty_curve are deliberately not on this
-list. They look like presentation but they are how many of each actor there
-is and how the challenge grows across the game -- exactly the kind of thing a
-dossier describing a different game will disagree with the design about, and
-that disagreement is not the reference's to settle by changing them.
+/entities/N/count is deliberately not on this list. It looks like
+presentation but it is how many of each actor there is -- exactly the kind
+of thing a dossier describing a different game will disagree with the
+design about, and that disagreement is not the reference's to settle by
+changing it.
 
 Each change carries its value in exactly one of those value_* fields --
 never more than one, and none at all for a remove.
 
 Rules:
-  * Terrain rows must all be the same width, keep the outer ring solid, and
-    leave every floor cell reachable. Do not author a maze from a blank grid;
-    start from the level's existing `tiles` and open it up instead. Removing
-    a wall can never disconnect a region, but adding one can, so only add a
-    wall where a floor path still reaches everywhere else afterwards. A
-    layout that seals anything off is rejected and your whole proposal is
-    lost with it.
+  * A screen's terrain rows must all match its declared width and height
+    exactly, and use only tile characters the design itself declares under
+    `/tiles` -- anything else is rejected outright. Start from the screen's
+    existing `tiles` and edit it, rather than authoring a new layout from a
+    blank grid, so whatever does not need to change survives untouched.
   * Never propose changes to /schema_version, /metadata/slug, /target/platform,
     /acceptance or /budgets. They are refused.
-  * There is no field value that means "none of this": every numeric field
-    above has a minimum greater than zero, so a zero is not a smaller value,
-    it is an invalid one. To drop a whole element the design has -- a menu
-    option, an asset -- propose removing it, not nullifying one of its
-    fields.
+  * There is no field value that means "none of this": to drop a whole
+    element the design has -- a mechanic, a menu option, an asset -- propose
+    removing it, not writing an empty string in its place.
   * Only propose what the dossier supports. Where it says nothing, leave the
     design alone.
   * Give each change a reason that cites what in the dossier motivates it.
@@ -103,9 +100,12 @@ class ResponsesReferenceDesigner:
             raise ValueError(
                 "this game was not identified, so there is nothing to adapt the design to"
             )
-        content = (
-            f"RESEARCHED GAME:\n{dossier.model_dump_json(indent=2)}\n\n"
-            f"CURRENT DESIGN:\n{project.model_dump_json(indent=2)}"
+        content = "\n\n".join(
+            [
+                typology_hints(),
+                f"RESEARCHED GAME:\n{dossier.model_dump_json(indent=2)}",
+                f"CURRENT DESIGN:\n{project.model_dump_json(indent=2)}",
+            ]
         )
         if feedback:
             content += "\n\nYOUR PREVIOUS PROPOSAL WAS REJECTED\n\n" + feedback
@@ -156,9 +156,9 @@ def repair_feedback(error: ValueError) -> str:
         return (
             "THE PROPOSAL WAS REFUSED: IT WOULD LEAVE THE GAME UNPLAYABLE\n\n"
             + message
-            + "\n\nPropose different terrain or spawn changes for the same area that keep "
-            "every floor cell reachable and every collectible obtainable. Do not repeat the "
-            "change that caused this."
+            + "\n\nPropose a screen that fits the target's playable grid instead -- a "
+            "smaller width or height, or terrain that still fits the one already "
+            "declared. Do not repeat the change that caused this."
         )
     return (
         "THE PROPOSAL WAS REFUSED\n\n"
