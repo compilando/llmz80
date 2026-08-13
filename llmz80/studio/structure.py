@@ -68,10 +68,21 @@ def _repeated(values: Iterable[str]) -> list[tuple[str, int]]:
     return sorted((value, count) for value, count in counts.items() if count > 1)
 
 
+#: Names to list before a message stops being an aid and starts being a wall.
+#: A reader scanning for a typo can hold a dozen; past that the tail is longer
+#: than the error it decorates, and a design with many screens repeats it once
+#: per broken reference.
+_NAME_LIMIT = 12
+
+
 def _named(values: Iterable[str]) -> str:
     """A short, sorted list of valid names, for the tail of a message."""
     names = sorted(values)
-    return ", ".join(names) if names else "(none declared)"
+    if not names:
+        return "(none declared)"
+    if len(names) > _NAME_LIMIT:
+        return ", ".join(names[:_NAME_LIMIT]) + f", ... ({len(names) - _NAME_LIMIT} more)"
+    return ", ".join(names)
 
 
 def _identity_errors(project: "GameProject") -> list[str]:
@@ -161,14 +172,14 @@ def _reference_errors(project: "GameProject") -> list[str]:
 
     if project.initial_screen not in screen_ids:
         errors.append(
-            f"initial_screen names no declared screen: {project.initial_screen!r}; "
+            f"initial_screen {project.initial_screen!r} names no declared screen; "
             f"declared: {_named(screen_ids)}"
         )
 
     scene_ids = {scene.id for scene in project.scenes}
     if project.initial_scene not in scene_ids:
         errors.append(
-            f"initial_scene must reference an existing scene: {project.initial_scene!r}; "
+            f"initial_scene {project.initial_scene!r} names no declared scene; "
             f"declared: {_named(scene_ids)}"
         )
     for scene in project.scenes:

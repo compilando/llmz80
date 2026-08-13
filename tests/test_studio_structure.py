@@ -85,13 +85,13 @@ def test_a_duplicate_entity_id_is_refused(document):
 def test_an_entity_sprite_must_name_a_declared_asset(document):
     broken = deepcopy(document)
     broken["entities"][0]["sprite"] = "missing_sprite"
-    assert "names undeclared asset 'missing_sprite'" in _refused(broken)
+    assert "entity actor names undeclared asset 'missing_sprite'" in _refused(broken)
 
 
 def test_an_entity_colour_must_name_a_declared_palette_entry(document):
     broken = deepcopy(document)
     broken["entities"][0]["colour"] = "verde"
-    assert "names undeclared palette entry 'verde'" in _refused(broken)
+    assert "entity actor names undeclared palette entry 'verde'" in _refused(broken)
 
 
 def test_an_exit_must_lead_to_a_screen_that_exists(document):
@@ -103,7 +103,7 @@ def test_an_exit_must_lead_to_a_screen_that_exists(document):
 def test_the_initial_screen_must_exist(document):
     broken = deepcopy(document)
     broken["initial_screen"] = "ninguna"
-    assert "initial_screen names no declared screen" in _refused(broken)
+    assert "initial_screen 'ninguna' names no declared screen" in _refused(broken)
 
 
 def test_a_screen_wider_than_the_playfield_is_refused(document):
@@ -131,9 +131,9 @@ def test_hud_rows_zero_frees_the_whole_spectrum_screen(document):
     tolerated = deepcopy(document)
     tolerated["presentation"]["hud_rows"] = 0
     screen = tolerated["screens"][0]
-    screen["height"] = 23
+    screen["height"] = 24
     screen["width"] = 32
-    screen["tiles"] = ["#" * 32] + ["#" + "." * 30 + "#"] * 21 + ["#" * 32]
+    screen["tiles"] = ["#" * 32] + ["#" + "." * 30 + "#"] * 22 + ["#" * 32]
     screen["spawns"][0].update(col=16, row=11)
     assert GameProject.model_validate(tolerated)
 
@@ -168,7 +168,7 @@ def test_an_observable_declared_twice_is_refused(document):
 def test_a_tile_colour_must_name_a_declared_palette_entry(document):
     broken = deepcopy(document)
     broken["tiles"][0]["colour"] = "verde"
-    assert "names undeclared palette entry 'verde'" in _refused(broken)
+    assert "tile wall names undeclared palette entry 'verde'" in _refused(broken)
 
 
 def test_spawns_beyond_the_entity_budget_are_refused(document):
@@ -189,7 +189,7 @@ def test_duplicate_scene_ids_are_refused(document):
 def test_initial_scene_must_name_a_declared_scene(document):
     broken = deepcopy(document)
     broken["initial_scene"] = "ninguna"
-    assert "initial_scene must reference an existing scene: 'ninguna'" in _refused(broken)
+    assert "initial_scene 'ninguna' names no declared scene" in _refused(broken)
 
 
 def test_a_scenes_next_scene_must_name_a_declared_scene(document):
@@ -235,3 +235,32 @@ def test_structural_errors_reports_every_failure_not_just_the_first():
     assert any("initial_screen" in error for error in errors)
     assert any("initial_scene" in error for error in errors)
     assert len(errors) == 2
+
+
+def test_two_palette_entries_cannot_share_an_id(document):
+    broken = deepcopy(document)
+    broken["presentation"]["palette"] = [
+        {"id": "rojo", "colour": "bright red"},
+        {"id": "rojo", "colour": "dark red"},
+    ]
+    assert "palette entry id 'rojo' is declared 2 times" in _refused(broken)
+
+
+def test_two_assets_cannot_share_an_id(document):
+    broken = deepcopy(document)
+    sheet = {
+        "id": "hero",
+        "kind": "sprite",
+        "source": "assets/hero.png",
+        "width": 16,
+        "height": 16,
+        "frames": 1,
+    }
+    broken["assets"] = [sheet, dict(sheet, source="assets/hero2.png")]
+    assert "asset id 'hero' is declared 2 times" in _refused(broken)
+
+
+def test_two_screens_cannot_share_an_id(document):
+    broken = deepcopy(document)
+    broken["screens"].append(deepcopy(broken["screens"][0]))
+    assert "screen id 'screen_1' is declared 2 times" in _refused(broken)

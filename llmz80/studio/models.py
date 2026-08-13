@@ -118,6 +118,9 @@ class PresentationSpec(StrictModel):
     #: neither can have the rows back, and one that wants a bigger status area
     #: can take more.
     hud_rows: int = Field(default=2, ge=0, le=4)
+    #: Nothing checks that `show_score` has rows to be drawn in. Deciding a
+    #: score needs its own rows is the kind of rule v4 exists to remove: a
+    #: design may well paint it over the playfield.
 
 
 class ControlsSpec(StrictModel):
