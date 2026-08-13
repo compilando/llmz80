@@ -3,20 +3,12 @@
 from __future__ import annotations
 
 from importlib.metadata import entry_points
-from typing import Generic, Iterable, Protocol, TypeVar
+from typing import Generic, Iterable, TypeVar
 
 from dataclasses import dataclass
 
 from .models import GameProject, TargetPlatform, VideoMode
-from .packs import BUILTIN_PACKS, GenrePack
-from .plugins import GENRE_PACK_GROUP, TARGET_PLUGIN_GROUP
-
-
-class TargetPlugin(Protocol):
-    id: TargetPlatform
-    name: str
-
-    def validate(self, project: GameProject) -> list[str]: ...
+from .plugins import TARGET_PLUGIN_GROUP
 
 
 @dataclass(frozen=True)
@@ -64,6 +56,11 @@ def audio_gaps(project: GameProject) -> list[str]:
     return pack.audio_gaps(project)
 
 
+#: Genres used to be registered here beside targets, as though "what machine
+#: is this" and "what kind of game is this" were the same sort of question.
+#: They are not: a target is a fact with a fixed set of answers, and a genre
+#: was a guess that turned into a straitjacket. Only targets are a registry
+#: now; typologies live in typologies.py as prompt material.
 BUILTIN_TARGETS = (
     TargetPack(
         TargetPlatform.SPECTRUM,
@@ -118,14 +115,6 @@ class Registry(Generic[T]):
 
     def values(self) -> tuple[T, ...]:
         return tuple(self._items.values())
-
-
-def genre_registry(load_external: bool = True) -> Registry[GenrePack]:
-    registry = Registry(BUILTIN_PACKS)
-    if load_external:
-        for point in entry_points(group=GENRE_PACK_GROUP):
-            registry.register(point.load())
-    return registry
 
 
 def target_registry(load_external: bool = True) -> Registry[TargetPack]:

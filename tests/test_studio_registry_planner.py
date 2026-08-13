@@ -12,7 +12,7 @@ from llmz80.studio.planner import (
     apply_proposal,
     proposal_diff,
 )
-from llmz80.studio.registry import genre_registry, target_registry
+from llmz80.studio.registry import target_registry
 
 
 def _iter_property_schemas(schema: dict):
@@ -47,16 +47,29 @@ def test_project_proposal_is_usable_as_a_strict_structured_output_schema():
     assert untyped == []
 
 
-def test_builtin_genre_registry_has_stable_ids():
-    registry = genre_registry(load_external=False)
+def test_there_is_no_genre_registry_left_to_ask():
+    import llmz80.studio.registry as registry
 
-    identifiers = {
-        pack.id.value if hasattr(pack.id, "value") else pack.id for pack in registry.values()
-    }
-    # The enum names the two originals; the catalogue is free to add more.
-    assert identifiers >= {genre.value for genre in GenreId}
-    assert len(identifiers) == len(registry.values()), "typology ids must be unique"
-    assert "maze" in registry.get("maze_chase").capabilities
+    assert not hasattr(registry, "genre_registry")
+    assert not hasattr(registry, "GenrePack")
+
+
+def test_a_third_party_target_still_registers():
+    """The extension SDK keeps the group that Studio actually loads."""
+    from llmz80.studio.models import TargetPlatform, VideoMode
+    from llmz80.studio.registry import Registry, TargetPack
+
+    extra = TargetPack(
+        TargetPlatform.SPECTRUM,
+        "ZX Spectrum 128K",
+        (VideoMode.SPECTRUM_BITMAP,),
+        49152,
+        16384,
+        ("zesarux",),
+        audio_effects=True,
+    )
+    registry = Registry([extra])
+    assert registry.get("spectrum").binary_budget == 49152
 
 
 def test_target_registry_declares_modes_budgets_and_emulators():

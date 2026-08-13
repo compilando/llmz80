@@ -8,7 +8,6 @@ to it.
 
 | Group | Contract | Purpose |
 |---|---|---|
-| `llmz80.genre_packs` | `GenrePack` | Guided defaults and required capabilities for a game family |
 | `llmz80.target_plugins` | `TargetPack` | Machine modes, hard budgets and supported emulator adapters |
 | `llmz80.capabilities` | `CapabilityModule` | Reusable mechanics and their validation |
 | `llmz80.exporters` | `ReleaseExporter` | Reproducible release packages |
@@ -17,7 +16,13 @@ The public protocols are in `llmz80.studio.plugins`. Code backends, validators, 
 emulator adapters use the same project-first contracts even when they are composed directly rather
 than discovered globally.
 
-## Minimal genre pack
+## There is no genre extension
+
+A genre is no longer an extension, because it is no longer anything: a design declares its own
+tiles, entities and mechanics, and what used to be added as a genre pack is now written into the
+project's `brief` instead. There is nothing here to register and no ID to coin.
+
+## Minimal target plugin
 
 The repository includes an installable example in `examples/studio_plugin`:
 
@@ -28,13 +33,12 @@ The repository includes an installable example in `examples/studio_plugin`:
 Its `pyproject.toml` registers a module-level `PACK` object:
 
 ```toml
-[project.entry-points."llmz80.genre_packs"]
+[project.entry-points."llmz80.target_plugins"]
 dodge_arena = "retro_bonus_pack:PACK"
 ```
 
-IDs are lowercase stable API names. A plugin may add a new genre ID without modifying the Studio
-enum or core schema. Duplicate IDs fail at registry construction instead of silently shadowing an
-installed pack.
+IDs are lowercase stable API names. Duplicate IDs fail at registry construction instead of silently
+shadowing an installed pack.
 
 ## Compatibility rules
 
