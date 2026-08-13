@@ -27,6 +27,7 @@ from llmz80.studio.sprite_artist import (
     SHEET_WIDTH,
     TECHNICAL_REQUIREMENTS_HEADING,
     SpriteArtist,
+    _fit_to_frame,
     _frame_from_column,
     _sheet_columns,
     compose_prompt,
@@ -78,19 +79,32 @@ def _solid_block_sheet() -> Image.Image:
     """A raw sheet with one *filled* rectangle per column, on white --
     unlike `_four_pose_sheet`'s ellipses, a filled rectangle leaves no
     background inside its own bounding box, so `_clean_image`'s tight crop
-    to that box comes back with every pixel opaque: 256 of 256, a solid
-    block. A stand-in for a badly botched generation (the model drew a flat
-    shape instead of a figure), used as the *first*, failing attempt in the
-    retry tests below.
+    to that box comes back with every pixel opaque. A stand-in for a badly
+    botched generation (the model drew a flat shape instead of a figure),
+    used as the *first*, failing attempt in the retry tests below.
+
+    The rectangle is inset from its column by only 3 pixels a side (not the
+    generous gap `_four_pose_sheet`'s poses leave) so that, once
+    `_fit_to_frame` scales it down without distortion (see its docstring),
+    it still rounds up to fill the full 16x16 frame -- 256 of 256, a literal
+    solid block -- rather than landing a pixel or two short of it the way a
+    wider margin would. This is deliberately fragile in the same way the
+    real defect was: a real "the model drew a rectangle, not a character"
+    response leaves little to no gap either, which is exactly why
+    `_judge_frames` must still catch it.
     """
     column_width = 200
     height = 200
     width = column_width * FRAMES_PER_SHEET
+    margin = 3
     sheet = Image.new("RGBA", (width, height), (255, 255, 255, 255))
     draw = ImageDraw.Draw(sheet)
     for index, colour in enumerate(_POSE_COLOURS):
         offset = index * column_width
-        draw.rectangle((offset + 10, 10, offset + column_width - 10, height - 10), fill=colour)
+        draw.rectangle(
+            (offset + margin, margin, offset + column_width - margin, height - margin),
+            fill=colour,
+        )
     return sheet
 
 
@@ -161,6 +175,35 @@ def _dossier(**overrides: object) -> GameReference:
 
 def _solid_image(size: tuple[int, int], colour: tuple[int, int, int, int]) -> Image.Image:
     return Image.new("RGBA", size, colour)
+
+
+def _column_with_object(
+    size: tuple[int, int],
+    box: tuple[int, int, int, int],
+    colour: tuple[int, int, int, int] = (0, 0, 0, 255),
+) -> Image.Image:
+    """A raw column, `size` pixels, pure white background, with one solid
+    rectangle drawn at `box` -- the minimal shape `_fit_to_frame`'s tests
+    below need: a real bounding box of a known width and height, with real
+    background left inside it (so `_clean_image` does not read it as a
+    solid block) is not required here since these tests check geometry, not
+    `_judge_frames`'s pass/fail line.
+    """
+    image = Image.new("RGBA", size, (255, 255, 255, 255))
+    ImageDraw.Draw(image).rectangle(box, fill=colour)
+    return image
+
+
+def _opaque_bbox(frame: Image.Image) -> tuple[int, int] | None:
+    """The (width, height) of `frame`'s opaque region, or `None` if `frame`
+    carries no opaque pixels at all -- used by the tests below to check the
+    *shape* `_fit_to_frame` produced, not just how many pixels ended up set.
+    """
+    alpha = np.asarray(frame)[..., 3]
+    ys, xs = np.where(alpha >= 128)
+    if len(xs) == 0:
+        return None
+    return int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1)
 
 
 #: One colour per column of `_four_pose_sheet`, chosen to be unmistakably
@@ -748,4 +791,120 @@ def test_a_sprite_touching_its_frame_edge_is_not_destroyed_by_background_detecti
         assert (alpha[-1, :] >= 128).any(), (
             f"frame {index}: the pixels touching the frame's own bottom edge must "
             "remain part of the figure, not be keyed away as background"
+        )
+
+
+# --- Fitting a cleaned pose into its 16x16 frame without distorting it ------
+#
+# The real defect a run against *Abu Simbel Profanation* exposed: `_clean_image`
+# crops tightly to the drawn pose's own bounding box, and the code this
+# replaced then handed that crop straight to `_scale_image(cleaned,
+# SPRITE_SIZE, SPRITE_SIZE)`, which stretches width and height independently
+# to fill the target exactly -- whatever the crop's real proportions were. A
+# `hero` standing figure came out squashed into a near-solid blob; a `pellet`
+# collectible came out inflated to fill the frame edge to edge. `_fit_to_frame`
+# is the fix: scale by one factor, derived from both the crop's own aspect
+# ratio and the column it was cut from (see its docstring for why both), and
+# centre the result, leaving genuine background margin instead of distortion.
+
+
+def test_a_narrower_than_tall_object_keeps_its_proportions():
+    """A standing figure, cropped narrower than it is tall, must come out
+    narrower than tall in its 16x16 frame too -- not stretched into a
+    square. Here the crop (40x200, inside a 120-wide column) is far taller
+    than the column is wide, so `_fit_to_frame`'s "contain" factor -- map
+    the crop's own longer side onto the frame -- is the one that ends up
+    governing (see its docstring for why the smaller of two factors wins):
+    the result's height should reach the full frame while its width stays
+    well short of it, in roughly the crop's own 40:200 ratio.
+    """
+    column = _column_with_object((120, 400), (50, 40, 89, 239))  # 40 wide, 200 tall
+
+    frame = _frame_from_column(column)
+
+    bbox = _opaque_bbox(frame)
+    assert bbox is not None, "the drawn rectangle must survive as real opaque pixels"
+    width, height = bbox
+    assert width < height, f"a 40x200 source crop must not come out square-ish; got {bbox}"
+    assert height >= SPRITE_SIZE - 2, f"the longer axis should reach close to the frame; got {bbox}"
+    original_ratio = 40 / 200
+    fitted_ratio = width / height
+    assert abs(fitted_ratio - original_ratio) < 0.15, (
+        f"the 40:200 aspect ratio should survive scaling; got {width}:{height}"
+    )
+
+
+def test_a_small_object_does_not_fill_the_frame():
+    """The case the module docstring calls out by name: a `pellet`-like
+    small dot, drawn small inside a large column, must not be blown up to
+    fill 16x16 just because its own crop happens to be roughly square (the
+    "contain" factor alone would do exactly that -- a 20x20 crop's longer
+    side maps straight onto the frame, the same failure this module was
+    fixed for). Here the drawn square is 20x20 inside a 200x200 column, ten
+    times narrower than the column itself, so `_fit_to_frame`'s reference
+    factor -- how much the column itself would shrink to fit the frame --
+    must be the one that wins, keeping the object small in its frame too.
+    """
+    column = _column_with_object((200, 200), (90, 90, 109, 109))  # 20x20, in a 200x200 column
+
+    frame = _frame_from_column(column)
+
+    bbox = _opaque_bbox(frame)
+    assert bbox is not None, "the drawn square must survive as real opaque pixels"
+    width, height = bbox
+    assert width <= 4 and height <= 4, (
+        f"a source object ten times narrower than its column must stay small "
+        f"in a {SPRITE_SIZE}x{SPRITE_SIZE} frame, not fill it; got {bbox}"
+    )
+    total = SPRITE_SIZE * SPRITE_SIZE
+    count = int((np.asarray(frame)[..., 3] >= 128).sum())
+    assert count < total // 4, f"a genuinely small object must leave most of the frame as background; got {count}/{total}"
+
+
+def test_an_entirely_background_column_does_not_crash():
+    """A column with no drawn pose at all -- `_clean_image` finds no
+    non-background component and returns the column unchanged (see its own
+    "No object found on background" branch) -- must still reduce to a real
+    16x16 frame, not raise. `_fit_to_frame` receives a `cleaned` the same
+    size as the original column in this case; nothing about that should be
+    special-cased away, but it must not divide by zero or produce a
+    mis-sized result either.
+    """
+    column = Image.new("RGBA", (100, 100), (255, 255, 255, 255))
+
+    frame = _frame_from_column(column)
+
+    assert frame.size == (SPRITE_SIZE, SPRITE_SIZE)
+    count = int((np.asarray(frame)[..., 3] >= 128).sum())
+    assert count == 0, "an all-background column must key out to an entirely transparent frame"
+
+
+def test_the_real_fixture_still_yields_sane_non_degenerate_counts():
+    """The real captured sheet (`_FIXTURE_SHEET`) run through the fitting
+    fix must still come out as a real, judgeable silhouette in every frame
+    -- not 0, not 256, and not so small a sliver that the packed sprite
+    would be nearly invisible either. This is the same real fixture
+    `test_a_real_black_on_white_sheet_packs_as_a_recognisable_silhouette_not_a_solid_block`
+    already checks end to end through the packer; this test instead checks
+    the frames `_frame_from_column` itself produces, and additionally that
+    fitting actually left a visible background margin -- proof the fix is
+    doing something, not just failing to break anything.
+    """
+    with Image.open(_FIXTURE_SHEET) as sheet:
+        sheet = sheet.copy()
+    columns = _sheet_columns(sheet, FRAMES_PER_SHEET)
+    frames = [_frame_from_column(column) for column in columns]
+
+    total = SPRITE_SIZE * SPRITE_SIZE
+    for index, frame in enumerate(frames):
+        count = int((np.asarray(frame)[..., 3] >= 128).sum())
+        assert 20 <= count <= 200, (
+            f"frame {index}: {count}/{total} opaque -- not a sane silhouette count"
+        )
+        bbox = _opaque_bbox(frame)
+        assert bbox is not None
+        width, height = bbox
+        assert width < SPRITE_SIZE, (
+            f"frame {index}: opaque region spans the full frame width ({width}) -- "
+            "no background margin left, as if the old stretch-to-fill bug were still there"
         )

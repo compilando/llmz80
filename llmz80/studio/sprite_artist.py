@@ -32,6 +32,25 @@ A failed run's every attempt, not just a winning one, is kept on disk too --
 see `services.StudioService._save_raw_sheet` -- because the run this module
 exists for is exactly the one where nothing else survives to debug it.
 
+Fixing that background defect let all three of that run's sprites reach
+`_judge_frames` as real silhouettes, and all three passed it -- but passing
+"not 0 or 256 opaque pixels" is not the same as looking right, and two of
+the three did not. `_clean_image` crops tightly to whatever bounding box the
+drawn pose actually occupies, and the code this module used to hand that
+crop straight to `_scale_image(cleaned, SPRITE_SIZE, SPRITE_SIZE)`, which
+stretches width and height independently until the crop fills the target
+exactly -- whatever the crop's real proportions were. A creature with lots
+of internal background inside its own bounding box (`enemy`) survives that
+unrecognisably distorted either way, which is exactly why only it looked
+right; a standing figure (`hero`) came out squashed into a near-solid blob,
+and a small collectible (`pellet`) came out inflated to fill its frame edge
+to edge, both indistinguishable from the "model drew a filled rectangle"
+failure `_judge_frames` exists to catch, yet neither actually 0 or 256
+opaque. `_fit_to_frame` is the fix: scale the crop by one factor derived
+from both its own aspect ratio and the column it was cut from (see its
+docstring for why both matter), and centre it, so proportions survive and
+whatever space is left over is real background rather than distortion.
+
 Two things this module deliberately does *not* do, because getting them wrong
 by guessing would be worse than not having them at all:
 
@@ -402,15 +421,16 @@ def _key_out_background(
     - This module *is* well placed for it, because it is the one place that
       knows what colour to key, whether that came from the prompt's own
       request or (now) from `_detect_background` reading the frame itself.
-      So this runs once, explicitly, right after `_scale_image` reduces a
+      So this runs once, explicitly, right after `_fit_to_frame` reduces a
       frame to its final 16x16 size, converting the frame to RGBA and keying
       `background_color` out to alpha 0.
 
-    Running after `_scale_image` rather than before costs nothing: the
-    nearest-neighbour resampling both use never blends two source pixels
-    together, so every pixel of the scaled frame is still either exactly
-    `background_color` or a genuine drawn pixel -- there is no antialiased
-    middle ground for a tolerance-based threshold to get wrong.
+    Running after `_fit_to_frame` rather than before costs nothing:
+    `_fit_to_frame`'s own resampling (`_scale_image`, nearest-neighbour) and
+    its centring paste never blend two source pixels together, so every
+    pixel of the fitted frame is still either exactly `background_color` or
+    a genuine drawn pixel -- there is no antialiased middle ground for a
+    tolerance-based threshold to get wrong.
 
     The resulting RGBA frames are what keeps the fix intact all the way to
     packed bytes: `services.draw_sprites` tiles them into a sheet with
@@ -430,20 +450,124 @@ def _key_out_background(
     return Image.fromarray(rgba, mode="RGBA")
 
 
+def _fit_to_frame(
+    cleaned: Image.Image,
+    frame_size: int,
+    background_color: tuple[int, int, int],
+    *,
+    reference_width: int,
+) -> Image.Image:
+    """Place `cleaned` -- `_clean_image`'s tight crop of the drawn pose,
+    still at whatever size its own bounding box happened to be -- inside a
+    `frame_size` x `frame_size` frame without distorting it.
+
+    This is the fix for the defect a real run against *Abu Simbel
+    Profanation* exposed: the code this replaced handed `cleaned` straight
+    to `_scale_image(cleaned, SPRITE_SIZE, SPRITE_SIZE)`, which stretches
+    both axes independently to fill the target exactly. A crop's proportions
+    are whatever the drawn pose's really are -- a standing figure taller
+    than it is wide, a small collectible far smaller than its own column --
+    and stretching both axes to a fixed square destroys exactly that: a
+    figure comes out squashed into a blob, and a small mark comes out
+    inflated to a solid-looking block, indistinguishable from the "model
+    drew a filled rectangle" failure `_judge_frames` exists to catch. See
+    the module docstring for the three real sprites this showed up in.
+
+    Two scale factors are computed, and the smaller wins:
+
+    - `frame_size / max(width, height)`: the "contain" factor, mapping
+      `cleaned`'s longer side onto `frame_size` exactly. Aspect ratio
+      survives (both axes are scaled by the one factor), but taken alone
+      this factor answers only "how big can this be without being cut off",
+      never "how big should this be" -- a crop that is small purely because
+      the pose it isolates is small, not because it was cropped tightly,
+      would still be blown up until its longer side fills the frame, no
+      different from the very stretch this function replaces for a crop
+      that happens to be square.
+    - `frame_size / reference_width`: how much a `reference_width`-wide
+      *column* -- the caller's raw, unclean sheet slice `cleaned` was cut
+      from, still at its own arithmetic width (`_sheet_columns` divides the
+      sheet by `FRAMES_PER_SHEET` on width alone) -- would shrink to fit
+      `frame_size`, applied to both of `cleaned`'s axes. This is the actual
+      answer to "how big should this be": whatever fraction of one drawn
+      frame's own width the object occupied, it keeps occupying once that
+      frame is reduced to `frame_size`. A column's *height* is not used the
+      same way, deliberately: every `resources/sprite_prompt_*.txt`
+      template asks for frames laid out side by side at a fixed width, and
+      `_sheet_columns` only ever divides on width, so a column's width is
+      the one dimension this pipeline actually asked the model for and can
+      trust; its height is however tall the model's whole response
+      happened to be (`REQUEST_FRAME_SIZE * FRAMES_PER_SHEET` wide, but not
+      reliably `REQUEST_FRAME_SIZE` tall -- a real response can, and for the
+      run that exposed this defect did, come back as a square canvas far
+      taller than the width its layout implies), so it carries no
+      trustworthy notion of "how big was this meant to look".
+
+    Taking the smaller factor is what keeps the two honest about each
+    other's blind spot: the reference factor alone would let a crop that is
+    genuinely taller than its own column is wide (a standing figure, cropped
+    including the halo `_clean_image`'s tolerance mask picks up around it --
+    see the module docstring) overflow past `frame_size` on that axis; the
+    contain factor alone would blow a small collectible up to fill the frame
+    just because nothing capped it from below. Whichever factor is smaller
+    is the one guaranteed not to violate the other's constraint, so using
+    it is not a compromise between two competing goals but the one number
+    that actually satisfies both: never bigger than the frame allows, never
+    bigger than what the object actually was relative to its own column.
+
+    This is still a deliberately *role-blind* rule: both factors look only
+    at geometry -- `cleaned`'s own size and the column it came from -- never
+    at `EntitySpec.role`, so a `pellet` and a `hero` are sized by exactly
+    the same arithmetic. A role-aware alternative -- "collectibles stay
+    small, player characters fill more of the frame" -- was considered and
+    rejected: it would need a second source of truth about how big each
+    role "ought" to look, alongside whatever the game's own design already
+    implies, the same objection `_judge_frames`'s docstring raises against
+    gating on role at all.
+
+    The result is centred on a `frame_size` x `frame_size` canvas of
+    `background_color`, leaving whatever margin is left over -- on one axis
+    if the contain factor won, on both if the reference factor did -- as
+    real background, so `_key_out_background` keys it away like any other
+    part of the frame. Nearest-neighbour throughout (`_scale_image`, already
+    used everywhere else in this module), and the centring paste is
+    exact-pixel, so nothing here can introduce the soft, blended edge
+    `_technical_constraints` asks the model itself not to draw.
+    """
+    width, height = cleaned.size
+    canvas = Image.new(cleaned.mode, (frame_size, frame_size), background_color)
+    if width <= 0 or height <= 0:
+        return canvas
+    contain_scale = frame_size / max(width, height)
+    reference_scale = frame_size / reference_width if reference_width > 0 else contain_scale
+    scale = min(contain_scale, reference_scale)
+    fitted_width = min(frame_size, max(1, round(width * scale)))
+    fitted_height = min(frame_size, max(1, round(height * scale)))
+    fitted = _scale_image(cleaned, fitted_width, fitted_height)
+    offset = ((frame_size - fitted_width) // 2, (frame_size - fitted_height) // 2)
+    canvas.paste(fitted, offset)
+    return canvas
+
+
 def _frame_from_column(column: Image.Image) -> Image.Image:
     """One raw sheet column, reduced to the real, final 16x16 RGBA frame.
 
     Detecting the background once per column (`_detect_background`) and
-    threading that same colour through both `_clean_image` -- which needs it
-    to isolate the drawn pose -- and `_key_out_background` -- which needs it
-    to key that pose's background to alpha 0 -- is what keeps the two
-    decisions from disagreeing with each other, the way a caller passing a
-    fixed white to one and something else to the other could.
+    threading that same colour through `_clean_image` -- which needs it to
+    isolate the drawn pose -- `_fit_to_frame` -- which needs it to pad
+    whatever margin is left once the pose is scaled without distortion --
+    and `_key_out_background` -- which needs it to key that pose's
+    background to alpha 0 -- is what keeps the three decisions from
+    disagreeing with each other, the way a caller passing a fixed white to
+    one and something else to the others could. `column.width` is threaded
+    through too, as `_fit_to_frame`'s `reference_width` -- see its docstring
+    for why the column this pose was cut from, not just the pose's own crop,
+    is what decides how big the pose should end up looking.
     """
     background = _detect_background(column, BACKGROUND_TOLERANCE)
     cleaned = _clean_image(column, background_color=background, tolerance=BACKGROUND_TOLERANCE)
-    scaled = _scale_image(cleaned, SPRITE_SIZE, SPRITE_SIZE)
-    return _key_out_background(scaled, background, BACKGROUND_TOLERANCE)
+    fitted = _fit_to_frame(cleaned, SPRITE_SIZE, background, reference_width=column.width)
+    return _key_out_background(fitted, background, BACKGROUND_TOLERANCE)
 
 
 def _set_pixel_count(frame: Image.Image) -> int:
