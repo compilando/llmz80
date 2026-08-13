@@ -681,28 +681,34 @@ def test_a_persistently_bad_response_raises_with_the_last_reason():
     assert "256 of 256" in message
 
 
-def test_a_sheet_of_four_identical_frames_is_judged_and_named_as_such():
-    """A sheet that draws one pose and repeats it four times is just as much
-    "not a sprite" as a solid block or a blank frame -- no animation was
-    actually drawn. This is checked independently of the pixel-count check:
-    a repeated pose need not pack to 0 or 256 to still be a single frame
-    wearing four different filenames.
+def test_a_statically_repeated_pose_is_accepted_without_retrying():
+    """A collectible like a `pellet` does not animate -- a model drawing it
+    identically in all four frames drew it *correctly*, not wrongly. An
+    earlier version of `_judge_frames` refused a sheet whose frames were all
+    pixel-identical on principle, which cost three wasted image generations
+    on exactly this response before raising (see `_judge_frames`'s
+    docstring for why that check was dropped rather than made to depend on
+    `EntitySpec.role`). Only the 0/256 pixel-count check remains, and a
+    real, non-degenerate silhouette repeated four times does not trip it.
     """
     project = _project(TargetPlatform.SPECTRUM)
-    entity = next(e for e in project.entities if e.role == "player")
-    repeated = _solid_image((512, 128), (255, 255, 255, 255))
-    draw = ImageDraw.Draw(repeated)
+    entity = next(e for e in project.entities if e.role == "collectible")
+    static = _solid_image((512, 128), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(static)
     for index in range(FRAMES_PER_SHEET):
-        offset = index * (repeated.width // FRAMES_PER_SHEET)
+        offset = index * (static.width // FRAMES_PER_SHEET)
         draw.ellipse((offset + 20, 20, offset + 108, 108), fill=(0, 0, 0, 255))
-    generator = _FakeGenerator(repeated)
+    generator = _FakeGenerator(static)
     artist = SpriteArtist(generator)
 
-    with pytest.raises(ValueError) as excinfo:
-        artist.draw_frames(project, entity)
+    frames = artist.draw_frames(project, entity)
 
-    assert len(generator.prompts) == MAX_DRAW_ATTEMPTS
-    assert "EVERY FRAME IS THE SAME IMAGE" in str(excinfo.value)
+    assert len(frames) == FRAMES_PER_SHEET
+    assert len(generator.prompts) == 1, "a correctly-static sprite must not be retried"
+    assert frames.attempts == 1
+    assert len({frame.tobytes() for frame in frames}) == 1, (
+        "the four frames should indeed come back identical -- that is the point"
+    )
 
 
 def test_a_sprite_touching_its_frame_edge_is_not_destroyed_by_background_detection():

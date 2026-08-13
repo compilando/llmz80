@@ -167,7 +167,20 @@ class StudioService:
                     "not a valid asset identifier (expected lowercase letters, "
                     "digits and underscores, starting with a letter)"
                 )
-            frames = artist.draw_frames(project, entity, dossier)
+            try:
+                frames = artist.draw_frames(project, entity, dossier)
+            except ValueError as exc:
+                # A `SpriteDrawFailure` (see `sprite_artist.py`) carries every
+                # attempt's raw response even though none of them produced a
+                # usable sprite -- exactly the run whose evidence is worth
+                # keeping, since nothing else survives it (no asset is ever
+                # registered). A caller's own artist raising a plain
+                # `ValueError` carries no `.sheets`, and there is nothing to
+                # save for those -- re-raising unconditionally either way is
+                # what keeps this a transparent pass-through rather than a
+                # second place that decides whether a draw failure is fatal.
+                self._save_raw_sheets(directory, sprite_id, getattr(exc, "sheets", None))
+                raise
             packed_sheet = Image.new("RGBA", (SPRITE_SIZE * len(frames), SPRITE_SIZE))
             for index, frame in enumerate(frames):
                 packed_sheet.paste(frame, (index * SPRITE_SIZE, 0))
@@ -175,42 +188,63 @@ class StudioService:
                 staged = Path(scratch) / f"{sprite_id}.png"
                 packed_sheet.save(staged)
                 asset = self.add_asset(project, directory, staged, frames=len(frames))
-            self._save_raw_sheet(directory, asset, frames)
+            self._save_raw_sheets(
+                directory,
+                sprite_id,
+                getattr(frames, "sheets", None),
+                winner=getattr(frames, "sheet", None),
+            )
             have.add(sprite_id)
             drawn.append(asset)
         return drawn
 
     @staticmethod
-    def _save_raw_sheet(directory: Path, asset: AssetSpec, frames: list[Image.Image]) -> None:
-        """Keep what the model actually returned, beside the asset it
-        produced.
+    def _save_raw_sheets(
+        directory: Path,
+        sprite_id: str,
+        sheets: list[Image.Image] | None,
+        *,
+        winner: Image.Image | None = None,
+    ) -> None:
+        """Keep what the model actually returned -- every attempt, not only
+        one that worked -- beside the asset it did or did not produce.
 
-        Nothing used to save this: only the cleaned, packed 16x16-per-frame
-        sheet ever reached disk, so a run like the one against *Abu Simbel
-        Profanation* -- two sprites out of three coming back as dark art on a
-        near-black background -- left nothing to look at afterwards except
-        the ruined result. `SpriteArtist.draw_frames` now carries the winning
-        attempt's raw, unprocessed response as `frames.sheet` (see
-        `sprite_artist.DrawnFrames`); this writes it to
-        `assets/<sprite id>.raw.png`, next to the `assets/<sprite id>.png`
-        `add_asset` just registered -- the same directory every other sprite
-        asset already lives in, named so it sorts beside the file it explains
-        rather than in a separate, easy-to-forget location. It is deliberately
-        not registered as an `AssetSpec`: it is not art the build ever reads,
-        only evidence for a person debugging a bad generation.
+        Nothing used to save any of this: only the cleaned, packed
+        16x16-per-frame sheet ever reached disk, so a run like the one
+        against *Abu Simbel Profanation* -- two sprites out of three coming
+        back as dark art on a near-black background -- left nothing to look
+        at afterwards except the ruined result. Saving only a winning
+        attempt would still have that gap for the run that matters most: a
+        sprite that exhausts every attempt and raises (`SpriteDrawFailure`,
+        see `sprite_artist.py`) never reaches `add_asset` at all, so there
+        would be no asset to save anything "beside". This is called from
+        both branches -- the `except ValueError` above, before re-raising,
+        and after a successful draw -- with whatever raw sheets exist either
+        way, named from `sprite_id` directly rather than from an `AssetSpec`
+        that may not exist yet.
 
-        `frames` is whatever `draw_frames` returned; only `SpriteArtist`'s
-        own `DrawnFrames` carries a `.sheet` at all; a caller's fake artist
-        (several exist across the test suite, returning a bare
-        `list[Image.Image]`) carries none, and this is skipped for those --
-        there being no raw response to save is not an error.
+        Every sheet in `sheets` (oldest first, one per attempt) is written to
+        `assets/<sprite id>.raw.attempt-<n>.png`, `n` starting at 1, so the
+        order they were drawn in is legible from the filename alone. When
+        `winner` is given -- only on a successful draw -- it is additionally
+        saved, unsuffixed, as `assets/<sprite id>.raw.png`: the one raw sheet
+        worth finding without knowing which attempt number succeeded. Its
+        absence is itself informative -- a sprite that only has numbered
+        attempts on disk and no plain `.raw.png` is exactly the one that
+        never produced a usable frame.
+
+        `sheets` is `None` for a caller's own fake artist (several exist
+        across the test suite) that carries no raw response at all -- there
+        being nothing to save is not an error, so this simply returns.
         """
-        raw_sheet = getattr(frames, "sheet", None)
-        if raw_sheet is None:
+        if not sheets:
             return
-        asset_path = directory / asset.source
-        raw_path = asset_path.with_name(f"{asset_path.stem}.raw.png")
-        raw_sheet.save(raw_path)
+        assets_dir = directory / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        for index, sheet in enumerate(sheets, start=1):
+            sheet.save(assets_dir / f"{sprite_id}.raw.attempt-{index}.png")
+        if winner is not None:
+            winner.save(assets_dir / f"{sprite_id}.raw.png")
 
     def research_reference(
         self, project: GameProject, directory: Path, researcher: ReferenceResearcher

@@ -20,12 +20,17 @@ so a dark frame keyed nothing out and packed as a solid 16x16 block. Three
 things in this module exist because of that run: `_detect_background` reads
 the real background off each frame's own border instead of assuming white
 (see its docstring, and `_key_out_background`'s); `_judge_frames` catches a
-solid or blank frame -- or a sheet whose four frames are all the same
-picture -- as evidence the generation failed, not as a sprite to pack
-anyway; and `SpriteArtist.draw_frames` retries a judged failure with
-feedback naming what was wrong, up to `MAX_DRAW_ATTEMPTS` times, the way
+solid or blank frame as evidence the generation failed, not as a sprite to
+pack anyway (see its own docstring for the check this module tried and
+dropped -- refusing four identical frames outright, which punished a
+correctly-drawn static sprite like a `pellet` collectible); and
+`SpriteArtist.draw_frames` retries a judged failure with feedback naming
+what was wrong, up to `MAX_DRAW_ATTEMPTS` times, the way
 `generator.write_program` and `reference_design.propose_and_apply` already
 retry their own failures instead of accepting the first answer unconditionally.
+A failed run's every attempt, not just a winning one, is kept on disk too --
+see `services.StudioService._save_raw_sheet` -- because the run this module
+exists for is exactly the one where nothing else survives to debug it.
 
 Two things this module deliberately does *not* do, because getting them wrong
 by guessing would be worse than not having them at all:
@@ -474,17 +479,6 @@ def _solid_or_blank_feedback(bad: list[tuple[int, int]], total: int) -> str:
     return "\n".join(lines)
 
 
-def _identical_frames_feedback(frame_count: int) -> str:
-    return (
-        "THE SHEET WAS REJECTED: EVERY FRAME IS THE SAME IMAGE\n\n"
-        f"All {frame_count} frames came back pixel-for-pixel identical, which means no "
-        "animation was actually drawn -- one pose was repeated across the sheet instead "
-        "of a walk/patrol cycle.\n\n"
-        "Redraw the sheet with visibly different poses of the same character in each "
-        "frame, laid out side by side exactly as asked."
-    )
-
-
 def _judge_frames(frames: list[Image.Image]) -> str | None:
     """Whether `frames` are demonstrably not a sprite, and if so, feedback
     naming what was wrong and what to do about it -- the register
@@ -492,23 +486,32 @@ def _judge_frames(frames: list[Image.Image]) -> str | None:
     proposal: a heading naming the failure, the specific evidence, and an
     instruction for the next attempt.
 
-    Two failures are checked, each real: a frame that packs to 0 or
+    One failure is checked, and it is real: a frame that packs to 0 or
     `SPRITE_SIZE * SPRITE_SIZE` set pixels is a blank or a solid block, not a
     silhouette -- exactly what the *Abu Simbel Profanation* run's `enemy` and
-    `pellet` sprites came back as (see the module docstring). A sheet whose
-    frames are all pixel-identical drew one pose and repeated it, not a
-    cycle. The first check runs first: a sheet failing it usually fails
-    because every column was keyed the same broken way, which the solid/blank
-    message already explains more specifically than "frames are identical"
-    would.
+    `pellet` sprites came back as (see the module docstring).
+
+    An earlier version of this also refused a sheet whose four frames were
+    all pixel-identical, on the theory that a repeated pose meant no
+    animation was actually drawn. That check was wrong for a `pellet`-like
+    collectible, and for any other static entity (a wall, an exit): a model
+    drawing a non-animating thing identically four times drew it *correctly*,
+    and the check cost three wasted image generations, then raised, on
+    exactly the response that should have been accepted on the first one.
+    Gating the check on `EntitySpec.role` was considered and rejected too --
+    it would need this function, or its caller, to carry a growing list of
+    "which roles animate", a second source of truth alongside whatever the
+    game's own design already implies, to catch a failure mode nothing in a
+    real run has ever actually shown. The 0/256 check above does not have
+    that problem: it fires on concrete, load-bearing evidence -- a frame with
+    no distinguishable figure at all -- not on a stylistic reading of how
+    many poses a sprite sheet "ought" to have.
     """
     total = SPRITE_SIZE * SPRITE_SIZE
     counts = [_set_pixel_count(frame) for frame in frames]
     bad = [(index, count) for index, count in enumerate(counts) if count in (0, total)]
     if bad:
         return _solid_or_blank_feedback(bad, total)
-    if len({frame.tobytes() for frame in frames}) == 1:
-        return _identical_frames_feedback(len(frames))
     return None
 
 
@@ -542,17 +545,25 @@ def _sheet_columns(sheet: Image.Image, frames: int) -> list[Image.Image]:
 
 
 class DrawnFrames(list):
-    """What `SpriteArtist.draw_frames` returns: a `list[Image.Image]` in
-    every way that matters to existing callers (`len()`, iteration,
-    `spriting.pack_spectrum`/`pack_cpc`, `services.draw_sprites`'s tiling
-    loop all only ever index, iterate or measure it), carrying three more
-    things alongside the frames for the caller that wants them:
+    """What `SpriteArtist.draw_frames` returns on success: a
+    `list[Image.Image]` in every way that matters to existing callers
+    (`len()`, iteration, `spriting.pack_spectrum`/`pack_cpc`,
+    `services.draw_sprites`'s tiling loop all only ever index, iterate or
+    measure it), carrying four more things alongside the frames for the
+    caller that wants them:
 
     - `sheet`: the raw, unprocessed image the generator returned for the
-      attempt that finally passed `_judge_frames` -- what `services.py`
-      saves beside the asset it produced (see its own docstring for why).
+      attempt that finally passed `_judge_frames` -- the last entry of
+      `sheets` below, named separately because it is the one every caller
+      most wants.
+    - `sheets`: the raw, unprocessed image from *every* attempt, oldest
+      first, including the winner as its last entry. `services.py` saves
+      each one beside the asset it produced (see
+      `services.StudioService._save_raw_sheet`), so a failed earlier
+      attempt is not lost just because a later one succeeded.
     - `attempts`: how many times the model was asked, 1 if the first
-      response already passed.
+      response already passed -- `len(sheets)`, kept as its own field so a
+      caller does not have to derive it.
     - `repairs`: the feedback text given after each earlier, judged-failed
       attempt, oldest first -- empty if `attempts == 1`.
 
@@ -571,13 +582,38 @@ class DrawnFrames(list):
         frames: list[Image.Image] = (),
         *,
         sheet: Image.Image,
+        sheets: list[Image.Image],
         attempts: int,
         repairs: list[str],
     ) -> None:
         super().__init__(frames)
         self.sheet = sheet
+        self.sheets = sheets
         self.attempts = attempts
         self.repairs = repairs
+
+
+class SpriteDrawFailure(ValueError):
+    """Raised when `SpriteArtist.draw_frames` exhausts `self.attempts`
+    without a judged-valid sheet.
+
+    A plain `ValueError` subclass, deliberately: any caller that only reads
+    `str(exc)` -- the CLI's blanket error handler, for instance -- sees
+    exactly the same message a bare `ValueError` would have carried, and
+    nothing about existing error handling has to change. What this adds is
+    `sheets`: every attempt's raw, unprocessed response, oldest first, and
+    `reasons`: the judged feedback for each of them, same length, same
+    order. Losing is exactly the case `services.StudioService._save_raw_sheet`
+    most needs evidence for -- the run that never produced a usable sprite is
+    the one where, otherwise, nothing would be left on disk to look at
+    afterwards -- so `services.draw_sprites` catches this specifically to
+    save every attempt before letting it propagate.
+    """
+
+    def __init__(self, message: str, *, sheets: list[Image.Image], reasons: list[str]) -> None:
+        super().__init__(message)
+        self.sheets = sheets
+        self.reasons = reasons
 
 
 class SpriteArtist:
@@ -615,15 +651,20 @@ class SpriteArtist:
         (see the module docstring).
 
         `_judge_frames` then decides whether the result is demonstrably not a
-        sprite -- a solid or blank frame, or four identical poses. A pass
-        returns immediately, as `DrawnFrames` (see its docstring for what it
-        carries beyond the frames themselves). A judged failure feeds that
-        feedback into the next attempt's prompt and tries again; once
-        `self.attempts` is exhausted, the last judgement's feedback is raised
-        as a `ValueError`, the way `reference_design.propose_and_apply` raises
-        the last refusal once its own attempts run out.
+        sprite -- a solid or blank frame. A pass returns immediately, as
+        `DrawnFrames` (see its docstring for what it carries beyond the
+        frames themselves). A judged failure feeds that feedback into the
+        next attempt's prompt and tries again; once `self.attempts` is
+        exhausted, `SpriteDrawFailure` is raised, carrying every attempt's
+        raw sheet and judged reason -- the way
+        `reference_design.propose_and_apply` raises the last refusal once
+        its own attempts run out, but keeping the full history rather than
+        only the last entry: a run that never produces a usable sprite is
+        exactly the run whose evidence is worth keeping (see
+        `services.StudioService._save_raw_sheet`).
         """
         prompt = compose_prompt(project, entity, dossier)
+        sheets: list[Image.Image] = []
         repairs: list[str] = []
         reason: str | None = None
         for attempt in range(1, self.attempts + 1):
@@ -631,13 +672,18 @@ class SpriteArtist:
                 prompt + "\n\nYOUR PREVIOUS SHEET WAS REJECTED\n\n" + reason
             )
             sheet = self.generator.generate_image(request)
+            sheets.append(sheet)
             columns = _sheet_columns(sheet, FRAMES_PER_SHEET)
             frames = [_frame_from_column(column) for column in columns]
             reason = _judge_frames(frames)
             if reason is None:
-                return DrawnFrames(frames, sheet=sheet, attempts=attempt, repairs=repairs)
+                return DrawnFrames(
+                    frames, sheet=sheet, sheets=sheets, attempts=attempt, repairs=repairs
+                )
             repairs.append(reason)
-        raise ValueError(
+        raise SpriteDrawFailure(
             f"the sprite sheet could not be drawn in {self.attempts} attempt"
-            f"{'s' if self.attempts != 1 else ''}; the last reason was: " + reason
+            f"{'s' if self.attempts != 1 else ''}; the last reason was: " + reason,
+            sheets=sheets,
+            reasons=repairs,
         )

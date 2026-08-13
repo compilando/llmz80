@@ -17,12 +17,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from llmz80.studio.models import GenreId, TargetPlatform
 from llmz80.studio.packs import create_default_project
 from llmz80.studio.services import StudioService
-from llmz80.studio.sprite_artist import FRAMES_PER_SHEET, SpriteArtist
+from llmz80.studio.sprite_artist import FRAMES_PER_SHEET, MAX_DRAW_ATTEMPTS, SpriteArtist
 from llmz80.studio.sprite_sheet import split_frames
 from llmz80.studio.spriting import SPRITE_SIZE, pack_spectrum
 
@@ -136,6 +137,48 @@ def test_draw_sprites_saves_the_raw_sheet_beside_the_registered_asset(tmp_path: 
         assert raw.convert("RGB").tobytes() == original.convert("RGB").tobytes(), (
             "the saved file must be the model's raw response, not a cleaned/packed frame"
         )
+
+    # The real fixture passes judgement on the first attempt, so the numbered
+    # attempt history (see the failure-path test below) is exactly one entry
+    # long, and it must match the unsuffixed "winner" file byte for byte.
+    attempt_one = asset_path.with_name(f"{asset_path.stem}.raw.attempt-1.png")
+    assert attempt_one.is_file()
+    assert attempt_one.read_bytes() == raw_path.read_bytes()
+    assert not asset_path.with_name(f"{asset_path.stem}.raw.attempt-2.png").exists()
+
+
+def test_draw_sprites_saves_every_attempts_raw_sheet_after_a_failure(tmp_path: Path):
+    """A sprite that exhausts every attempt without a judged-valid sheet
+    never reaches `add_asset` -- no `AssetSpec` is ever registered for it --
+    which is exactly the run whose evidence matters most: it is the one a
+    person most needs to see what the model actually drew, and until now it
+    was also the one for which nothing at all was kept. `SpriteDrawFailure`
+    (see `sprite_artist.py`) carries every attempt's raw sheet even though
+    none of them worked; `draw_sprites` must save all of them, not silently
+    lose them because the loop ended in a raise instead of a return.
+    """
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project(
+        "Persistent Failure", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE
+    )
+    # Filled edge to edge, no white margin at all -- `_clean_image`'s tight
+    # bounding-box crop leaves nothing but figure, so every attempt is judged
+    # a solid block and none of the three ever wins.
+    blank = Image.new("RGBA", (512, 128), (10, 20, 30, 255))
+    artist = SpriteArtist(_FakeGenerator(blank))
+
+    with pytest.raises(ValueError):
+        service.draw_sprites(project, directory, artist)
+
+    assets_dir = directory / "assets"
+    attempts = sorted(assets_dir.glob("hero.raw.attempt-*.png"))
+    assert [path.name for path in attempts] == [
+        f"hero.raw.attempt-{n}.png" for n in range(1, MAX_DRAW_ATTEMPTS + 1)
+    ], "every attempt must be saved, numbered so their order is obvious"
+    assert not (assets_dir / "hero.raw.png").is_file(), (
+        "no attempt won, so the unsuffixed 'the winner' file must not exist"
+    )
+    assert not (assets_dir / "hero.png").is_file(), "a failed draw must never register an asset"
 
 
 def test_draw_sprites_tolerates_an_artist_that_carries_no_raw_sheet(tmp_path: Path):
