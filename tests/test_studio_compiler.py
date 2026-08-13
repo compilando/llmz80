@@ -98,6 +98,48 @@ def test_the_projects_own_sources_reach_the_build(tmp_path: Path):
     assert result.main_c.is_file()
 
 
+def test_sprites_h_reaches_src_as_declarations_and_sprites_c_as_definitions(tmp_path: Path):
+    """The link-time defect this module guards against (see
+    tests/test_sprite_blitter_toolchain.py for the real-toolchain proof):
+    sprites.h must declare the sprite tables `extern`, never define them,
+    because it is included by both platform.c and the program's own main.c;
+    the actual definitions belong in sprites.c, compiled exactly once.
+    """
+    project = create_default_project("SplitHeader", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    directory = ProjectStore(tmp_path).create(project)
+    asset = _add_sprite_asset(directory, "hero", frames=1)
+    project.assets = [asset]
+
+    result = render_project(project, directory / "build")
+
+    sprites_h = (result.output_dir / "src" / "sprites.h").read_text(encoding="utf-8")
+    sprites_c = (result.output_dir / "src" / "sprites.c").read_text(encoding="utf-8")
+
+    assert "extern const unsigned char *const sprite_data[];" in sprites_h
+    assert "0x" not in sprites_h  # no packed byte ever lands in the header
+    assert '#include "sprites.h"' in sprites_c
+    assert "const unsigned char *const sprite_data[] = {" in sprites_c
+
+
+def test_a_program_may_not_shadow_a_studio_generated_file(tmp_path: Path):
+    """A program that writes its own sprites.h (or platform.c, or any other
+    file Studio generates) must not have it silently override the generated
+    one -- that is how `SPRITE_PELLET` and friends have gone missing before
+    while the build still (mostly) succeeded. Refuse it loudly instead.
+    """
+    project = create_default_project("Shadow", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    directory = ProjectStore(tmp_path).create(project)
+    program_dir = directory / project.program_dir
+    program_dir.mkdir(parents=True, exist_ok=True)
+    (program_dir / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+    (program_dir / "sprites.h").write_text(
+        "#ifndef LLMZ80_SPRITES_H\n#define LLMZ80_SPRITES_H\n#endif\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="sprites.h"):
+        render_project(project, directory / "build")
+
+
 def test_a_removed_source_does_not_survive_the_next_scaffold(tmp_path: Path):
     project = create_default_project("Stale", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
     directory = ProjectStore(tmp_path).create(project)

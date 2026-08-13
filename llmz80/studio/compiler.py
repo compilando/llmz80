@@ -23,7 +23,7 @@ from .codegen import (
 )
 from .models import GameProject, TargetPlatform, VideoMode
 from .probes import write_probe_report
-from .sprite_header import render_sprite_header
+from .sprite_header import render_sprite_header, render_sprite_source
 from .sprite_sheet import split_frames
 from .spriting import PackedSprite, is_blitter_sprite, pack_cpc, pack_spectrum
 
@@ -212,8 +212,33 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
         )
     validate_sprite_budget(project, packed_sprites)
     (source_dir / "sprites.h").write_text(render_sprite_header(packed_sprites), encoding="utf-8")
+    # The tables sprites.h only declares `extern` are defined here, once. Both
+    # target builds pick this up the same way they pick up every other file in
+    # src/: the Spectrum build globs src/*.c, and CPCtelera's build_config.mk
+    # globs $(SRCDIR)/*.c -- neither needs telling about a new file by name.
+    (source_dir / "sprites.c").write_text(render_sprite_source(packed_sprites), encoding="utf-8")
 
     owned = program_sources(project, project_dir)
+    # A program that names one of its own files the same as a file Studio just
+    # wrote (sprites.h above, platform.c/.h and game_config.h/game_state.h
+    # below) would silently overwrite it in the copy loop that follows --
+    # e.g. a program-supplied sprites.h that shadows the generated one and
+    # loses every SPRITE_<ID> constant, with no error at all until (or unless)
+    # a diagnostic downstream happens to mention it. Refuse that outright
+    # instead: the model gets a clear, fixable error rather than a silently
+    # broken build.
+    reserved = {piece.name for piece in library_sources(project)} | {
+        "game_config.h",
+        "game_state.h",
+        "sprites.h",
+        "sprites.c",
+    }
+    shadowing = sorted(path.name for path in owned if path.name in reserved)
+    if shadowing:
+        raise ValueError(
+            "the program may not define these files -- Studio generates them: "
+            + ", ".join(shadowing)
+        )
     for path in owned:
         shutil.copy2(path, source_dir / path.name)
     main_c = next((path for path in owned if path.name == "main.c"), None)

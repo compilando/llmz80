@@ -55,9 +55,16 @@ from PIL import Image
 
 from llm_z80 import resolve_cpct_path
 from llmz80.quality.emulator_smoke import smoke_test
-from llmz80.studio.models import GenreId, TargetPlatform
+from llmz80.studio import compiler as compiler_module
+from llmz80.studio.models import AssetSpec, GenreId, TargetPlatform
 from llmz80.studio.services import StudioService
 from llmz80.studio.spriting import pack_spectrum
+
+#: Real model-output sprite sheets, copied in from a genuine end-to-end Studio
+#: run (`studio-projects/profanacion/assets/*.png`; see module docstring
+#: below for why three sprites, not one). Copied into the repo rather than
+#: read from that directory, which is a scratch project and not a fixture.
+FIXTURES = Path(__file__).parent / "fixtures"
 
 zcc_missing = pytest.mark.skipif(shutil.which("zcc") is None, reason="z88dk is not installed")
 zesarux_missing = pytest.mark.skipif(
@@ -365,3 +372,207 @@ def test_cpc_blitter_visibly_draws_where_the_control_build_does_not(tmp_path: Pa
     assert sprite_after_boot["sha256"] != control_after_boot["sha256"]
     assert control_after_boot["dominant_fraction"] > 0.98
     assert sprite_after_boot["non_dominant_pixels"] > control_after_boot["non_dominant_pixels"] + 30
+
+
+# ---------------------------------------------------------------------------
+# The link, not just the compile: a project with several sprites whose own
+# main.c includes sprites.h, exactly like a real end-to-end Studio run's
+# program does when it wants to choose which sprite plat_sprite draws.
+#
+# The single-sprite tests above never exercise this: their main.c only
+# includes platform.h, so sprites.h is only ever pulled into one translation
+# unit (platform.c itself). A real generated program that also includes
+# sprites.h -- the natural thing to do once SPRITE_HERO/SPRITE_ENEMY/etc are
+# needed in the caller's own code -- pulls the same header into a second
+# translation unit, main.c. Before the header/source split in
+# `sprite_header.py`, that made both translation units define
+# `sprite_data[]`, `sprite_mask[]`, `sprite_frame_offset[][]`,
+# `sprite_frames[]` and `sprite_attribute[]`, and the linker refused with
+# `error: duplicate definition: main_c::_sprite_data` and four siblings.
+# ---------------------------------------------------------------------------
+
+def _add_sprite_fixture(directory: Path, asset_id: str, fixture_name: str, *, frames: int = 4):
+    """Copy a real fixture sheet into the project's assets/ under `asset_id`."""
+    assets_dir = directory / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{asset_id}.png"
+    shutil.copy2(FIXTURES / fixture_name, assets_dir / filename)
+    with Image.open(assets_dir / filename) as image:
+        width, height = image.size
+    return AssetSpec(
+        id=asset_id, source=f"assets/{filename}", width=width, height=height, frames=frames
+    )
+
+
+def _build_multi_sprite_project(tmp_path: Path, platform: TargetPlatform):
+    """Three real sprites (from a genuine Studio end-to-end run -- see
+    `tests/fixtures/sprite_sheet_profanacion_*.png`), in a project whose own
+    main.c includes sprites.h and picks a sprite by its SPRITE_<ID> constant,
+    the same way the real generated program that hit this bug did.
+    """
+    workspace = tmp_path / f"projects_{platform.value}"
+    service = StudioService.at(workspace)
+    project, directory = service.create_project(
+        "MultiSprite", platform, GenreId.SINGLE_SCREEN_COLLECT
+    )
+    project.assets = [
+        _add_sprite_fixture(directory, "hero", "sprite_sheet_profanacion_hero.png"),
+        _add_sprite_fixture(directory, "enemy", "sprite_sheet_profanacion_enemy.png"),
+        _add_sprite_fixture(directory, "pellet", "sprite_sheet_profanacion_pellet.png"),
+    ]
+
+    program_dir = directory / project.program_dir
+    program_dir.mkdir(parents=True, exist_ok=True)
+    arch_include = (
+        "#include <arch/zx.h>\n"
+        if platform is TargetPlatform.SPECTRUM
+        else "#include <cpctelera.h>\n"
+    )
+    (program_dir / "main.c").write_text(
+        f"""{arch_include}#include "platform.h"
+#include "sprites.h"
+
+void main(void) {{
+    plat_init();
+    plat_sprite(2, 7, SPRITE_HERO, 0);
+    plat_sprite(4, 7, SPRITE_ENEMY, 0);
+    plat_sprite(6, 7, SPRITE_PELLET, 0);
+    while (1) {{ }}
+}}
+""",
+        encoding="utf-8",
+    )
+    return service.build(project, directory)
+
+
+@zcc_missing
+def test_spectrum_multi_sprite_project_with_main_including_sprites_h_links(tmp_path: Path):
+    """The link proof for Spectrum: three sprites, main.c and platform.c both
+    including sprites.h, built and linked through the real z88dk toolchain."""
+    build = _build_multi_sprite_project(tmp_path, TargetPlatform.SPECTRUM)
+
+    assert build.success, build.report.get("stderr") or build.report.get("stdout")
+    assert build.artifact is not None and build.artifact.is_file()
+    assert build.artifact.stat().st_size > 0
+    assert (build.output_dir / "src" / "sprites.c").is_file()
+    sprites_h = (build.output_dir / "src" / "sprites.h").read_text(encoding="utf-8")
+    assert "#define SPRITE_COUNT 3" in sprites_h
+
+
+@make_missing
+@cpct_missing
+def test_cpc_multi_sprite_project_with_main_including_sprites_h_links(tmp_path: Path):
+    """The link proof for CPC: same three-sprite project, built through the
+    real CPCtelera/SDCC toolchain via `make`. `sprites.c` reaches the build
+    the same way every other file in src/ does -- build_config.mk globs
+    `$(SRCDIR)/*.c` -- so nothing here has to tell CPCtelera about it by name.
+    """
+    build = _build_multi_sprite_project(tmp_path, TargetPlatform.AMSTRAD_CPC)
+
+    assert build.success, build.report.get("stderr") or build.report.get("stdout")
+    assert build.artifact is not None and build.artifact.is_file()
+    assert build.artifact.stat().st_size > 0
+    assert (build.output_dir / "src" / "sprites.c").is_file()
+    sprites_h = (build.output_dir / "src" / "sprites.h").read_text(encoding="utf-8")
+    assert "#define SPRITE_COUNT 3" in sprites_h
+
+
+def _pre_split_render_sprite_header(sprites):
+    """The header exactly as `render_sprite_header` rendered it before the
+    header/source split -- definitions and all, `static` byte arrays aside.
+    Reproduced here (not imported) so this test does not depend on the buggy
+    code still existing anywhere in the module under test; it exists only to
+    prove the real toolchain rejects this shape, on purpose, when it comes
+    back.
+    """
+    from llmz80.studio.sprite_header import _checked_id, _c_byte_array
+
+    ids = [_checked_id(sprite_id) for sprite_id in sprites]
+    count = len(ids)
+    width_bytes_values = {packed.width_bytes for packed in sprites.values()}
+    bytes_wide = next(iter(width_bytes_values), 2)
+
+    lines = [
+        "#ifndef LLMZ80_SPRITES_H",
+        "#define LLMZ80_SPRITES_H",
+        "",
+    ]
+    for index, sprite_id in enumerate(ids):
+        lines.append(f"#define SPRITE_{sprite_id.upper()} {index}")
+    lines.append(f"#define SPRITE_COUNT {count}")
+    lines.append(f"#define SPRITE_BYTES_WIDE {bytes_wide}")
+    lines.append("")
+    if count == 0:
+        lines.append("#endif")
+        return "\n".join(lines) + "\n"
+
+    max_frames = max(packed.frames for packed in sprites.values())
+    lines.append("#if SPRITE_COUNT > 0")
+    lines.append("")
+    for sprite_id, packed in sprites.items():
+        lines.append(_c_byte_array(f"sprite_{sprite_id}_data", packed.data))
+        if packed.mask:
+            lines.append(_c_byte_array(f"sprite_{sprite_id}_mask", packed.mask))
+        lines.append("")
+    data_pointers = ", ".join(f"sprite_{sprite_id}_data" for sprite_id in ids)
+    lines.append(f"const unsigned char *const sprite_data[] = {{ {data_pointers} }};")
+    mask_pointers = ", ".join(
+        f"sprite_{sprite_id}_data" if not sprites[sprite_id].mask else f"sprite_{sprite_id}_mask"
+        for sprite_id in ids
+    )
+    lines.append(f"const unsigned char *const sprite_mask[] = {{ {mask_pointers} }};")
+    lines.append("")
+    offset_rows = []
+    for sprite_id in ids:
+        packed = sprites[sprite_id]
+        real = [frame * packed.bytes_per_frame for frame in range(packed.frames)]
+        padded = real + [real[-1]] * (max_frames - len(real))
+        offset_rows.append("{" + ", ".join(str(value) for value in padded) + "}")
+    lines.append(
+        f"const unsigned int sprite_frame_offset[][{max_frames}] = {{\n    "
+        + ",\n    ".join(offset_rows)
+        + "\n};"
+    )
+    lines.append("")
+    frame_counts = ", ".join(str(sprites[sprite_id].frames) for sprite_id in ids)
+    lines.append(f"const unsigned char sprite_frames[] = {{{frame_counts}}};")
+    lines.append("")
+    attribute_bytes = ", ".join(str(sprites[sprite_id].attribute) for sprite_id in ids)
+    lines.append(f"const unsigned char sprite_attribute[] = {{{attribute_bytes}}};")
+    lines.append("")
+    lines.append("#endif /* SPRITE_COUNT */")
+    lines.append("")
+    lines.append("#endif /* LLMZ80_SPRITES_H */")
+    return "\n".join(lines) + "\n"
+
+
+@zcc_missing
+def test_a_reintroduced_definition_in_the_header_fails_the_real_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The regression proof: put a definition back in sprites.h (as if
+    someone "simplified" the split away) and watch the real linker refuse to
+    link, the same way it refused the real failed run this whole test module
+    exists to guard against. If this test ever passes, the guard is gone.
+    """
+    monkeypatch.setattr(
+        compiler_module, "render_sprite_header", _pre_split_render_sprite_header
+    )
+    # Also revert sprites.c to a no-op include, matching the pre-fix repo
+    # exactly: one file (sprites.h) carrying the definitions, pulled into two
+    # translation units (platform.c and this test's main.c). Leaving the real
+    # render_sprite_source in place would instead fail earlier, while
+    # compiling sprites.c itself (it would redefine what the reverted header
+    # already defines) -- a real failure too, but not the cross-file linker
+    # error `error: duplicate definition: main_c::_sprite_data` the actual
+    # failed run hit, which is what this test reproduces on purpose.
+    monkeypatch.setattr(
+        compiler_module, "render_sprite_source", lambda sprites: '#include "sprites.h"\n'
+    )
+
+    build = _build_multi_sprite_project(tmp_path, TargetPlatform.SPECTRUM)
+
+    assert not build.success
+    diagnostics = (build.report.get("stdout") or "") + (build.report.get("stderr") or "")
+    assert "duplicate definition" in diagnostics
+    assert "_sprite_data" in diagnostics
