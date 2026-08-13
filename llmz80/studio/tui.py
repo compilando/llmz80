@@ -36,21 +36,28 @@ from textual.widgets import (
 from textual.widgets.option_list import Option
 
 from . import editing
-from .models import TILE_WALL, GameProject, TargetPlatform
-from .packs import BUILTIN_PACKS
+from .models import GameProject, TargetPlatform
 from .screen import STAGE_KEY, Stage, next_step, stage_line
 from .services import StudioService
 
 #: Cell glyphs used by the map editor, keyed by what occupies the cell.
 GLYPH_WALL = "▓"
 GLYPH_FLOOR = "·"
-GLYPH_BY_ROLE = {
-    "player": "@",
-    "enemy": "&",
-    "collectible": "*",
-    "hazard": "^",
-    "exit": ">",
-}
+
+
+def _entity_glyph(kind: str) -> str:
+    """The map-editor glyph for an occupant of a cell, from its entity's `kind`.
+
+    v4 has no fixed roster of entity roles -- `kind` is free text a design
+    coins for itself -- so there is no table to key a glyph off of the way
+    `GLYPH_BY_ROLE` (player/enemy/collectible/...) used to. The first letter
+    of `kind`, uppercased, is legible enough on the grid and distinguishes
+    entities that name themselves differently without Studio needing to know
+    what any of them mean; an entity with no `kind` at all (never valid on a
+    saved project, but cheap to guard) falls back to "?".
+    """
+    return kind[0].upper() if kind else "?"
+
 
 #: One character per `screen.StageState`, drawn plain (for `status_text`,
 #: which tests and scripts read as a string) and wrapped in colour markup
@@ -96,25 +103,26 @@ PANEL_IDS = {
 }
 
 
-def render_map(project: GameProject, level_index: int, cursor: tuple[int, int]) -> str:
-    """Draw one level as markup: terrain, spawns and the edit cursor.
+def render_map(project: GameProject, screen_index: int, cursor: tuple[int, int]) -> str:
+    """Draw one screen as markup: terrain, spawns and the edit cursor.
 
     A module-level function over plain data, so it can be read and tested
     without a running application.
     """
-    level = project.levels[level_index]
-    roles = {entity.id: entity.role for entity in project.entities}
+    screen = project.screens[screen_index]
+    kinds = {entity.id: entity.kind for entity in project.entities}
     occupants = {
-        (spawn.col, spawn.row): GLYPH_BY_ROLE.get(roles.get(spawn.entity, ""), "?")
-        for spawn in level.spawns
+        (spawn.col, spawn.row): _entity_glyph(kinds.get(spawn.entity, ""))
+        for spawn in screen.spawns
     }
+    solid = editing.solid_char(project)
     lines = []
-    for row in range(level.height):
+    for row in range(screen.height):
         cells = []
-        for col in range(level.width):
+        for col in range(screen.width):
             glyph = occupants.get(
                 (col, row),
-                GLYPH_WALL if level.tiles[row][col] == TILE_WALL else GLYPH_FLOOR,
+                GLYPH_WALL if screen.tiles[row][col] == solid else GLYPH_FLOOR,
             )
             if (col, row) == cursor:
                 glyph = f"[reverse]{glyph}[/reverse]"
@@ -240,7 +248,7 @@ class StudioApp(App[None]):
         self.service = StudioService.at(self.workspace)
         self.project: GameProject | None = None
         self.project_dir: Path | None = None
-        self.level_index = 0
+        self.screen_index = 0
         self.cursor: tuple[int, int] = (0, 0)
         #: `None` at rest; otherwise one of `PANEL_IDS`'s keys, the single
         #: panel currently shown over the resting screen.
@@ -308,9 +316,9 @@ class StudioApp(App[None]):
             yield from self._field("Style", Input(id="f-style"))
         with Vertical(id="panel-create", classes="panel"):
             yield Static(
-                "New project -- target and type are fixed once it exists. The "
-                "brief is what research reads to identify the game and what "
-                "the program writer is told to build; worth writing now."
+                "New project -- target is fixed once it exists. The brief is "
+                "what research reads to identify the game and what the "
+                "program writer is told to build; worth writing now."
             )
             yield from self._field(
                 "Target",
@@ -319,15 +327,6 @@ class StudioApp(App[None]):
                     value="spectrum",
                     allow_blank=False,
                     id="f-target",
-                ),
-            )
-            yield from self._field(
-                "Type",
-                Select(
-                    [(pack.name, pack.id) for pack in BUILTIN_PACKS],
-                    value=BUILTIN_PACKS[0].id,
-                    allow_blank=False,
-                    id="f-genre",
                 ),
             )
             create_brief_box = Vertical(TextArea(id="f-create-brief"), id="create-brief-box")
@@ -343,17 +342,15 @@ class StudioApp(App[None]):
                     yield Static("No project loaded.", id="map-grid", markup=True)
                     yield Static("", id="map-hint")
                 with Vertical():
-                    yield Select([("level 1", 0)], value=0, allow_blank=False, id="f-level")
+                    yield Select([("screen 1", 0)], value=0, allow_blank=False, id="f-screen")
                     yield Select([("none", -1)], value=-1, allow_blank=False, id="f-spawn")
         with Vertical(id="panel-entities", classes="panel"):
-            yield from self._field("Lives", Input(id="f-lives", type="integer"))
             yield DataTable(id="entity-table", cursor_type="row")
         with Vertical(id="panel-sprites", classes="panel"):
             # Where art `action_draw_sprites` generated is looked at before
             # it is compiled -- filled in by `_show_drawn_sprites`.
             yield Static(
-                "No sprites drawn yet. Press ctrl+d to draw the art this "
-                "project is missing.",
+                "No sprites drawn yet. Press ctrl+d to draw the art this " "project is missing.",
                 id="sprites-view",
             )
         with Vertical(id="panel-diff", classes="panel"):
@@ -362,8 +359,7 @@ class StudioApp(App[None]):
             # off: this shows a model-written diff verbatim, the same reason
             # `#shortcuts` (also literal bracketed text) turns it off.
             yield Static(
-                "No proposal yet. Press ctrl+a to adapt the design to the "
-                "researched game.",
+                "No proposal yet. Press ctrl+a to adapt the design to the " "researched game.",
                 id="diff-view",
                 markup=False,
             )
@@ -373,7 +369,7 @@ class StudioApp(App[None]):
 
     def on_mount(self) -> None:
         table = self.query_one("#entity-table", DataTable)
-        table.add_columns("entity", "role", "count", "speed", "behaviour")
+        table.add_columns("entity", "kind", "count")
         self.query_one("#map-hint", Static).update(
             "wasd move · space wall · m move spawn · +/- count"
         )
@@ -438,11 +434,9 @@ class StudioApp(App[None]):
             return
         self.sub_title = (
             f"{self.project.metadata.slug} · {self.project.target.platform.value} · "
-            f"{self.project.genre}"
+            f"{len(self.project.screens)} screens"
         )
-        self.query_one("#brief-preview", Static).update(
-            brief_preview(self.project.metadata.brief)
-        )
+        self.query_one("#brief-preview", Static).update(brief_preview(self.project.metadata.brief))
         stages = stage_line(self.project, self.project_dir)
         detail = pick_stage_detail(stages)
         hint = next_step_hint(stages)
@@ -458,29 +452,28 @@ class StudioApp(App[None]):
             return
         project = self.project
         self.query_one("#f-title", Input).value = project.metadata.title
-        self.query_one("#f-lives", Input).value = str(project.gameplay.lives)
         self.query_one("#f-style", Input).value = project.presentation.style
         brief = self.query_one("#f-brief", TextArea)
         if brief.text != project.metadata.brief:
             brief.text = project.metadata.brief
 
-        level = project.levels[self.level_index]
+        screen = project.screens[self.screen_index]
         self.cursor = (
-            min(self.cursor[0], level.width - 1),
-            min(self.cursor[1], level.height - 1),
+            min(self.cursor[0], screen.width - 1),
+            min(self.cursor[1], screen.height - 1),
         )
         self.query_one("#map-grid", Static).update(
-            render_map(project, self.level_index, self.cursor)
+            render_map(project, self.screen_index, self.cursor)
         )
-        levels = self.query_one("#f-level", Select)
-        levels.set_options([(item.name, index) for index, item in enumerate(project.levels)])
-        levels.value = self.level_index
-        roles = {entity.id: entity.role for entity in project.entities}
+        screens = self.query_one("#f-screen", Select)
+        screens.set_options([(item.name, index) for index, item in enumerate(project.screens)])
+        screens.value = self.screen_index
+        kinds = {entity.id: entity.kind for entity in project.entities}
         spawns = self.query_one("#f-spawn", Select)
         spawns.set_options(
             [
-                (f"{index}: {spawn.entity} ({roles.get(spawn.entity, '?')})", index)
-                for index, spawn in enumerate(level.spawns)
+                (f"{index}: {spawn.entity} ({kinds.get(spawn.entity, '?')})", index)
+                for index, spawn in enumerate(screen.spawns)
             ]
             or [("none", -1)]
         )
@@ -489,10 +482,8 @@ class StudioApp(App[None]):
         for entity in project.entities:
             table.add_row(
                 entity.id,
-                entity.role,
+                entity.kind,
                 str(entity.count),
-                str(entity.speed),
-                entity.behaviour,
                 key=entity.id,
             )
         self._refresh_stage()
@@ -636,8 +627,8 @@ class StudioApp(App[None]):
     def on_select_changed(self, event: Select.Changed) -> None:
         if self.project is None:
             return
-        if event.select.id == "f-level" and isinstance(event.value, int):
-            self.level_index = event.value
+        if event.select.id == "f-screen" and isinstance(event.value, int):
+            self.screen_index = event.value
             self.cursor = (0, 0)
             self._refresh()
 
@@ -673,29 +664,27 @@ class StudioApp(App[None]):
                 event.stop()
             return
         if self.active_panel == "map" and self.project is not None:
-            level = self.project.levels[self.level_index]
+            screen = self.project.screens[self.screen_index]
             col, row = self.cursor
             moves = {"w": (0, -1), "s": (0, 1), "a": (-1, 0), "d": (1, 0)}
             if key in moves:
                 step = moves[key]
                 self.cursor = (
-                    min(max(col + step[0], 0), level.width - 1),
-                    min(max(row + step[1], 0), level.height - 1),
+                    min(max(col + step[0], 0), screen.width - 1),
+                    min(max(row + step[1], 0), screen.height - 1),
                 )
                 self._refresh()
                 event.stop()
                 return
             if key == "space":
-                self._apply(lambda: editing.toggle_tile(self.project, self.level_index, col, row))
+                self._apply(lambda: editing.toggle_tile(self.project, self.screen_index, col, row))
                 event.stop()
                 return
             if key == "m":
                 index = self.query_one("#f-spawn", Select).value
                 if isinstance(index, int) and index >= 0:
                     self._apply(
-                        lambda: editing.move_spawn(
-                            self.project, self.level_index, index, col, row
-                        )
+                        lambda: editing.move_spawn(self.project, self.screen_index, index, col, row)
                     )
                 event.stop()
                 return
@@ -758,13 +747,12 @@ class StudioApp(App[None]):
             self.project, self.project_dir = self.service.create_project(
                 title,
                 TargetPlatform(str(self.query_one("#f-target", Select).value)),
-                str(self.query_one("#f-genre", Select).value),
             )
             brief = self.query_one("#f-create-brief", TextArea).text.strip()
             if brief:
                 self.project = editing.rename_project(self.project, title, brief=brief)
                 self.service.save_project(self.project, self.project_dir)
-            self.level_index, self.cursor = 0, (0, 0)
+            self.screen_index, self.cursor = 0, (0, 0)
             self._refresh()
             self._log(f"[green]Created[/green] {self.project_dir / 'game.yml'}")
         except Exception as exc:
@@ -775,7 +763,7 @@ class StudioApp(App[None]):
             location = Path(path).expanduser().resolve()
             self.project = self.service.open_project(location)
             self.project_dir = location.parent if location.name == "game.yml" else location
-            self.level_index, self.cursor = 0, (0, 0)
+            self.screen_index, self.cursor = 0, (0, 0)
             self._refresh()
             self._log(f"[green]Opened[/green] {self.project_dir}")
         except Exception as exc:
@@ -788,7 +776,6 @@ class StudioApp(App[None]):
             lambda: editing.rename_project(
                 self.project,
                 self.query_one("#f-title", Input).value.strip(),
-                lives=int(self.query_one("#f-lives", Input).value or 3),
                 style=self.query_one("#f-style", Input).value.strip(),
                 brief=self.query_one("#f-brief", TextArea).text.strip(),
             )
@@ -925,14 +912,15 @@ class StudioApp(App[None]):
             remaining = [
                 a for a in self.project.assets if not (a.kind == "sprite" and a.id in existing)
             ]
-            candidate = GameProject.model_validate(
-                {
-                    **self.project.model_dump(mode="json"),
-                    "assets": [a.model_dump(mode="json") for a in remaining],
-                }
-            )
-            self.project.assets = candidate.assets
-            self.service.save_project(self.project, self.project_dir)
+            # `model_copy`, not `model_validate` or a plain assignment,
+            # deliberately skips the structural check tying an entity's
+            # sprite to a declared asset: for the instant between evicting
+            # the old art here and `draw_sprites` registering its
+            # replacement below, no asset declares this id at all, which
+            # the full validator would refuse. That gap lives only in
+            # memory and is never saved -- `draw_sprites`'s own `add_asset`
+            # call is what next writes to disk, once a fresh asset closes it.
+            self.project = self.project.model_copy(update={"assets": remaining})
 
         self._drawn_sprites = []
         project, directory = self.project, self.project_dir
@@ -1053,9 +1041,11 @@ class StudioApp(App[None]):
             report = self.service.runtime_test(self.project, self.project_dir)
             acceptance = report.get("acceptance") or {}
             lines = [
-                "[green]Runtime passed[/green]"
-                if report["quality_pass"]
-                else "[red]Runtime rejected[/red]"
+                (
+                    "[green]Runtime passed[/green]"
+                    if report["quality_pass"]
+                    else "[red]Runtime rejected[/red]"
+                )
             ]
             for scenario in acceptance.get("scenarios") or []:
                 if isinstance(scenario, dict):
