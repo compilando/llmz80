@@ -246,7 +246,11 @@ def render_stage_marks(stages: Sequence[Stage | wizard.Step], *, colour: bool) -
         icon = STAGE_ICON[stage.state]
         if colour:
             icon = f"[{STAGE_COLOR[stage.state]}]{icon}[/{STAGE_COLOR[stage.state]}]"
-        parts.append(f"{stage.name} {icon}")
+        # `wizard.Step` carries a title to show; `screen.Stage` is the
+        # evidence layer and knows only the stage's id, which is exactly what
+        # it should know. Whatever this is handed, it prints the most
+        # human-readable name that thing has.
+        parts.append(f"{getattr(stage, 'title', '') or stage.name} {icon}")
     return "  ".join(parts)
 
 
@@ -275,8 +279,12 @@ def render_step_head(step: wizard.Step) -> str:
     and step zero -- having a project open at all -- is the precondition for
     any of them, so numbering it 0 keeps the six named steps at the numbers
     `wizard` and the diary already give them.
+
+    `title`, not `name`: `name` is the stage's id -- what `passed` holds and
+    what the diary records -- and printing it here is what left an otherwise
+    English screen saying `Step 2 of 6: diseño`.
     """
-    return f"Step {step.number} of 6: {step.name}"
+    return f"Step {step.number} of 6: {step.title}"
 
 
 def render_step_summary(step: wizard.Step, *, can_adapt: bool = False) -> str:
@@ -642,7 +650,7 @@ class StudioApp(App[None]):
             # Where art the sprites step generated is looked at before
             # it is compiled -- filled in by `_show_drawn_sprites`.
             yield Static(
-                "No sprites drawn yet -- the sprites step draws the art this "
+                "No sprites drawn yet -- the Sprites step draws the art this "
                 "project is missing.",
                 id="sprites-view",
             )
@@ -653,7 +661,7 @@ class StudioApp(App[None]):
             # `#shortcuts` (also literal bracketed text) turns it off.
             yield Static(
                 "No proposal yet -- adapting the design to the researched game "
-                "is part of the diseño step.",
+                "is part of the Design step.",
                 id="diff-view",
                 markup=False,
             )
@@ -1222,8 +1230,12 @@ class StudioApp(App[None]):
         """
         step = wizard.current(self.project, self.project_dir, self.passed)
         if not wizard.can_leave_behind(step):
+            # `name`, not `title`: the screen translates and the file does
+            # not. A diary line is a record, and a record that is written in
+            # whatever language the interface happens to speak can neither be
+            # searched nor read back beside the lines written before it.
             refusal = f"{step.number} {step.name}: cannot be skipped"
-            self.notify(f"Step {step.name} cannot be skipped", severity="warning")
+            self.notify(f"The {step.title} step cannot be skipped", severity="warning")
             # A toast lives five seconds. Wanting to walk past this step was a
             # decision the person made and the pipeline denied, and reading the
             # diary the next morning without it would leave the gap between
@@ -1335,7 +1347,7 @@ class StudioApp(App[None]):
             self.notify("That step is not done yet", severity="warning")
             return
         if not self._confirmed(f"repeat:{step.name}"):
-            self.notify(f"Press R again to redo {step.name}", severity="warning")
+            self.notify(f"Press R again to redo {step.title}", severity="warning")
             return
         # The step's own guard asks the same question before overwriting what
         # is already there, and this was the answer: arm it, so one decision
@@ -1422,7 +1434,7 @@ class StudioApp(App[None]):
             return
         if not self._adaptable:
             self.notify(
-                "The design can only be adapted to the dossier on the diseño "
+                "The design can only be adapted to the dossier on the Design "
                 "step, and only with a dossier that identified a game",
                 severity="warning",
             )
@@ -1575,7 +1587,7 @@ class StudioApp(App[None]):
             on_publisher = f" ({', '.join(known)})" if known else ""
             return True, (
                 f"[green]{dossier.title}{on_publisher}[/green] · "
-                f"{len(dossier.sources)} source(s). See the stage line for referencia."
+                f"{len(dossier.sources)} source(s). See the stage line for Reference."
             )
 
         self._run("Researching with the OpenAI API; this searches the web", job)
@@ -1786,6 +1798,9 @@ class StudioApp(App[None]):
         self._ensure_journal()
         step = wizard.current(self.project, self.project_dir, self.passed)
         assert self.journal is not None
+        # The id again, for the reason `action_advance` states: this line is
+        # the record of a piece of work, and `FIN 3 sprites` has to go on
+        # meaning the same thing next year.
         token = self.journal.start(f"{step.number} {step.name} — {label}")
         self._log(token.line)
         self._busy(label)

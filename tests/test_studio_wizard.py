@@ -81,6 +81,35 @@ def test_every_step_carries_words_a_person_can_read(tmp_path):
     for step in steps(project, tmp_path):
         assert step.summary
         assert step.action_label
+        assert step.title
+
+
+def test_a_step_keeps_its_id_and_carries_a_label_of_its_own(tmp_path):
+    """The two jobs one field used to do, and lost at: `name` is the id
+    `screen.stage_line` produces, `passed` holds and the diary records, and it
+    stays exactly as it was; `title` is what the screen prints, and it is
+    English like the rest of the interface."""
+    project = blank_project("Labelled", TargetPlatform.SPECTRUM)
+    walked = steps(project, tmp_path)
+
+    assert [step.name for step in walked] == [
+        "proyecto",
+        "referencia",
+        "diseño",
+        "sprites",
+        "programa",
+        "gates",
+        "release",
+    ]
+    assert [step.title for step in walked] == [
+        "Project",
+        "Reference",
+        "Design",
+        "Sprites",
+        "Program",
+        "Gates",
+        "Release",
+    ]
 
 
 # --- who may be left behind ------------------------------------------------

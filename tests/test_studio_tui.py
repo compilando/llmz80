@@ -36,7 +36,7 @@ async def test_creating_a_project_fills_the_editor(tmp_path: Path):
         # A freshly created default project fits its target machine, which
         # is the six-stage line's "diseño" (design) stage reading done --
         # the direct replacement for the old one-line "ready" verdict.
-        assert "diseño ✓" in app.status_text
+        assert "Design ✓" in app.status_text
 
 
 @pytest.mark.asyncio
@@ -291,7 +291,7 @@ def test_render_step_head_says_where_in_the_pipeline_you_are():
     project = blank_project("Placed", TargetPlatform.SPECTRUM)
     step = current(project, None, passed={"proyecto"})
 
-    assert render_step_head(step) == "Step 1 of 6: referencia"
+    assert render_step_head(step) == "Step 1 of 6: Reference"
 
 
 def test_render_step_summary_names_the_key_and_warns_about_the_bill():
@@ -541,7 +541,7 @@ async def test_the_wizard_names_the_step_and_moves_on_once_it_is_done(tmp_path: 
 
         # A brand new project: research is where the wizard stands, and the
         # screen says so in words rather than naming a key to memorise.
-        assert "Step 1 of 6: referencia" in app.query_one("#wizard-head").content
+        assert "Step 1 of 6: Reference" in app.query_one("#wizard-head").content
         summary = app.query_one("#wizard-summary").content
         assert "[Enter] research" in summary
         assert "spends money" in summary
@@ -557,7 +557,7 @@ async def test_the_wizard_names_the_step_and_moves_on_once_it_is_done(tmp_path: 
         # Researched: the step it just did is behind it, and the wizard has
         # moved on to the next one on its own.
         assert "referencia" in app.passed
-        assert "Step 2 of 6: diseño" in app.query_one("#wizard-head").content
+        assert "Step 2 of 6: Design" in app.query_one("#wizard-head").content
         # The dossier it found still names itself on the detail line.
         assert "Real Game" in app.query_one("#stage-detail").content
 
@@ -744,7 +744,7 @@ async def test_the_workspace_picker_lists_and_opens_a_project(tmp_path: Path):
 
         # No project open, so the wizard stands on step 0, and doing it is
         # what opens the picker -- there is no ctrl+o any more.
-        assert "Step 0 of 6: proyecto" in app.status_text
+        assert "Step 0 of 6: Project" in app.status_text
         app.action_do()
         await pilot.pause()
 
@@ -891,7 +891,7 @@ async def test_research_reaches_the_service_and_the_stage_line_shows_it(tmp_path
         # No panel of its own: the result surfaces on the stage line's
         # "referencia" detail, the same place `screen.stage_line` already
         # names a dossier's title and source count for any project.
-        assert "referencia ✓" in app.status_text
+        assert "Reference ✓" in app.status_text
         assert "Zampa Bolas" in app.status_text
         assert app.active_panel != "diff" and app.active_panel != "sprites"
 
@@ -2311,3 +2311,40 @@ async def test_a_save_says_what_changed_not_only_which_file(tmp_path: Path):
         line = diary.read_text(encoding="utf-8").splitlines()[-1]
         assert "title changed" in line and "brief changed" in line
         assert "ghosts" not in line
+
+
+@pytest.mark.asyncio
+async def test_the_screen_names_a_step_in_english_and_the_diary_records_its_id(
+    tmp_path: Path,
+):
+    """The last of the two languages: an otherwise English screen said `Step 2
+    of 6: diseño`, because one field was both the stage's id and its label.
+
+    The split has to fall this way round. The diary keeps the id: a line is a
+    record, and a `studio.log` whose words follow whatever language the
+    interface speaks can neither be searched nor read beside the lines written
+    before it.
+    """
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        app.query_one("#f-create-title").value = "Labelled"
+        app.action_create()
+        await pilot.pause()
+
+        # The head and the progress strip, in the interface's one language.
+        assert "Step 1 of 6: Reference" in app.query_one("#wizard-head").content
+        strip = app.query_one("#stage-line").content
+        for title in ("Project", "Reference", "Design", "Sprites", "Program"):
+            assert title in strip, title
+        for identifier in ("proyecto", "referencia", "diseño", "programa"):
+            assert identifier not in strip, identifier
+
+        # And the file, which is a record and stays in ids.
+        await pilot.press("right")  # skip research
+        await pilot.pause()
+        diary = (app.project_dir / "studio.log").read_text(encoding="utf-8")
+        assert "SKIP    1 referencia" in diary
+        assert "Reference" not in diary
+        # `passed` is keyed by the id too -- it is what `_actions` and
+        # `stage_line` agree on.
+        assert "referencia" in app.passed
