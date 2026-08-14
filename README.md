@@ -269,11 +269,13 @@ make studio
 .venv/bin/llmz80 studio studio-projects
 ```
 
-El primer vertical slice permite elegir Spectrum o CPC, juego de recolección o
-persecución en laberinto y alcance de producción; crea título, controles,
-entidades, tres niveles, escenarios de aceptación y presupuestos técnicos. Desde
-la propia TUI puede guardar, regenerar fuentes, compilar y ejecutar el test
-headless del emulador.
+El asistente recorre el pipeline un paso cada vez: elegir o crear el proyecto
+(Spectrum o CPC), investigar el juego real, revisar el diseño, dibujar sprites,
+escribir el programa, pasar las puertas y publicar. El proyecto base trae
+título, controles, entidades, pantallas, escenarios de aceptación y
+presupuestos técnicos; el diseño declara su propio vocabulario de tiles,
+entidades y mecánicas, y no hay géneros de catálogo que elegir. Cada paso queda
+anotado, con su hora y su duración, en `<proyecto>/studio.log`.
 
 También existe un flujo reproducible para CI:
 
@@ -771,25 +773,53 @@ Run everything through the project virtual environment, as the Makefile does.
 
     make studio                     # or: make studio WORKSPACE=~/games
 
-A typology gives a starting shape; the free-text brief on the design panel says
-what makes this game itself, and it is the first thing the program's author is
-shown. Write "four ghosts, and a power dot makes them edible" there rather than
-hoping a genre id conveys it.
+The free-text brief says what makes this game itself, and it is the first thing
+both the researcher and the program's author are shown. Write "four ghosts, and
+a power dot makes them edible" there: a design declares its own tiles, entities
+and mechanics, and nothing else conveys that on its behalf.
 
-One command screen at rest: identity, a one-line reminder of the brief, the
-project's six-stage status line with a detail naming the first stage still
-failing, and the keys that open everything else. `g` design, `m` map,
-`e` entities, `s` sprites, `d` diff, `l` log open a panel over it, one at a
-time. `ctrl+n` new, `ctrl+o` open, `ctrl+f` research the real game the brief
-names, `ctrl+a` adapt the design toward it, `ctrl+d` draw its sprites,
-`ctrl+w` have the program written, `ctrl+b` build, `ctrl+t` test, `ctrl+r`
-release. On the Map panel, `wasd` moves the cursor, `space` toggles a wall,
-`m` moves the selected spawn, `+/-` change an entity count.
+One step at a time, and the screen says which one. At rest it shows identity, a
+one-line reminder of the brief, the seven-step strip with each step's state
+(`✓` done, `»` walked past, `✗` failed, `—` still to do), and the sentence that
+replaces having to know the pipeline: where you are standing (`Paso 3 de 6:
+sprites`), what this step is for, and which key does it.
+
+Five keys, and each step names the ones it offers. `Enter` does the step, and
+says `gasta dinero (API)` first where pressing it would. `→` leaves the step
+behind -- offered as `omitir` only where the pipeline can genuinely spare it, so
+`referencia` and `sprites` can be walked past and `programa` cannot. `Esc` steps
+back, or leaves an open editor, saving what was drawn in it. `R` does a finished
+step over, after asking. `Q` quits. Inside `diseño`, `A` adapts the design to
+the researched game as one diff you accept or discard, and is offered only once
+research has archived a dossier to adapt to.
+
+The diary sits underneath all of it and is never hidden: what Studio did, when,
+how long it took, and what came of it. Everything the screen says once a
+project is open the file keeps -- as its own line, or, for the result of a
+long job, folded into the `FIN` line that closes the work, since a diary is
+read by scanning its left margin. So a session that skipped, saved, adapted,
+was refused or failed overnight can still be read the next morning. The single
+line that is in no file is the opening one naming the workspace: at that point
+there is no project to own a diary.
+
+A panel is a mode, and while one is open the wizard's keys stand down -- `→`
+cannot walk past a step you cannot see. `Esc` is what leaves any panel, saving
+what was typed or drawn in it, and every panel names the keys that work inside
+it. Each opens with its first field already focused, so typing is typing and
+not a shortcut misfiring.
+
+`g` design, `m` map, `e` entities, `s` sprites, `d` diff open one over the
+resting screen, one at a time. Step 0's own panel -- picking a project, or
+starting one -- is the same idea: `Tab` moves between fields, `Enter` creates
+the project from any of them, `Esc` closes without creating anything. On the
+Map panel, the arrow keys or `wasd` move the cursor, `space` toggles a wall,
+`m` moves the selected spawn, `+/-` change an entity count. Every panel fits an
+80x24 terminal.
 
 ### Headless
 
-    .venv/bin/llmz80 project types                    # the eighteen typologies
-    .venv/bin/llmz80 project new ~/games "Cave Runner" spectrum platform_single_screen \
+    .venv/bin/llmz80 project types                    # kinds of game that exist, for inspiration
+    .venv/bin/llmz80 project new ~/games "Cave Runner" spectrum \
         "The miner crosses ledges to reach the keys. Falling off costs a life."
 
     P=~/games/cave-runner/game.yml

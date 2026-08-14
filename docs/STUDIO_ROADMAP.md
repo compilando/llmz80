@@ -650,3 +650,144 @@ over screen. It is unplayably hard, and no gate here can currently say so.
   time over it, and research (`ctrl+f`), adapt (`ctrl+a`) and sprite drawing (`ctrl+d`) reachable
   from it alongside save/new/open/write/build/test/release.
 - 775 automated tests collected, 774 passing with one known-flaky emulator test deselected.
+
+## 2026-08-14 (K): the front end stopped being a keyboard and became a wizard
+
+Reported as "I never know which key I am supposed to press".
+
+Ten `ctrl+<letter>` shortcuts sat on the resting screen with nothing to say which
+of them was next. That `ctrl+f` had to come before `ctrl+a`, and that `ctrl+t`
+rather than `ctrl+b` was what produced the quality report, was knowledge the
+screen demanded and never offered: the order of the pipeline lived in the
+person's head and the screen quizzed them on it. Pressing the wrong one was
+refused, and there was no way to learn it would be refused except by pressing it.
+
+The second complaint was the same shape from the other side: the pipeline said
+nothing while it worked. Having a program written and repaired takes minutes,
+and the screen reported the result and nothing before it, so a command that was
+working looked exactly like one that had hung.
+
+- `llmz80/studio/wizard.py` answers the first: a pure state machine over
+  `screen.stage_line`, which already decides what has been done from the design
+  in memory and the evidence on disk. The wizard adds only the three things that
+  module does not have -- the order, the words to put on screen, and the rule for
+  what may be walked past -- and re-derives none of the "is this done" logic,
+  because two answers to that question drift apart within a week. Nothing in it
+  draws, calls an API or touches disk, so the whole flow is tested without
+  starting Textual.
+- The screen stands on one step at a time and names it: `Paso 3 de 6: sprites`,
+  what the step is for, and which key does it. Ten keys became five -- `Enter`
+  does the step, `→` leaves it behind, `Esc` goes back a step (and saves, on the
+  way out of an editor), `R` does a finished one over after asking, `Q` quits --
+  plus `A` inside `diseño`, which adapts the design to the researched game as one
+  reviewable diff and is offered only where a dossier exists to adapt to. A key is
+  named only where it would work: `→` reads `omitir` on `referencia` and
+  `sprites`, which the pipeline can genuinely spare, and is not offered on
+  `programa` or `gates`, without which there is nothing to release. `Enter` says
+  `gasta dinero (API)` before it spends any.
+- `llmz80/studio/journal.py` answers the second: every project gets an
+  append-only diary in `<project>/studio.log` -- what started, what it said along
+  the way, what it ended as, and how many seconds it took. Every line is written
+  to the file *and returned*, so what a person watches and what the file remembers
+  are the same characters rather than two renderings of one event. The diary sits
+  below the wizard permanently instead of behind a key; the `l` log panel went
+  with the ten shortcuts, because a diary you have to press something to see is a
+  diary nobody reads.
+- Walked end to end with `run_test` on an empty workspace, pressing only what the
+  screen names. `Enter` on step 0 opens the creation panel (an empty workspace has
+  exactly one sensible thing to do in it), and `→`, `Enter`, `Esc`, `→`, `→` from
+  there reach a `game.yml` that `project validate` accepts, leaving `ABRIR`,
+  `OMITIR 1 referencia`, `GUARDAR` and `OMITIR 3 sprites` in the diary with their
+  timestamps.
+- That walk failed its own acceptance criterion at the first stop, and the fix
+  is the rest of this entry. The creation panel could not be worked with the
+  keys the wizard teaches: nothing was focused, so the only way to a field was
+  `Tab`, which the wizard never names; `Enter` reopened the same panel and did
+  nothing; the panel's help named `Esc`, the way out, and nothing about the way
+  in; and the `Create` button -- the only control that starts a project -- sat
+  below the fold on any terminal shorter than 34 rows, including the classic
+  80x24. The panel now focuses its first field on opening, `Enter` creates from
+  any field, the help names `Enter`/`Tab`/`Esc`, and the whole form fits 80x24
+  with the diary still visible under it, pinned by
+  `test_a_project_can_be_created_on_an_eighty_by_twentyfour_terminal`.
+- It also had a target and a brief but no title, because `action_create` read
+  `#f-title` out of the *design* panel, which is hidden: every project born in
+  the wizard was called "My Retro Game". The creation panel has its own
+  `#f-create-title`, focused first, and its brief is an `Input` rather than a
+  `TextArea` -- `Enter` in a text area inserts a newline, so the one key the
+  wizard teaches did nothing in the one field a person was most likely to be
+  standing in. The design panel keeps its full text area for writing the brief
+  properly afterwards.
+- Two more things that walk exposed, both fixed here. `#wizard-summary` was
+  pinned to one row, which fitted 120 columns and silently dropped `[→] omitir`
+  and the `gasta dinero (API)` warning off the right-hand edge of an 80 -- the
+  narrowest screen hid the key that walks past the steps that spend money. And
+  refusing to skip `programa` lived five seconds in a toast and was written
+  nowhere; it is an `AVISO` line now, because wanting to walk past a step is a
+  decision even when the pipeline denies it.
+- `Created`, `Opened` and `Saved` were written to the panel and to no file, so
+  the diary a person reads and the diary they keep told different stories. They
+  are journal lines now (`ABRIR` carries the target, `GUARDAR` replaces
+  "Saved"), and the panel and `studio.log` agree line for line -- with one
+  stated exception that cannot be otherwise: the workspace banner at mount,
+  written before any project exists to own a diary.
+
+## 2026-08-14 (L): the keys the screen prints, and the ones it does not
+
+A review of (K) found the same family of fault three more times, all of it the
+gap between what the screen says a key does and what the key does.
+
+- `→` stayed bound while a panel covered the screen. A press meant for the map
+  cursor left a pipeline step behind and wrote `OMITIR` for a decision nobody
+  made -- and the spec assigns the arrows to moving that cursor, so anyone
+  following the documentation triggered it on the first press. The cause was
+  that a key was described in three places at once (`BINDINGS`, the `on_key`
+  cascade, and the label `render_step_summary` composes), and they had already
+  drifted. `App.check_action` collapses two of the three: Textual asks it
+  before firing a binding *and* before drawing that binding in the Footer, so
+  one rule -- a panel is a mode, and in a mode only `Esc` and `Q` survive --
+  now settles both what the keyboard does and what the bar advertises. The
+  third is not a rival: `render_step_summary` only ever draws on the resting
+  screen, which is exactly when those keys are live. Splitting `tui.py` so
+  that dispatch and label came from one table per context would be the fuller
+  answer and is not this branch's work.
+- The arrows now move the cursor in the map editor, as the spec promises and
+  as `wasd` already did.
+- `#map-hint` fell off the bottom of an 80x24 screen under a 14-row map, so
+  the editor opened saying nothing about how to work it or how to leave. It
+  sits above the grid now. The test that covered it was green by accident: it
+  read `query_one("#map-hint").render()`, which renders whether or not the
+  compositor ever puts it on screen, and ran at 120x40 where it was invisible
+  too. Panel-label tests now read the compositor at 80x24.
+- Textual delivers Shift+R as the key `"R"`, which the `"r"` binding does not
+  match, so `[R] repetir` and `[A] adaptar` were printed in capitals and
+  answered only in lower case, silently. Both are bound in both cases now.
+- The diary kept every failure and threw away every success. `Journal.finish`
+  has taken a `text` since it was written -- the spec even shows the line it
+  makes -- and no caller in production passed one. It carries the result now:
+  which game was identified, which sprites were drawn, where the release
+  landed. Accepting or discarding an adaptation is written down too; it is a
+  decision about the design, and it used to be said only on screen.
+- The design panel had the same fault the creation panel had: nothing focused,
+  no key named, and letters typed into it read as panel keys -- `g` closed it,
+  `s` opened sprites -- so the brief could not be edited without guessing
+  `Tab`. Every panel with something to aim at now focuses it on opening.
+- A pending overwrite confirmation outlived the step that asked for it, so
+  `Enter, →, Esc, Enter` on `sprites` destroyed existing art and spent money on
+  a single press. Confirmations die when the wizard changes step, and
+  `action_repeat` only pre-answers for the two steps that ask.
+- `screen.next_step` was deleted rather than kept: nothing called it, and it
+  answered "what happens next" from the stages alone while `wizard.current`
+  answers it from the stages and from what the person has walked past. Two
+  functions for one question is the drift `wizard`'s own docstring warns
+  about, and the surviving one is the one the screen actually uses.
+- Pinned by tests that did not exist: creation on 80x24 end to end, every
+  panel's instructions read off the screen rather than off the widget, a panel
+  switching off the keys that would move behind it, the capitals answering,
+  the three slow steps handing `on_progress` to their service, `FIN` carrying
+  what a step achieved, and a confirmation dying with its step.
+- Two things deliberately left alone, both real and both bigger than the end
+  of a branch: `tui.py` is long enough that dispatch, layout and the pipeline
+  steps want separating, and the interface mixes Spanish and English within a
+  single screen (`Paso 2 de 6` above `wasd move`, `Brief` beside `[Esc] guarda
+  y vuelve`). Neither should be done hurriedly.

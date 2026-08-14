@@ -240,6 +240,39 @@ class Attempt:
     feedback: str = ""
 
 
+#: Told what is happening while it happens -- see `services.Progress` for the
+#: same alias and the reason it exists. Defined again here, rather than
+#: imported, because `services.py` imports *this* module; importing back the
+#: other way would be a cycle.
+Progress = Callable[[str], None] | None
+
+
+def _say(on_progress: Progress, text: str) -> None:
+    """Report `text` if anyone is listening, so callers stay free of the check."""
+    if on_progress is not None:
+        on_progress(text)
+
+
+def _gate_verdict(passed: bool | None) -> str:
+    """`True`/`False`/`None` (a gate that abstained -- no adapter, or nothing
+    to judge) read out the way a person, not a parser, would ask for them."""
+    if passed is None:
+        return "sin observar"
+    return "aprobada" if passed else "rechazada"
+
+
+def _attempt_line(attempt: Attempt) -> str:
+    """One attempt, as `Attempt` already recorded it: its number, whether the
+    build compiled, and each gate's verdict."""
+    build = "compiló" if attempt.build_passed else "no compiló"
+    acceptance = _gate_verdict(attempt.acceptance_passed)
+    animation = _gate_verdict(attempt.animation_passed)
+    return (
+        f"intento {attempt.number}: build {build}, "
+        f"aceptación {acceptance}, animación {animation}"
+    )
+
+
 @dataclass
 class WriteResult:
     accepted: bool
@@ -280,16 +313,24 @@ def write_program(
     verify: Callable[[GameProject, Path], dict[str, Any]],
     *,
     attempts: int = 5,
+    on_progress: Progress = None,
 ) -> WriteResult:
     """Ask for a program, verify it, and feed what failed back in.
 
     Verification is injected because the loop's logic and the emulator's cost
     are separate concerns: the same loop is exercised in tests without a
     toolchain and in anger with both.
+
+    `on_progress`, when given, is told twice per attempt: once before
+    `writer.write` -- the long wait, an LLM call -- and once its verdict is
+    known, after `verify` has judged it. Both happen inside this loop, so a
+    caller listening hears the first line well before this function itself
+    returns -- unlike a report handed back only once every attempt is spent.
     """
     result = WriteResult(accepted=False)
     feedback: str | None = None
     for number in range(1, max(1, attempts) + 1):
+        _say(on_progress, f"intento {number}: escribiendo...")
         try:
             sources = writer.write(project, feedback)
         except Exception as exc:  # a writer failing is an outcome, not a crash
@@ -308,6 +349,7 @@ def write_program(
         attempt.build_passed = bool(build and build.get("quality_pass"))
         attempt.acceptance_passed = (acceptance or {}).get("quality_pass")
         attempt.animation_passed = (animation or {}).get("quality_pass")
+        _say(on_progress, _attempt_line(attempt))
 
         # An unobservable target cannot confirm behaviour, so a clean build is
         # as far as the evidence goes; it is recorded as such, not as a pass.

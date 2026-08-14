@@ -9,7 +9,7 @@ import pytest
 from llmz80.studio.models import AssetSpec, TargetPlatform
 from llmz80.studio.reference import GameReference, save_reference
 from llmz80.studio.samples import blank_project
-from llmz80.studio.screen import STAGE_KEY, STAGE_NAMES, Stage, next_step, stage_line
+from llmz80.studio.screen import STAGE_NAMES, Stage, stage_line
 
 
 @pytest.fixture
@@ -365,70 +365,24 @@ def test_release_is_pending_with_no_directory(project):
     assert stage.state == "pending"
 
 
-# --- next_step: what advances the pipeline right now ------------------------
+# --- what the stage line still owes the wizard ------------------------------
+#
+# `next_step` lived here and answered "what happens next" from the stages
+# alone. `wizard.current` answers it from the stages *and* what the person
+# has walked past, which is the only answer the screen ever uses; two
+# functions for one question is exactly the drift `wizard`'s own docstring
+# warns about, so the unused one went. Its rules are still tested, in
+# tests/test_studio_wizard.py, against the function that is actually called.
 
 
-def test_stage_key_names_every_stage_exactly_once():
-    assert set(STAGE_KEY) == set(STAGE_NAMES)
-    for key, verb in STAGE_KEY.values():
-        assert key and verb
+def test_the_stage_line_no_longer_names_keys():
+    """The keys it named are gone; the wizard decides what Enter does."""
+    import llmz80.studio.screen as screen
+
+    assert not hasattr(screen, "STAGE_KEY")
 
 
-def test_next_step_is_none_with_no_project():
-    assert next_step(stage_line(None, None)) is None
-
-
-def test_next_step_picks_the_earliest_pending_stage_absent_any_failure(project, tmp_path):
-    stages = stage_line(project, tmp_path)  # referencia is the first pending stage
-
-    stage = next_step(stages)
-
-    assert stage is not None
-    assert stage.name == "referencia"
-    assert STAGE_KEY[stage.name] == ("ctrl+f", "research the game")
-
-
-def test_next_step_moves_on_as_earlier_stages_complete(project, tmp_path):
-    """The hint changes as a project advances -- pinned by naming the stage
-    at each of three distinct points along the pipeline, not just the first."""
-    fresh = next_step(stage_line(project, tmp_path))
-    assert fresh.name == "referencia"
-
-    save_reference(_dossier(), tmp_path)
-    researched = next_step(stage_line(project, tmp_path))
-    assert researched.name == "sprites"  # diseño already reads done by default
-
-    with_sprite = project.model_copy(update={"assets": [_sprite_asset()]})
-    sprited = next_step(stage_line(with_sprite, tmp_path))
-    assert sprited.name == "programa"
-
-
-def test_next_step_prefers_an_earlier_failure_over_a_later_pending_stage(project, tmp_path):
-    """A broken design blocks the pipeline even though referencia -- earlier
-    in STAGE_NAMES -- is merely unstarted, not broken; pointing at "research"
-    while the design does not even fit its target would not fix anything."""
-    unfit = _oversized(project)
-
-    stage = next_step(stage_line(unfit, tmp_path))
-
-    assert stage is not None
-    assert stage.name == "diseño"
-    assert STAGE_KEY[stage.name] == ("g", "review the design")
-
-
-def test_next_step_is_none_once_every_stage_is_done(project, tmp_path):
-    save_reference(_dossier(), tmp_path)
-    with_sprite = project.model_copy(update={"assets": [_sprite_asset()]})
-    program_dir = tmp_path / with_sprite.program_dir
-    program_dir.mkdir()
-    (program_dir / "main.c").write_text("int main(void) { return 0; }\n")
-    _write_quality_report(tmp_path)
-    releases = tmp_path / "releases"
-    releases.mkdir()
-    name = f"{with_sprite.metadata.slug}-{with_sprite.target.platform.value}.zip"
-    (releases / name).write_bytes(b"PK\x03\x04")
-
-    stages = stage_line(with_sprite, tmp_path)
-
-    assert all(stage.state == "done" for stage in stages)
-    assert next_step(stages) is None
+def test_the_stage_line_still_names_every_stage_of_the_pipeline(project):
+    """What outlived the key map: the order the pipeline runs in, which is
+    what `wizard` reads to know which step follows which."""
+    assert [stage.name for stage in stage_line(project, None)] == list(STAGE_NAMES)

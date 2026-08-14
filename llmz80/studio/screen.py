@@ -49,52 +49,6 @@ class Stage:
 #: through, from identifying a real game to shipping one.
 STAGE_NAMES = ("referencia", "diseño", "sprites", "programa", "gates", "release")
 
-#: The key that advances each stage, and a short verb naming what pressing
-#: it does. Five of six are a direct ctrl-binding straight out of the
-#: pipeline: `ctrl+f` researches, `ctrl+d` draws sprites, `ctrl+w` writes
-#: the program, `ctrl+r` releases. `gates` maps to `ctrl+t` rather than
-#: `ctrl+b`: `StudioService.runtime_test` builds before it runs, so testing
-#: alone is what actually produces `studio_quality_report.json` -- building
-#: on its own never does.
-#:
-#: `diseño` is the odd one out, and has no ctrl-binding at all: unlike
-#: every other stage it is never `pending`, only `done` or `failed` (see
-#: `_design_stage`), and what repairs a failure -- unsealing a maze,
-#: fixing a broken roster -- happens by hand in the map or entities panel,
-#: not with one keystroke that could run unattended the way research,
-#: sprites, writing or release do. It points at `g` instead: the panel
-#: already labelled "diseño" on the shortcuts line, and the natural place
-#: to start regardless of which check failed.
-STAGE_KEY: dict[str, tuple[str, str]] = {
-    "referencia": ("ctrl+f", "research the game"),
-    "diseño": ("g", "review the design"),
-    "sprites": ("ctrl+d", "draw the sprites"),
-    "programa": ("ctrl+w", "write the program"),
-    "gates": ("ctrl+t", "build and test it"),
-    "release": ("ctrl+r", "release it"),
-}
-
-
-def next_step(stages: list[Stage]) -> Stage | None:
-    """The stage most worth fixing or trying next, or `None` once every
-    stage is `done`.
-
-    A failed stage already blocks the pipeline and its own detail already
-    says why (see `_design_stage`, `_program_stage` and friends) -- so the
-    earliest failure, in pipeline order, wins over any later pending stage:
-    there is nothing to gain from pointing at "draw sprites" while the
-    design itself is broken. Absent any failure, the earliest stage still
-    pending is simply what happens next on the ordinary path through the
-    pipeline. This mirrors `tui.pick_stage_detail`'s own priority (failed
-    before done) for the same reason: the two are read together, one
-    naming what is wrong or already achieved, the other naming the single
-    key that moves past it.
-    """
-    failed = next((stage for stage in stages if stage.state == "failed"), None)
-    if failed is not None:
-        return failed
-    return next((stage for stage in stages if stage.state == "pending"), None)
-
 
 def stage_line(project: GameProject | None, directory: Path | None) -> list[Stage]:
     """The six-stage status line for `project`, or nothing without one.

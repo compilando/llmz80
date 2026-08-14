@@ -80,9 +80,15 @@ def steps(project: GameProject | None, directory: Path | None) -> list[Step]
 def current(project: GameProject | None, directory: Path | None) -> Step
 ```
 
-`current` es el primer paso que no está hecho ni omitido — que es exactamente lo que
-`screen.next_step` ya calcula, incluida su regla de que un fallo temprano gana a un
-pendiente posterior.
+`current` es **el primer paso por el que la persona no ha pasado**, y `passed` es el
+conjunto de los que ya dejó atrás.
+
+No es "el primero que no está hecho", que fue el primer intento y estaba mal:
+`screen._design_stage` nunca devuelve `pending` —un diseño está `done` o `failed`—
+así que esa regla salta el paso 2 en cuanto el diseño valida, y el paso que existe
+para editar sería el único al que nunca se llega. Un wizard es una sucesión de
+estaciones: se para en todas, incluidas las que ya están resueltas, y de cada una se
+sale a propósito.
 
 `StepState` añade `skipped` a los tres estados de `screen.StageState`. Los pasos 1
 (referencia) y 3 (sprites) son opcionales por naturaleza: un juego puede no estar basado
@@ -176,22 +182,29 @@ Desaparecen las diez: `ctrl+n`, `ctrl+o`, `ctrl+s`, `ctrl+f`, `ctrl+a`, `ctrl+d`
 
 | Tecla | En el wizard | En el editor |
 | --- | --- | --- |
-| `Enter` | ejecuta la acción del paso; si ya está hecho, avanza | — |
+| `Enter` | ejecuta la acción del paso; al terminar bien, avanza sola | — |
+| `→` | deja atrás el paso actual | — |
 | `R` | repite un paso ya hecho, preguntando antes de sobrescribir | — |
 | `Esc` | retrocede un paso, para mirarlo | guarda y vuelve al wizard |
 | `↑↓←→` | elige proyecto en el paso 0 | mueve el cursor |
 | `Espacio` | — | pinta la celda |
 | `Tab` | — | cambia el tile con el que se pinta |
-| `S` | omite el paso, sólo en los pasos 1 y 3 | — |
 | `Q` | salir | — |
 
 Ninguna tecla hace cosas distintas según el contexto salvo las flechas, que son
 "moverse" en los dos.
 
-`R` existe porque `Enter` sobre un paso hecho avanza, y sin él no habría forma de
-rehacer nada: volver con `Esc` a un paso terminado dejaría al usuario mirándolo sin
-poder tocarlo. Reutiliza la confirmación de sobrescritura que `research_reference` y
-`draw_sprites` ya piden hoy antes de pisar lo que había.
+`→` es la que deja atrás un paso, y hace dos trabajos que al principio parecían uno.
+Sobre un paso ya resuelto —el diseño que valida, la referencia ya archivada— es
+simplemente seguir. Sobre uno pendiente es omitirlo, y entonces sólo funciona si el
+paso es omitible: `referencia` y `sprites` lo son porque el pipeline no los necesita,
+y `programa` o `gates` no, porque sin ellos no hay nada que publicar. Al omitir, el
+diario escribe `OMITIR`; al pasar por uno hecho, no escribe nada, porque no hubo
+decisión que registrar.
+
+`R` existe porque `Enter` sobre un paso hecho no lo repite: sin ella, volver con `Esc`
+a un paso terminado dejaría al usuario mirándolo sin poder tocarlo. Reutiliza la
+confirmación de sobrescritura que `research_reference` y `draw_sprites` ya piden hoy.
 
 ## Fallos
 

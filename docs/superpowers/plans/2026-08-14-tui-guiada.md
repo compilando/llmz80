@@ -225,6 +225,9 @@ git commit -m "feat(studio): give a project a diary that outlives the session"
 
 ### Task 2: `wizard.py` — qué paso toca
 
+> **Corregida durante la ejecución. El código de abajo tiene un fallo de diseño.**
+> `current` estaba escrita como "el primer paso que no está hecho", y `screen._design_stage` nunca devuelve `pending` — un diseño está `done` o `failed`. Con esa regla el wizard salta el paso 2 en cuanto el diseño valida, y el paso que existe para editar sería el único al que nunca se llega. La regla correcta es **el primer paso por el que la persona no ha pasado**, con `passed` en lugar de `skipped`, y una tecla `→` para dejar atrás un paso — que estaba en el mockup aprobado y se perdió al escribir el plan. Ver el spec y `git show` de la tarea 2.
+
 **Files:**
 - Create: `llmz80/studio/wizard.py`
 - Create: `tests/test_studio_wizard.py`
@@ -558,6 +561,60 @@ git commit -m "feat(studio): let the long jobs say what they are doing"
 
 ---
 
+### Task 3b: bajar el aviso hasta donde está la espera
+
+> **Tarea añadida durante la ejecución.** La 3 dejó `on_progress` en `services.py`, que es
+> un piso por encima de donde se tarda: `generator.write_program` tiene el bucle de los
+> cinco intentos y `sprite_artist.draw_frames` el de los reintentos del artista. El
+> resultado es que la pantalla sigue callada los dos minutos y luego vuelca cinco líneas
+> de golpe — que es justo lo que la tarea 3 existía para evitar.
+
+**Files:**
+- Modify: `llmz80/studio/generator.py` (`write_program`), `llmz80/studio/sprite_artist.py` (`draw_frames`), `llmz80/studio/services.py` (`write_program`, `verify_program`, `draw_sprites`)
+- Modify: `tests/test_studio_generator.py`, `tests/test_sprite_artist.py`
+
+- [ ] **Step 1: Escribe los tests que fallan**
+
+```python
+def test_the_repair_loop_reports_each_attempt_as_it_happens():
+    """Reporting them afterwards is the same silence with a louder ending."""
+    from llmz80.studio.generator import write_program
+
+    said: list[str] = []
+    ...  # writer de mentira que falla el primer intento y acierta el segundo
+    write_program(project, directory, writer, verify, on_progress=said.append)
+    assert said[0].startswith("intento 1")
+    assert len(said) == 2
+```
+
+y el gemelo en `tests/test_sprite_artist.py` para `draw_frames`, comprobando que un
+reintento se anuncia **antes** de que el siguiente empiece, no al final.
+
+- [ ] **Step 2: Enhebra el parámetro**
+
+`generator.write_program(..., *, on_progress=None)` avisa al empezar cada intento y al
+conocer su veredicto. `SpriteArtist.draw_frames(..., *, on_progress=None)` avisa por
+fotograma juzgado y por reintento, con el motivo. `services` los pasa hacia abajo.
+
+`verify_program` es hoy un `Callable[[GameProject, Path], dict]` que no reenvía nada, así
+que las líneas de `runtime_test` no salen cuando se llama desde dentro del bucle de
+reparación. Amplía esa firma a `Callable[[GameProject, Path, Progress], dict]` o pásale el
+callback por cierre; decide y explica cuál en el commit.
+
+- [ ] **Step 3: La prueba que de verdad importa**
+
+Que el primer aviso salga **antes** de que termine el trabajo. Un test con un trabajo
+falso que tarde puede comprobarlo: guarda el instante de cada aviso y el del retorno, y
+afirma que el primero es anterior.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "feat(studio): report the wait while it is still waiting"
+```
+
+---
+
 ### Task 4: `tui.py` — el wizard sustituye a los atajos
 
 Es la tarea grande y la que fija la decisión del spec.
@@ -639,10 +696,10 @@ Expected: FAIL — las diez teclas siguen atadas y `_refresh_wizard` no existe.
 
 ```python
     BINDINGS = [
-        ("enter", "advance", "Hacer / avanzar"),
+        ("enter", "do", "Hacer"),
+        ("right", "advance", "Siguiente paso"),
         ("escape", "back", "Volver"),
         ("r", "repeat", "Repetir"),
-        ("s", "skip", "Omitir"),
         ("q", "quit", "Salir"),
     ]
 ```
@@ -652,23 +709,39 @@ Expected: FAIL — las diez teclas siguen atadas y `_refresh_wizard` no existe.
 En `__init__`, junto a los demás campos:
 
 ```python
-        #: Steps the person chose to go past. Session state on purpose: the
-        #: diary records the decision, but skipping is not evidence of work
-        #: done, so it must not be read back as if it were.
-        self.skipped: set[str] = set()
+        #: Steps the person has already left behind -- done, moved past, or
+        #: skipped. Session state on purpose: the diary records the decision,
+        #: but having walked past a step is not evidence of work done, and must
+        #: not be read back as if it were.
+        self.passed: set[str] = set()
         self.journal: Journal | None = None
 ```
 
 Y el despachador, que es la única entrada a las acciones del pipeline:
 
 ```python
-    def action_advance(self) -> None:
-        """Do whatever the current step is for, or move past it if it is done."""
-        step = wizard.current(self.project, self.project_dir, self.skipped)
-        if step.state in {"done", "skipped"}:
-            self._advance_past(step)
-            return
+    def action_do(self) -> None:
+        """Do whatever the current step is for. Advancing is `action_advance`."""
+        step = wizard.current(self.project, self.project_dir, self.passed)
         self._actions()[step.name]()
+
+    def action_advance(self) -> None:
+        """Leave the current step behind.
+
+        On a step already resolved this is simply moving on. On a pending one it
+        is skipping, and then it only works if the step is skippable: the
+        pipeline does not need `referencia` or `sprites`, but without `programa`
+        or `gates` there is nothing to release. Skipping is written down;
+        walking past a finished step is not, because no decision was made.
+        """
+        step = wizard.current(self.project, self.project_dir, self.passed)
+        if step.state == "pending" and not step.skippable:
+            self.notify(f"El paso {step.name} no se puede omitir", severity="warning")
+            return
+        if step.state == "pending":
+            self._log(self.journal.write("OMITIR", f"{step.number} {step.name}"))
+        self.passed.add(step.name)
+        self._refresh_wizard()
 
     def _actions(self) -> dict[str, Callable[[], None]]:
         """One entry per step, holding the methods that used to be reachable by
@@ -702,7 +775,7 @@ algo — sin él sólo se puede mirar:
         finished step unable to touch it. The confirmation is the one
         `research_reference` and `draw_sprites` already ask before overwriting.
         """
-        step = wizard.current(self.project, self.project_dir, self.skipped)
+        step = wizard.current(self.project, self.project_dir, self.passed)
         if step.state != "done":
             self.notify("Ese paso no está hecho todavía", severity="warning")
             return
@@ -915,3 +988,41 @@ git commit -m "docs(studio): describe the wizard instead of the shortcuts"
 - **`skipped` es estado de sesión, no del proyecto.** Omitir un paso queda escrito en el diario porque es una decisión que conviene ver, pero no es evidencia de trabajo hecho y no debe leerse como si lo fuera al reabrir.
 - **No amplíes el editor.** Sigue pintando muro y suelo con dos glifos fijos, así que un tercer tile sigue invisible. Está fuera de alcance a propósito y anotado como trabajo aparte; arreglarlo aquí mezclaría dos cosas.
 - Si un test existente de `tui.py` prueba algo que sigue valiendo pero por otra tecla, **pórtalo**. Bórralo sólo si prueba un atajo que ya no existe como concepto.
+
+## Ejecutado, y lo que la revisión final dejó pendiente a propósito
+
+Las siete tareas están hechas (más una 3b que la ejecución destapó: el aviso vivía un piso
+por encima de donde se espera). Las casillas de arriba se quedan sin marcar: el estado real
+es el historial de la rama, y marcarlas ahora sugeriría que el plan se siguió al pie de la
+letra cuando la mitad del valor salió de corregirlo sobre la marcha.
+
+**Seis fallos que la ejecución encontró y arregló**, todos de la misma familia — la interfaz
+sabiendo algo que no dice, o diciendo algo que no hace:
+
+1. `current` estaba escrita como "el primer paso no hecho", y `_design_stage` nunca devuelve
+   `pending`, así que el wizard saltaba el único paso que existe para editarse.
+2. `_adapt` se quedó sin tecla al desaparecer `ctrl+a`.
+3. Un `Esc` cerraba el editor **y** retrocedía un paso, con lo que salir del diseño te
+   devolvía a la referencia.
+4. Crear un segundo proyecto se volvió inalcanzable: el panel de creación sólo se abría con
+   el workspace vacío.
+5. El paso editable no anunciaba `[Enter] editar` por llegar en `done`.
+6. `#wizard-summary` a una línea tiraba fuera del borde derecho, a 80 columnas, `[→] omitir`
+   y el aviso `gasta dinero (API)` — se ocultaba justo la tecla que evita gastar.
+
+**Deuda anotada, no hecha:**
+
+- **Tres fuentes de verdad sobre qué hace cada tecla**: `BINDINGS`, la cascada de `on_key` y
+  el rótulo de `render_step_summary`. Ya han discrepado dos veces. Una tabla por contexto de
+  la que salgan las tres a la vez es lo que impediría el séptimo fallo de esta familia.
+- **`tui.py` en 1562 líneas.** El corte limpio y rentable, hoy mismo: `studio/render.py` con
+  `render_map`, `render_stage_marks`, `pick_stage_detail`, `render_step_head`,
+  `render_step_summary`, `brief_preview` y sus constantes — no importan Textual y ya se
+  prueban como funciones puras. Después, los siete métodos de paso a `studio/steps.py`.
+- **Idioma mezclado**: el wizard y el diario hablan español, y el panel de creación, el hint
+  del mapa y las etiquetas de `_run` hablan inglés — estas últimas acaban dentro de líneas
+  `INICIO`/`FIN` españolas.
+- **`GUARDAR` no dice qué se guardó** (nombra el fichero, no el cambio), y **el diario no
+  tiene línea de cierre de sesión**, así que el de mañana arranca pegado al de hoy.
+- **`#map-hint` anuncia `+/- count`**, que sólo funciona en el panel de entidades. Viene de
+  antes de esta rama.

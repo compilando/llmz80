@@ -1,24 +1,33 @@
-"""Compact terminal front end for designing, writing and proving a game.
+"""Guided terminal front end for designing, writing and proving a game.
 
-The resting screen is deliberately small: an identity line, a one-line
-reminder of the brief, the project's six-stage progress, and the keys that
-open everything else. Everything else -- editing the title, brief and style;
-the map; the entity roster; sprites; a pending diff; the log -- lives in a
-panel that opens over that resting screen, one at a time, so the screen a
-person leaves running never grows past what they need to glance at.
+The screen walks one pipeline step at a time. `wizard` decides which step
+that is and what doing it would mean; this names the key -- `Enter` does the
+step, `→` leaves it behind, `Esc` goes back, `R` repeats a finished one --
+and shows the diary underneath, always. There are no per-stage shortcuts any
+more: knowing that `ctrl+f` had to be pressed before `ctrl+a`, and that
+`ctrl+t` rather than `ctrl+b` was what produced the quality report, was
+knowledge the screen demanded and never offered.
 
-The work is done by `StudioService`, `editing` and `screen`; nothing here
-decides anything about a design or a project's status, which is what keeps
-the same operations usable from a script.
+Editing (title, brief, style; the map; the entity roster; sprites; a pending
+diff) still lives in a panel that opens over the resting screen, one at a
+time, so the screen a person leaves running never grows past what they need
+to glance at.
+
+The work is done by `StudioService`, `editing`, `screen` and `wizard`;
+nothing here decides anything about a design, a project's status or what
+comes next, which is what keeps the same operations usable from a script.
 """
 
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
+from typing import Callable, Sequence
 
 from textual import work
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import (
     Button,
@@ -35,9 +44,10 @@ from textual.widgets import (
 )
 from textual.widgets.option_list import Option
 
-from . import editing
+from . import editing, wizard
+from .journal import Journal
 from .models import GameProject, TargetPlatform
-from .screen import STAGE_KEY, Stage, next_step, stage_line
+from .screen import Stage
 from .services import StudioService
 
 #: Cell glyphs used by the map editor, keyed by what occupies the cell.
@@ -59,11 +69,12 @@ def _entity_glyph(kind: str) -> str:
     return kind[0].upper() if kind else "?"
 
 
-#: One character per `screen.StageState`, drawn plain (for `status_text`,
-#: which tests and scripts read as a string) and wrapped in colour markup
-#: only for the widget that a person actually looks at.
-STAGE_ICON = {"done": "✓", "pending": "—", "failed": "✗"}
-STAGE_COLOR = {"done": "green", "pending": "dim", "failed": "red"}
+#: One character per `screen.StageState`, plus the one state only the
+#: wizard knows about (`skipped`: walked past on purpose, and not coming
+#: back). Drawn plain for `status_text`, which tests and scripts read as a
+#: string, and wrapped in colour markup only for the widget a person looks at.
+STAGE_ICON = {"done": "✓", "pending": "—", "failed": "✗", "skipped": "»"}
+STAGE_COLOR = {"done": "green", "pending": "dim", "failed": "red", "skipped": "yellow"}
 
 #: The characters left of the brief preview's one line, before it is cut off
 #: with an ellipsis. Chosen to comfortably fit a typical terminal width
@@ -74,33 +85,64 @@ STAGE_COLOR = {"done": "green", "pending": "dim", "failed": "red"}
 BRIEF_PREVIEW_LIMIT = 78
 
 #: Every key that opens a panel over the resting screen, and the id of the
-#: container each shows. `g` (diseño) is the odd one out: it is not one of
-#: the five panels named in the brief -- map/entities/sprites/diff/log -- but
-#: it is where Title, Style and the editable Brief live, since none of those
-#: belong at rest either.
+#: container each shows. The log is no longer among them: it is the diary,
+#: it is half of what this screen says, and a diary you have to press a key
+#: to see is a diary nobody reads. It sits below the wizard, always, and
+#: everything written into it after mount goes through `Journal`, so the
+#: panel and `studio.log` cannot drift into telling different stories.
 PANEL_KEYS = {
     "g": "design",
     "m": "map",
     "e": "entities",
     "s": "sprites",
     "d": "diff",
-    "l": "log",
 }
 #: Every panel this screen can show, keyed and toggled the same way,
-#: including the two that stand in for a create/open dialog: `create` and
-#: `open` are not in `PANEL_KEYS` since a letter key never opens them (they
-#: have their own ctrl-bindings), but they use the same single-panel-at-a-time
-#: machinery as the ones that do.
+#: including the two the wizard's own first step opens rather than a letter:
+#: `create` and `open`.
 PANEL_IDS = {
     "design": "panel-design",
     "map": "panel-map",
     "entities": "panel-entities",
     "sprites": "panel-sprites",
     "diff": "panel-diff",
-    "log": "panel-log",
     "create": "panel-create",
     "open": "panel-open",
 }
+
+#: The workspace picker's own first entry, and the id it answers to.
+#: Creating a project used to hang off `ctrl+n`, and when the ten shortcuts
+#: went it survived only as the panel `_open_project_step` opens *instead of*
+#: the picker when the workspace is empty -- which meant that from the second
+#: project onwards there was no way to start one at all without leaving for
+#: the command line. A lost feature, not a lost key. It lives here now, where
+#: choosing a project already lives.
+NEW_PROJECT_ID = "new"
+NEW_PROJECT_LABEL = "＋ nuevo proyecto…"
+
+#: The steps whose own action asks before overwriting what is already on
+#: disk (`reference.yml`, existing sprite art). `action_repeat` pre-answers
+#: that question, and only these can hear the answer.
+_CONFIRMING_STEPS = frozenset({"referencia", "sprites"})
+
+#: Rich markup tags, stripped when a screen message is written to the diary:
+#: the file is read in a pager, where `[green]` is noise rather than colour.
+_MARKUP = re.compile(r"\[/?[a-z ]+\]")
+
+
+def _plain(text: str) -> str:
+    return _MARKUP.sub("", text).strip()
+
+
+def _summary(message: str) -> str:
+    """A job's result as the one line a diary can hold.
+
+    Screen messages run to several lines -- one per write attempt, one per
+    acceptance scenario -- and a diary is read by scanning the left margin,
+    which a multi-line entry ruins. Joined with the same separator the wizard
+    already uses between the parts of a sentence.
+    """
+    return " · ".join(part for part in _plain(message).splitlines() if part.strip())
 
 
 def render_map(project: GameProject, screen_index: int, cursor: tuple[int, int]) -> str:
@@ -131,14 +173,15 @@ def render_map(project: GameProject, screen_index: int, cursor: tuple[int, int])
     return "\n".join(lines)
 
 
-def render_stage_marks(stages: list[Stage], *, colour: bool) -> str:
+def render_stage_marks(stages: Sequence[Stage | wizard.Step], *, colour: bool) -> str:
     """One line: every stage's name and its state as a single character.
 
     `colour` picks Rich markup (for the widget a person reads) or plain text
     (for `status_text`, so a test can search it without stripping markup).
-    A pure function over `screen.stage_line`'s own output, kept separate from
-    the widget for the same reason `render_map` is: it can be read and tested
-    without a running application.
+    A pure function over `screen.stage_line`'s own output -- or over
+    `wizard.steps`'s, which carries the same two fields plus the `skipped`
+    state -- kept separate from the widget for the same reason `render_map`
+    is: it can be read and tested without a running application.
     """
     parts = []
     for stage in stages:
@@ -149,7 +192,7 @@ def render_stage_marks(stages: list[Stage], *, colour: bool) -> str:
     return "  ".join(parts)
 
 
-def pick_stage_detail(stages: list[Stage]) -> str:
+def pick_stage_detail(stages: Sequence[Stage | wizard.Step]) -> str:
     """The one detail worth a person's attention, of the six a stage carries.
 
     A failed stage explains what to fix, and the earliest failure in the
@@ -167,24 +210,80 @@ def pick_stage_detail(stages: list[Stage]) -> str:
     return done.detail if done is not None else ""
 
 
-def next_step_hint(stages: list[Stage]) -> str:
-    """One short sentence naming the key that advances the pipeline, or ""
-    once nothing is left to advance.
+def render_step_head(step: wizard.Step) -> str:
+    """The one line that says where in the pipeline the person is standing.
 
-    This is what turns `#stage-detail` from a read-only status line into a
-    "what to do next" line: `screen.next_step` picks which stage matters
-    most right now, `screen.STAGE_KEY` -- the one place that mapping is
-    written -- names the key and verb for it, and this only formats the
-    two into a sentence. No brackets: unlike `#shortcuts`, `#stage-detail`
-    keeps Rich markup enabled (its own text is never bracketed), and a
-    literal `[ctrl+r]` would be read as an unknown style tag rather than
-    shown as text.
+    Counted "de 6" rather than "de 7": the six pipeline stages are the work,
+    and step zero -- having a project open at all -- is the precondition for
+    any of them, so numbering it 0 keeps the six named steps at the numbers
+    `wizard` and the diary already give them.
     """
-    stage = next_step(stages)
-    if stage is None:
-        return ""
-    key, verb = STAGE_KEY[stage.name]
-    return f"press {key} to {verb}"
+    return f"Paso {step.number} de 6: {step.name}"
+
+
+def render_step_summary(step: wizard.Step, *, can_adapt: bool = False) -> str:
+    """What this step is for, and which key does it -- the sentence that
+    replaces having to know that `ctrl+f` came before `ctrl+a`.
+
+    A step still to do names `Enter` and its own verb, warns when pressing it
+    will spend money at an API, and offers `→` only where
+    `wizard.can_leave_behind` would actually allow it, so the screen never
+    suggests a key that will answer with a refusal. A step already resolved
+    names `→` to move on and `R` to do it over.
+
+    An *editable* step names `Enter` in both cases, and that is what
+    `Step.editable` is for. `diseño` is the one step whose purpose is to be
+    edited and the one step that arrives already `done` -- a `GameProject`
+    cannot exist without screens, tiles and entities, so
+    `screen._design_stage` never says `pending`. Collapsing those into one
+    "resolved" branch meant the only step that exists in order to be worked
+    on was the only one that never named its own verb: `Enter` opened the
+    editor and the screen did not say so. `done` on an editable step means
+    "the design is valid", not "there is nothing left to do here", and
+    those are different things.
+
+    `can_adapt` adds the one key that is not any step's own: `A`, offered
+    inside `diseño` and only where research archived a dossier, because
+    adapting the design to the researched game is a way of changing the
+    design rather than a step after it (see `StudioApp._adapt_step`). It is
+    named in both branches on purpose -- `diseño` is normally `done` from
+    the moment a project exists (`screen._design_stage` never says
+    `pending`), so a key offered only to unresolved steps would be a key
+    this step never offered at all.
+    """
+    parts = [step.summary]
+    resolved = step.state in {"done", "skipped"}
+    if not resolved or step.editable:
+        parts.append(f"[Enter] {step.action_label}")
+        if step.costs_api:
+            parts.append("gasta dinero (API)")
+    if can_adapt:
+        parts.append("[A] adaptar el diseño a la ficha")
+    if resolved:
+        parts.append("[→] siguiente paso")
+        if step.state == "done":
+            parts.append("[R] repetir")
+        return " · ".join(parts)
+    if wizard.can_leave_behind(step):
+        parts.append("[→] omitir")
+    return " · ".join(parts)
+
+
+def _can_adapt(walked: Sequence[wizard.Step], step: wizard.Step) -> bool:
+    """Whether adapting the design to the researched game is available now.
+
+    Two conditions, both read off `wizard.steps`'s own single reading of the
+    project rather than loading `reference.yml` a second time: the person is
+    standing on `diseño` -- adapting *is* changing the design -- and
+    `referencia` is `done`, which (see `screen._reference_stage`) means
+    exactly that a dossier exists and identified a game. That is precisely
+    what `propose_from_reference` needs to have something to propose from;
+    an absent dossier, or one that found nothing, leaves it nothing to say.
+    """
+    if step.name != "diseño":
+        return False
+    reference = next((walk for walk in walked if walk.name == "referencia"), None)
+    return reference is not None and reference.state == "done"
 
 
 def brief_preview(brief: str, limit: int = BRIEF_PREVIEW_LIMIT) -> str:
@@ -208,6 +307,13 @@ class StudioApp(App[None]):
     """A deliberately thin UI: domain rules remain in StudioService."""
 
     TITLE = "LLMZ80 Studio"
+    #: Nothing is focused at rest. Textual's default would hand focus to the
+    #: first focusable widget it finds -- a field inside a panel that is not
+    #: even on screen -- which then swallows the wizard's own keys: `Enter`
+    #: submits the hidden Input instead of doing the step. The wizard keys
+    #: belong to the screen, so the screen keeps them until a person opens a
+    #: panel and deliberately puts the cursor in something.
+    AUTO_FOCUS = None
     CSS = """
     #brief { height: auto; }
     #brief-box { height: 3; border: round $primary; margin: 0 1; padding: 0 1; }
@@ -216,9 +322,34 @@ class StudioApp(App[None]):
     .row Input, .row Select { width: 1fr; }
     #brief-edit-box { height: 8; border: round $primary; margin: 0 0 1 0; }
     #brief-edit-box TextArea { height: 1fr; }
-    #create-brief-box { height: 8; border: round $primary; margin: 0 0 1 0; }
-    #create-brief-box TextArea { height: 1fr; }
+    /* The creation panel is the one panel that must fit a whole form on the
+       smallest terminal anybody still uses. `1fr` split it with the diary and
+       pushed its Create button off the bottom of an 80x24 screen: the only
+       control that starts a project was invisible on the only screen a person
+       new to Studio is likely to be looking at. `auto` gives it exactly the
+       rows its four fields need and leaves the rest to the diary. */
+    #panel-create { height: auto; }
+    #create-help { height: auto; padding: 0 0 1 0; }
+    /* Same reason as the creation panel: an equal split with the diary is
+       fine for a list, and wrong for anything a person has to read all of.
+       The design panel's Style field and the map editor's grid both sat
+       below the fold of an 80x24 terminal. */
+    #panel-design { height: auto; }
+    #panel-map { height: auto; }
+    #panel-map Horizontal { height: auto; }
+    #panel-map Vertical { height: auto; }
+    #design-help { height: auto; padding: 0 0 1 0; }
+    #map-hint { height: auto; padding: 0 0 1 0; }
+    #wizard-head { height: 1; padding: 0 1; }
     #stage-line { height: 1; padding: 0 1; }
+    /* The one line that must never be cut: it is where the keys are named.
+       Fixed at `height: 1` it fitted 120 columns and silently dropped
+       `[→] omitir` and the `gasta dinero (API)` warning off the right-hand
+       edge of an 80-column terminal -- hiding the key that walks past a step
+       that spends money, on the narrowest screen. `auto` lets it take a
+       second row where it needs one; it still cannot grow with a project,
+       because every word in it comes from `wizard`'s own fixed vocabulary. */
+    #wizard-summary { height: auto; padding: 0 1; }
     #stage-detail { height: 1; padding: 0 1; }
     #shortcuts { height: 1; padding: 0 1; background: $boost; }
     .panel { display: none; height: 1fr; padding: 0 1; }
@@ -228,19 +359,40 @@ class StudioApp(App[None]):
     RichLog { height: 1fr; border: round $primary; }
     #workspace-list { height: 1fr; }
     """
+    #: One key per thing a person can decide, not one per pipeline stage.
+    #: Which stage `Enter` runs is the wizard's answer, not the keyboard's.
+    #:
+    #: These are the *resting screen's* keys, and `check_action` is what keeps
+    #: them there: with a panel open they are switched off, so `→` cannot walk
+    #: the wizard past steps nobody has seen while the editor covers them.
+    #: Textual reads the same `check_action` when it draws the Footer, so the
+    #: bar and the keyboard cannot disagree about what is live -- which is the
+    #: whole point of gating them there rather than with a guard inside each
+    #: action.
+    #:
+    #: `R` is bound twice on purpose. Textual delivers Shift+R as the key
+    #: `"R"`, which the `"r"` binding does not match, so the screen offered
+    #: `[R] repetir` and answered only the lowercase one, silently. The second
+    #: binding is hidden: one row in the Footer, two keys that reach it.
     BINDINGS = [
-        ("ctrl+s", "save", "Save"),
-        ("ctrl+n", "new_dialog", "New"),
-        ("ctrl+o", "open_dialog", "Open"),
-        ("ctrl+f", "research", "Research"),
-        ("ctrl+a", "adapt", "Adapt"),
-        ("ctrl+d", "draw_sprites", "Draw sprites"),
-        ("ctrl+w", "write", "Write program"),
-        ("ctrl+b", "build", "Build"),
-        ("ctrl+t", "test", "Test"),
-        ("ctrl+r", "release", "Release"),
-        ("ctrl+q", "quit", "Quit"),
+        ("enter", "do", "Hacer"),
+        ("right", "advance", "Siguiente paso"),
+        ("escape", "back", "Volver"),
+        ("r", "repeat", "Repetir"),
+        Binding("R", "repeat", "Repetir", show=False),
+        ("q", "quit", "Salir"),
     ]
+
+    #: The actions this screen's own bindings name. `check_action` is asked
+    #: about *every* action Textual can reach, including its own `focus_next`,
+    #: `focus_previous` and `command_palette`, so it has to know which ones are
+    #: its business: answering for all of them switched `Tab` off inside the
+    #: creation panel, which is the one place `Tab` is the way between fields.
+    WIZARD_ACTIONS = frozenset({"do", "advance", "back", "repeat", "quit"})
+
+    #: The wizard actions that survive a panel being open. `back` is how a
+    #: panel is left at all, and quitting must never need a panel closed first.
+    PANEL_SAFE_ACTIONS = frozenset({"back", "quit"})
 
     def __init__(self, workspace: Path) -> None:
         super().__init__()
@@ -253,6 +405,12 @@ class StudioApp(App[None]):
         #: `None` at rest; otherwise one of `PANEL_IDS`'s keys, the single
         #: panel currently shown over the resting screen.
         self.active_panel: str | None = None
+        #: Steps the person has already left behind -- done, moved past, or
+        #: skipped. Session state on purpose: the diary records the decision,
+        #: but having walked past a step is not evidence of work done, and must
+        #: not be read back as if it were.
+        self.passed: set[str] = set()
+        self.journal: Journal | None = None
         self._workspace_paths: dict[str, Path] = {}
         #: `None` until a test sets one directly, which is the injection
         #: point `research_reference`, `propose_from_reference` and
@@ -260,24 +418,45 @@ class StudioApp(App[None]):
         #: researcher/designer/artist as a parameter rather than building
         #: its own, precisely so a caller -- this screen, a script, or a
         #: test -- can hand it a fake instead of the OpenAI-backed default
-        #: each `action_*` below builds when this stays `None`.
+        #: each step's method below builds when this stays `None`.
         self.researcher = None
         self.designer = None
         self.artist = None
-        #: Set by `action_research`/`action_draw_sprites` on their first
-        #: press when there is something an overwrite would destroy, naming
-        #: which of them is waiting; a second press of the *same* action
-        #: confirms it. The same two-press idiom `action_new_dialog` already
-        #: uses for creating a project, just generalised past one action.
+        #: Set by `_research`/`_draw_sprites` on their first press when
+        #: there is something an overwrite would destroy, naming which of
+        #: them is waiting; a second press of the *same* action confirms it.
+        #: `action_repeat` asks the same way before doing a finished step
+        #: over again.
         self._pending_confirm: str | None = None
-        #: `(diff, updated_project, refusals)` once `action_adapt`'s job
+        #: The step `_pending_confirm` was armed on. A confirmation is an
+        #: answer to a question this step asked, and walking to another step
+        #: abandons the question; without this, arming `sprites` and coming
+        #: back to it later ("Enter, →, Esc, Enter") spent money and destroyed
+        #: existing art on a single press, because the second press was read
+        #: as confirming the first.
+        self._confirm_step: str | None = None
+        #: `(diff, updated_project, refusals)` once `_adapt`'s job
         #: returns, read by `_show_pending_proposal` and consumed by
         #: `_decide_proposal` -- nothing here is saved until a person
         #: presses [y] in the diff panel.
         self._pending_proposal: tuple[str, GameProject, list[str]] | None = None
-        #: Assets `action_draw_sprites`'s job just registered, read by
+        #: Assets `_draw_sprites`'s job just registered, read by
         #: `_show_drawn_sprites` once the job finishes.
         self._drawn_sprites: list = []
+        #: Whether the design has changed since the diary last recorded a
+        #: save. `_apply` is the one path that changes it, so `_apply` is
+        #: what sets this; `_save_and_log` clears it. Asked before saving
+        #: rather than after, because `store.save` stamps `updated_at` on
+        #: every write: once a save has happened the file always differs
+        #: from the one before it, and "did anything actually change?" can
+        #: no longer be answered by comparing the two.
+        self._edited = False
+        #: Whether [A] -- adapting the design to the researched game -- is on
+        #: offer right now. Decided in `_refresh_wizard`, off the same
+        #: reading of the project's evidence that draws the summary naming
+        #: the key, so what the screen offers and what the key does cannot
+        #: disagree.
+        self._adaptable = False
 
     # --- layout ---------------------------------------------------------
 
@@ -289,8 +468,9 @@ class StudioApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         # The resting screen: identity (Header's title/sub_title), a one-line
-        # reminder of the brief, the six-stage progress line, and the keys
-        # that open everything else -- including editing the brief itself.
+        # reminder of the brief, where in the pipeline the person is standing
+        # and what doing this step would mean, the seven-step progress line,
+        # and -- underneath all of it, never hidden -- the diary.
         with Vertical(id="brief"):
             brief_box = Vertical(
                 Static("no project loaded", id="brief-preview", markup=False),
@@ -298,28 +478,48 @@ class StudioApp(App[None]):
             )
             brief_box.border_title = "Brief"
             yield brief_box
+        yield Static("", id="wizard-head")
         yield Static("no project loaded", id="stage-line")
+        yield Static("", id="wizard-summary", markup=False)
         yield Static("", id="stage-detail")
+        # Only the panels: the five wizard keys are on the Footer, which
+        # Textual draws from BINDINGS itself and therefore cannot fall out of
+        # step with them the way a second hand-written copy would.
         yield Static(
-            "[g] diseño  [m] mapa  [e] entidades  [s] sprites  [d] diff  [l] log",
+            "[g] diseño  [m] mapa  [e] entidades  [s] sprites  [d] diff",
             id="shortcuts",
             markup=False,
         )
 
-        # Panels: one at a time, opened by a key (design/map/entities/
-        # sprites/diff/log) or a ctrl-binding (create/open), hidden until then.
+        # Panels: one at a time, opened by a letter key (design/map/entities/
+        # sprites/diff) or by the wizard's own first step (open/create),
+        # hidden until then.
         with Vertical(id="panel-design", classes="panel"):
+            # Third panel to need this, and for the third time the same
+            # reason: with nothing focused and no key named, typing here
+            # closed panels instead of writing -- `g` shut this one, `s`
+            # opened sprites -- so the brief could not be edited without
+            # guessing `Tab`.
+            yield Static("", id="design-help", markup=False)
             yield from self._field("Title", Input(value="My Retro Game", id="f-title"))
             brief_edit_box = Vertical(TextArea(id="f-brief"), id="brief-edit-box")
             brief_edit_box.border_title = "Brief"
             yield brief_edit_box
             yield from self._field("Style", Input(id="f-style"))
         with Vertical(id="panel-create", classes="panel"):
+            # This help names the way *in*, not only the way out. It used to
+            # describe the brief and then say only that Esc closes the panel,
+            # which left the one question a newcomer actually has -- "how do I
+            # create it?" -- answered nowhere on the screen.
             yield Static(
-                "New project -- target is fixed once it exists. The brief is "
-                "what research reads to identify the game and what the "
-                "program writer is told to build; worth writing now."
+                "New project. The brief is what research reads to identify the "
+                "game and what the program writer is told to build; the target "
+                "is fixed once the project exists. [Enter] creates it · [Tab] "
+                "moves between fields · [Esc] closes without creating anything.",
+                id="create-help",
+                markup=False,
             )
+            yield from self._field("Title", Input(value="My Retro Game", id="f-create-title"))
             yield from self._field(
                 "Target",
                 Select(
@@ -329,53 +529,107 @@ class StudioApp(App[None]):
                     id="f-target",
                 ),
             )
-            create_brief_box = Vertical(TextArea(id="f-create-brief"), id="create-brief-box")
-            create_brief_box.border_title = "Brief (optional, editable later)"
-            yield create_brief_box
+            # An `Input`, not the `TextArea` this was: `Enter` inside a text
+            # area inserts a newline, so the one key the wizard teaches did
+            # nothing here and the only way on was a `Tab` nothing named. A
+            # single line is enough to say what a game is at the moment of
+            # creating it, and the design panel keeps the full text area for
+            # writing the brief properly afterwards.
+            yield from self._field("Brief", Input(id="f-create-brief"))
             yield Button("Create", id="create-confirm", variant="primary")
         with Vertical(id="panel-open", classes="panel"):
-            yield Static("Open a project from the workspace.")
+            yield Static(
+                "Open a project from the workspace, or start a new one. " "Esc closes this panel.",
+                id="open-help",
+            )
             yield OptionList(id="workspace-list")
         with Vertical(id="panel-map", classes="panel"):
             with Horizontal():
                 with Vertical():
+                    # Above the grid, not below it. Under a 14-row map the
+                    # hint fell off the bottom of an 80x24 screen and the
+                    # editor opened saying nothing at all about how to work
+                    # it or how to get out of it.
+                    yield Static("", id="map-hint", markup=False)
                     yield Static("No project loaded.", id="map-grid", markup=True)
-                    yield Static("", id="map-hint")
                 with Vertical():
                     yield Select([("screen 1", 0)], value=0, allow_blank=False, id="f-screen")
                     yield Select([("none", -1)], value=-1, allow_blank=False, id="f-spawn")
         with Vertical(id="panel-entities", classes="panel"):
             yield DataTable(id="entity-table", cursor_type="row")
         with Vertical(id="panel-sprites", classes="panel"):
-            # Where art `action_draw_sprites` generated is looked at before
+            # Where art the sprites step generated is looked at before
             # it is compiled -- filled in by `_show_drawn_sprites`.
             yield Static(
-                "No sprites drawn yet. Press ctrl+d to draw the art this " "project is missing.",
+                "No sprites drawn yet -- the sprites step draws the art this "
+                "project is missing.",
                 id="sprites-view",
             )
         with Vertical(id="panel-diff", classes="panel"):
-            # Where `action_adapt`'s proposal is reviewed and accepted or
+            # Where `_adapt`'s proposal is reviewed and accepted or
             # rejected -- filled in by `_show_pending_proposal`. `markup`
             # off: this shows a model-written diff verbatim, the same reason
             # `#shortcuts` (also literal bracketed text) turns it off.
             yield Static(
-                "No proposal yet. Press ctrl+a to adapt the design to the " "researched game.",
+                "No proposal yet -- adapting the design to the researched game "
+                "is part of the diseño step.",
                 id="diff-view",
                 markup=False,
             )
-        with Vertical(id="panel-log", classes="panel"):
-            yield RichLog(id="log-view", wrap=True, markup=True)
+        # The diary, below everything and never hidden: what Studio did, when,
+        # and how long it took, the same lines `journal` wrote to studio.log.
+        # Not focusable, so its own scroll bindings never swallow the arrow
+        # key the wizard advances with.
+        diary = RichLog(id="log-view", wrap=True, markup=True)
+        diary.can_focus = False
+        diary.border_title = "Diario"
+        yield diary
         yield Footer()
 
     def on_mount(self) -> None:
         table = self.query_one("#entity-table", DataTable)
         table.add_columns("entity", "kind", "count")
+        # `esc` is named alongside the editing keys because it is the one
+        # that now does something worth knowing about: it saves what was
+        # drawn here and returns to the wizard.
         self.query_one("#map-hint", Static).update(
-            "wasd move · space wall · m move spawn · +/- count"
+            "flechas o wasd mueven · space muro · m mueve el spawn · "
+            "+/- cantidad · [Esc] guarda y vuelve"
+        )
+        self.query_one("#design-help", Static).update(
+            "Título, brief y estilo. El brief es lo primero que leen la "
+            "investigación y quien escribe el programa. "
+            "[Tab] cambia de campo · [Esc] guarda y vuelve"
         )
         self._set_panel(None)
+        # The one line in this panel that is not a diary line, and the only
+        # one that cannot be: a diary belongs to a project directory, and at
+        # mount there is no project to own it. Everything the screen says from
+        # here on goes through `Journal`, so what is read in the panel and what
+        # `studio.log` keeps are the same lines -- with this single, stated
+        # exception, which is about the workspace rather than about any project
+        # in it.
         found = len(self.service.store.list_projects())
         self._log(f"Workspace {self.workspace} · {found} projects")
+        self._refresh_wizard()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Whether a wizard key is live right now. Textual asks before firing
+        it *and* before drawing it in the Footer, which is what collapses two
+        of the three places a key used to be described into one.
+
+        A panel is a mode, and in a mode its own keys rule. `→` stayed bound
+        while the map editor covered the screen, so a press meant for the
+        cursor walked the wizard past steps the person could not even see and
+        wrote `OMITIR` for a decision nobody made. Returning `False` (rather
+        than `None`) also takes the key out of the Footer, so the bar stops
+        promising what the keyboard will not do.
+        """
+        if action not in self.WIZARD_ACTIONS:
+            return True
+        if self.active_panel is None:
+            return True
+        return action in self.PANEL_SAFE_ACTIONS
 
     # --- panels -----------------------------------------------------------
 
@@ -384,17 +638,54 @@ class StudioApp(App[None]):
 
         Exactly one panel is visible at a time; opening one implicitly closes
         whichever was open, and `None` closes the open panel (if any) back to
-        the resting screen -- header, brief, stage line, shortcuts.
+        the resting screen -- header, brief, wizard, stage line, shortcuts.
+        The diary is not one of these: it stays on screen underneath whatever
+        panel is open, so a long job can be watched while its result is read.
         """
+        # Leaving the design panel commits what was typed in it. `ctrl+s` was
+        # one of the ten keys this change removes, and the design step that
+        # will own saving is not built yet; without this, a brief typed here
+        # would be lost the moment the panel closed, which is worse than
+        # having no key at all.
+        if self.active_panel == "design" and name != "design" and self.project is not None:
+            self.action_save()
         self.active_panel = name
         self.query_one("#brief", Vertical).display = name is None
+        self.query_one("#wizard-head", Static).display = name is None
         self.query_one("#stage-line", Static).display = name is None
+        self.query_one("#wizard-summary", Static).display = name is None
         self.query_one("#stage-detail", Static).display = name is None
         self.query_one("#shortcuts", Static).display = name is None
         for key, widget_id in PANEL_IDS.items():
             self.query_one(f"#{widget_id}", Vertical).set_class(key == name, "open")
+        # Focus follows the panel, and only where a widget is what a person
+        # would be aiming at: the workspace picker is a list to move through
+        # and choose from. Everywhere else the screen keeps its own keys --
+        # a focused field would eat the letter that closes the panel again.
+        # The cursor starts where the work starts. Left unfocused, a panel
+        # could only be worked by first guessing `Tab`, a key the wizard never
+        # names -- and worse than useless in the meantime, since the letters a
+        # person typed were read as panel keys and closed the panel under them.
+        # Everywhere a widget is what someone would be aiming at, it gets the
+        # focus; `map`, `sprites` and `diff` keep the screen's own keys,
+        # because what a person aims at there is the screen itself.
+        focus_first = {
+            "open": "#workspace-list",
+            "create": "#f-create-title",
+            "design": "#f-title",
+            "entities": "#entity-table",
+        }
         if name == "open":
             self._refresh_workspace_list()
+        target = focus_first.get(name or "")
+        if target is not None:
+            self.query_one(target).focus()
+        else:
+            self.set_focus(None)
+        # `check_action` answers off `active_panel`, and Textual caches what
+        # it answered: without this the Footer goes on offering the keys a
+        # panel has just switched off.
+        self.refresh_bindings()
 
     def _toggle_panel(self, name: str) -> None:
         self._set_panel(None if self.active_panel == name else name)
@@ -408,44 +699,63 @@ class StudioApp(App[None]):
     #: searched by a test or a script without scraping a widget.
     status_text: str = "no project loaded"
 
-    def _refresh_stage(self) -> None:
-        """Redraw the brief preview, the stage line and its detail.
+    def _ensure_journal(self) -> None:
+        """Point the diary at whatever project is open.
 
-        This is the whole of what used to be `_status`: the six-stage line
-        replaces the old one-line "ready"/"not releasable" verdict, and the
-        identity that used to sit in a `#status` Static now sits in the
-        Header's own `sub_title`.
-
-        `#stage-detail` carries two things joined by " · ": the detail
-        `pick_stage_detail` already picked (a dossier's title, or why a
-        stage failed) and, from `next_step_hint`, the key that advances
-        whatever `screen.next_step` judges most worth doing right now.
-        Either half can be empty on its own -- a brand new project has no
-        detail yet, and a fully released one has no key left to press --
-        and the line degrades to whichever half remains rather than
-        showing a dangling separator.
+        The diary belongs to the project directory, not to the session: open
+        another project and the lines must land in *its* studio.log. Adopting
+        it here rather than only in `action_open`/`action_create` means any
+        caller that sets `project_dir` -- including a test -- gets a diary
+        without having to know to ask for one.
         """
+        if self.project_dir is None:
+            return
+        if self.journal is None or self.journal.path.parent != self.project_dir:
+            self.journal = Journal.for_project(self.project_dir)
+
+    def _refresh_wizard(self) -> None:
+        """Redraw the three things the wizard says, and the detail under them.
+
+        The head names where the person is standing (`Paso 3 de 6: sprites`),
+        the strip shows every step's state at a glance, and the summary says
+        what this one is for and which key does it -- including its warning
+        when pressing that key spends money. `#stage-detail` keeps its old
+        job underneath: the one detail worth attention, which is the earliest
+        failure's reason, or else the dossier's title.
+
+        `wizard.steps` reads the project's evidence off disk exactly once and
+        every line here is drawn from that one reading, so the strip and the
+        summary can never disagree about what is done.
+        """
+        self._ensure_journal()
+        walked = wizard.steps(self.project, self.project_dir, self.passed)
+        step = wizard.current(self.project, self.project_dir, self.passed)
+        # A pending confirmation belongs to the step that asked for it. This
+        # is the one place every move between steps passes through, which is
+        # why the rule lives here rather than in each of `action_advance`,
+        # `_step_back` and `_background`.
+        if self._confirm_step != step.name:
+            self._pending_confirm = None
+            self._confirm_step = step.name
+        self._adaptable = _can_adapt(walked, step)
+        head = render_step_head(step)
+        strip = render_stage_marks(walked, colour=False)
+        summary = render_step_summary(step, can_adapt=self._adaptable)
+        detail = pick_stage_detail(walked)
+        self.query_one("#wizard-head", Static).update(f"[b]{head}[/b]")
+        self.query_one("#stage-line", Static).update(render_stage_marks(walked, colour=True))
+        self.query_one("#wizard-summary", Static).update(summary)
+        self.query_one("#stage-detail", Static).update(detail)
+        self.status_text = "\n".join(part for part in (head, strip, summary, detail) if part)
         if self.project is None:
             self.sub_title = ""
-            self.status_text = "no project loaded"
-            self.query_one("#brief-preview", Static).update(self.status_text)
-            self.query_one("#stage-line", Static).update(self.status_text)
-            self.query_one("#stage-detail", Static).update("")
+            self.query_one("#brief-preview", Static).update("no project loaded")
             return
         self.sub_title = (
             f"{self.project.metadata.slug} · {self.project.target.platform.value} · "
             f"{len(self.project.screens)} screens"
         )
         self.query_one("#brief-preview", Static).update(brief_preview(self.project.metadata.brief))
-        stages = stage_line(self.project, self.project_dir)
-        detail = pick_stage_detail(stages)
-        hint = next_step_hint(stages)
-        combined = " · ".join(part for part in (detail, hint) if part)
-        self.status_text = render_stage_marks(stages, colour=False)
-        if combined:
-            self.status_text += f"\n{combined}"
-        self.query_one("#stage-line", Static).update(render_stage_marks(stages, colour=True))
-        self.query_one("#stage-detail", Static).update(combined)
 
     def _refresh(self) -> None:
         if self.project is None:
@@ -486,23 +796,35 @@ class StudioApp(App[None]):
                 str(entity.count),
                 key=entity.id,
             )
-        self._refresh_stage()
+        self._refresh_wizard()
 
     def _refresh_workspace_list(self) -> None:
+        """Everything step 0 can do, in one list: start a project, or open one.
+
+        `＋ nuevo proyecto…` comes first and is always there, so an empty
+        workspace is the same list with one entry rather than a rule of its
+        own, and a workspace with projects in it can still start another.
+        The highlight starts on the first *project* where there is one --
+        opening what already exists is the likelier answer, and creating is
+        one key away either way.
+        """
         listing = self.query_one("#workspace-list", OptionList)
         listing.clear_options()
         projects = self.service.store.list_projects()
         self._workspace_paths = {str(index): path for index, path in enumerate(projects)}
+        listing.add_option(Option(NEW_PROJECT_LABEL, id=NEW_PROJECT_ID))
         if not projects:
             listing.add_option(Option("(no projects in this workspace yet)", id="none"))
             return
         for index, path in enumerate(projects):
             listing.add_option(Option(path.name, id=str(index)))
+        listing.highlighted = 1
 
     def _apply(self, operation) -> None:
         """Run an editing operation, reporting refusals instead of crashing."""
         try:
             self.project = operation()
+            self._edited = True
             if self.project_dir is not None:
                 self.service.save_project(self.project, self.project_dir)
             self._refresh()
@@ -516,17 +838,17 @@ class StudioApp(App[None]):
 
         The first call remembers `action` and returns `False`, so a caller
         can warn about what a redraw or a fresh search would overwrite and
-        wait for the same key to confirm it -- `action_new_dialog`'s
-        press-again-to-confirm, generalised past creating a project.
+        wait for the same key to confirm it.
         """
         if self._pending_confirm == action:
             self._pending_confirm = None
             return True
         self._pending_confirm = action
+        self._confirm_step = wizard.current(self.project, self.project_dir, self.passed).name
         return False
 
     def _show_pending_proposal(self) -> None:
-        """After `action_adapt`'s job returns, show its diff for review.
+        """After `_adapt`'s job returns, show its diff for review.
 
         Runs as `_run`'s `on_finished`, once the job's own summary line is
         already in the log -- this is what actually opens the diff panel,
@@ -557,20 +879,25 @@ class StudioApp(App[None]):
             return
         _diff, updated, _refusals = self._pending_proposal
         self._pending_proposal = None
+        self._ensure_journal()
         if accept:
             self._apply(lambda: updated)
-            self.query_one("#diff-view", Static).update(
-                "Applied. Press ctrl+a to propose another adaptation."
-            )
-            self._log("[green]Adaptation applied[/green]")
+            self.query_one("#diff-view", Static).update("Applied.")
+            # Taking up a researched game's design, or refusing to, is a
+            # decision about the game -- as much as skipping a step is -- and
+            # it used to be said on screen and to no file at all. `_apply` has
+            # already marked the project edited, so `_note_saved` writes the
+            # `GUARDAR` that follows this.
+            if self.journal is not None:
+                self._log(self.journal.note("adaptación aplicada"))
+            self._note_saved()
         else:
-            self.query_one("#diff-view", Static).update(
-                "Left unchanged. Press ctrl+a to propose another adaptation."
-            )
-            self._log("Left unchanged")
+            self.query_one("#diff-view", Static).update("Left unchanged.")
+            if self.journal is not None:
+                self._log(self.journal.note("adaptación descartada"))
 
     def _show_drawn_sprites(self) -> None:
-        """After `action_draw_sprites`'s job returns, look at what it drew.
+        """After `_draw_sprites`'s job returns, look at what it drew.
 
         Runs as `_run`'s `on_finished`. `image_utils.display_sprite` is the
         terminal pixel-art renderer `llmz80 project sprites` already uses,
@@ -637,8 +964,29 @@ class StudioApp(App[None]):
             self.action_create()
             self._set_panel(None)
 
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """`Enter` in any field of the creation panel creates the project.
+
+        The button stays -- it is what a mouse aims at, and what says the panel
+        can be finished at all -- but it is no longer the only way through.
+        `Enter` is the key the wizard teaches on every other step, and the one
+        step where it did nothing was the first one anybody meets.
+
+        Guarded on the panel because the design panel's own fields
+        (`#f-title`, `#f-style`) submit the same message, and creating a
+        second project out of a rename would be a surprising thing for a
+        title field to do.
+        """
+        if self.active_panel != "create":
+            return
+        self.action_create()
+        self._set_panel(None)
+
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option_list.id != "workspace-list":
+            return
+        if event.option_id == NEW_PROJECT_ID:
+            self._set_panel("create")
             return
         path = self._workspace_paths.get(event.option_id or "")
         if path is None:
@@ -653,20 +1001,31 @@ class StudioApp(App[None]):
 
     def on_key(self, event) -> None:
         key = event.key
+        # `Esc` is deliberately absent from here: it is bound to
+        # `action_back`, and `event.stop()` does not keep this screen's own
+        # bindings from firing afterwards -- handling it here as well made
+        # one press do the action twice, closing the editor *and* stepping
+        # the wizard back a step. Bound once, it happens once, whether a
+        # field has focus or not.
         if isinstance(self.focused, self._TEXT_ENTRY):
-            if key == "escape" and self.active_panel is not None:
-                self._set_panel(None)
-                event.stop()
-            return
-        if key == "escape":
-            if self.active_panel is not None:
-                self._set_panel(None)
-                event.stop()
             return
         if self.active_panel == "map" and self.project is not None:
             screen = self.project.screens[self.screen_index]
             col, row = self.cursor
-            moves = {"w": (0, -1), "s": (0, 1), "a": (-1, 0), "d": (1, 0)}
+            # The arrows do here what the spec promises they do: move the
+            # cursor. They used to reach the wizard's own bindings instead --
+            # `→` from inside the editor left a step behind -- and a person
+            # following the documentation hit that on the first press.
+            moves = {
+                "w": (0, -1),
+                "s": (0, 1),
+                "a": (-1, 0),
+                "d": (1, 0),
+                "up": (0, -1),
+                "down": (0, 1),
+                "left": (-1, 0),
+                "right": (1, 0),
+            }
             if key in moves:
                 step = moves[key]
                 self.cursor = (
@@ -707,35 +1066,230 @@ class StudioApp(App[None]):
                 )
             event.stop()
             return
+        # After the map editor's own keys, which own `a` as "move left"
+        # while it is open, and before the panel letters: adapting the
+        # design belongs to the `diseño` step, and `_adapt_step` is what
+        # decides whether this is the place to ask for it.
+        # Both cases: the summary offers `[A]`, and Textual delivers Shift+A
+        # as `"A"`, so answering only `"a"` meant the screen named a key it
+        # did not have. `"a"` alone reaches here anyway -- the map editor's
+        # branch above owns it as "move left" while that panel is open.
+        if key in {"a", "A"}:
+            self._adapt_step()
+            event.stop()
+            return
         if key in PANEL_KEYS:
             self._toggle_panel(PANEL_KEYS[key])
             event.stop()
 
     # --- actions --------------------------------------------------------
 
-    def action_new_dialog(self) -> None:
-        """ctrl+n: open the creation panel (target and type -- fixed once a
-        project exists); pressed again while it is open, confirm and create.
+    def action_do(self) -> None:
+        """Do whatever the current step is for. Leaving it is `action_advance`."""
+        step = wizard.current(self.project, self.project_dir, self.passed)
+        self._actions()[step.name]()
 
-        Two presses stand in for a dialog's open-then-confirm without a
-        second modal screen: the panel holds exactly the fields a script
-        would also need (title lives in the design panel, always editable
-        the same way whether or not a project exists yet), so `action_create`
-        below is unchanged either way.
+    def action_advance(self) -> None:
+        """Leave the current step behind.
+
+        On a resolved step this is simply moving on, and there is nothing to
+        write down: no decision was made. On a pending one it is skipping, the
+        diary says so, and `wizard.can_leave_behind` decides whether the
+        pipeline can spare it.
         """
-        if self.active_panel == "create":
-            self.action_create()
-            self._set_panel(None)
-        else:
-            self._set_panel("create")
+        step = wizard.current(self.project, self.project_dir, self.passed)
+        if not wizard.can_leave_behind(step):
+            refusal = f"{step.number} {step.name}: no se puede omitir"
+            self.notify(f"El paso {step.name} no se puede omitir", severity="warning")
+            # A toast lives five seconds. Wanting to walk past this step was a
+            # decision the person made and the pipeline denied, and reading the
+            # diary the next morning without it would leave the gap between
+            # "skipped sprites" and "wrote the program" unexplained.
+            self._ensure_journal()
+            if self.journal is not None:
+                self._log(self.journal.write("AVISO", refusal))
+            return
+        if step.state == "pending" and self.journal is not None:
+            self._log(self.journal.write("OMITIR", f"{step.number} {step.name}"))
+        # Whatever this step changed is committed before it is left behind:
+        # walking on must never be the thing that loses an edit, and the
+        # diary says so where there was anything to say.
+        self._save_and_log()
+        self.passed.add(step.name)
+        self._refresh_wizard()
 
-    def action_open_dialog(self) -> None:
-        """ctrl+o: the workspace picker, replacing a free-text path field
-        with the same list `store.list_projects()` already knows."""
-        self._toggle_panel("open")
+    def action_back(self) -> None:
+        """Leave the editor, saving; or step back to look at an earlier step."""
+        if self.active_panel is not None:
+            self._save_and_log()
+            self._set_panel(None)
+            self._refresh_wizard()
+            return
+        self._step_back()
+
+    def _note_saved(self) -> None:
+        """Write down that the design was committed -- once, and only if it was.
+
+        Split out of `_save_and_log` so `action_save`, which saves through
+        `_apply` and therefore has nothing left to write to disk, can still
+        put the same `GUARDAR` line in the diary. It used to answer with a
+        screen-only "Saved" that the file never heard about, which is how the
+        panel and `studio.log` came to be telling different stories.
+        """
+        if self.project is None or not self._edited:
+            return
+        self._ensure_journal()
+        if self.journal is not None:
+            self._log(self.journal.write("GUARDAR", f"{self.project.metadata.slug}/game.yml"))
+        self._edited = False
+
+    def _save_and_log(self) -> None:
+        """Commit what the open project holds, and write it down if it changed.
+
+        `store.save` archives the previous revision only where the text
+        changed, and the diary follows the same rule: a save that saved
+        nothing is not an event, and a diary that recorded one every time a
+        panel closed would bury the ones that matter.
+
+        The question is asked of `_edited` -- set by `_apply`, the one path
+        that changes a design -- rather than by comparing the file with what
+        is in memory, because `store.save` stamps `metadata.updated_at` on
+        every write: after any save the two agree, and before it they differ
+        by a timestamp nobody edited. `_edited` is also what keeps an
+        untouched project from being rewritten (and a revision of identical
+        content archived) each time a step is left behind.
+        """
+        if self.project is None or self.project_dir is None or not self._edited:
+            return
+        self.service.save_project(self.project, self.project_dir)
+        self._note_saved()
+
+    def _step_back(self) -> None:
+        """Move the wizard's cursor back onto the step before this one.
+
+        Going back is removing that step from `passed` rather than undoing
+        anything: the work it did is on disk and stays there, and
+        `wizard.steps` will read it again and still call it done. What comes
+        back is the chance to look at it, and to press `R` to do it over.
+        """
+        walked = wizard.steps(self.project, self.project_dir, self.passed)
+        here = wizard.current(self.project, self.project_dir, self.passed)
+        behind = [step for step in walked[: here.number] if step.name in self.passed]
+        if not behind:
+            self.notify("Ya estás en el primer paso", severity="warning")
+            return
+        self.passed.discard(behind[-1].name)
+        self._refresh_wizard()
+
+    def action_repeat(self) -> None:
+        """Do a finished step again, after asking.
+
+        `Enter` on a done step does it again only through here: without this,
+        stepping back with `Esc` would leave the person looking at a finished
+        step unable to touch it. The confirmation is the one
+        `research_reference` and `draw_sprites` already ask before overwriting.
+        """
+        step = wizard.current(self.project, self.project_dir, self.passed)
+        if step.state != "done":
+            self.notify("Ese paso no está hecho todavía", severity="warning")
+            return
+        if not self._confirmed(f"repeat:{step.name}"):
+            self.notify(f"Pulsa R otra vez para rehacer {step.name}", severity="warning")
+            return
+        # The step's own guard asks the same question before overwriting what
+        # is already there, and this was the answer: arm it, so one decision
+        # costs one confirmation rather than two. Only for the two steps whose
+        # action actually asks -- arming one that never consumes it left a
+        # live confirmation lying around for whatever asked next.
+        if step.name in _CONFIRMING_STEPS:
+            self._pending_confirm = step.name
+            self._confirm_step = step.name
+        self._actions()[step.name]()
+
+    def _actions(self) -> dict[str, Callable[[], None]]:
+        """One entry per step, holding the methods that used to be reachable by
+        a ctrl-binding. The wizard decides which one runs; no key names any of
+        them any more."""
+        return {
+            "proyecto": self._open_project_step,
+            "referencia": self._research,
+            "diseño": self._edit_design,
+            "sprites": self._draw_sprites,
+            "programa": self._write,
+            "gates": self._test,
+            "release": self._release,
+        }
+
+    def _open_project_step(self) -> None:
+        """Step 0: pick a project out of the workspace, or start one.
+
+        A workspace with projects in it shows the picker, whose first entry
+        starts a new project; an empty one shows the creation panel straight
+        away, because there is only one sensible thing to do in an empty
+        workspace and making someone press one more key to be told so wastes
+        the time of exactly the person who has least idea what to press.
+        That shortcut is a courtesy and not the only road: the picker offers
+        creating too, or the second project would be unreachable from here.
+
+        Both paths end in `action_open`/`action_create`, which point the
+        diary at the project's own directory, write `ABRIR` in it, and put
+        `proyecto` in `passed`. That last part is what actually lets the
+        wizard move: `wizard.current` returns the first step *not left
+        behind*, so a project that is open but whose step nobody marked
+        would leave the wizard standing on step 0 forever.
+        """
+        self._set_panel("open" if self.service.store.list_projects() else "create")
+
+    def _edit_design(self) -> None:
+        """Step 2: review and adjust the design, in the map editor.
+
+        The map is the largest part of what reviewing a design means by
+        hand, and it is the panel `Esc` now saves out of (`action_back`), so
+        a wall painted here is on disk before the wizard moves on. The two
+        smaller parts have their own letters on the shortcuts line -- `e`
+        for the entity roster, `g` for title/brief/style -- and `A`, offered
+        by this step's own summary once a dossier exists, adapts the whole
+        design to the researched game in one reviewable diff.
+        """
+        self._set_panel("map")
+        if self.project is not None:
+            self._refresh()
+
+    def _adapt_step(self) -> None:
+        """`A`: propose the adaptation of the design to the researched game.
+
+        Part of the `diseño` step rather than a step of its own. Adapting is
+        one of the ways a design changes, and a step of its own would need
+        evidence on disk of "I already adapted" for `wizard.steps` to read --
+        which nothing writes, and which `reference.yml`'s presence certainly
+        is not: it says a game was researched, not that its design was ever
+        taken up.
+
+        Outside that step, or with no dossier to adapt to, this says so
+        rather than doing nothing silently: `A` is a key the summary only
+        offers where it works, so pressing it elsewhere is a question worth
+        an answer.
+        """
+        if self._pending_proposal is not None:
+            # A proposal is already on the table and costs nothing more to
+            # decide; asking for another would spend money at the API to
+            # replace an answer nobody has read yet.
+            self.notify(
+                "Hay una propuesta sin decidir: [y] aplicarla, [n] descartarla",
+                severity="warning",
+            )
+            return
+        if not self._adaptable:
+            self.notify(
+                "Adaptar el diseño a la ficha sólo se puede en el paso diseño, "
+                "y con una ficha que haya identificado un juego",
+                severity="warning",
+            )
+            return
+        self._adapt()
 
     def action_create(self) -> None:
-        """ctrl+n's second press: create the project, then -- like
+        """Create the project, then -- like
         `llmz80 project new`'s own trailing BRIEF argument -- apply
         whatever brief was written in the creation panel through the same
         `editing.rename_project` `action_save` uses, so this screen is at
@@ -743,18 +1297,31 @@ class StudioApp(App[None]):
         that matters most and is easiest to forget.
         """
         try:
-            title = self.query_one("#f-title", Input).value.strip()
+            title = self.query_one("#f-create-title", Input).value.strip()
             self.project, self.project_dir = self.service.create_project(
                 title,
                 TargetPlatform(str(self.query_one("#f-target", Select).value)),
             )
-            brief = self.query_one("#f-create-brief", TextArea).text.strip()
+            brief = self.query_one("#f-create-brief", Input).value.strip()
             if brief:
                 self.project = editing.rename_project(self.project, title, brief=brief)
                 self.service.save_project(self.project, self.project_dir)
             self.screen_index, self.cursor = 0, (0, 0)
+            # Step 0 is behind us the moment a project exists: `current` is
+            # the first step *not left behind*, so without this the wizard
+            # would go on offering "choose a project" to someone who just
+            # made one.
+            self.passed = {"proyecto"}
+            self.journal = Journal.for_project(self.project_dir)
+            self._edited = False
             self._refresh()
-            self._log(f"[green]Created[/green] {self.project_dir / 'game.yml'}")
+            self._log(
+                self.journal.write(
+                    "ABRIR",
+                    f"creado {self.project_dir / 'game.yml'} · "
+                    f"{self.project.target.platform.value}",
+                )
+            )
         except Exception as exc:
             self.notify(str(exc), severity="error")
 
@@ -764,27 +1331,55 @@ class StudioApp(App[None]):
             self.project = self.service.open_project(location)
             self.project_dir = location.parent if location.name == "game.yml" else location
             self.screen_index, self.cursor = 0, (0, 0)
+            #: Same as `action_create`: having a project *is* step 0, and the
+            #: diary belongs to the project just opened, not to the one
+            #: before it.
+            self.passed = {"proyecto"}
+            self.journal = Journal.for_project(self.project_dir)
+            self._edited = False
             self._refresh()
-            self._log(f"[green]Opened[/green] {self.project_dir}")
+            self._log(
+                self.journal.write(
+                    "ABRIR",
+                    f"abierto {self.project_dir} · {self.project.target.platform.value}",
+                )
+            )
         except Exception as exc:
             self.notify(str(exc), severity="error")
 
     def action_save(self) -> None:
+        """Commit the design panel's three fields, if any of them changed.
+
+        Asked before applying, not after. `_apply` marks the project edited
+        whatever it was handed, so opening the design panel and closing it
+        again without typing anything wrote a second `GUARDAR` for a save that
+        saved nothing -- the very thing `_save_and_log` refuses to do, arrived
+        at by another road. `rename_project` applies all three together
+        because a rename can be valid only once all three are in place, which
+        is also why they are compared together here.
+        """
         if self.project is None or self.project_dir is None:
             return
-        self._apply(
-            lambda: editing.rename_project(
-                self.project,
-                self.query_one("#f-title", Input).value.strip(),
-                style=self.query_one("#f-style", Input).value.strip(),
-                brief=self.query_one("#f-brief", TextArea).text.strip(),
-            )
+        typed = (
+            self.query_one("#f-title", Input).value.strip(),
+            self.query_one("#f-style", Input).value.strip(),
+            self.query_one("#f-brief", TextArea).text.strip(),
         )
-        self._log("[green]Saved[/green]")
+        held = (
+            self.project.metadata.title,
+            self.project.presentation.style,
+            self.project.metadata.brief,
+        )
+        if typed == held:
+            return
+        self._apply(
+            lambda: editing.rename_project(self.project, typed[0], style=typed[1], brief=typed[2])
+        )
+        self._note_saved()
 
-    def action_research(self) -> None:
-        """ctrl+f: research the real game the brief names, archiving
-        reference.yml.
+    def _research(self) -> None:
+        """The `referencia` step: research the real game the brief names,
+        archiving reference.yml.
 
         This searches the web and calls the OpenAI API, so it says so
         before doing either -- the check for an existing dossier happens
@@ -797,6 +1392,7 @@ class StudioApp(App[None]):
         if self.project is None or self.project_dir is None:
             self.notify("Create or open a project first", severity="warning")
             return
+        step = wizard.current(self.project, self.project_dir, self.passed)
         try:
             existing = self.service.reference(self.project_dir)
         except ValueError as exc:
@@ -806,17 +1402,17 @@ class StudioApp(App[None]):
                 severity="warning",
             )
             return
-        if existing is not None and not self._confirmed("research"):
+        if existing is not None and not self._confirmed(step.name):
             self.notify(
                 "An archived dossier already exists: "
-                f"{existing.title or '(unidentified)'}. Press ctrl+f again to replace it.",
+                f"{existing.title or '(unidentified)'}. Press Enter again to replace it.",
                 severity="warning",
             )
             return
 
         project, directory = self.project, self.project_dir
 
-        def job() -> str:
+        def job() -> tuple[bool, str]:
             researcher = self.researcher
             if researcher is None:
                 from ..cli import _openai_client_and_model
@@ -826,19 +1422,21 @@ class StudioApp(App[None]):
                 researcher = ResponsesReferenceResearcher(client, model=model)
             dossier = self.service.research_reference(project, directory, researcher)
             if not dossier.identified:
-                return "No game was identified. The design keeps its typology."
+                # Not a failure: an archived "nothing was found" is a real
+                # answer, and the step is done -- the design keeps its typology.
+                return True, "No game was identified. The design keeps its typology."
             known = [part for part in (dossier.publisher, str(dossier.year or "")) if part]
             on_publisher = f" ({', '.join(known)})" if known else ""
-            return (
+            return True, (
                 f"[green]{dossier.title}{on_publisher}[/green] · "
                 f"{len(dossier.sources)} source(s). See the stage line for referencia."
             )
 
         self._run("Researching with the OpenAI API; this searches the web", job)
 
-    def action_adapt(self) -> None:
-        """ctrl+a: propose an adaptation to the researched game, and open
-        the diff panel to review it.
+    def _adapt(self) -> None:
+        """Propose an adaptation to the researched game, and open the diff
+        panel to review it.
 
         Nothing is applied here -- `propose_from_reference` only returns an
         already-validated candidate project, and `_show_pending_proposal`
@@ -853,7 +1451,7 @@ class StudioApp(App[None]):
         self._pending_proposal = None
         project, directory = self.project, self.project_dir
 
-        def job() -> str:
+        def job() -> tuple[bool, str]:
             designer = self.designer
             if designer is None:
                 from ..cli import _openai_client_and_model
@@ -870,17 +1468,20 @@ class StudioApp(App[None]):
                 for number, reason in enumerate(refusals, start=1)
             ]
             lines.append("[green]Proposal ready[/green] -- review it in the diff panel.")
-            return "\n".join(lines)
+            return True, "\n".join(lines)
 
         self._run(
             "Proposing an adaptation with the OpenAI API",
             job,
             on_finished=self._show_pending_proposal,
+            # A proposal is not the design step finished: nothing is applied
+            # until [y], and the person may well go on editing afterwards.
+            leaves_behind=False,
         )
 
-    def action_draw_sprites(self) -> None:
-        """ctrl+d: draw the art this project is missing, and register each
-        result as an asset.
+    def _draw_sprites(self) -> None:
+        """The `sprites` step: draw the art this project is missing, and
+        register each result as an asset.
 
         `draw_sprites` only ever fills a gap -- it never touches an entity
         that already wears a sprite-kind asset -- so the one place this can
@@ -899,7 +1500,7 @@ class StudioApp(App[None]):
             self.notify(
                 "Sprite art already exists for: "
                 + ", ".join(existing)
-                + ". Press ctrl+d again to redraw it, overwriting the existing art.",
+                + ". Press Enter again to redraw it, overwriting the existing art.",
                 severity="warning",
             )
             return
@@ -924,8 +1525,9 @@ class StudioApp(App[None]):
 
         self._drawn_sprites = []
         project, directory = self.project, self.project_dir
+        progress = self._progress()
 
-        def job() -> str:
+        def job() -> tuple[bool, str]:
             artist = self.artist
             if artist is None:
                 from generators.openai_generator import OpenAIImageGenerator
@@ -943,11 +1545,11 @@ class StudioApp(App[None]):
                 artist = SpriteArtist(
                     OpenAIImageGenerator(api_key=client.api_key, model=_openai_image_model())
                 )
-            drawn = self.service.draw_sprites(project, directory, artist)
+            drawn = self.service.draw_sprites(project, directory, artist, on_progress=progress)
             self._drawn_sprites = drawn
             if not drawn:
-                return "Every entity already has sprite art."
-            return "[green]Drawn[/green] " + ", ".join(asset.id for asset in drawn)
+                return True, "Every entity already has sprite art."
+            return True, "[green]Drawn[/green] " + ", ".join(asset.id for asset in drawn)
 
         self._run(
             "Drawing sprites with OpenAI's image API",
@@ -955,16 +1557,20 @@ class StudioApp(App[None]):
             on_finished=self._show_drawn_sprites,
         )
 
-    def action_write(self) -> None:
-        """Have the program written. This spends money, so it says so first."""
+    def _write(self) -> None:
+        """The `programa` step: have the program written and repaired against
+        the compiler. This spends money, so it says so first."""
+        progress = self._progress()
 
-        def job() -> str:
+        def job() -> tuple[bool, str]:
             from ..cli import _openai_client_and_model
             from .generator import ResponsesProgramWriter
 
             client, model = _openai_client_and_model()
             writer = ResponsesProgramWriter(client, model=model)
-            report = self.service.write_program(self.project, self.project_dir, writer)
+            report = self.service.write_program(
+                self.project, self.project_dir, writer, on_progress=progress
+            )
             lines = [
                 f"  attempt {attempt['number']}: build={attempt['build_passed']} "
                 f"acceptance={attempt['acceptance_passed']}"
@@ -975,44 +1581,103 @@ class StudioApp(App[None]):
                 if report["accepted"]
                 else "[red]Not accepted[/red] " + report["last_error"]
             )
-            return "\n".join(lines)
+            return bool(report["accepted"]), "\n".join(lines)
 
         self._run("Writing the program with the OpenAI API", job)
 
-    def _run(self, label: str, job, *, on_finished=None) -> None:
+    def _progress(self) -> Callable[[str], None] | None:
+        """The callback the slow services narrate themselves through.
+
+        Every line goes through `Journal.note`, which writes it to studio.log
+        and hands back the very string that is then put on screen: what a
+        person watches a long job say and what the file remembers it saying
+        are the same characters, not two renderings of one event.
+
+        The job runs on a thread, so the screen half is handed back to the UI
+        task rather than touched from there -- the same rule `_background`
+        follows for the result.
+        """
+        journal = self.journal
+        if journal is None:
+            return None
+
+        def say(text: str) -> None:
+            line = journal.note(text)
+            try:
+                self.call_from_thread(self._log, line)
+            except Exception:
+                self._log(line)
+
+        return say
+
+    def _run(self, label: str, job, *, on_finished=None, leaves_behind: bool = True) -> None:
         """Run a slow job off the UI thread and report it as it finishes.
 
         Building takes seconds and a runtime test takes tens of them. Run on the
         UI thread they freeze the app so completely that even the "working"
         line never appears, which reads as the command doing nothing at all.
 
+        `job` returns `(ok, message)`: the message is what goes on screen, and
+        `ok` is what the wizard acts on -- a step that failed is not added to
+        `passed`, so the screen stays standing on the problem instead of
+        walking past it. The diary is opened here with `Journal.start` and
+        closed in `_background` with `Journal.finish`, which is what gives
+        every piece of work a duration.
+
         `on_finished`, when given, runs after the job's message has already
-        been logged and the stage line redrawn -- research, adapt and
-        draw-sprites use it to open the panel their result belongs in
-        (stage line, diff, sprites respectively) without teaching this
-        generic runner anything about any one of them.
+        been logged and the wizard redrawn -- adapt and draw-sprites use it to
+        open the panel their result belongs in (diff, sprites respectively)
+        without teaching this generic runner anything about either.
+
+        `leaves_behind` is what tells a step's own work apart from work done
+        *within* a step: `_adapt` runs inside `diseño` and only produces a
+        diff for someone to accept or discard, so finishing it must not walk
+        the wizard past the very step whose result is still on the table.
         """
         if self.project is None or self.project_dir is None:
             self.notify("Create or open a project first", severity="warning")
             return
-        self._set_panel("log")
-        self._log(f"[yellow]{label}...[/yellow]")
+        self._ensure_journal()
+        step = wizard.current(self.project, self.project_dir, self.passed)
+        assert self.journal is not None
+        token = self.journal.start(f"{step.number} {step.name} — {label}")
+        self._log(token.line)
         self._busy(label)
-        self._background(job, label, on_finished)
+        self._background(job, label, step.name, token, on_finished, leaves_behind)
 
     @work(exclusive=True)
-    async def _background(self, job, label: str, on_finished=None) -> None:
+    async def _background(
+        self, job, label: str, step: str, token, on_finished=None, leaves_behind: bool = True
+    ) -> None:
         """Await the job on a thread, then update from the UI task itself.
 
         Handing the result back through the event loop rather than across
         threads keeps every widget touched from the task that owns it.
+
+        A job that raised, or that reported a failure of its own, closes the
+        diary entry as failed, writes down why, and leaves the step where it
+        is: the wizard goes on pointing at it, which is the difference between
+        stopping where the problem is and carrying on past it.
         """
         try:
-            message = await asyncio.to_thread(job)
+            ok, message = await asyncio.to_thread(job)
+            reason = "" if ok else _plain(message)
         except Exception as exc:
-            message = f"[red]{exc}[/red]"
+            ok, message, reason = False, f"[red]{exc}[/red]", str(exc)
             self.notify(str(exc), severity="error")
         self._log(message)
+        if self.journal is not None:
+            # The result goes into the `FIN` line, which is what `finish`'s
+            # `text` was always for (`FIN 3 sprites — ok en 84 s. Drawn ...`).
+            # Without it the diary kept every failure -- the `ERROR` line
+            # below -- and threw away every success: which game research
+            # identified, which sprites were drawn, where the release landed.
+            # A diary that only remembers the bad days is not a record.
+            self._log(self.journal.finish(token, ok=ok, text=_summary(message)))
+            if not ok:
+                self._log(self.journal.write("ERROR", f"{step}: {reason}"))
+        if ok and leaves_behind:
+            self.passed.add(step)
         self._finished(label)
         if on_finished is not None:
             on_finished()
@@ -1023,22 +1688,19 @@ class StudioApp(App[None]):
         self.query_one("#stage-detail", Static).update(f"[yellow]{text}[/yellow]")
 
     def _finished(self, label: str) -> None:
-        self._refresh_stage()
+        self._refresh_wizard()
 
-    def action_build(self) -> None:
-        def work() -> str:
-            result = self.service.build(self.project, self.project_dir)
-            return (
-                f"[green]Build passed[/green] {result.artifact}"
-                if result.success
-                else "[red]Build rejected[/red] see build/build_report.json"
-            )
+    def _test(self) -> None:
+        """The `gates` step: build, run in the emulator, and report the gates.
 
-        self._run("Building", work)
+        There is no build-only step: `runtime_test` compiles before it runs,
+        and it is the only thing that writes studio_quality_report.json --
+        building alone was a shortcut, never a stage of the pipeline.
+        """
+        progress = self._progress()
 
-    def action_test(self) -> None:
-        def work() -> str:
-            report = self.service.runtime_test(self.project, self.project_dir)
+        def work() -> tuple[bool, str]:
+            report = self.service.runtime_test(self.project, self.project_dir, on_progress=progress)
             acceptance = report.get("acceptance") or {}
             lines = [
                 (
@@ -1051,14 +1713,14 @@ class StudioApp(App[None]):
                 if isinstance(scenario, dict):
                     mark = "ok" if scenario["passed"] else "FAILED"
                     lines.append(f"  {scenario['id']}: {mark} {scenario['mismatches'] or ''}")
-            return "\n".join(lines)
+            return bool(report["quality_pass"]), "\n".join(lines)
 
         self._run("Building and running", work)
 
-    def action_release(self) -> None:
-        def work() -> str:
+    def _release(self) -> None:
+        def work() -> tuple[bool, str]:
             archive = self.service.release(self.project, self.project_dir)
-            return f"[green]Released[/green] {archive}"
+            return True, f"[green]Released[/green] {archive}"
 
         self._run("Exporting", work)
 

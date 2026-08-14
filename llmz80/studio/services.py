@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 import re
 import shutil
 import tempfile
@@ -27,6 +27,18 @@ from .acceptance import runtime_script
 from .generator import write_program
 from .release import export_release
 import json
+
+#: Told what is happening while it happens. The three long jobs below take
+#: minutes and two of them spend money, and their reports only exist once they
+#: are over -- so without this there is nothing to say during the wait, and a
+#: screen that says nothing for eighty seconds reads as one that hung.
+Progress = Callable[[str], None] | None
+
+
+def _say(on_progress: Progress, text: str) -> None:
+    """Report `text` if anyone is listening, so callers stay free of the check."""
+    if on_progress is not None:
+        on_progress(text)
 
 
 @dataclass
@@ -111,6 +123,8 @@ class StudioService:
         directory: Path,
         artist: SpriteArtist,
         dossier: GameReference | None = None,
+        *,
+        on_progress: Progress = None,
     ) -> list[AssetSpec]:
         """Draw the sheet each entity's sprite id is missing, and register it.
 
@@ -182,7 +196,13 @@ class StudioService:
                 # persisted, and by then the asset exists too.
                 entity.sprite = sprite_id
             try:
-                frames = artist.draw_frames(project, entity, dossier)
+                # `on_progress` is forwarded straight into the artist: the
+                # real `SpriteArtist.draw_frames` owns the retry loop and
+                # the judged rejection reason first-hand, so it narrates its
+                # own attempts live rather than this method reconstructing
+                # them afterwards from `DrawnFrames.repairs` /
+                # `SpriteDrawFailure.reasons` once the call has returned.
+                frames = artist.draw_frames(project, entity, dossier, on_progress=on_progress)
             except ValueError as exc:
                 # A `SpriteDrawFailure` (see `sprite_artist.py`) carries every
                 # attempt's raw response even though none of them produced a
@@ -207,6 +227,11 @@ class StudioService:
                 sprite_id,
                 getattr(frames, "sheets", None),
                 winner=getattr(frames, "sheet", None),
+            )
+            packed_bytes = (directory / asset.source).stat().st_size
+            _say(
+                on_progress,
+                f"{entity.id}: {len(frames)} poses empaquetadas, {packed_bytes} B",
             )
             have.add(sprite_id)
             drawn.append(asset)
@@ -397,11 +422,25 @@ class StudioService:
         }
 
     def runtime_test(
-        self, project: GameProject, directory: Path, *, seconds: int = 3
+        self,
+        project: GameProject,
+        directory: Path,
+        *,
+        seconds: int = 3,
+        on_progress: Progress = None,
     ) -> dict[str, Any]:
+        """Build the project, then watch it run in the emulator.
+
+        These are the two long waits this method spends: compiling the
+        sources, then launching and driving the emulator for `seconds`. Today
+        they are lived as one silent wait, so `on_progress` is told when each
+        one starts.
+        """
+        _say(on_progress, "compilando el programa")
         build = self.build(project, directory)
         if not build.success:
             raise RuntimeError("runtime test requires a quality-passing build")
+        _say(on_progress, "arrancando el emulador")
         report = smoke_test(
             build.output_dir,
             project.target.platform.value,
@@ -428,11 +467,25 @@ class StudioService:
         )
         return report
 
-    def verify_program(self, project: GameProject, directory: Path) -> dict[str, Any]:
+    def verify_program(
+        self,
+        project: GameProject,
+        directory: Path,
+        *,
+        on_progress: Progress = None,
+    ) -> dict[str, Any]:
         """Build the project and, where the target allows it, watch it run.
 
         Returned as evidence rather than as a verdict: the repair loop needs the
         diagnostics, not a boolean.
+
+        `on_progress` is forwarded to `runtime_test` unchanged, so its two
+        long-wait lines (compiling, then starting the emulator) are told
+        however this is called -- directly, or from inside
+        `write_program`'s repair loop, which is the call `on_progress` used
+        to never reach: `generator.write_program`'s own `verify` parameter
+        is a fixed two-argument `Callable[[GameProject, Path], dict]`, so
+        nothing this method itself does could widen what it is called with.
         """
         evidence: dict[str, Any] = {
             "build": None,
@@ -448,7 +501,7 @@ class StudioService:
             # -- a build failure is refused on the build diagnostics alone.
             return evidence
         try:
-            runtime = self.runtime_test(project, directory)
+            runtime = self.runtime_test(project, directory, on_progress=on_progress)
         except RuntimeError as exc:
             evidence["runtime_error"] = str(exc)
             return evidence
@@ -464,9 +517,35 @@ class StudioService:
         writer: Any,
         *,
         attempts: int = 5,
+        on_progress: Progress = None,
     ) -> dict[str, Any]:
-        """Have a program written into the project and repaired until it passes."""
-        result = write_program(project, directory, writer, self.verify_program, attempts=attempts)
+        """Have a program written into the project and repaired until it passes.
+
+        `generator.write_program` now narrates its own loop -- one line
+        before each attempt's LLM call, one with its verdict once `verify`
+        has judged it -- so `on_progress` is simply forwarded to it; nothing
+        here waits for the whole repair loop to finish before saying
+        anything.
+
+        The `verify` callable it is given is not `self.verify_program`
+        directly but a closure over it that also carries `on_progress`.
+        `generator.write_program`'s `verify` parameter is typed
+        `Callable[[GameProject, Path], dict[str, Any]]` on purpose -- several
+        tests (`test_studio_generator.py`) inject their own two-argument fake
+        verifier straight into that loop, with no interest in progress at
+        all, and widening the signature to three arguments would force every
+        one of them (present and future) to accept and ignore a parameter
+        only this one caller wants. The closure keeps that extra argument
+        local to the caller that needs it instead of leaking it into a
+        contract several unrelated tests already rely on.
+        """
+
+        def _verify(project: GameProject, directory: Path) -> dict[str, Any]:
+            return self.verify_program(project, directory, on_progress=on_progress)
+
+        result = write_program(
+            project, directory, writer, _verify, attempts=attempts, on_progress=on_progress
+        )
         report = result.as_dict()
         (directory / "write_report.json").write_text(
             json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"

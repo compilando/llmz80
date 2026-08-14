@@ -74,9 +74,21 @@ class _FixtureArtist:
             self.frames = real_artist.draw_frames(project, entity)
         self.calls: list[str] = []
 
-    def draw_frames(self, project, entity, dossier=None):
+    def draw_frames(self, project, entity, dossier=None, *, on_progress=None):
         self.calls.append(entity.sprite)
         return self.frames
+
+
+class _StubArtist:
+    """A minimal fake artist: one solid frame, no raw sheet, no attempt
+    history -- the same bare `list[Image.Image]` several fakes across the
+    test suite return from `draw_frames` (only the real `SpriteArtist`
+    carries `.sheet`/`.sheets`/`.attempts`/`.repairs`). Used wherever a test
+    needs *an* artist but not a particular drawing.
+    """
+
+    def draw_frames(self, project, entity, dossier=None, *, on_progress=None):
+        return [Image.new("RGBA", (SPRITE_SIZE, SPRITE_SIZE), (200, 40, 40, 255))]
 
 
 def test_draw_sprites_round_trip_through_disk_keeps_a_recognisable_silhouette(tmp_path: Path):
@@ -203,14 +215,10 @@ def test_draw_sprites_tolerates_an_artist_that_carries_no_raw_sheet(tmp_path: Pa
     the asset must not depend on it being there.
     """
 
-    class _BareArtist:
-        def draw_frames(self, project, entity, dossier=None):
-            return [Image.new("RGBA", (SPRITE_SIZE, SPRITE_SIZE), (200, 40, 40, 255))]
-
     service = StudioService.at(tmp_path)
     project, directory = _create_sprited_project(service, "Bare Artist")
 
-    drawn = service.draw_sprites(project, directory, _BareArtist())
+    drawn = service.draw_sprites(project, directory, _StubArtist())
 
     asset = drawn[0]
     asset_path = directory / asset.source
@@ -230,3 +238,82 @@ def test_a_v3_document_is_refused_with_a_message_that_says_what_to_do(tmp_path):
     message = str(error.value)
     assert "schema version 3" in message
     assert "v4" in message
+
+
+def test_draw_sprites_narrates_each_sheet_it_packs(tmp_path):
+    """Without this the screen can say nothing for the eighty seconds the
+    artist takes, because the report only exists once it is over."""
+    from llmz80.studio.services import StudioService
+
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Narrated", TargetPlatform.SPECTRUM)
+    said: list[str] = []
+    service.draw_sprites(project, directory, _StubArtist(), on_progress=said.append)
+    assert said, "the artist packed a sheet and said nothing about it"
+    assert any("actor" in line for line in said), said
+
+
+def test_on_progress_is_optional(tmp_path):
+    """Every existing caller passes nothing and must keep working."""
+    from llmz80.studio.services import StudioService
+
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Quiet", TargetPlatform.SPECTRUM)
+    service.draw_sprites(project, directory, _StubArtist())
+
+
+def test_write_program_lets_runtime_test_narrate_from_inside_the_repair_loop(tmp_path):
+    """`verify_program`, called once per attempt from inside
+    `generator.write_program`'s repair loop, used to call `runtime_test`
+    with no `on_progress` at all -- `runtime_test`'s two long-wait lines
+    (compiling, then starting the emulator) never reached a listener when
+    `write_program` was the caller, even though `write_program` itself
+    narrated every attempt. `StudioService.write_program` now hands
+    `verify_program` a closure that carries `on_progress` through
+    `generator.write_program`'s fixed two-argument `verify` contract, so the
+    lines must arrive interleaved with the per-attempt narration, not be
+    missing from it.
+
+    `build` and `runtime_test` are replaced with instance-level fakes rather
+    than exercised for real: this test is about whether `on_progress`
+    reaches `runtime_test` from this call path, which needs no compiler or
+    emulator to demonstrate.
+    """
+    from llmz80.studio.compiler import BuildResult
+    from llmz80.studio.generator import ProgramFile, ProgramSources
+
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Loop", TargetPlatform.SPECTRUM)
+
+    def fake_build(project, directory):
+        return BuildResult(
+            success=True,
+            artifact=None,
+            report={"quality_pass": True},
+            output_dir=directory / "build",
+        )
+
+    def fake_runtime_test(project, directory, *, seconds=3, on_progress=None):
+        if on_progress is not None:
+            on_progress("compilando el programa")
+            on_progress("arrancando el emulador")
+        return {"acceptance": {"quality_pass": True}, "animation": {"quality_pass": True}}
+
+    service.build = fake_build
+    service.runtime_test = fake_runtime_test
+
+    class _Writer:
+        def write(self, project, feedback=None):
+            return ProgramSources(
+                summary="ok", files=[ProgramFile(name="main.c", body="void main(void) { }")]
+            )
+
+    messages: list[str] = []
+    service.write_program(project, directory, _Writer(), attempts=1, on_progress=messages.append)
+
+    assert messages == [
+        "intento 1: escribiendo...",
+        "compilando el programa",
+        "arrancando el emulador",
+        "intento 1: build compiló, aceptación aprobada, animación aprobada",
+    ], messages

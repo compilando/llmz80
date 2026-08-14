@@ -53,10 +53,17 @@ def test_program_sources_reject_anything_that_is_not_a_source():
 
 
 def test_storing_a_program_replaces_what_was_there(tmp_path: Path, project):
-    store_program(project, tmp_path, ProgramSources(summary="a", files=[
-        ProgramFile(name="main.c", body="void main(void){}"),
-        ProgramFile(name="old.c", body="void old(void){}"),
-    ]))
+    store_program(
+        project,
+        tmp_path,
+        ProgramSources(
+            summary="a",
+            files=[
+                ProgramFile(name="main.c", body="void main(void){}"),
+                ProgramFile(name="old.c", body="void old(void){}"),
+            ],
+        ),
+    )
 
     store_program(project, tmp_path, _sources("second"))
 
@@ -121,8 +128,7 @@ def test_repair_prompt_names_a_failing_animation_gate():
         {
             "quality_pass": False,
             "failures": [
-                "g_anim_frame never advanced across the moving steps "
-                "(anim_probe_move)"
+                "g_anim_frame never advanced across the moving steps " "(anim_probe_move)"
             ],
         },
     )
@@ -175,6 +181,55 @@ def test_a_build_failure_is_fed_back_and_the_repair_accepted(tmp_path: Path, pro
     assert "fixed" in (tmp_path / project.program_dir / "main.c").read_text()
 
 
+def test_write_program_narrates_before_a_slow_attempt_returns(tmp_path: Path, project):
+    """`write_program`'s own `WriteResult` only exists once the whole repair
+    loop is over -- a caller assembling progress lines from it after the
+    fact would still watch the screen say nothing for as long as an attempt
+    takes, then dump every line at once. `on_progress` must not have that
+    shape: the first line has to arrive before even the first attempt's
+    (possibly slow) writer call finishes, not merely before `write_program`
+    itself returns -- the two are different claims, and only a genuinely
+    slow fake tells them apart.
+    """
+    import time
+
+    class SlowWriter:
+        def __init__(self, sources: ProgramSources) -> None:
+            self.sources = sources
+            self.finished_at: float | None = None
+
+        def write(self, project, feedback=None):
+            time.sleep(0.05)
+            self.finished_at = time.monotonic()
+            return self.sources
+
+    writer = SlowWriter(_sources("good"))
+    progress_times: list[float] = []
+    messages: list[str] = []
+
+    def on_progress(text: str) -> None:
+        progress_times.append(time.monotonic())
+        messages.append(text)
+
+    result = write_program(
+        project,
+        tmp_path,
+        writer,
+        lambda p, d: {"build": {"quality_pass": True}, "acceptance": {"quality_pass": True}},
+        on_progress=on_progress,
+    )
+
+    assert result.accepted is True
+    assert progress_times, "no progress was reported at all"
+    assert writer.finished_at is not None
+    assert progress_times[0] < writer.finished_at, (
+        "the first progress line must arrive before the slow writer call it "
+        "precedes finishes, not only before write_program returns"
+    )
+    assert messages[0] == "intento 1: escribiendo..."
+    assert messages[1] == ("intento 1: build compiló, aceptación aprobada, animación sin observar")
+
+
 def test_a_program_that_builds_but_misbehaves_is_repaired_from_memory_reads(
     tmp_path: Path, project
 ):
@@ -208,9 +263,7 @@ def test_a_program_that_builds_but_misbehaves_is_repaired_from_memory_reads(
     assert "g_score: expected 10, read 0" in writer.feedback_seen[1]
 
 
-def test_a_failing_animation_gate_is_fed_back_and_the_repair_accepted(
-    tmp_path: Path, project
-):
+def test_a_failing_animation_gate_is_fed_back_and_the_repair_accepted(tmp_path: Path, project):
     """The defect a real run exposed: `runtime_test` already lowered its own
     `quality_pass` when the animation gate failed, but `write_program` only
     ever looked at `evidence["acceptance"]`, so the failing verdict never
@@ -231,8 +284,7 @@ def test_a_failing_animation_gate_is_fed_back_and_the_repair_accepted(
                     "quality_pass": False,
                     "observed": True,
                     "failures": [
-                        "g_anim_frame never advanced across the moving steps "
-                        "(anim_probe_move)"
+                        "g_anim_frame never advanced across the moving steps " "(anim_probe_move)"
                     ],
                 },
             }
@@ -274,9 +326,7 @@ def test_an_abstaining_animation_gate_does_not_block_acceptance(tmp_path: Path, 
     assert result.attempts[0].animation_passed is None
 
 
-def test_a_design_with_no_animation_evidence_is_accepted_exactly_as_before(
-    tmp_path: Path, project
-):
+def test_a_design_with_no_animation_evidence_is_accepted_exactly_as_before(tmp_path: Path, project):
     """A design with no sprites and no g_anim_frame gives `verify_program` no
     "animation" key at all (its evidence dict predates this gate, or the
     caller simply never populated it) -- `evidence.get("animation")` is then
