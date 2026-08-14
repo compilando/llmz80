@@ -192,7 +192,7 @@ def render_step_head(step: wizard.Step) -> str:
     return f"Paso {step.number} de 6: {step.name}"
 
 
-def render_step_summary(step: wizard.Step) -> str:
+def render_step_summary(step: wizard.Step, *, can_adapt: bool = False) -> str:
     """What this step is for, and which key does it -- the sentence that
     replaces having to know that `ctrl+f` came before `ctrl+a`.
 
@@ -202,8 +202,19 @@ def render_step_summary(step: wizard.Step) -> str:
     suggests a key that will answer with a refusal. A step already resolved
     names `→` to move on and `R` to do it over, which is the honest pair:
     `Enter` on a done step is `R`'s job, after a confirmation.
+
+    `can_adapt` adds the one key that is not any step's own: `A`, offered
+    inside `diseño` and only where research archived a dossier, because
+    adapting the design to the researched game is a way of changing the
+    design rather than a step after it (see `StudioApp._adapt_step`). It is
+    named in both branches on purpose -- `diseño` is normally `done` from
+    the moment a project exists (`screen._design_stage` never says
+    `pending`), so a key offered only to unresolved steps would be a key
+    this step never offered at all.
     """
     parts = [step.summary]
+    if can_adapt:
+        parts.append("[A] adaptar el diseño a la ficha")
     if step.state in {"done", "skipped"}:
         parts.append("[→] siguiente paso")
         if step.state == "done":
@@ -215,6 +226,23 @@ def render_step_summary(step: wizard.Step) -> str:
     if wizard.can_leave_behind(step):
         parts.append("[→] omitir")
     return " · ".join(parts)
+
+
+def _can_adapt(walked: Sequence[wizard.Step], step: wizard.Step) -> bool:
+    """Whether adapting the design to the researched game is available now.
+
+    Two conditions, both read off `wizard.steps`'s own single reading of the
+    project rather than loading `reference.yml` a second time: the person is
+    standing on `diseño` -- adapting *is* changing the design -- and
+    `referencia` is `done`, which (see `screen._reference_stage`) means
+    exactly that a dossier exists and identified a game. That is precisely
+    what `propose_from_reference` needs to have something to propose from;
+    an absent dossier, or one that found nothing, leaves it nothing to say.
+    """
+    if step.name != "diseño":
+        return False
+    reference = next((walk for walk in walked if walk.name == "referencia"), None)
+    return reference is not None and reference.state == "done"
 
 
 def brief_preview(brief: str, limit: int = BRIEF_PREVIEW_LIMIT) -> str:
@@ -327,6 +355,12 @@ class StudioApp(App[None]):
         #: from the one before it, and "did anything actually change?" can
         #: no longer be answered by comparing the two.
         self._edited = False
+        #: Whether [A] -- adapting the design to the researched game -- is on
+        #: offer right now. Decided in `_refresh_wizard`, off the same
+        #: reading of the project's evidence that draws the summary naming
+        #: the key, so what the screen offers and what the key does cannot
+        #: disagree.
+        self._adaptable = False
 
     # --- layout ---------------------------------------------------------
 
@@ -522,9 +556,10 @@ class StudioApp(App[None]):
         self._ensure_journal()
         walked = wizard.steps(self.project, self.project_dir, self.passed)
         step = wizard.current(self.project, self.project_dir, self.passed)
+        self._adaptable = _can_adapt(walked, step)
         head = render_step_head(step)
         strip = render_stage_marks(walked, colour=False)
-        summary = render_step_summary(step)
+        summary = render_step_summary(step, can_adapt=self._adaptable)
         detail = pick_stage_detail(walked)
         self.query_one("#wizard-head", Static).update(f"[b]{head}[/b]")
         self.query_one("#stage-line", Static).update(render_stage_marks(walked, colour=True))
@@ -801,6 +836,14 @@ class StudioApp(App[None]):
                 )
             event.stop()
             return
+        # After the map editor's own keys, which own `a` as "move left"
+        # while it is open, and before the panel letters: adapting the
+        # design belongs to the `diseño` step, and `_adapt_step` is what
+        # decides whether this is the place to ask for it.
+        if key == "a":
+            self._adapt_step()
+            event.stop()
+            return
         if key in PANEL_KEYS:
             self._toggle_panel(PANEL_KEYS[key])
             event.stop()
@@ -942,12 +985,38 @@ class StudioApp(App[None]):
         The map is the largest part of what reviewing a design means by
         hand, and it is the panel `Esc` now saves out of (`action_back`), so
         a wall painted here is on disk before the wizard moves on. The two
-        smaller parts have their own letters on the shortcuts line: `e` for
-        the entity roster, `g` for title, brief and style.
+        smaller parts have their own letters on the shortcuts line -- `e`
+        for the entity roster, `g` for title/brief/style -- and `A`, offered
+        by this step's own summary once a dossier exists, adapts the whole
+        design to the researched game in one reviewable diff.
         """
         self._set_panel("map")
         if self.project is not None:
             self._refresh()
+
+    def _adapt_step(self) -> None:
+        """`A`: propose the adaptation of the design to the researched game.
+
+        Part of the `diseño` step rather than a step of its own. Adapting is
+        one of the ways a design changes, and a step of its own would need
+        evidence on disk of "I already adapted" for `wizard.steps` to read --
+        which nothing writes, and which `reference.yml`'s presence certainly
+        is not: it says a game was researched, not that its design was ever
+        taken up.
+
+        Outside that step, or with no dossier to adapt to, this says so
+        rather than doing nothing silently: `A` is a key the summary only
+        offers where it works, so pressing it elsewhere is a question worth
+        an answer.
+        """
+        if not self._adaptable:
+            self.notify(
+                "Adaptar el diseño a la ficha sólo se puede en el paso diseño, "
+                "y con una ficha que haya identificado un juego",
+                severity="warning",
+            )
+            return
+        self._adapt()
 
     def action_create(self) -> None:
         """Create the project, then -- like

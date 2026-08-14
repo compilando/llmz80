@@ -1351,3 +1351,98 @@ async def test_stepping_back_from_the_first_step_lands_on_the_project_step(tmp_p
         await pilot.press("escape")
         await pilot.pause()
         assert wizard.current(app.project, app.project_dir, app.passed).name == "proyecto"
+
+
+# --- adapting the design: not a step, a key within the design step ---------
+
+
+def _archive_dossier(directory: Path, title: str = "Real Game") -> None:
+    from llmz80.studio.reference import save_reference
+
+    save_reference(
+        GameReference(
+            identified=True,
+            confidence="high",
+            title=title,
+            sources=[
+                ReferenceSource(
+                    url="https://example.com/review",
+                    title="A review",
+                    retrieved_at=datetime.now(timezone.utc),
+                )
+            ],
+        ),
+        directory,
+    )
+
+
+def test_the_design_step_names_the_adapt_key_only_where_it_works():
+    """A pure check of the sentence itself: the key is offered inside
+    `diseño` and nowhere else, whatever state the step is in."""
+    from llmz80.studio.wizard import current
+
+    project = blank_project("Adapting", TargetPlatform.SPECTRUM)
+    design = current(project, None, passed={"proyecto", "referencia"})
+    assert design.name == "diseño"
+
+    assert "[A] adaptar el diseño a la ficha" in render_step_summary(design, can_adapt=True)
+    assert "[A]" not in render_step_summary(design)
+
+
+@pytest.mark.asyncio
+async def test_the_design_step_offers_adapting_once_a_dossier_exists(tmp_path: Path):
+    """`_adapt` is reachable again: research → adapt → design lost its middle
+    when the ten shortcuts went, and the middle is where the dossier becomes
+    a design."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Adapting"
+        app.action_create()
+        await pilot.pause()
+        _focus_away_from_text_entry(app)
+        app.passed = {"proyecto", "referencia"}
+        app._refresh_wizard()
+        await pilot.pause()
+
+        reached: list[bool] = []
+        app._adapt = lambda: reached.append(True)
+
+        # No dossier archived: the key is not offered, and pressing it does
+        # not start a proposal there is nothing to base on.
+        assert "[A] adaptar" not in app.status_text
+        await pilot.press("a")
+        await pilot.pause()
+        assert reached == []
+        assert any(n.severity == "warning" for n in app._notifications)
+
+        _archive_dossier(app.project_dir)
+        app._refresh_wizard()
+        await pilot.pause()
+
+        assert "[A] adaptar el diseño a la ficha" in app.status_text
+        await pilot.press("a")
+        await pilot.pause()
+        assert reached == [True]
+
+
+@pytest.mark.asyncio
+async def test_adapting_is_offered_in_no_other_step(tmp_path: Path):
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Elsewhere"
+        app.action_create()
+        await pilot.pause()
+        _focus_away_from_text_entry(app)
+        _archive_dossier(app.project_dir)
+        # Past the design step, standing on sprites.
+        app.passed = {"proyecto", "referencia", "diseño"}
+        app._refresh_wizard()
+        await pilot.pause()
+
+        reached: list[bool] = []
+        app._adapt = lambda: reached.append(True)
+
+        assert "[A] adaptar" not in app.status_text
+        await pilot.press("a")
+        await pilot.pause()
+        assert reached == []
