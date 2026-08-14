@@ -1,0 +1,487 @@
+"""One order: an idea goes in, a game comes out.
+
+Every stage this runs already exists as a subcommand of `llmz80 project`, and
+until now getting a game meant typing six of them in the right order and
+answering the questions each one asks along the way. This is the same six
+stages with nobody at the keyboard: it creates the project, researches the
+real game the idea resembles, adapts the design to it, draws the missing art,
+writes the program and repairs it against the compiler, then builds it and
+watches it run. It asks nothing -- the order either runs to the end or stops
+at the stage that failed and says so.
+
+It owns no pipeline logic of its own. Each stage is one call into
+`StudioService` (the same call `steps.py` makes for the interface), so a fix
+to what a stage *does* lands in one place and both callers get it. What this
+module adds is the three things a chain of commands never had: the order, a
+diary written while it happens rather than a report handed over at the end,
+and the rule for what a failure means -- which is "stop", because a program
+that does not build is not a game and the next stage would only be spending
+money on top of a broken one.
+
+Stages are injected (`Stages`, `ServiceStages`) for the same reason
+`generator.write_program` takes its `verify` and `writer` as parameters: four
+of the six spend money on the OpenAI API and one drives a real emulator, so
+the only way to test the *order* -- and what happens when one of them refuses
+-- is to be able to run it against stages that do neither.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Protocol
+
+from . import wizard
+from .journal import FILENAME as JOURNAL_FILENAME, Journal
+from .models import AssetSpec, GameProject, TargetPlatform
+from .reference import GameReference
+from .services import StudioService
+
+#: Told what is happening while it happens: the same callable `services.py`
+#: takes as `on_progress`, so a stage's own commentary reaches the diary
+#: without this module inventing a second way to say things.
+Say = Callable[[str], None]
+
+#: `Metadata.title` is capped at 32 characters, and a second run of the same
+#: idea needs room to become "… 2" without the suffix being truncated away
+#: (which would loop forever looking for a free slug). 28 leaves that room.
+TITLE_LIMIT = 28
+
+#: How many same-titled projects a workspace will hold before this gives up.
+#: A person who has asked for the same idea ninety-nine times has a problem
+#: this command cannot solve.
+MAX_SAME_TITLE = 99
+
+#: What is said before anything is spent. Announcing is not asking: the order
+#: goes ahead, but nobody should discover afterwards that it made four rounds
+#: of paid API calls. `diseño` costs money *here* (it adapts the design to the
+#: researched game) even though `wizard` marks it free -- there the stage is a
+#: person editing a map by hand.
+PAID_STAGES = ("referencia", "diseño", "sprites", "programa")
+
+#: The `llmz80 project` subcommand that redoes each stage, for the one line a
+#: stopped run owes the person reading it: everything before the failure is on
+#: disk and stays there, so the way out is to retry that stage over the same
+#: project, not to run the whole order again and pay for all of it twice.
+RESUMES = {
+    "referencia": "reference",
+    "diseño": "adapt",
+    "sprites": "sprites",
+    "programa": "write",
+    "gates": "test",
+}
+
+
+class Stages(Protocol):
+    """The six pieces of work `make_game` puts in order.
+
+    Each one is whole: it does its own saving, and returns what the diary
+    needs to describe it. `say` is how a stage narrates itself while it runs
+    -- the long ones (sprites, program, gates) forward it straight into the
+    service as `on_progress`.
+    """
+
+    def create(
+        self, title: str, brief: str, platform: TargetPlatform
+    ) -> tuple[GameProject, Path]: ...
+
+    def research(self, project: GameProject, directory: Path, say: Say) -> GameReference: ...
+
+    def adapt(
+        self, project: GameProject, directory: Path, dossier: GameReference, say: Say
+    ) -> GameProject: ...
+
+    def sprites(
+        self, project: GameProject, directory: Path, dossier: GameReference | None, say: Say
+    ) -> list[AssetSpec]: ...
+
+    def write(
+        self, project: GameProject, directory: Path, dossier: GameReference | None, say: Say
+    ) -> dict[str, Any]: ...
+
+    def test(self, project: GameProject, directory: Path, say: Say) -> dict[str, Any]: ...
+
+
+@dataclass(frozen=True)
+class MakeResult:
+    """Where the game landed, or where the order stopped."""
+
+    project_dir: Path | None
+    #: The tape or disk image, once the gates have seen it run. `None` while
+    #: no build has produced one.
+    artifact: Path | None = None
+    #: The stage id (`referencia`, `programa`, …) that stopped the order, or
+    #: "" when nothing did. Deliberately the id `wizard` and the diary use, so
+    #: "it stopped at programa" means the same thing in the log, on screen and
+    #: in a bug report.
+    failed: str = ""
+    error: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return not self.failed
+
+
+class _Stopped(Exception):
+    """A stage refused or raised, so nothing after it runs."""
+
+    def __init__(self, step: str, reason: str) -> None:
+        super().__init__(reason)
+        self.step = step
+        self.reason = reason
+
+
+class StageRefused(Exception):
+    """A stage that ran to the end and produced something unacceptable.
+
+    Distinct from the exceptions a stage raises by accident (a dropped
+    connection, a missing toolchain) only in what it reads like: this is the
+    program that never built, the gates that watched and refused. Both stop
+    the order in the same way -- the difference matters to the person reading
+    the message, not to the control flow.
+    """
+
+
+@dataclass
+class _Diary:
+    """Writes each stage into `studio.log` and onto the screen at once.
+
+    Both come from `Journal`, which returns the very line it wrote, so the
+    file and the terminal cannot start telling different stories -- the whole
+    reason `journal.py` returns its lines instead of just writing them.
+    """
+
+    journal: Journal
+    out: Callable[[str], None]
+
+    def say(self, text: str) -> None:
+        self.out(self.journal.note(text))
+
+    def stage(self, step: wizard.Step, label: str, work: Callable[[], tuple[Any, str]]) -> Any:
+        """Run one stage between a START and an END line, and stop the order
+        if it fails.
+
+        The heading is `"{number} {name} — {label}"`, byte for byte what
+        `tui.py` writes for the same stage, so one project's diary reads the
+        same whether the work was done from the interface or from here.
+        """
+        token = self.journal.start(f"{step.number} {step.name} — {label}")
+        self.out(token.line)
+        try:
+            value, summary = work()
+        except Exception as exc:
+            self.out(self.journal.finish(token, ok=False))
+            self.out(self.journal.write("ERROR", f"{step.name}: {exc}"))
+            raise _Stopped(step.name, str(exc)) from exc
+        self.out(self.journal.finish(token, ok=True, text=summary))
+        return value
+
+    def skip(self, step: wizard.Step, why: str) -> None:
+        self.out(self.journal.write("SKIP", f"{step.number} {step.name} — {why}"))
+
+
+@dataclass
+class ServiceStages:
+    """The real six, each one a call into `StudioService`.
+
+    The OpenAI collaborators are built inside the stage that needs them, not
+    in `__init__`, and for the same reason `steps.py` builds them inside its
+    jobs: a missing API key should stop the stage that needed it, with the
+    project already on disk and the diary already saying how far it got --
+    not the whole order before it has written anything.
+    """
+
+    service: StudioService
+
+    def create(self, title: str, brief: str, platform: TargetPlatform) -> tuple[GameProject, Path]:
+        """Start the project, giving it a directory nothing else is using.
+
+        `ProjectStore.create` refuses to overwrite an existing project, and a
+        person who types the same idea twice is usually asking for another
+        attempt at it (the models are not deterministic), not reporting a
+        mistake. So a taken slug becomes "… 2", "… 3": two runs of one idea
+        leave two games side by side rather than one refusal.
+        """
+        from .editing import rename_project
+
+        for attempt in range(1, MAX_SAME_TITLE + 1):
+            candidate = title if attempt == 1 else f"{title} {attempt}"
+            try:
+                project, directory = self.service.create_project(candidate, platform)
+            except FileExistsError:
+                continue
+            if brief:
+                project = rename_project(project, project.metadata.title, brief=brief)
+                self.service.save_project(project, directory)
+            return project, directory
+        raise StageRefused(
+            f"the workspace already holds {MAX_SAME_TITLE} projects called {title!r}; "
+            "give the idea different words, or point --workspace somewhere else"
+        )
+
+    def research(self, project: GameProject, directory: Path, say: Say) -> GameReference:
+        from ..cli import _openai_client_and_model
+        from .reference import ResponsesReferenceResearcher
+
+        client, model = _openai_client_and_model()
+        say(f"searching the web with {model}")
+        researcher = ResponsesReferenceResearcher(client, model=model)
+        return self.service.research_reference(project, directory, researcher)
+
+    def adapt(
+        self, project: GameProject, directory: Path, dossier: GameReference, say: Say
+    ) -> GameProject:
+        """Adapt the design to the researched game and save it.
+
+        Nothing is shown for approval, unlike `llmz80 project adapt`: the
+        proposal has already been validated through `apply_proposal` (that is
+        what `propose_from_reference` returns), and there is nobody at the
+        keyboard to read a diff. The diff is not lost -- `game.yml`'s previous
+        revision is kept by `ProjectStore.save`, as it is for every save.
+        """
+        from ..cli import _openai_client_and_model
+        from .reference_design import ResponsesReferenceDesigner
+
+        client, model = _openai_client_and_model()
+        designer = ResponsesReferenceDesigner(client, model=model)
+        _proposal, _diff, updated, refusals = self.service.propose_from_reference(
+            project, directory, designer, dossier
+        )
+        for number, reason in enumerate(refusals, start=1):
+            say(f"attempt {number} was refused, repairing: {reason}")
+        self.service.save_project(updated, directory)
+        return updated
+
+    def sprites(
+        self, project: GameProject, directory: Path, dossier: GameReference | None, say: Say
+    ) -> list[AssetSpec]:
+        from generators.openai_generator import OpenAIImageGenerator
+
+        from ..cli import _openai_client_and_model, _openai_image_model
+        from .sprite_artist import SpriteArtist
+
+        # `OpenAIImageGenerator` takes an API key rather than a client, so the
+        # key is read off the client already built instead of loaded twice --
+        # the same shortcut `llmz80 project sprites` takes.
+        client, _model = _openai_client_and_model()
+        artist = SpriteArtist(
+            OpenAIImageGenerator(api_key=client.api_key, model=_openai_image_model())
+        )
+        return self.service.draw_sprites(project, directory, artist, dossier, on_progress=say)
+
+    def write(
+        self, project: GameProject, directory: Path, dossier: GameReference | None, say: Say
+    ) -> dict[str, Any]:
+        from ..cli import _openai_client_and_model
+        from .generator import ResponsesProgramWriter
+
+        client, model = _openai_client_and_model()
+        writer = ResponsesProgramWriter(client, model=model, reference=dossier)
+        return self.service.write_program(project, directory, writer, on_progress=say)
+
+    def test(self, project: GameProject, directory: Path, say: Say) -> dict[str, Any]:
+        return self.service.runtime_test(project, directory, on_progress=say)
+
+
+def title_from(idea: str) -> str:
+    """A title short enough for `Metadata.title`, cut where a word ends.
+
+    The idea itself stays whole in `metadata.brief`; this is only what the
+    project is called on disk and in the interface, so cutting mid-word would
+    cost nothing but read as a bug.
+    """
+    words = " ".join(idea.split())
+    if len(words) <= TITLE_LIMIT:
+        return words
+    cut = words[:TITLE_LIMIT]
+    if " " in cut and not words[TITLE_LIMIT].isspace():
+        cut = cut[: cut.rindex(" ")]
+    return cut.strip(" ,.;:-") or words[:TITLE_LIMIT]
+
+
+def artifact_path(project: GameProject, directory: Path) -> Path:
+    """Where the build leaves the tape or the disk image.
+
+    Named the same way `release.export_release` names it when it looks for the
+    evidence to package, and for the same reason: the toolchain publishes one
+    canonical artifact per platform, and both places have to agree on which
+    file that is.
+    """
+    name = "output.tap" if project.target.platform.value == "spectrum" else "output.dsk"
+    return directory / "build" / name
+
+
+def make_game(
+    idea: str,
+    *,
+    platform: TargetPlatform = TargetPlatform.SPECTRUM,
+    workspace: Path = Path("studio-projects"),
+    stages: Stages | None = None,
+    out: Callable[[str], None] = print,
+) -> MakeResult:
+    """Turn `idea` into a built, emulator-tested game, saying so as it goes.
+
+    `stages` defaults to `ServiceStages` over a service opened on `workspace`;
+    passing one makes `workspace` irrelevant, since the stages then own
+    wherever the project goes.
+
+    The diary only starts once the project exists -- it lives inside it -- so
+    the creation of the project is an `OPEN` line rather than a START/END
+    pair, exactly as it is when the interface creates one. Everything after
+    that is a stage with a beginning, an end and a duration.
+    """
+    if not idea.strip():
+        return MakeResult(project_dir=None, failed="proyecto", error="an idea is required")
+    stages = stages or ServiceStages(StudioService.at(workspace))
+    steps = {step.name: step for step in wizard.steps(None, None)}
+
+    out(
+        "This runs the whole pipeline and spends money on the OpenAI API in "
+        f"{len(PAID_STAGES)} stages ({', '.join(PAID_STAGES)}); it asks nothing else."
+    )
+    title = title_from(idea)
+    try:
+        project, directory = stages.create(title, idea, platform)
+    except Exception as exc:
+        out(f"ERROR: {exc}")
+        return MakeResult(project_dir=None, failed="proyecto", error=str(exc))
+
+    diary = _Diary(Journal.for_project(directory), out)
+    diary.out(
+        diary.journal.write(
+            "OPEN", f"made {directory / 'game.yml'} · {project.target.platform.value}"
+        )
+    )
+
+    try:
+        dossier = diary.stage(
+            steps["referencia"],
+            "searching for a real game like this",
+            lambda: _research(stages, project, directory, diary),
+        )
+        if dossier is not None and dossier.identified:
+            project = diary.stage(
+                steps["diseño"],
+                f"adapting the design to {dossier.title}",
+                lambda: _adapt(stages, project, directory, dossier, diary),
+            )
+        else:
+            # Not a failure, and the one place this says so out loud: a game
+            # need not be based on a real one, and the design simply keeps
+            # the typology it was created with.
+            diary.skip(steps["diseño"], "no researched game to adapt to")
+        diary.stage(
+            steps["sprites"],
+            "drawing the missing art",
+            lambda: _sprites(stages, project, directory, dossier, diary),
+        )
+        diary.stage(
+            steps["programa"],
+            "writing the program against the compiler",
+            lambda: _write(stages, project, directory, dossier, diary),
+        )
+        diary.stage(
+            steps["gates"],
+            "building it and running it",
+            lambda: _test(stages, project, directory, diary),
+        )
+    except _Stopped as stop:
+        # Which stage, and what it said. The diary is named because it is the
+        # only place the rest of the story is: this stage's own commentary,
+        # and how far the ones before it got.
+        out(f"STOPPED at {steps[stop.step].number} {stop.step}: {stop.reason}")
+        story = f"The whole story is in {directory / JOURNAL_FILENAME}"
+        # A stage that got as far as compiling left the toolchain's own words
+        # in build/, which the diary summarises but does not quote; a stage
+        # that failed before that has no build/ to point at, and naming an
+        # empty place is worse than naming none.
+        if (directory / "build").is_dir():
+            story += f", and what the toolchain said in {directory / 'build'}"
+        out(story + ".")
+        out(
+            f"Nothing is lost: retry this stage with "
+            f"`llmz80 project {RESUMES[stop.step]} {directory}`."
+        )
+        return MakeResult(project_dir=directory, failed=stop.step, error=stop.reason)
+
+    artifact = artifact_path(project, directory)
+    if not artifact.is_file():
+        # The gates did not refuse, so the game ran -- but nothing published
+        # the canonical artifact, and printing a path to a file that is not
+        # there would be the one lie this command must not tell.
+        reason = f"the gates passed but no artifact was published at {artifact}"
+        out(f"STOPPED at {steps['gates'].number} gates: {reason}")
+        return MakeResult(project_dir=directory, failed="gates", error=reason)
+    out(f"Done. The project, its diary and its evidence are in {directory}.")
+    out(str(artifact))
+    return MakeResult(project_dir=directory, artifact=artifact)
+
+
+# --- the stages, each with the sentence its END line ends in -----------------
+#
+# Split out rather than written inline as lambdas: every one of them ends in a
+# summary the diary keeps forever ("END 3 sprites — ok in 84 s. drew hero,
+# ghost"), and a summary is the part worth reading a year later.
+
+
+def _research(stages: Stages, project: GameProject, directory: Path, diary: _Diary):
+    dossier = stages.research(project, directory, diary.say)
+    if dossier is None or not dossier.identified:
+        return dossier, "no game identified; the design keeps its typology"
+    known = [part for part in (dossier.publisher, str(dossier.year or "")) if part]
+    on_publisher = f" ({', '.join(known)})" if known else ""
+    return dossier, f"{dossier.title}{on_publisher}, {len(dossier.sources)} source(s)"
+
+
+def _adapt(
+    stages: Stages, project: GameProject, directory: Path, dossier: GameReference, diary: _Diary
+):
+    updated = stages.adapt(project, directory, dossier, diary.say)
+    return updated, f"design adapted to {dossier.title}"
+
+
+def _sprites(
+    stages: Stages,
+    project: GameProject,
+    directory: Path,
+    dossier: GameReference | None,
+    diary: _Diary,
+):
+    drawn = stages.sprites(project, directory, dossier, diary.say)
+    if not drawn:
+        return drawn, "every entity already had its art"
+    return drawn, "drew " + ", ".join(asset.id for asset in drawn)
+
+
+def _write(
+    stages: Stages,
+    project: GameProject,
+    directory: Path,
+    dossier: GameReference | None,
+    diary: _Diary,
+):
+    report = stages.write(project, directory, dossier, diary.say)
+    attempts = len(report.get("attempts") or [])
+    if not report.get("accepted"):
+        # The writer had its attempts and the compiler refused every one of
+        # them. Nothing after this could improve on that, and the emulator
+        # has nothing to run, so the order stops here with the last thing the
+        # toolchain actually said.
+        raise StageRefused(
+            report.get("last_error")
+            or "the program was not accepted after " f"{attempts} attempt(s)"
+        )
+    return report, f"accepted after {attempts} attempt(s)"
+
+
+def _test(stages: Stages, project: GameProject, directory: Path, diary: _Diary):
+    report = stages.test(project, directory, diary.say)
+    if report.get("quality_pass") is False:
+        # A gate that watched and refused. `None` is not a refusal -- the CPC
+        # has no memory probe adapter, so its gates abstain -- and treating it
+        # as one would fail every CPC game that ever built and ran.
+        failures = (report.get("acceptance") or {}).get("failures") or []
+        detail = ": " + ", ".join(map(str, failures)) if failures else ""
+        raise StageRefused(f"the game ran but the gates refused it{detail}")
+    verdict = "gates passed" if report.get("quality_pass") else "ran; the gates abstained"
+    return report, verdict
