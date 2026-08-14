@@ -42,10 +42,10 @@ ZX Spectrum 48K, with z88dk and the sdcc_iy library:
   * Give any wait loop a bounded guard anyway. A program that hangs still
     boots, still draws its first screen, and looks alive while doing nothing.
   * bit_beep blocks. A long effect inside the game loop costs frames.
-  * Key constants from input.h are spelled IN_KEY_SCANCODE_ plus the key as it
-    appears on the keyboard: IN_KEY_SCANCODE_SPACE, and lower case letters as
-    IN_KEY_SCANCODE_q, IN_KEY_SCANCODE_a, IN_KEY_SCANCODE_o, IN_KEY_SCANCODE_p.
-    Read them with in_key_pressed().
+  * Do not read the keyboard yourself. plat_input() already scans every key the
+    design bound and returns one bit per binding; the bits are named
+    INPUT_<NAME> in game_config.h. Calling in_key_pressed() with a scancode of
+    your own choosing binds a key the design never declared.
 """
 
 CPC_NOTES = """

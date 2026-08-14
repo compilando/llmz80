@@ -7,19 +7,9 @@
 #ifndef LLMZ80_PLATFORM_H
 #define LLMZ80_PLATFORM_H
 
-#define IN_LEFT 0x01
-#define IN_RIGHT 0x02
-#define IN_UP 0x04
-#define IN_DOWN 0x08
-#define IN_ACTION 0x10
-
-/* Cell kinds understood by plat_cell(). Kind 0 erases the cell. */
-#define CELL_EMPTY 0
-#define CELL_PLAYER 1
-#define CELL_ENEMY 2
-#define CELL_COLLECTIBLE 3
-#define CELL_WALL 4
-
+/* Input is one bit per binding the design declared. game_config.h names each
+ * bit (INPUT_LEFT, INPUT_JUMP, whatever the design coined) and lists them all
+ * in the INPUT_BINDINGS X-macro, so this header fixes no key and no meaning. */
 void plat_init(void);
 void plat_clear(void);
 /* Waits for the next display frame and returns how many whole display frames
@@ -30,7 +20,10 @@ void plat_clear(void);
 unsigned char plat_wait_frame(void);
 unsigned char plat_input(void);
 void plat_text(unsigned char col, unsigned char row, const char *text);
-void plat_cell(unsigned char col, unsigned char row, unsigned char kind);
+/* Draws one character of the ROM font at a character cell. This is how terrain
+ * is drawn until real tile artwork lands: a design's tile carries a character,
+ * and this puts it on screen. */
+void plat_cell(unsigned char col, unsigned char row, char glyph);
 void plat_border(unsigned char colour);
 
 /* Draws one 16x16 masked sprite whose top-left corner sits at character cell
@@ -40,19 +33,11 @@ void plat_border(unsigned char colour);
 void plat_sprite(unsigned char col, unsigned char row, unsigned char sprite,
                  unsigned char frame);
 
-/* Sound effect identifiers, matching AUDIO_EFFECTS in the design model. */
-#define SOUND_START 0
-#define SOUND_COLLECT 1
-#define SOUND_HIT 2
-#define SOUND_LEVEL 3
-#define SOUND_GAME_OVER 4
-
-/* Plays one effect and returns. Targets without audio implement this as a
- * no-op; the design gate refuses a project that asks for sound the target
- * cannot produce, so silence here is always a declared choice. */
+/* Plays effect N, where N is the index the design gave it -- game_config.h
+ * defines SOUND_<NAME> for each one it declared. What each index sounds like
+ * is this library's business; what it is called is the design's. A target
+ * with no audio implements this as a no-op, and the design gate refuses a
+ * project that asks a silent machine for sound. */
 void plat_sound(unsigned char effect);
-
-/* Playfield origin in character cells, reserving the top rows for the HUD. */
-#define FIELD_TOP 2
 
 #endif

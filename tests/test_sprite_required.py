@@ -44,7 +44,7 @@ NO_SPRITE_MAIN = (
     '#include "platform.h"\n\n'
     "void main(void) {\n"
     "    plat_init();\n"
-    "    plat_cell(0, 0, 1);\n"
+    "    plat_cell(0, 0, '#');\n"
     "    while (1) { }\n"
     "}\n"
 )
@@ -124,7 +124,7 @@ def test_a_call_only_inside_a_comment_or_string_does_not_count(tmp_path: Path):
         "/* plat_sprite(0, 0, SPRITE_HERO, 0); -- TODO draw the hero */\n"
         'static const char *note = "call plat_sprite(0,0,0,0) later";\n'
         "void main(void) {\n"
-        "    plat_cell(0, 0, 1);\n"
+        "    plat_cell(0, 0, '#');\n"
         "    while (1) { }\n"
         "}\n"
     )

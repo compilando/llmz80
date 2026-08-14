@@ -345,7 +345,7 @@ def test_the_writing_prompt_shows_the_platform_interface():
     prompt = writing_prompt(project, with_examples=False)
 
     assert "unsigned char plat_wait_frame(void);" in prompt
-    assert "void plat_cell(unsigned char col, unsigned char row, unsigned char kind);" in prompt
+    assert "void plat_cell(unsigned char col, unsigned char row, char glyph);" in prompt
     assert "PLATFORM LIBRARY INTERFACE" in prompt
 
 

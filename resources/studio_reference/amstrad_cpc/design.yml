@@ -1,14 +1,13 @@
-schema_version: 3
+schema_version: 4
 metadata:
   slug: reference-maze
   title: Reference Maze
+  brief: A maze chase. Walk the maze collecting every pellet while one chaser hunts you; CURSORS move,
+    SPACE starts.
   author: LLMZ80 Studio
   language: es
   created_at: '2026-08-11T06:13:08.370183Z'
   updated_at: '2026-08-11T06:13:08.380922Z'
-kind: game
-scope: complete
-genre: maze_chase
 target:
   platform: amstrad_cpc
   video_mode: cpc_mode_1
@@ -18,68 +17,54 @@ presentation:
   palette: []
   show_score: true
   show_lives: true
+  hud_rows: 2
 controls:
-  scheme: cursor_space
-  left: CURSOR LEFT
-  right: CURSOR RIGHT
-  up: CURSOR UP
-  down: CURSOR DOWN
-  action: SPACE
-initial_scene: title
-scenes:
-- id: title
-  kind: title
-  title: Reference Maze
-  next_scene: null
-  options:
-  - label: START
-    target_scene: game
-- id: game
-  kind: gameplay
-  title: ''
-  next_scene: level_complete
-  options: []
-- id: level_complete
-  kind: level_complete
-  title: LEVEL COMPLETE
-  next_scene: game
-  options: []
-- id: game_over
-  kind: game_over
-  title: GAME OVER
-  next_scene: title
-  options: []
+  bindings:
+    left: LEFT
+    right: RIGHT
+    up: UP
+    down: DOWN
+    action: SPACE
+budgets:
+  binary_bytes: 32768
+  static_data_bytes: 12288
+  stack_bytes: 1024
+  max_entities: 16
+  frame_budget_cycles: 70000
+tiles:
+- id: wall
+  char: '#'
+  traits:
+  - solid
+- id: floor
+  char: .
+  traits:
+  - walkable
 entities:
 - id: player
-  role: player
-  sprite: hero
-  speed: 1
+  kind: player
   count: 1
-  behaviour: auto
+  notes: walks one cell per press and collects pellets
 - id: enemy
-  role: enemy
-  sprite: enemy
-  speed: 1
+  kind: chaser
   count: 1
-  behaviour: auto
+  notes: patrols horizontally; contact costs a life
 - id: collectible
-  role: collectible
-  sprite: pellet
-  speed: 1
+  kind: pellet
   count: 8
-  behaviour: auto
-gameplay:
-  lives: 3
-  win_score: 100
-  level_count: 3
-  difficulty_curve: linear
-  score_per_collectible: 10
-levels:
+  notes: worth ten points; clear them all to finish a screen
+observables: []
+mechanics:
+- The player walks one cell per key press through a maze of walls.
+- Touching a pellet collects it, scores ten and removes it from the screen.
+- The chaser hunts the player; contact costs a life and restarts the screen.
+- Clearing every pellet on a screen advances to the next one.
+- Losing the last life ends the game and returns to the title.
+screens:
 - id: level_1
   name: LEVEL 1
   width: 20
   height: 16
-  time_limit_seconds: null
   tiles:
   - '####################'
   - '#..................#'
@@ -132,7 +117,6 @@ levels:
   name: LEVEL 2
   width: 20
   height: 16
-  time_limit_seconds: null
   tiles:
   - '####################'
   - '#..................#'
@@ -185,7 +169,6 @@ levels:
   name: LEVEL 3
   width: 20
   height: 16
-  time_limit_seconds: null
   tiles:
   - '####################'
   - '#..................#'
@@ -234,40 +217,38 @@ levels:
   - entity: collectible
     col: 7
     row: 14
+initial_screen: level_1
+scenes:
+- id: title
+  kind: title
+  title: Reference Maze
+  next_scene: null
+  options:
+  - label: START
+    target_scene: game
+- id: game
+  kind: gameplay
+  title: ''
+  next_scene: level_complete
+  options: []
+- id: level_complete
+  kind: level_complete
+  title: LEVEL COMPLETE
+  next_scene: game
+  options: []
+- id: game_over
+  kind: game_over
+  title: GAME OVER
+  next_scene: title
+  options: []
+initial_scene: title
 audio:
   music: false
-  effects: []
+  effects:
+  - start
+  - collect
+  - hit
+  - level
+  - game_over
 assets: []
-budgets:
-  binary_bytes: 32768
-  static_data_bytes: 12288
-  stack_bytes: 1024
-  max_entities: 16
-  frame_budget_cycles: 70000
-acceptance:
-- id: start_game
-  given: the title screen is visible
-  when: the player presses action
-  then: gameplay starts
-  hold: action
-  frames: 30
-  expect:
-    g_state: 1
-    g_level: 1
-    g_score: 0
-- id: collect_scores
-  given: a collectible is visible
-  when: the player touches it
-  then: the score increases and the collectible disappears
-  hold: down
-  frames: 60
-  expect:
-    g_score: 10
-    g_remaining: 7
-- id: enemy_costs_life
-  given: gameplay is active
-  when: the player touches an enemy
-  then: one life is lost and the player respawns
-  hold: null
-  frames: 50
-  expect: {}
+program_dir: src

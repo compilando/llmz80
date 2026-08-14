@@ -29,7 +29,10 @@ the machines differ.
 ## Building it
 
     zcc +zx -vn -O3 -clib=sdcc_iy src/engine.c src/game_data.c src/main.c \
-        src/platform.c -m -o output -create-app -subtype=default
+        src/platform.c src/sprites.c -m -o output -create-app -subtype=default
+
+`platform.c`, `game_config.h`, `game_state.h` and `sprites.[ch]` are the ones
+Studio writes from `design.yml`; everything else in `src/` is the program.
 
 The CPC build needs a CPCtelera project layout; `llmz80 project build` does that
 part for you.

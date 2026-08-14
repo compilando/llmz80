@@ -15,11 +15,6 @@
 #define ROM_FONT ((const unsigned char *)0x3D00)
 #define FRAMES ((volatile unsigned char *)23672)
 
-static const unsigned char shape_player[8] = {0x18, 0x3C, 0x7E, 0xFF, 0xFF, 0x7E, 0x3C, 0x18};
-static const unsigned char shape_enemy[8] = {0x3C, 0x7E, 0xDB, 0xFF, 0xFF, 0xA5, 0x99, 0x00};
-static const unsigned char shape_item[8] = {0x00, 0x00, 0x18, 0x3C, 0x3C, 0x18, 0x00, 0x00};
-static const unsigned char shape_wall[8] = {0xFF, 0xDF, 0xDF, 0xFF, 0xFD, 0xFD, 0xFF, 0x00};
-
 static void put_glyph(unsigned char col, unsigned char row, const unsigned char *glyph,
                       unsigned char attribute) {
     unsigned char *address = (unsigned char *)zx_cxy2saddr(col, row);
@@ -66,18 +61,9 @@ unsigned char plat_wait_frame(void) {
 
 unsigned char plat_input(void) {
     unsigned char keys = 0;
-#if CONTROL_SCHEME == 1
-    if (in_key_pressed(IN_KEY_SCANCODE_5)) keys |= IN_LEFT;
-    if (in_key_pressed(IN_KEY_SCANCODE_8)) keys |= IN_RIGHT;
-    if (in_key_pressed(IN_KEY_SCANCODE_7)) keys |= IN_UP;
-    if (in_key_pressed(IN_KEY_SCANCODE_6)) keys |= IN_DOWN;
-#else
-    if (in_key_pressed(IN_KEY_SCANCODE_o)) keys |= IN_LEFT;
-    if (in_key_pressed(IN_KEY_SCANCODE_p)) keys |= IN_RIGHT;
-    if (in_key_pressed(IN_KEY_SCANCODE_q)) keys |= IN_UP;
-    if (in_key_pressed(IN_KEY_SCANCODE_a)) keys |= IN_DOWN;
-#endif
-    if (in_key_pressed(IN_KEY_SCANCODE_SPACE)) keys |= IN_ACTION;
+#define X(bit, code) if (in_key_pressed(code)) keys |= bit;
+    INPUT_BINDINGS(X)
+#undef X
     return keys;
 }
 
@@ -93,20 +79,18 @@ void plat_text(unsigned char col, unsigned char row, const char *text) {
     }
 }
 
-void plat_cell(unsigned char col, unsigned char row, unsigned char kind) {
+/* The ROM font starts at code 32, eight bytes per glyph. Anything outside the
+ * printable range draws a blank, which is what erasing a cell means here. */
+void plat_cell(unsigned char col, unsigned char row, char glyph) {
+    unsigned char code = (unsigned char)glyph;
     static const unsigned char blank[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     if (col >= 32 || row >= 24) return;
-    if (kind == CELL_PLAYER) {
-        put_glyph(col, row, shape_player, PAPER_BLACK | INK_WHITE | BRIGHT);
-    } else if (kind == CELL_ENEMY) {
-        put_glyph(col, row, shape_enemy, PAPER_BLACK | INK_RED | BRIGHT);
-    } else if (kind == CELL_COLLECTIBLE) {
-        put_glyph(col, row, shape_item, PAPER_BLACK | INK_YELLOW | BRIGHT);
-    } else if (kind == CELL_WALL) {
-        put_glyph(col, row, shape_wall, PAPER_BLACK | INK_CYAN);
-    } else {
+    if (code < 32 || code > 127) {
         put_glyph(col, row, blank, PAPER_BLACK | INK_WHITE);
+        return;
     }
+    put_glyph(col, row, ROM_FONT + (((unsigned int)(code - 32)) << 3),
+              PAPER_BLACK | INK_WHITE);
 }
 
 /* Draws one 16x16 masked sprite as four character cells: two cells wide,
@@ -150,16 +134,20 @@ void plat_sprite(unsigned char col, unsigned char row, unsigned char sprite,
 
 /* Beeper effects through z88dk's certified bit_beep, kept short because the
  * call blocks: every millisecond spent here is a millisecond the game loop is
- * not running. AUDIO_EFFECT_MASK lets the design switch each effect off. */
+ * not running. AUDIO_EFFECT_MASK lets the design switch each effect off.
+ *
+ * Five distinct sounds, by index. The design decides what each one is called
+ * and what it means; this only guarantees that effect 0 and effect 1 do not
+ * sound alike. Anything past the fifth is silent rather than wrong. */
 void plat_sound(unsigned char effect) {
 #if AUDIO_EFFECT_MASK
     if (!(AUDIO_EFFECT_MASK & (1 << effect))) return;
     switch (effect) {
-        case SOUND_COLLECT: bit_beep(6, 250); break;
-        case SOUND_HIT: bit_beep(18, 900); break;
-        case SOUND_START: bit_beep(10, 400); break;
-        case SOUND_LEVEL: bit_beep(10, 300); break;
-        case SOUND_GAME_OVER: bit_beep(30, 1400); break;
+        case 0: bit_beep(10, 400); break;
+        case 1: bit_beep(6, 250); break;
+        case 2: bit_beep(18, 900); break;
+        case 3: bit_beep(10, 300); break;
+        case 4: bit_beep(30, 1400); break;
         default: break;
     }
 #else
