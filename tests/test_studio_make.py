@@ -255,14 +255,18 @@ def test_a_run_that_publishes_no_artifact_is_not_reported_as_a_game(tmp_path: Pa
     assert result.artifact is None
 
 
-def test_the_last_line_is_the_path_of_the_game(tmp_path: Path):
+def test_it_ends_with_the_path_of_the_game_and_the_order_that_plays_it(tmp_path: Path):
+    """A path says where the game is; it does not say how to play it, and
+    somebody who has waited out four paid stages should not have to look that
+    up."""
     printed: list[str] = []
 
     result, _stages = _run(tmp_path, printed)
 
     assert result.project_dir is not None
     artifact = result.project_dir / "build" / "output.tap"
-    assert printed[-1] == str(artifact)
+    assert printed[-2] == str(artifact)
+    assert printed[-1] == f"Play it: llmz80 play {result.project_dir}"
     assert result.artifact == artifact
 
 
@@ -438,3 +442,88 @@ def test_the_help_leads_with_the_one_command(capsys):
     printed = capsys.readouterr().out
     assert "llmz80 make" in printed
     assert "--cpc" in printed
+
+
+# --- and then playing it ----------------------------------------------------
+
+
+def _capture_play(monkeypatch) -> list[Path]:
+    """Stop at the boundary again: which game would have been played."""
+    played: list[Path] = []
+    import llmz80.studio.play as play_module
+
+    def fake(target, **_kwargs):
+        played.append(Path(target))
+        return 0
+
+    monkeypatch.setattr(play_module, "play", fake)
+    return played
+
+
+def test_play_starts_the_game_at_the_path_it_was_given(monkeypatch, tmp_path: Path):
+    from llmz80.cli import main
+
+    played = _capture_play(monkeypatch)
+
+    assert main(["play", str(tmp_path)]) == 0
+    assert played == [tmp_path]
+
+
+def test_play_without_a_path_says_what_it_needs(monkeypatch, capsys):
+    from llmz80.cli import main
+
+    played = _capture_play(monkeypatch)
+
+    assert main(["play"]) == 2
+    assert "say which game to play" in capsys.readouterr().out
+    assert played == []
+
+
+def test_make_can_play_the_game_it_has_just_built(monkeypatch, tmp_path: Path):
+    """Fifteen minutes of waiting should not end with another order to type."""
+    from llmz80.cli import main
+
+    seen = _capture_make(monkeypatch)
+    played = _capture_play(monkeypatch)
+
+    assert main(["make", "un minero", "--workspace", str(tmp_path), "--play"]) == 0
+    assert seen["idea"] == "un minero"
+    assert played == [tmp_path / "output.tap"]
+
+
+def test_make_without_the_flag_plays_nothing(monkeypatch, tmp_path: Path):
+    from llmz80.cli import main
+
+    _capture_make(monkeypatch)
+    played = _capture_play(monkeypatch)
+
+    main(["make", "un minero", "--workspace", str(tmp_path)])
+
+    assert played == []
+
+
+def test_a_run_that_stopped_is_not_played(monkeypatch, tmp_path: Path):
+    """There is nothing to play: the order stopped before an artifact
+    existed, and `--play` is not a reason to pretend otherwise."""
+    from llmz80.cli import main
+    import llmz80.studio.make as make_module
+
+    monkeypatch.setattr(
+        make_module,
+        "make_game",
+        lambda *_a, **_k: MakeResult(project_dir=tmp_path, failed="programa", error="no"),
+    )
+    played = _capture_play(monkeypatch)
+
+    assert main(["make", "una idea", "--play"]) == 1
+    assert played == []
+
+
+def test_the_help_names_the_order_that_plays_a_game(capsys):
+    from llmz80.cli import main
+
+    main(["help"])
+
+    printed = capsys.readouterr().out
+    assert "llmz80 play" in printed
+    assert "--play" in printed

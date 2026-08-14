@@ -3,7 +3,7 @@
 This screen does no work and decides nothing. The pipeline is one order --
 `llmz80 make "an idea"` -- and it runs in whatever terminal it was typed in;
 this is the other terminal, the one somebody leaves open to watch. It shows
-four things and offers one key:
+four things and offers two keys -- `p`, once there is a game, and `q`:
 
 * the project's identity, in the header;
 * the six-step strip, read off the evidence the pipeline leaves on disk
@@ -11,7 +11,8 @@ four things and offers one key:
   run advances -- nothing here is told anything;
 * the diary, followed line by line out of `<project>/studio.log` as it is
   written;
-* the verdict: what stopped the run, or where the game landed.
+* the verdict: what stopped the run, or where the game landed -- and, when
+  the game is really on disk, `[p] play`, which starts it in the emulator.
 
 Why follow a file rather than run the work behind the screen, which is what
 this module used to do: the file is already the record. `Journal` writes every
@@ -32,6 +33,7 @@ terminal is picked up without anything being typed here.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
@@ -41,7 +43,14 @@ from . import wizard
 from .journal import FILENAME as JOURNAL_FILENAME
 from .make import artifact_path
 from .models import GameProject
-from .render import brief_preview, pick_stage_detail, render_stage_marks, render_verdict
+from .play import NotPlayable, plan, start
+from .render import (
+    brief_preview,
+    pick_stage_detail,
+    render_play_offer,
+    render_stage_marks,
+    render_verdict,
+)
 from .store import ProjectStore
 
 #: How often the diary and the evidence on disk are re-read. Half a second is
@@ -51,20 +60,35 @@ from .store import ProjectStore
 POLL_SECONDS = 0.5
 
 
+def _launch(artifact: Path) -> None:
+    """Start the game, and do not wait for it.
+
+    The screen has to keep reading the diary and answering its own keys while
+    somebody plays; waiting here would freeze the viewer behind the emulator
+    window, which reads as a crash. `plan` and `start` rather than `play`,
+    because `play` reports by printing and there is no terminal to print on:
+    what can go wrong arrives as `NotPlayable` instead, and the screen says
+    it in its own way.
+    """
+    start(plan(artifact), wait=False)
+
+
 class StudioViewer(App[None]):
-    """The whole screen. One key -- `q` -- and nothing that writes."""
+    """The whole screen. Two keys -- `p` and `q` -- and nothing that writes."""
 
     TITLE = "LLMZ80 Studio"
     #: Nothing here is focusable and nothing is typed into, so nothing is
     #: focused: Textual would otherwise hand focus to the first widget it
-    #: finds and give its scroll keys precedence over the one key this has.
+    #: finds and give its scroll keys precedence over the two keys this has.
     AUTO_FOCUS = None
-    #: One key. Not "one key per thing you can do" -- there is nothing to do
-    #: here -- but the only decision a person looking at a screen still has.
-    BINDINGS = [("q", "quit", "Quit")]
-    #: Off, so that one key is really one: Textual's palette is a way of
-    #: reaching commands, and a screen with no commands offering a way to
-    #: search them would be advertising something it does not have.
+    #: Two keys, and both are decisions rather than work: play the game this
+    #: run produced, or stop watching. `p` is offered only while there is an
+    #: artifact on disk (`check_action`), because a key that answers with an
+    #: error is worse than a key that is not there.
+    BINDINGS = [("p", "play", "Play"), ("q", "quit", "Quit")]
+    #: Off, so those two keys are really the only two: Textual's palette is a
+    #: way of reaching commands, and a screen with no commands offering a way
+    #: to search them would be advertising something it does not have.
     ENABLE_COMMAND_PALETTE = False
     CSS = """
     #brief-box { height: 3; border: round $primary; margin: 0 1; padding: 0 1; }
@@ -83,8 +107,19 @@ class StudioViewer(App[None]):
     RichLog { height: 1fr; border: round $primary; }
     """
 
-    def __init__(self, workspace: Path, *, poll_seconds: float = POLL_SECONDS) -> None:
+    def __init__(
+        self,
+        workspace: Path,
+        *,
+        poll_seconds: float = POLL_SECONDS,
+        launcher: Callable[[Path], None] = _launch,
+    ) -> None:
         super().__init__()
+        #: How `p` starts the game. Injected for the same reason `make_game`
+        #: takes its stages: a test must be able to press the key and read
+        #: back what would have been run, without a window opening in front
+        #: of whoever is running the suite.
+        self.launcher = launcher
         self.root = workspace.expanduser().resolve()
         watching_one = (self.root / ProjectStore.filename).is_file()
         self.store = ProjectStore(self.root.parent if watching_one else self.root)
@@ -107,6 +142,13 @@ class StudioViewer(App[None]):
         #: Last status, plain (no Rich markup), so a test or a script can read
         #: back what the screen says without scraping a widget.
         self.status_text = "no project yet"
+        #: What `p` last had to report, or "". Only ever a refusal -- a
+        #: launch that works says nothing, because the window says it.
+        self.play_notice = ""
+        #: Whether there was an artifact at the last redraw, so the footer is
+        #: asked to re-read its bindings when that changes and not twice a
+        #: second forever.
+        self._playable = False
 
     # --- layout ---------------------------------------------------------
 
@@ -246,11 +288,32 @@ class StudioViewer(App[None]):
         detail = pick_stage_detail(walked)
         artifact = self._artifact()
         strip = render_stage_marks(walked, colour=False)
-        verdict = render_verdict(self.lines, artifact)
+        # The verdict and the offer share a line: what the run came to, and
+        # the one thing left to do about it.
+        verdict = "   ".join(
+            part
+            for part in (render_verdict(self.lines, artifact), render_play_offer(artifact))
+            if part
+        )
+        coloured = "   ".join(
+            part
+            for part in (
+                render_verdict(self.lines, artifact, colour=True),
+                render_play_offer(artifact, colour=True),
+            )
+            if part
+        )
         self.query_one("#stage-line", Static).update(render_stage_marks(walked, colour=True))
         self.query_one("#stage-detail", Static).update(detail)
-        self.query_one("#verdict", Static).update(render_verdict(self.lines, artifact, colour=True))
-        self.status_text = "\n".join(part for part in (strip, detail, verdict) if part)
+        self.query_one("#verdict", Static).update(coloured)
+        if (artifact is not None) != self._playable:
+            # The footer caches which keys answer. Asked again only when the
+            # answer has actually changed, not twice a second forever.
+            self._playable = artifact is not None
+            self.refresh_bindings()
+        self.status_text = "\n".join(
+            part for part in (strip, detail, verdict, self.play_notice) if part
+        )
         if self.project is None:
             self.sub_title = str(self.root)
             self.query_one("#brief-preview", Static).update("no project yet")
@@ -260,6 +323,44 @@ class StudioViewer(App[None]):
             f"{len(self.project.screens)} screens"
         )
         self.query_one("#brief-preview", Static).update(brief_preview(self.project.metadata.brief))
+
+    # --- the one thing that can be done ---------------------------------
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
+        """Whether `p` is offered at all: only with a game really on disk.
+
+        `False` rather than `None`, which are not the same answer to Textual:
+        `None` greys the key out in the Footer and leaves it there, `False`
+        takes it away. Until a run has published an artifact there is no game,
+        and a footer advertising a key that would answer with an error is
+        worse than a footer that never mentioned it.
+        """
+        if action == "play":
+            return self._artifact() is not None
+        return True
+
+    def action_play(self) -> None:
+        """Start the game in the emulator, or say why it cannot be.
+
+        Nothing on this screen is written to and nothing on disk is touched:
+        this hands the artifact to another process and goes back to watching.
+        """
+        artifact = self._artifact()
+        if artifact is None:
+            return
+        self.play_notice = ""
+        try:
+            self.launcher(artifact)
+        except NotPlayable as refusal:
+            # The one thing this screen ever says on its own account. It goes
+            # into `status_text` as well as a toast, so a test -- and a person
+            # who missed the toast -- can still read it.
+            self.play_notice = " ".join(refusal.lines)
+            self.notify(self.play_notice, title="Cannot play", severity="error")
+        except OSError as exc:
+            self.play_notice = f"The emulator would not start: {exc}"
+            self.notify(self.play_notice, title="Cannot play", severity="error")
+        self._redraw()
 
     def _artifact(self) -> Path | None:
         """The tape or disk image this run published, if it is really there.

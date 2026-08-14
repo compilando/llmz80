@@ -21,9 +21,11 @@ import pytest
 from llmz80.studio.journal import Journal
 from llmz80.studio.models import TargetPlatform
 from llmz80.studio.reference import GameReference, ReferenceSource, save_reference
+from llmz80.studio.play import NotPlayable
 from llmz80.studio.render import (
     brief_preview,
     pick_stage_detail,
+    render_play_offer,
     render_stage_marks,
     render_verdict,
 )
@@ -44,6 +46,15 @@ def _project(workspace: Path, title: str = "Watched", brief: str = "") -> Path:
             rename_project(project, project.metadata.title, brief=brief), directory
         )
     return directory
+
+
+def _built(directory: Path) -> Path:
+    """The tape a finished run publishes. Playing is offered off this file
+    being on disk and nothing else."""
+    artifact = directory / "build" / "output.tap"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_bytes(b"TAP")
+    return artifact
 
 
 def _dossier(title: str = "Manic Miner") -> GameReference:
@@ -239,15 +250,16 @@ async def test_an_empty_workspace_says_so_rather_than_crashing(tmp_path: Path):
         assert str(app.query_one("#brief-preview").content) == "no project yet"
 
 
-# --- one key, and nothing written ------------------------------------------
+# --- two keys, and nothing written -----------------------------------------
 
 
-def test_the_only_key_is_the_one_that_leaves():
-    """The decision this change exists to make, written as a test: a screen
-    that shows a run has exactly one thing left to decide."""
-    assert [binding[0] for binding in StudioViewer.BINDINGS] == ["q"]
+def test_the_only_keys_are_playing_the_game_and_leaving():
+    """A screen that shows a run has two things left to decide: play what it
+    produced, or stop watching. Anything else is work, and work belongs in the
+    order that does it."""
+    assert [binding[0] for binding in StudioViewer.BINDINGS] == ["p", "q"]
     # And Textual's own palette is off, so the Footer names every key that
-    # answers: `q`, and `ctrl+c`, which the framework reserves for itself.
+    # answers: `p`, `q`, and `ctrl+c`, which the framework reserves for itself.
     assert StudioViewer.ENABLE_COMMAND_PALETTE is False
     # No `on_key` either: every key the old wizard answered lived there, and
     # a screen with a handler is a screen that can grow one back without
@@ -271,6 +283,110 @@ async def test_no_key_changes_anything_it_is_watching(tmp_path: Path):
         assert {
             path.name: path.read_bytes() for path in directory.iterdir() if path.is_file()
         } == before
+
+
+# --- playing what the run produced -----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_key_that_plays_is_offered_only_once_the_game_is_on_disk(tmp_path: Path):
+    """A footer advertising a key that would answer with an error is worse
+    than a footer that never mentioned it -- and the screen says it beside the
+    verdict, which is the line somebody actually reads when a run ends."""
+    directory = _project(tmp_path)
+    Journal.for_project(directory).write("END", "5 gates — ok in 84 s. gates passed")
+
+    app = StudioViewer(tmp_path, launcher=lambda _artifact: None)
+    async with app.run_test(size=(80, 24)):
+        assert "[p] play" not in app.status_text
+        assert app.check_action("play", ()) is False
+
+        artifact = _built(directory)
+        app.poll()
+
+        assert "[p] play" in app.status_text
+        assert f"Done · the game is at {artifact}" in app.status_text
+        assert app.check_action("play", ()) is True
+
+
+@pytest.mark.asyncio
+async def test_pressing_it_starts_the_game_this_run_built(tmp_path: Path):
+    """What the whole change exists for: a person watching a finished run can
+    play it from where they are watching."""
+    directory = _project(tmp_path)
+    artifact = _built(directory)
+    started: list[Path] = []
+
+    app = StudioViewer(tmp_path, launcher=started.append)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("p")
+
+        assert started == [artifact]
+        # And it changed nothing it is watching.
+        assert app.play_notice == ""
+
+
+@pytest.mark.asyncio
+async def test_pressing_it_with_nothing_built_starts_nothing(tmp_path: Path):
+    _project(tmp_path)
+    started: list[Path] = []
+
+    app = StudioViewer(tmp_path, launcher=started.append)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("p")
+
+        assert started == []
+
+
+@pytest.mark.asyncio
+async def test_a_missing_emulator_is_said_on_screen_rather_than_swallowed(tmp_path: Path):
+    """`play` reports by printing, and a screen has no terminal to print on.
+    Its refusal arrives as an exception and is put where a person can read
+    it."""
+    directory = _project(tmp_path)
+    _built(directory)
+
+    def refuse(_artifact: Path) -> None:
+        raise NotPlayable("zesarux is not on PATH.", "Install ZEsarUX and run this again.")
+
+    app = StudioViewer(tmp_path, launcher=refuse)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("p")
+
+        assert "zesarux is not on PATH." in app.play_notice
+        assert "Install ZEsarUX" in app.status_text
+        assert app.is_running
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [(80, 24), (96, 37), (120, 40)])
+async def test_the_footer_names_the_keys_on_the_last_row_at_any_size(
+    tmp_path: Path, size: tuple[int, int]
+):
+    """Three terminals, one question: is the footer there. It was reported
+    missing at around 96x37 with a long diary, and it is not -- the diary
+    panel gives up its last row to the footer at every size, because the
+    Footer is docked and the panel is what `1fr` divides up.
+
+    The pause is not decoration: Textual's Footer composes nothing until the
+    screen publishes its bindings, and it does that after the mount that this
+    test would otherwise measure.
+    """
+    directory = _project(tmp_path, "Watched", brief="x" * 400)
+    _built(directory)
+    diary = Journal.for_project(directory)
+    for number in range(60):
+        diary.note(f"line {number} of a diary that is longer than the panel")
+
+    app = StudioViewer(tmp_path, launcher=lambda _artifact: None)
+    async with app.run_test(size=size) as pilot:
+        app.poll()
+        await pilot.pause()
+        drawn = [strip.text.rstrip() for strip in app.screen._compositor.render_strips()]
+
+        assert len(drawn) == size[1]
+        assert "Quit" in drawn[-1]
+        assert "Play" in drawn[-1]
 
 
 @pytest.mark.asyncio
@@ -380,6 +496,17 @@ def test_brief_preview_collapses_whitespace_so_it_stays_one_line():
     assert brief_preview("Four ghosts.\nA big dot\tmakes them edible.") == (
         "Four ghosts. A big dot makes them edible."
     )
+
+
+def test_the_play_offer_is_drawn_only_for_a_game_that_is_really_there():
+    assert render_play_offer(None) == ""
+    assert render_play_offer(Path("build/output.tap")) == "[p] play"
+
+
+def test_the_play_offer_escapes_its_brackets_where_a_person_reads_it():
+    """Rich would read `[p]` as a style it does not have and refuse to draw
+    the line at all."""
+    assert render_play_offer(Path("build/output.tap"), colour=True) == "[dim]\\[p] play[/dim]"
 
 
 def test_the_newest_line_decides_the_verdict():

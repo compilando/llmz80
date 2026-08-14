@@ -137,6 +137,27 @@ def render_verdict(
     return f"[{VERDICT_COLOR[state]}]{said}[/{VERDICT_COLOR[state]}]"
 
 
+#: What the screen calls the one thing that can be done to a finished game,
+#: and the key that does it. Next to the verdict rather than only in the
+#: footer: the verdict is the line a person reads when the run ends, and a
+#: key nobody notices is a key nobody presses.
+PLAY_OFFER = "[p] play"
+
+
+def render_play_offer(artifact: Path | None, *, colour: bool = False) -> str:
+    """`[p] play`, and only where there is really a game to play.
+
+    `artifact` is passed by the screen only for a file that is on disk, so
+    an offer drawn here is an offer that will work -- the same rule the
+    verdict follows about naming a path. In markup the brackets have to be
+    escaped: Rich would otherwise read `[p]` as a style it does not have and
+    refuse to draw the line at all.
+    """
+    if artifact is None:
+        return ""
+    return f"[dim]\\{PLAY_OFFER}[/dim]" if colour else PLAY_OFFER
+
+
 def brief_preview(brief: str, limit: int = BRIEF_PREVIEW_LIMIT) -> str:
     """One line: `brief`, whitespace-collapsed and cut to `limit` characters.
 
