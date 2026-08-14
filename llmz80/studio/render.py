@@ -17,9 +17,11 @@ genuinely needs a running terminal: the widget tree, the keys, and the jobs.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Sequence
 
 from . import editing, wizard
+from .journal import parse
 from .models import GameProject
 from .screen import Stage
 
@@ -264,6 +266,54 @@ def render_step_summary(step: wizard.Step, *, can_adapt: bool = False) -> str:
     if wizard.can_leave_behind(step):
         parts.append("[→] skip")
     return " · ".join(parts)
+
+
+#: What the verdict line says, and the colour it says it in. Three states and
+#: no more, because a diary answers exactly three questions about the run that
+#: wrote it: is it still going, did it stop, and where did the game land.
+VERDICT_COLOR = {"stopped": "red", "working": "yellow", "done": "green"}
+
+
+def render_verdict(
+    lines: Sequence[str], artifact: Path | None = None, *, colour: bool = False
+) -> str:
+    """What the run this diary belongs to has come to, from its own last line.
+
+    A run that stopped ends its diary with `ERROR` naming the stage and what
+    it said; a run still going ends with the work it opened (`START`) or with
+    something that work said along the way (`..`), and naming that line is how
+    a screen says "it is on the program, writing it against the compiler"
+    without asking anybody. Anything else is a run that ended without
+    stopping, and the only thing worth saying then is where the game is:
+    `artifact` is that path, and the caller passes it only where the file is
+    really on disk -- printing a path to a file that is not there is the one
+    lie a screen watching a build must not tell.
+
+    The order matters and is the order above: an `ERROR` beats a stale
+    artifact from an earlier run, and a `START` after that `ERROR` beats the
+    error, because the newest line is the truest thing the file knows.
+
+    `colour` picks Rich markup or plain text, the same choice
+    `render_stage_marks` offers and for the same reason: the widget wants
+    colour, and `status_text` -- which a test or a script reads back -- wants
+    the characters and nothing else.
+    """
+    kind, text = "", ""
+    for line in reversed(list(lines)):
+        if line.strip():
+            kind, text = parse(line)
+            break
+    if kind == "ERROR":
+        state, said = "stopped", f"Stopped · {text}"
+    elif kind in {"START", ".."}:
+        state, said = "working", f"Working · {text}"
+    elif artifact is not None:
+        state, said = "done", f"Done · the game is at {artifact}"
+    else:
+        return ""
+    if not colour:
+        return said
+    return f"[{VERDICT_COLOR[state]}]{said}[/{VERDICT_COLOR[state]}]"
 
 
 def brief_preview(brief: str, limit: int = BRIEF_PREVIEW_LIMIT) -> str:
