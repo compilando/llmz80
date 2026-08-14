@@ -693,7 +693,7 @@ class _FakeArtist:
     def __init__(self):
         self.calls: list[str] = []
 
-    def draw_frames(self, project, entity, dossier=None):
+    def draw_frames(self, project, entity, dossier=None, *, on_progress=None):
         from PIL import Image
 
         self.calls.append(entity.sprite)

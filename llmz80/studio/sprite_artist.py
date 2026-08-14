@@ -90,6 +90,7 @@ by guessing would be worse than not having them at all:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 from PIL import Image
@@ -712,6 +713,31 @@ def _solid_or_blank_feedback(bad: list[tuple[int, int]], total: int) -> str:
     return "\n".join(lines)
 
 
+#: Told what is happening while it happens -- see `services.Progress` for the
+#: same alias and the reason it exists. Defined again here, rather than
+#: imported, because `services.py` imports *this* module (`SpriteArtist`);
+#: importing back the other way would be a cycle.
+Progress = Callable[[str], None] | None
+
+
+def _say(on_progress: Progress, text: str) -> None:
+    """Report `text` if anyone is listening, so callers stay free of the check."""
+    if on_progress is not None:
+        on_progress(text)
+
+
+def _reason_summary(reason: str) -> str:
+    """`_solid_or_blank_feedback` below writes a judged rejection as several
+    paragraphs of redraw instructions for the model -- a heading, the
+    per-frame evidence, and an explanation of the check and the fix. A
+    progress line needs only the evidence: the "frame N: blank/solid block
+    -- count of total pixels opaque" lines the block opens with, read out on
+    one line instead of buried in a block meant for the next prompt.
+    """
+    frames = [line.strip() for line in reason.splitlines() if line.strip().startswith("frame ")]
+    return "; ".join(frames) if frames else reason.strip().splitlines()[0]
+
+
 def _judge_frames(frames: list[Image.Image]) -> str | None:
     """Whether `frames` are demonstrably not a sprite, and if so, feedback
     naming what was wrong and what to do about it -- the register
@@ -864,7 +890,12 @@ class SpriteArtist:
         self.attempts = max(1, attempts)
 
     def draw_frames(
-        self, project: GameProject, entity: EntitySpec, dossier: GameReference | None = None
+        self,
+        project: GameProject,
+        entity: EntitySpec,
+        dossier: GameReference | None = None,
+        *,
+        on_progress: Progress = None,
     ) -> DrawnFrames:
         """One entity's sheet, cut into `FRAMES_PER_SHEET` frames of
         `spriting.SPRITE_SIZE` x `spriting.SPRITE_SIZE` pixels each, judged
@@ -895,7 +926,15 @@ class SpriteArtist:
         only the last entry: a run that never produces a usable sprite is
         exactly the run whose evidence is worth keeping (see
         `services.StudioService._save_raw_sheet`).
+
+        `on_progress`, when given, is told twice per attempt: once before
+        `self.generator.generate_image` -- the long wait, an image-model call
+        -- and once after `_judge_frames` has ruled on what came back, with
+        the reason first-hand rather than reconstructed afterwards from
+        `DrawnFrames.repairs`/`SpriteDrawFailure.reasons` the way
+        `services.draw_sprites` used to have to.
         """
+        ident = entity.sprite or entity.id
         prompt = compose_prompt(project, entity, dossier)
         sheets: list[Image.Image] = []
         repairs: list[str] = []
@@ -906,6 +945,7 @@ class SpriteArtist:
                 if reason is None
                 else (prompt + "\n\nYOUR PREVIOUS SHEET WAS REJECTED\n\n" + reason)
             )
+            _say(on_progress, f"{ident}: intento {attempt}, dibujando...")
             sheet = self.generator.generate_image(request)
             sheets.append(sheet)
             columns = _sheet_columns(sheet, FRAMES_PER_SHEET)
@@ -916,6 +956,7 @@ class SpriteArtist:
                     frames, sheet=sheet, sheets=sheets, attempts=attempt, repairs=repairs
                 )
             repairs.append(reason)
+            _say(on_progress, f"{ident}: intento {attempt} rechazado, {_reason_summary(reason)}")
         raise SpriteDrawFailure(
             f"the sprite sheet could not be drawn in {self.attempts} attempt"
             f"{'s' if self.attempts != 1 else ''}; the last reason was: " + reason,

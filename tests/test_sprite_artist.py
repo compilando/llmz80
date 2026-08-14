@@ -806,6 +806,56 @@ def test_a_solid_block_is_retried_and_the_feedback_names_the_problem():
     assert "solid block" in frames.repairs[0]
 
 
+def test_draw_frames_narrates_before_a_slow_generation_returns():
+    """`draw_frames` used to hand its retry history back only through
+    `DrawnFrames.repairs`/`SpriteDrawFailure.reasons`, readable only once
+    the whole call is over. `on_progress` must not have that shape: the
+    first line has to arrive before even the first (possibly slow)
+    `generate_image` call finishes, not merely before `draw_frames` itself
+    returns -- a genuinely slow fake is what tells the two apart, since a
+    fast fake would satisfy "before it returns" by accident even from code
+    that only narrates at the very end.
+    """
+    import time
+
+    class SlowGenerator:
+        def __init__(self, images: list[Image.Image]) -> None:
+            self.images = list(images)
+            self.calls = 0
+            self.finished_at: list[float] = []
+
+        def generate_image(self, prompt: str) -> Image.Image:
+            time.sleep(0.05)
+            self.finished_at.append(time.monotonic())
+            image = self.images[self.calls]
+            self.calls += 1
+            return image
+
+    project = _project(TargetPlatform.SPECTRUM)
+    entity = next(e for e in project.entities if e.kind == "player")
+    generator = SlowGenerator([_solid_block_sheet(), _four_pose_sheet()])
+    artist = SpriteArtist(generator)
+
+    progress_times: list[float] = []
+    messages: list[str] = []
+
+    def on_progress(text: str) -> None:
+        progress_times.append(time.monotonic())
+        messages.append(text)
+
+    artist.draw_frames(project, entity, on_progress=on_progress)
+
+    assert progress_times, "no progress was reported at all"
+    assert progress_times[0] < generator.finished_at[0], (
+        "the first progress line must arrive before the slow generate_image "
+        "call it precedes finishes, not only before draw_frames returns"
+    )
+    assert any("intento 1" in message and "dibujando" in message for message in messages), messages
+    assert any(
+        "rechazado" in message and "solid block" in message for message in messages
+    ), messages
+
+
 def test_a_persistently_bad_response_raises_with_the_last_reason():
     """Once `MAX_DRAW_ATTEMPTS` are exhausted without a judged-valid sheet,
     `draw_frames` must raise rather than pack the last bad attempt anyway --

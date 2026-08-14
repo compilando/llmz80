@@ -41,38 +41,6 @@ def _say(on_progress: Progress, text: str) -> None:
         on_progress(text)
 
 
-def _reason_summary(reason: str) -> str:
-    """`sprite_artist._judge_frames` writes a judged rejection as several
-    paragraphs of redraw instructions for the model -- a heading, the
-    per-frame evidence, and an explanation of the check and the fix. A
-    progress line needs only the evidence: the "frame N: blank/solid block
-    -- count of total pixels opaque" lines the block opens with, read out on
-    one line instead of buried in a block meant for the next prompt.
-    """
-    frames = [line.strip() for line in reason.splitlines() if line.strip().startswith("frame ")]
-    return "; ".join(frames) if frames else reason.strip().splitlines()[0]
-
-
-def _gate_verdict(passed: bool | None) -> str:
-    """`True`/`False`/`None` (a gate that abstained -- no adapter, or nothing
-    to judge) read out the way a person, not a parser, would ask for them."""
-    if passed is None:
-        return "sin observar"
-    return "aprobada" if passed else "rechazada"
-
-
-def _attempt_line(attempt: dict[str, Any]) -> str:
-    """One `write_program` attempt, as `Attempt.as_dict` already recorded
-    it: its number, whether the build compiled, and each gate's verdict."""
-    build = "compiló" if attempt["build_passed"] else "no compiló"
-    acceptance = _gate_verdict(attempt["acceptance_passed"])
-    animation = _gate_verdict(attempt["animation_passed"])
-    return (
-        f"intento {attempt['number']}: build {build}, "
-        f"aceptación {acceptance}, animación {animation}"
-    )
-
-
 @dataclass
 class StudioService:
     store: ProjectStore
@@ -228,7 +196,13 @@ class StudioService:
                 # persisted, and by then the asset exists too.
                 entity.sprite = sprite_id
             try:
-                frames = artist.draw_frames(project, entity, dossier)
+                # `on_progress` is forwarded straight into the artist: the
+                # real `SpriteArtist.draw_frames` owns the retry loop and
+                # the judged rejection reason first-hand, so it narrates its
+                # own attempts live rather than this method reconstructing
+                # them afterwards from `DrawnFrames.repairs` /
+                # `SpriteDrawFailure.reasons` once the call has returned.
+                frames = artist.draw_frames(project, entity, dossier, on_progress=on_progress)
             except ValueError as exc:
                 # A `SpriteDrawFailure` (see `sprite_artist.py`) carries every
                 # attempt's raw response even though none of them produced a
@@ -240,9 +214,7 @@ class StudioService:
                 # what keeps this a transparent pass-through rather than a
                 # second place that decides whether a draw failure is fatal.
                 self._save_raw_sheets(directory, sprite_id, getattr(exc, "sheets", None))
-                self._narrate_retries(on_progress, sprite_id, getattr(exc, "reasons", None))
                 raise
-            self._narrate_retries(on_progress, sprite_id, getattr(frames, "repairs", None))
             packed_sheet = Image.new("RGBA", (SPRITE_SIZE * len(frames), SPRITE_SIZE))
             for index, frame in enumerate(frames):
                 packed_sheet.paste(frame, (index * SPRITE_SIZE, 0))
@@ -264,25 +236,6 @@ class StudioService:
             have.add(sprite_id)
             drawn.append(asset)
         return drawn
-
-    @staticmethod
-    def _narrate_retries(on_progress: Progress, sprite_id: str, reasons: list[str] | None) -> None:
-        """Say what `_judge_frames` (`sprite_artist.py`) reproached each
-        earlier, rejected attempt for -- one line per entry of `reasons`,
-        oldest first.
-
-        `reasons` is `DrawnFrames.repairs` on a successful draw or
-        `SpriteDrawFailure.reasons` on an exhausted one -- both are already
-        exactly this list, so the judged motive does reach this far for the
-        real `SpriteArtist`; this only has to say it. A caller's own fake
-        artist that returns a bare `list[Image.Image]` (several exist across
-        the test suite) carries neither attribute, so `reasons` is `None`
-        and there is nothing to report -- not because the motive is being
-        withheld, but because a fake that skips `DrawnFrames` never had a
-        judged attempt to report in the first place.
-        """
-        for number, reason in enumerate(reasons or [], start=1):
-            _say(on_progress, f"{sprite_id}: intento {number} rechazado, {_reason_summary(reason)}")
 
     @staticmethod
     def _save_raw_sheets(
@@ -514,11 +467,25 @@ class StudioService:
         )
         return report
 
-    def verify_program(self, project: GameProject, directory: Path) -> dict[str, Any]:
+    def verify_program(
+        self,
+        project: GameProject,
+        directory: Path,
+        *,
+        on_progress: Progress = None,
+    ) -> dict[str, Any]:
         """Build the project and, where the target allows it, watch it run.
 
         Returned as evidence rather than as a verdict: the repair loop needs the
         diagnostics, not a boolean.
+
+        `on_progress` is forwarded to `runtime_test` unchanged, so its two
+        long-wait lines (compiling, then starting the emulator) are told
+        however this is called -- directly, or from inside
+        `write_program`'s repair loop, which is the call `on_progress` used
+        to never reach: `generator.write_program`'s own `verify` parameter
+        is a fixed two-argument `Callable[[GameProject, Path], dict]`, so
+        nothing this method itself does could widen what it is called with.
         """
         evidence: dict[str, Any] = {
             "build": None,
@@ -534,7 +501,7 @@ class StudioService:
             # -- a build failure is refused on the build diagnostics alone.
             return evidence
         try:
-            runtime = self.runtime_test(project, directory)
+            runtime = self.runtime_test(project, directory, on_progress=on_progress)
         except RuntimeError as exc:
             evidence["runtime_error"] = str(exc)
             return evidence
@@ -554,17 +521,32 @@ class StudioService:
     ) -> dict[str, Any]:
         """Have a program written into the project and repaired until it passes.
 
-        `generator.write_program` runs every attempt itself, so its own
-        report only exists once the whole repair loop is over -- there is no
-        earlier point to call out from here. Once it returns, `on_progress`
-        is told about each attempt in turn (the report already carries the
-        number, whether the build passed and each gate's verdict), so the
-        wait is at least explained after the fact instead of never.
+        `generator.write_program` now narrates its own loop -- one line
+        before each attempt's LLM call, one with its verdict once `verify`
+        has judged it -- so `on_progress` is simply forwarded to it; nothing
+        here waits for the whole repair loop to finish before saying
+        anything.
+
+        The `verify` callable it is given is not `self.verify_program`
+        directly but a closure over it that also carries `on_progress`.
+        `generator.write_program`'s `verify` parameter is typed
+        `Callable[[GameProject, Path], dict[str, Any]]` on purpose -- several
+        tests (`test_studio_generator.py`) inject their own two-argument fake
+        verifier straight into that loop, with no interest in progress at
+        all, and widening the signature to three arguments would force every
+        one of them (present and future) to accept and ignore a parameter
+        only this one caller wants. The closure keeps that extra argument
+        local to the caller that needs it instead of leaking it into a
+        contract several unrelated tests already rely on.
         """
-        result = write_program(project, directory, writer, self.verify_program, attempts=attempts)
+
+        def _verify(project: GameProject, directory: Path) -> dict[str, Any]:
+            return self.verify_program(project, directory, on_progress=on_progress)
+
+        result = write_program(
+            project, directory, writer, _verify, attempts=attempts, on_progress=on_progress
+        )
         report = result.as_dict()
-        for attempt in report["attempts"]:
-            _say(on_progress, _attempt_line(attempt))
         (directory / "write_report.json").write_text(
             json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
