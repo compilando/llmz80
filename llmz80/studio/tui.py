@@ -86,7 +86,9 @@ BRIEF_PREVIEW_LIMIT = 78
 #: Every key that opens a panel over the resting screen, and the id of the
 #: container each shows. The log is no longer among them: it is the diary,
 #: it is half of what this screen says, and a diary you have to press a key
-#: to see is a diary nobody reads. It sits below the wizard, always.
+#: to see is a diary nobody reads. It sits below the wizard, always, and
+#: everything written into it after mount goes through `Journal`, so the
+#: panel and `studio.log` cannot drift into telling different stories.
 PANEL_KEYS = {
     "g": "design",
     "m": "map",
@@ -303,11 +305,24 @@ class StudioApp(App[None]):
     .row Input, .row Select { width: 1fr; }
     #brief-edit-box { height: 8; border: round $primary; margin: 0 0 1 0; }
     #brief-edit-box TextArea { height: 1fr; }
-    #create-brief-box { height: 8; border: round $primary; margin: 0 0 1 0; }
-    #create-brief-box TextArea { height: 1fr; }
+    /* The creation panel is the one panel that must fit a whole form on the
+       smallest terminal anybody still uses. `1fr` split it with the diary and
+       pushed its Create button off the bottom of an 80x24 screen: the only
+       control that starts a project was invisible on the only screen a person
+       new to Studio is likely to be looking at. `auto` gives it exactly the
+       rows its four fields need and leaves the rest to the diary. */
+    #panel-create { height: auto; }
+    #create-help { height: auto; padding: 0 0 1 0; }
     #wizard-head { height: 1; padding: 0 1; }
     #stage-line { height: 1; padding: 0 1; }
-    #wizard-summary { height: 1; padding: 0 1; }
+    /* The one line that must never be cut: it is where the keys are named.
+       Fixed at `height: 1` it fitted 120 columns and silently dropped
+       `[→] omitir` and the `gasta dinero (API)` warning off the right-hand
+       edge of an 80-column terminal -- hiding the key that walks past a step
+       that spends money, on the narrowest screen. `auto` lets it take a
+       second row where it needs one; it still cannot grow with a project,
+       because every word in it comes from `wizard`'s own fixed vocabulary. */
+    #wizard-summary { height: auto; padding: 0 1; }
     #stage-detail { height: 1; padding: 0 1; }
     #shortcuts { height: 1; padding: 0 1; background: $boost; }
     .panel { display: none; height: 1fr; padding: 0 1; }
@@ -427,13 +442,19 @@ class StudioApp(App[None]):
             yield brief_edit_box
             yield from self._field("Style", Input(id="f-style"))
         with Vertical(id="panel-create", classes="panel"):
+            # This help names the way *in*, not only the way out. It used to
+            # describe the brief and then say only that Esc closes the panel,
+            # which left the one question a newcomer actually has -- "how do I
+            # create it?" -- answered nowhere on the screen.
             yield Static(
-                "New project -- target is fixed once it exists. The brief is "
-                "what research reads to identify the game and what the "
-                "program writer is told to build; worth writing now. "
-                "Esc closes this panel without creating anything.",
+                "New project. The brief is what research reads to identify the "
+                "game and what the program writer is told to build; the target "
+                "is fixed once the project exists. [Enter] creates it · [Tab] "
+                "moves between fields · [Esc] closes without creating anything.",
                 id="create-help",
+                markup=False,
             )
+            yield from self._field("Title", Input(value="My Retro Game", id="f-create-title"))
             yield from self._field(
                 "Target",
                 Select(
@@ -443,9 +464,13 @@ class StudioApp(App[None]):
                     id="f-target",
                 ),
             )
-            create_brief_box = Vertical(TextArea(id="f-create-brief"), id="create-brief-box")
-            create_brief_box.border_title = "Brief (optional, editable later)"
-            yield create_brief_box
+            # An `Input`, not the `TextArea` this was: `Enter` inside a text
+            # area inserts a newline, so the one key the wizard teaches did
+            # nothing here and the only way on was a `Tab` nothing named. A
+            # single line is enough to say what a game is at the moment of
+            # creating it, and the design panel keeps the full text area for
+            # writing the brief properly afterwards.
+            yield from self._field("Brief", Input(id="f-create-brief"))
             yield Button("Create", id="create-confirm", variant="primary")
         with Vertical(id="panel-open", classes="panel"):
             yield Static(
@@ -502,6 +527,13 @@ class StudioApp(App[None]):
             "wasd move · space wall · m move spawn · +/- count · esc saves and returns"
         )
         self._set_panel(None)
+        # The one line in this panel that is not a diary line, and the only
+        # one that cannot be: a diary belongs to a project directory, and at
+        # mount there is no project to own it. Everything the screen says from
+        # here on goes through `Journal`, so what is read in the panel and what
+        # `studio.log` keeps are the same lines -- with this single, stated
+        # exception, which is about the workspace rather than about any project
+        # in it.
         found = len(self.service.store.list_projects())
         self._log(f"Workspace {self.workspace} · {found} projects")
         self._refresh_wizard()
@@ -540,6 +572,12 @@ class StudioApp(App[None]):
         if name == "open":
             self._refresh_workspace_list()
             self.query_one("#workspace-list", OptionList).focus()
+        elif name == "create":
+            # The cursor starts where the typing starts. Left unfocused, this
+            # panel could only be reached with `Tab`, a key the wizard never
+            # names, and the person arriving at step 0 with no idea what
+            # Studio is was the one being asked to guess it.
+            self.query_one("#f-create-title", Input).focus()
         else:
             self.set_focus(None)
 
@@ -803,6 +841,24 @@ class StudioApp(App[None]):
             self.action_create()
             self._set_panel(None)
 
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """`Enter` in any field of the creation panel creates the project.
+
+        The button stays -- it is what a mouse aims at, and what says the panel
+        can be finished at all -- but it is no longer the only way through.
+        `Enter` is the key the wizard teaches on every other step, and the one
+        step where it did nothing was the first one anybody meets.
+
+        Guarded on the panel because the design panel's own fields
+        (`#f-title`, `#f-style`) submit the same message, and creating a
+        second project out of a rename would be a surprising thing for a
+        title field to do.
+        """
+        if self.active_panel != "create":
+            return
+        self.action_create()
+        self._set_panel(None)
+
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option_list.id != "workspace-list":
             return
@@ -903,7 +959,15 @@ class StudioApp(App[None]):
         """
         step = wizard.current(self.project, self.project_dir, self.passed)
         if not wizard.can_leave_behind(step):
+            refusal = f"{step.number} {step.name}: no se puede omitir"
             self.notify(f"El paso {step.name} no se puede omitir", severity="warning")
+            # A toast lives five seconds. Wanting to walk past this step was a
+            # decision the person made and the pipeline denied, and reading the
+            # diary the next morning without it would leave the gap between
+            # "skipped sprites" and "wrote the program" unexplained.
+            self._ensure_journal()
+            if self.journal is not None:
+                self._log(self.journal.write("AVISO", refusal))
             return
         if step.state == "pending" and self.journal is not None:
             self._log(self.journal.write("OMITIR", f"{step.number} {step.name}"))
@@ -923,6 +987,22 @@ class StudioApp(App[None]):
             return
         self._step_back()
 
+    def _note_saved(self) -> None:
+        """Write down that the design was committed -- once, and only if it was.
+
+        Split out of `_save_and_log` so `action_save`, which saves through
+        `_apply` and therefore has nothing left to write to disk, can still
+        put the same `GUARDAR` line in the diary. It used to answer with a
+        screen-only "Saved" that the file never heard about, which is how the
+        panel and `studio.log` came to be telling different stories.
+        """
+        if self.project is None or not self._edited:
+            return
+        self._ensure_journal()
+        if self.journal is not None:
+            self._log(self.journal.write("GUARDAR", f"{self.project.metadata.slug}/game.yml"))
+        self._edited = False
+
     def _save_and_log(self) -> None:
         """Commit what the open project holds, and write it down if it changed.
 
@@ -941,11 +1021,8 @@ class StudioApp(App[None]):
         """
         if self.project is None or self.project_dir is None or not self._edited:
             return
-        self._ensure_journal()
         self.service.save_project(self.project, self.project_dir)
-        self._edited = False
-        if self.journal is not None:
-            self._log(self.journal.write("GUARDAR", f"{self.project.metadata.slug}/game.yml"))
+        self._note_saved()
 
     def _step_back(self) -> None:
         """Move the wizard's cursor back onto the step before this one.
@@ -1076,12 +1153,12 @@ class StudioApp(App[None]):
         that matters most and is easiest to forget.
         """
         try:
-            title = self.query_one("#f-title", Input).value.strip()
+            title = self.query_one("#f-create-title", Input).value.strip()
             self.project, self.project_dir = self.service.create_project(
                 title,
                 TargetPlatform(str(self.query_one("#f-target", Select).value)),
             )
-            brief = self.query_one("#f-create-brief", TextArea).text.strip()
+            brief = self.query_one("#f-create-brief", Input).value.strip()
             if brief:
                 self.project = editing.rename_project(self.project, title, brief=brief)
                 self.service.save_project(self.project, self.project_dir)
@@ -1094,8 +1171,13 @@ class StudioApp(App[None]):
             self.journal = Journal.for_project(self.project_dir)
             self._edited = False
             self._refresh()
-            self._log(self.journal.write("ABRIR", f"creado {self.project_dir}"))
-            self._log(f"[green]Created[/green] {self.project_dir / 'game.yml'}")
+            self._log(
+                self.journal.write(
+                    "ABRIR",
+                    f"creado {self.project_dir / 'game.yml'} · "
+                    f"{self.project.target.platform.value}",
+                )
+            )
         except Exception as exc:
             self.notify(str(exc), severity="error")
 
@@ -1112,8 +1194,12 @@ class StudioApp(App[None]):
             self.journal = Journal.for_project(self.project_dir)
             self._edited = False
             self._refresh()
-            self._log(self.journal.write("ABRIR", f"abierto {self.project_dir}"))
-            self._log(f"[green]Opened[/green] {self.project_dir}")
+            self._log(
+                self.journal.write(
+                    "ABRIR",
+                    f"abierto {self.project_dir} · {self.project.target.platform.value}",
+                )
+            )
         except Exception as exc:
             self.notify(str(exc), severity="error")
 
@@ -1128,7 +1214,7 @@ class StudioApp(App[None]):
                 brief=self.query_one("#f-brief", TextArea).text.strip(),
             )
         )
-        self._log("[green]Saved[/green]")
+        self._note_saved()
 
     def _research(self) -> None:
         """The `referencia` step: research the real game the brief names,

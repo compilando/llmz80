@@ -794,10 +794,17 @@ the researched game as one diff you accept or discard, and is offered only once
 research has archived a dossier to adapt to.
 
 The diary sits underneath all of it and is never hidden: what Studio did, when,
-and how long it took. Every diary line is shown on screen and appended to
-`<project>/studio.log` -- the same string in both places, not two renderings of
-one event -- so a session that skipped, saved or failed overnight can still be
-read the next morning.
+and how long it took. Everything the screen says once a project is open goes
+through it -- the same string on screen and in `<project>/studio.log`, not two
+renderings of one event -- so a session that skipped, saved, was refused or
+failed overnight can still be read the next morning. The single line that is in
+no file is the opening one naming the workspace: at that point there is no
+project to own a diary.
+
+Step 0's own panel -- picking a project, or starting one -- names its keys too:
+the title field is focused when it opens, `Tab` moves between fields, `Enter`
+creates the project from any of them, `Esc` closes without creating anything.
+The whole panel fits an 80x24 terminal.
 
 `g` design, `m` map, `e` entities, `s` sprites, `d` diff open a panel over the
 resting screen, one at a time. On the Map panel, `wasd` moves the cursor,

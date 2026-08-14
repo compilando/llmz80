@@ -25,7 +25,7 @@ from llmz80.studio.tui import (
 async def test_creating_a_project_fills_the_editor(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Pilot Game"
+        app.query_one("#f-create-title").value = "Pilot Game"
         app.action_create()
         await pilot.pause()
 
@@ -42,7 +42,7 @@ async def test_creating_a_project_fills_the_editor(tmp_path: Path):
 async def test_saving_applies_every_scalar_field_at_once(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Pilot Game"
+        app.query_one("#f-create-title").value = "Pilot Game"
         app.action_create()
         await pilot.pause()
 
@@ -67,7 +67,7 @@ async def test_saving_applies_every_scalar_field_at_once(tmp_path: Path):
 async def test_a_refused_edit_warns_instead_of_crashing(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Refused"
+        app.query_one("#f-create-title").value = "Refused"
         app.action_create()
         await pilot.pause()
         before = app.project.metadata.title
@@ -115,7 +115,7 @@ async def test_a_slow_operation_leaves_the_interface_usable(tmp_path: Path):
 
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Slow"
+        app.query_one("#f-create-title").value = "Slow"
         app.action_create()
         await pilot.pause()
 
@@ -156,7 +156,7 @@ async def test_the_brief_is_saved_and_reaches_the_prompt(tmp_path: Path):
 
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Zampabolas"
+        app.query_one("#f-create-title").value = "Zampabolas"
         app.action_create()
         await pilot.pause()
 
@@ -291,7 +291,7 @@ def test_render_step_summary_of_a_finished_editable_step_still_names_enter():
 async def test_a_panel_key_opens_its_panel_and_hides_the_resting_screen(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Panels"
+        app.query_one("#f-create-title").value = "Panels"
         app.action_create()
         await pilot.pause()
         # Focus somewhere that does not own letter keys, the way a person
@@ -346,7 +346,7 @@ async def test_map_editing_keys_still_toggle_a_wall(tmp_path: Path):
     exactly as before -- only reachable through the map panel now."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Editable"
+        app.query_one("#f-create-title").value = "Editable"
         app.action_create()
         await pilot.pause()
         app.query_one("#entity-table").focus()
@@ -423,7 +423,7 @@ async def test_the_resting_screen_has_a_fixed_height(tmp_path: Path):
         await pilot.pause()
         assert _resting_content_height(app) == RESTING_CONTENT_HEIGHT
 
-        app.query_one("#f-title").value = "Sized"
+        app.query_one("#f-create-title").value = "Sized"
         app.action_create()
         await pilot.pause()
         assert _resting_content_height(app) == RESTING_CONTENT_HEIGHT
@@ -445,7 +445,7 @@ async def test_a_long_brief_does_not_make_the_resting_screen_taller(tmp_path: Pa
     exactly as tall."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Verbose"
+        app.query_one("#f-create-title").value = "Verbose"
         app.action_create()
         await pilot.pause()
 
@@ -465,7 +465,7 @@ async def test_the_wizard_names_the_step_and_moves_on_once_it_is_done(tmp_path: 
     first."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Guided"
+        app.query_one("#f-create-title").value = "Guided"
         app.action_create()
         await pilot.pause()
 
@@ -501,7 +501,7 @@ async def test_a_fully_done_project_shows_no_dangling_hint(tmp_path: Path):
 
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Finished"
+        app.query_one("#f-create-title").value = "Finished"
         app.action_create()
         await pilot.pause()
 
@@ -577,8 +577,8 @@ async def test_creating_a_project_from_the_screen_applies_the_brief(tmp_path: Pa
     does, through `editing.rename_project`."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Briefed"
-        app.query_one("#f-create-brief").text = "Four ghosts. A big dot makes them edible."
+        app.query_one("#f-create-title").value = "Briefed"
+        app.query_one("#f-create-brief").value = "Four ghosts. A big dot makes them edible."
         app.action_create()
         await pilot.pause()
 
@@ -592,7 +592,7 @@ async def test_creating_a_project_from_the_screen_without_a_brief_still_works(tm
     creation, the same as `llmz80 project new` without a trailing BRIEF."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Unbriefed"
+        app.query_one("#f-create-title").value = "Unbriefed"
         app.action_create()
         await pilot.pause()
 
@@ -627,7 +627,7 @@ async def test_the_design_panel_holds_title_style_and_the_editable_brief(tmp_pat
     collide with map/entities/sprites/diff/log."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Panelled"
+        app.query_one("#f-create-title").value = "Panelled"
         app.action_create()
         await pilot.pause()
         app.query_one("#entity-table").focus()
@@ -659,7 +659,7 @@ async def test_the_design_panel_holds_title_style_and_the_editable_brief(tmp_pat
 async def test_the_workspace_picker_lists_and_opens_a_project(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Findable"
+        app.query_one("#f-create-title").value = "Findable"
         app.action_create()
         await pilot.pause()
         created_dir = app.project_dir
@@ -798,7 +798,7 @@ def _give_entity_a_sprite(app: StudioApp, sprite_id: str = "actor") -> None:
 async def test_research_reaches_the_service_and_the_stage_line_shows_it(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Researched"
+        app.query_one("#f-create-title").value = "Researched"
         app.action_create()
         await pilot.pause()
 
@@ -826,7 +826,7 @@ async def test_research_reaches_the_service_and_the_stage_line_shows_it(tmp_path
 async def test_research_asks_before_overwriting_an_existing_dossier(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Guarded"
+        app.query_one("#f-create-title").value = "Guarded"
         app.action_create()
         await pilot.pause()
 
@@ -874,7 +874,7 @@ async def test_a_finished_step_is_redone_only_after_asking(tmp_path: Path):
     two."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Redone"
+        app.query_one("#f-create-title").value = "Redone"
         app.action_create()
         await pilot.pause()
 
@@ -911,7 +911,7 @@ async def test_a_finished_step_is_redone_only_after_asking(tmp_path: Path):
 async def test_a_step_that_is_not_done_cannot_be_repeated(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Unfinished"
+        app.query_one("#f-create-title").value = "Unfinished"
         app.action_create()
         await pilot.pause()
 
@@ -929,7 +929,7 @@ async def test_a_step_that_failed_leaves_the_wizard_standing_on_it(tmp_path: Pat
     it: a job that raised does not put its step behind you."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Stuck"
+        app.query_one("#f-create-title").value = "Stuck"
         app.action_create()
         await pilot.pause()
 
@@ -952,7 +952,7 @@ async def test_a_step_that_failed_leaves_the_wizard_standing_on_it(tmp_path: Pat
 async def test_a_malformed_dossier_is_reported_not_crashed_on(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Broken"
+        app.query_one("#f-create-title").value = "Broken"
         app.action_create()
         await pilot.pause()
 
@@ -973,7 +973,7 @@ async def test_a_malformed_dossier_is_reported_not_crashed_on(tmp_path: Path):
 async def test_adapt_shows_the_diff_and_its_refusals_before_applying_anything(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Adaptable"
+        app.query_one("#f-create-title").value = "Adaptable"
         app.action_create()
         await pilot.pause()
         _focus_away_from_text_entry(app)
@@ -1017,7 +1017,7 @@ async def test_adapt_shows_the_diff_and_its_refusals_before_applying_anything(tm
 async def test_declining_the_proposal_leaves_the_project_unchanged(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Declinable"
+        app.query_one("#f-create-title").value = "Declinable"
         app.action_create()
         await pilot.pause()
         _focus_away_from_text_entry(app)
@@ -1053,7 +1053,7 @@ async def test_a_failing_adapt_notifies_instead_of_crashing(tmp_path: Path):
     opens over a proposal that does not exist."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "NoDossier"
+        app.query_one("#f-create-title").value = "NoDossier"
         app.action_create()
         await pilot.pause()
 
@@ -1079,7 +1079,7 @@ async def test_a_failing_adapt_notifies_instead_of_crashing(tmp_path: Path):
 async def test_draw_sprites_reaches_the_service_and_registers_assets(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Sprited"
+        app.query_one("#f-create-title").value = "Sprited"
         app.action_create()
         await pilot.pause()
         _give_entity_a_sprite(app)
@@ -1111,7 +1111,7 @@ async def test_draw_sprites_reaches_the_service_and_registers_assets(tmp_path: P
 async def test_draw_sprites_asks_before_overwriting_existing_art(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Redraw"
+        app.query_one("#f-create-title").value = "Redraw"
         app.action_create()
         await pilot.pause()
         _give_entity_a_sprite(app)
@@ -1427,7 +1427,7 @@ async def test_the_design_step_offers_adapting_once_a_dossier_exists(tmp_path: P
     a design."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Adapting"
+        app.query_one("#f-create-title").value = "Adapting"
         app.action_create()
         await pilot.pause()
         _focus_away_from_text_entry(app)
@@ -1460,7 +1460,7 @@ async def test_the_design_step_offers_adapting_once_a_dossier_exists(tmp_path: P
 async def test_adapting_is_offered_in_no_other_step(tmp_path: Path):
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Elsewhere"
+        app.query_one("#f-create-title").value = "Elsewhere"
         app.action_create()
         await pilot.pause()
         _focus_away_from_text_entry(app)
@@ -1530,7 +1530,7 @@ async def test_adapting_again_waits_for_the_pending_proposal_to_be_decided(tmp_p
     read yet."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Pending"
+        app.query_one("#f-create-title").value = "Pending"
         app.action_create()
         await pilot.pause()
         _focus_away_from_text_entry(app)
@@ -1605,7 +1605,7 @@ async def test_a_second_project_can_be_started_from_a_populated_workspace(tmp_pa
 
         assert app.active_panel == "create"
 
-        app.query_one("#f-title").value = "The Second One"
+        app.query_one("#f-create-title").value = "The Second One"
         await pilot.click("#create-confirm")
         await pilot.pause()
 
@@ -1647,3 +1647,153 @@ async def test_the_panels_name_the_key_that_leaves_them(tmp_path: Path):
         assert "esc" in str(app.query_one("#map-hint").render())
         assert "Esc" in str(app.query_one("#open-help").render())
         assert "Esc" in str(app.query_one("#create-help").render())
+
+
+@pytest.mark.asyncio
+async def test_a_project_can_be_created_on_an_eighty_by_twentyfour_terminal(tmp_path: Path):
+    """The acceptance walk's first stop, on the smallest screen anybody has.
+
+    Opening Studio on an empty workspace and reaching a project using only the
+    keys the screen names is the whole point of the wizard, and the creation
+    panel was where it failed: nothing was focused, so the only way to any
+    field was `Tab`, which the wizard never names; `Enter` -- the key every
+    other step teaches -- reopened the same panel and did nothing; and the
+    `Create` button sat below the fold on any terminal shorter than 34 rows,
+    which includes the 80x24 this test pins.
+    """
+    from textual.widgets import Input
+
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        # Step 0, and the only key the screen offers for it.
+        assert "[Enter]" in app.status_text
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.active_panel == "create"
+        # The cursor is already where the typing goes.
+        assert app.focused is app.query_one("#f-create-title", Input)
+        # And every control of the panel, the one that creates included, is
+        # actually on the screen rather than below it.
+        visible = app.screen._compositor.visible_widgets
+        for widget_id in ("f-create-title", "f-target", "f-create-brief", "create-confirm"):
+            assert app.query_one(f"#{widget_id}") in visible, widget_id
+
+        # Focusing an Input selects its value, so typing replaces the default
+        # rather than appending to it.
+        await pilot.press(*"Pilot Game")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert (tmp_path / "pilot-game" / "game.yml").is_file()
+        assert app.project.metadata.title == "Pilot Game"
+        assert app.active_panel is None
+        assert "proyecto" in app.passed
+
+
+@pytest.mark.asyncio
+async def test_no_key_the_wizard_offers_falls_off_an_eighty_column_screen(tmp_path: Path):
+    """The summary is where the keys are named, so it is the one line that
+    must never be cut. Pinned at one row it fitted 120 columns and dropped
+    `[→] omitir` and the money warning off the right-hand edge of an 80, which
+    hid the key for walking past a step that spends money."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        app.query_one("#f-create-title").value = "Narrow"
+        app.action_create()
+        await pilot.pause()
+        # referencia, then sprites: the two steps that cost money and may be
+        # walked past, and therefore the two longest summaries.
+        for _ in range(3):
+            await pilot.press("right")
+            await pilot.pause()
+            on_screen = " ".join(strip.text for strip in app.screen._compositor.render_strips())
+            for word in ("gasta", "dinero", "(API)", "omitir"):
+                if word in app.status_text:
+                    assert word in on_screen, (word, app.status_text)
+
+
+@pytest.mark.asyncio
+async def test_the_creation_panel_names_the_key_that_finishes_it(tmp_path: Path):
+    """It named `Esc`, the way out, and nothing at all about the way in."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        help_text = str(app.query_one("#create-help").render())
+        assert "[Enter]" in help_text
+        assert "[Tab]" in help_text
+        assert "[Esc]" in help_text
+
+
+@pytest.mark.asyncio
+async def test_a_step_that_refuses_to_be_skipped_says_so_in_the_diary(tmp_path: Path):
+    """`programa` cannot be walked past -- without it there is nothing to
+    release -- and wanting to was a decision, not a non-event. It used to live
+    five seconds in a toast and leave the diary silent about the gap."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-create-title").value = "Refusing"
+        app.action_create()
+        await pilot.pause()
+        app.passed = {"proyecto", "referencia", "diseño", "sprites"}
+        app._refresh_wizard()
+        await pilot.pause()
+
+        app.action_advance()
+        await pilot.pause()
+
+        diary = (tmp_path / "refusing" / "studio.log").read_text(encoding="utf-8")
+        assert "AVISO" in diary
+        assert "programa: no se puede omitir" in diary
+        # And the wizard did not move.
+        assert "programa" not in app.passed
+
+
+@pytest.mark.asyncio
+async def test_the_diary_panel_and_studio_log_hold_the_same_lines(tmp_path: Path):
+    """`Created`, `Opened` and `Saved` were written to the screen and to
+    nowhere else, so the panel a person reads and the file they keep told
+    different stories about the same session. Everything after mount now goes
+    through `Journal`; the workspace banner is the one stated exception, and
+    it cannot be otherwise -- at mount there is no project to own a diary."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    # Spy on the one method that puts anything in the panel, installed before
+    # mount so the workspace banner is caught too. Reading the widget back
+    # would compare wrapped fragments rather than the lines that were written.
+    said: list[str] = []
+    put_on_screen = app._log
+
+    def spy(message: str) -> None:
+        said.append(message)
+        put_on_screen(message)
+
+    app._log = spy  # type: ignore[method-assign]
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-create-title").value = "Agreeing"
+        app.action_create()
+        await pilot.pause()
+        app._apply(lambda: editing.toggle_tile(app.project, 0, 1, 1))
+        app._save_and_log()
+        await pilot.pause()
+
+        written = (tmp_path / "agreeing" / "studio.log").read_text(encoding="utf-8").splitlines()
+        assert written, "the diary wrote nothing"
+        assert any("  ABRIR   " in line for line in written)
+        assert any("  GUARDAR " in line for line in written)
+        # Everything the screen said, said once to the file as well -- except
+        # the banner, which belongs to the workspace and to no project's diary.
+        extra = [message for message in said if message not in written]
+        assert len(extra) == 1, extra
+        assert extra[0].startswith("Workspace ")

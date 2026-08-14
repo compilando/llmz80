@@ -699,10 +699,35 @@ working looked exactly like one that had hung.
   there reach a `game.yml` that `project validate` accepts, leaving `ABRIR`,
   `OMITIR 1 referencia`, `GUARDAR` and `OMITIR 3 sprites` in the diary with their
   timestamps.
-- What that walk exposed and this entry does not close: the creation panel has a
-  target and a brief but no title field, so a project started from the wizard is
-  always called "My Retro Game" until `g` is used to rename it; its `Create`
-  button is the one control there that no key on the wizard's own list reaches
-  (`Tab` does), and it falls off the bottom of the panel on any terminal shorter
-  than 34 rows, including the classic 80x24. The refusal to skip `programa` is a
-  transient toast and is written nowhere.
+- That walk failed its own acceptance criterion at the first stop, and the fix
+  is the rest of this entry. The creation panel could not be worked with the
+  keys the wizard teaches: nothing was focused, so the only way to a field was
+  `Tab`, which the wizard never names; `Enter` reopened the same panel and did
+  nothing; the panel's help named `Esc`, the way out, and nothing about the way
+  in; and the `Create` button -- the only control that starts a project -- sat
+  below the fold on any terminal shorter than 34 rows, including the classic
+  80x24. The panel now focuses its first field on opening, `Enter` creates from
+  any field, the help names `Enter`/`Tab`/`Esc`, and the whole form fits 80x24
+  with the diary still visible under it, pinned by
+  `test_a_project_can_be_created_on_an_eighty_by_twentyfour_terminal`.
+- It also had a target and a brief but no title, because `action_create` read
+  `#f-title` out of the *design* panel, which is hidden: every project born in
+  the wizard was called "My Retro Game". The creation panel has its own
+  `#f-create-title`, focused first, and its brief is an `Input` rather than a
+  `TextArea` -- `Enter` in a text area inserts a newline, so the one key the
+  wizard teaches did nothing in the one field a person was most likely to be
+  standing in. The design panel keeps its full text area for writing the brief
+  properly afterwards.
+- Two more things that walk exposed, both fixed here. `#wizard-summary` was
+  pinned to one row, which fitted 120 columns and silently dropped `[→] omitir`
+  and the `gasta dinero (API)` warning off the right-hand edge of an 80 -- the
+  narrowest screen hid the key that walks past the steps that spend money. And
+  refusing to skip `programa` lived five seconds in a toast and was written
+  nowhere; it is an `AVISO` line now, because wanting to walk past a step is a
+  decision even when the pipeline denies it.
+- `Created`, `Opened` and `Saved` were written to the panel and to no file, so
+  the diary a person reads and the diary they keep told different stories. They
+  are journal lines now (`ABRIR` carries the target, `GUARDAR` replaces
+  "Saved"), and the panel and `studio.log` agree line for line -- with one
+  stated exception that cannot be otherwise: the workspace banner at mount,
+  written before any project exists to own a diary.
