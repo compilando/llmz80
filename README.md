@@ -266,23 +266,25 @@ python llm_z80.py --platform amstrad_cpc --populate-db
 make studio
 
 # Equivalente, eligiendo el directorio de proyectos
-.venv/bin/llmz80 studio studio-projects
+.venv/bin/python -m llmz80.cli studio studio-projects
 ```
 
-El primer vertical slice permite elegir Spectrum o CPC, juego de recolección o
-persecución en laberinto y alcance de producción; crea título, controles,
-entidades, tres niveles, escenarios de aceptación y presupuestos técnicos. Desde
-la propia TUI puede guardar, regenerar fuentes, compilar y ejecutar el test
-headless del emulador.
+El asistente recorre el pipeline un paso cada vez: elegir o crear el proyecto
+(Spectrum o CPC), investigar el juego real, revisar el diseño, dibujar sprites,
+escribir el programa, pasar las puertas y publicar. El proyecto base trae
+título, controles, entidades, pantallas, escenarios de aceptación y
+presupuestos técnicos; el diseño declara su propio vocabulario de tiles,
+entidades y mecánicas, y no hay géneros de catálogo que elegir. Cada paso queda
+anotado, con su hora y su duración, en `<proyecto>/studio.log`.
 
 También existe un flujo reproducible para CI:
 
 ```bash
-.venv/bin/llmz80 project validate studio-projects/my-game
-.venv/bin/llmz80 project generate studio-projects/my-game
-.venv/bin/llmz80 project build studio-projects/my-game
-.venv/bin/llmz80 project test studio-projects/my-game
-.venv/bin/llmz80 project release studio-projects/my-game
+.venv/bin/python -m llmz80.cli project validate studio-projects/my-game
+.venv/bin/python -m llmz80.cli project generate studio-projects/my-game
+.venv/bin/python -m llmz80.cli project build studio-projects/my-game
+.venv/bin/python -m llmz80.cli project test studio-projects/my-game
+.venv/bin/python -m llmz80.cli project release studio-projects/my-game
 ```
 
 La asistencia IA de Studio usa Responses API con salidas estructuradas para
@@ -771,37 +773,53 @@ Run everything through the project virtual environment, as the Makefile does.
 
     make studio                     # or: make studio WORKSPACE=~/games
 
-A typology gives a starting shape; the free-text brief on the design panel says
-what makes this game itself, and it is the first thing the program's author is
-shown. Write "four ghosts, and a power dot makes them edible" there rather than
-hoping a genre id conveys it.
+The free-text brief says what makes this game itself, and it is the first thing
+both the researcher and the program's author are shown. Write "four ghosts, and
+a power dot makes them edible" there: a design declares its own tiles, entities
+and mechanics, and nothing else conveys that on its behalf.
 
-One command screen at rest: identity, a one-line reminder of the brief, the
-project's six-stage status line with a detail naming the first stage still
-failing, and the keys that open everything else. `g` design, `m` map,
-`e` entities, `s` sprites, `d` diff, `l` log open a panel over it, one at a
-time. `ctrl+n` new, `ctrl+o` open, `ctrl+f` research the real game the brief
-names, `ctrl+a` adapt the design toward it, `ctrl+d` draw its sprites,
-`ctrl+w` have the program written, `ctrl+b` build, `ctrl+t` test, `ctrl+r`
-release. On the Map panel, `wasd` moves the cursor, `space` toggles a wall,
-`m` moves the selected spawn, `+/-` change an entity count.
+One step at a time, and the screen says which one. At rest it shows identity, a
+one-line reminder of the brief, the seven-step strip with each step's state
+(`✓` done, `»` walked past, `✗` failed, `—` still to do), and the sentence that
+replaces having to know the pipeline: where you are standing (`Paso 3 de 6:
+sprites`), what this step is for, and which key does it.
+
+Five keys, and each step names the ones it offers. `Enter` does the step, and
+says `gasta dinero (API)` first where pressing it would. `→` leaves the step
+behind -- offered as `omitir` only where the pipeline can genuinely spare it, so
+`referencia` and `sprites` can be walked past and `programa` cannot. `Esc` steps
+back, or leaves an open editor, saving what was drawn in it. `R` does a finished
+step over, after asking. `Q` quits. Inside `diseño`, `A` adapts the design to
+the researched game as one diff you accept or discard, and is offered only once
+research has archived a dossier to adapt to.
+
+The diary sits underneath all of it and is never hidden: what Studio did, when,
+and how long it took. Every diary line is shown on screen and appended to
+`<project>/studio.log` -- the same string in both places, not two renderings of
+one event -- so a session that skipped, saved or failed overnight can still be
+read the next morning.
+
+`g` design, `m` map, `e` entities, `s` sprites, `d` diff open a panel over the
+resting screen, one at a time. On the Map panel, `wasd` moves the cursor,
+`space` toggles a wall, `m` moves the selected spawn, `+/-` change an entity
+count, and `esc` saves and returns.
 
 ### Headless
 
-    .venv/bin/llmz80 project types                    # the eighteen typologies
-    .venv/bin/llmz80 project new ~/games "Cave Runner" spectrum platform_single_screen \
+    .venv/bin/python -m llmz80.cli project types                    # kinds of game that exist, for inspiration
+    .venv/bin/python -m llmz80.cli project new ~/games "Cave Runner" spectrum \
         "The miner crosses ledges to reach the keys. Falling off costs a life."
 
     P=~/games/cave-runner/game.yml
-    .venv/bin/llmz80 project validate $P              # the design, without building
-    .venv/bin/llmz80 project contract $P              # what a program must satisfy
-    .venv/bin/llmz80 project reference $P             # searches the web, archives the dossier
-    .venv/bin/llmz80 project adapt $P                 # proposes a design diff, asks to apply
-    .venv/bin/llmz80 project write $P                 # spends money: calls the API
-    .venv/bin/llmz80 project sprites $P               # draws and previews sprite art, in the researched game's style
-    .venv/bin/llmz80 project build $P
-    .venv/bin/llmz80 project test $P                  # emulator, reading memory
-    .venv/bin/llmz80 project release $P
+    .venv/bin/python -m llmz80.cli project validate $P              # the design, without building
+    .venv/bin/python -m llmz80.cli project contract $P              # what a program must satisfy
+    .venv/bin/python -m llmz80.cli project reference $P             # searches the web, archives the dossier
+    .venv/bin/python -m llmz80.cli project adapt $P                 # proposes a design diff, asks to apply
+    .venv/bin/python -m llmz80.cli project write $P                 # spends money: calls the API
+    .venv/bin/python -m llmz80.cli project sprites $P               # draws and previews sprite art, in the researched game's style
+    .venv/bin/python -m llmz80.cli project build $P
+    .venv/bin/python -m llmz80.cli project test $P                  # emulator, reading memory
+    .venv/bin/python -m llmz80.cli project release $P
 
 Each step runs what precedes it, so `test` builds and `release` refuses unless
 every gate passed. Exit codes are 0 or 1, so they compose in CI.

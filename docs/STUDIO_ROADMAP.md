@@ -650,3 +650,59 @@ over screen. It is unplayably hard, and no gate here can currently say so.
   time over it, and research (`ctrl+f`), adapt (`ctrl+a`) and sprite drawing (`ctrl+d`) reachable
   from it alongside save/new/open/write/build/test/release.
 - 775 automated tests collected, 774 passing with one known-flaky emulator test deselected.
+
+## 2026-08-14 (K): the front end stopped being a keyboard and became a wizard
+
+Reported as "I never know which key I am supposed to press".
+
+Ten `ctrl+<letter>` shortcuts sat on the resting screen with nothing to say which
+of them was next. That `ctrl+f` had to come before `ctrl+a`, and that `ctrl+t`
+rather than `ctrl+b` was what produced the quality report, was knowledge the
+screen demanded and never offered: the order of the pipeline lived in the
+person's head and the screen quizzed them on it. Pressing the wrong one was
+refused, and there was no way to learn it would be refused except by pressing it.
+
+The second complaint was the same shape from the other side: the pipeline said
+nothing while it worked. Having a program written and repaired takes minutes,
+and the screen reported the result and nothing before it, so a command that was
+working looked exactly like one that had hung.
+
+- `llmz80/studio/wizard.py` answers the first: a pure state machine over
+  `screen.stage_line`, which already decides what has been done from the design
+  in memory and the evidence on disk. The wizard adds only the three things that
+  module does not have -- the order, the words to put on screen, and the rule for
+  what may be walked past -- and re-derives none of the "is this done" logic,
+  because two answers to that question drift apart within a week. Nothing in it
+  draws, calls an API or touches disk, so the whole flow is tested without
+  starting Textual.
+- The screen stands on one step at a time and names it: `Paso 3 de 6: sprites`,
+  what the step is for, and which key does it. Ten keys became five -- `Enter`
+  does the step, `→` leaves it behind, `Esc` goes back a step (and saves, on the
+  way out of an editor), `R` does a finished one over after asking, `Q` quits --
+  plus `A` inside `diseño`, which adapts the design to the researched game as one
+  reviewable diff and is offered only where a dossier exists to adapt to. A key is
+  named only where it would work: `→` reads `omitir` on `referencia` and
+  `sprites`, which the pipeline can genuinely spare, and is not offered on
+  `programa` or `gates`, without which there is nothing to release. `Enter` says
+  `gasta dinero (API)` before it spends any.
+- `llmz80/studio/journal.py` answers the second: every project gets an
+  append-only diary in `<project>/studio.log` -- what started, what it said along
+  the way, what it ended as, and how many seconds it took. Every line is written
+  to the file *and returned*, so what a person watches and what the file remembers
+  are the same characters rather than two renderings of one event. The diary sits
+  below the wizard permanently instead of behind a key; the `l` log panel went
+  with the ten shortcuts, because a diary you have to press something to see is a
+  diary nobody reads.
+- Walked end to end with `run_test` on an empty workspace, pressing only what the
+  screen names. `Enter` on step 0 opens the creation panel (an empty workspace has
+  exactly one sensible thing to do in it), and `→`, `Enter`, `Esc`, `→`, `→` from
+  there reach a `game.yml` that `project validate` accepts, leaving `ABRIR`,
+  `OMITIR 1 referencia`, `GUARDAR` and `OMITIR 3 sprites` in the diary with their
+  timestamps.
+- What that walk exposed and this entry does not close: the creation panel has a
+  target and a brief but no title field, so a project started from the wizard is
+  always called "My Retro Game" until `g` is used to rename it; its `Create`
+  button is the one control there that no key on the wizard's own list reaches
+  (`Tab` does), and it falls off the bottom of the panel on any terminal shorter
+  than 34 rows, including the classic 80x24. The refusal to skip `programa` is a
+  transient toast and is written nowhere.
