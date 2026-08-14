@@ -34,6 +34,7 @@ from typing import Any, Callable, Protocol
 from . import pipeline, wizard
 from .journal import FILENAME as JOURNAL_FILENAME, Journal
 from .models import AssetSpec, GameProject, TargetPlatform
+from .play import how_to_play
 from .reference import GameReference
 from .services import StudioService
 
@@ -375,6 +376,11 @@ def make_game(
         return MakeResult(project_dir=directory, failed="gates", error=reason)
     out(f"Done. The project, its diary and its evidence are in {directory}.")
     out(str(artifact))
+    # The last line, and the only one that is an instruction: a path is
+    # where the game is, not how to play it, and somebody who has waited out
+    # four paid stages should not have to go looking for the order that
+    # opens it.
+    out(f"Play it: {how_to_play(directory)}")
     return MakeResult(project_dir=directory, artifact=artifact)
 
 

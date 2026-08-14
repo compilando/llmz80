@@ -11,8 +11,10 @@ def _print_help() -> None:
     print(
         "LLMZ80\n"
         "\n"
-        "  llmz80 make 'what the game should be' [--cpc] [--workspace PATH]\n"
+        "  llmz80 make 'what the game should be' [--cpc] [--workspace PATH] [--play]\n"
         "                                   (the whole pipeline; calls the OpenAI API)\n"
+        "  llmz80 play PROJECT|GAME.tap|GAME.dsk\n"
+        "                                   (start the emulator and play it)\n"
         "  llmz80 studio [WORKSPACE|PROJECT]\n"
         "                                   (watch a run: stages, diary, verdict)\n"
         "  llmz80 project new WORKSPACE TITLE [spectrum|amstrad_cpc]"
@@ -123,12 +125,29 @@ def _new_command(arguments: list[str]) -> int:
     return 0
 
 
+def _play_command(arguments: list[str]) -> int:
+    """play PROJECT|GAME.tap|GAME.dsk
+
+    Starts the emulator visible, with the game loading itself. It takes one
+    path and nothing else: which emulator, which machine and how the game
+    autostarts are not questions a person playing should have to answer --
+    they are already answered by the gates that verified it.
+    """
+    if len(arguments) != 1 or not arguments[0].strip():
+        print("ERROR: say which game to play: a project directory, a .tap or a .dsk")
+        _print_help()
+        return 2
+    from llmz80.studio.play import play
+
+    return play(Path(arguments[0]))
+
+
 def _make_command(arguments: list[str]) -> int:
-    """make IDEA [--cpc] [--workspace PATH]
+    """make IDEA [--cpc] [--workspace PATH] [--play]
 
     The only order that turns an idea into a game on its own. Its flags are
     parsed by hand like every other subcommand in this file, and there are
-    only two of them on purpose: a third question to answer is a step back
+    only three of them on purpose: a fourth question to answer is a step back
     towards the six commands this replaces.
     """
     from llmz80.studio.make import make_game
@@ -136,12 +155,15 @@ def _make_command(arguments: list[str]) -> int:
 
     platform = TargetPlatform.SPECTRUM
     workspace = Path("studio-projects")
+    then_play = False
     ideas: list[str] = []
     rest = list(arguments)
     while rest:
         argument = rest.pop(0)
         if argument == "--cpc":
             platform = TargetPlatform.AMSTRAD_CPC
+        elif argument == "--play":
+            then_play = True
         elif argument.startswith("--workspace="):
             workspace = Path(argument.split("=", 1)[1])
         elif argument == "--workspace":
@@ -164,7 +186,16 @@ def _make_command(arguments: list[str]) -> int:
         return 2
 
     result = make_game(ideas[0], platform=platform, workspace=workspace.expanduser().resolve())
-    return 0 if result.ok else 1
+    if not result.ok:
+        return 1
+    if then_play and result.artifact is not None:
+        # Waited for: the person asked for this in the same breath as the
+        # build, so the terminal has nothing else to do until they stop
+        # playing.
+        from llmz80.studio.play import play
+
+        return play(result.artifact)
+    return 0
 
 
 def _project_command(arguments: list[str]) -> int:
@@ -399,6 +430,8 @@ def main(argv: list[str] | None = None) -> int | None:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if arguments and arguments[0] == "make":
         return _make_command(arguments[1:])
+    if arguments and arguments[0] == "play":
+        return _play_command(arguments[1:])
     if arguments and arguments[0] == "studio":
         from llmz80.studio.tui import run_studio
 
