@@ -200,8 +200,18 @@ def render_step_summary(step: wizard.Step, *, can_adapt: bool = False) -> str:
     will spend money at an API, and offers `→` only where
     `wizard.can_leave_behind` would actually allow it, so the screen never
     suggests a key that will answer with a refusal. A step already resolved
-    names `→` to move on and `R` to do it over, which is the honest pair:
-    `Enter` on a done step is `R`'s job, after a confirmation.
+    names `→` to move on and `R` to do it over.
+
+    An *editable* step names `Enter` in both cases, and that is what
+    `Step.editable` is for. `diseño` is the one step whose purpose is to be
+    edited and the one step that arrives already `done` -- a `GameProject`
+    cannot exist without screens, tiles and entities, so
+    `screen._design_stage` never says `pending`. Collapsing those into one
+    "resolved" branch meant the only step that exists in order to be worked
+    on was the only one that never named its own verb: `Enter` opened the
+    editor and the screen did not say so. `done` on an editable step means
+    "the design is valid", not "there is nothing left to do here", and
+    those are different things.
 
     `can_adapt` adds the one key that is not any step's own: `A`, offered
     inside `diseño` and only where research archived a dossier, because
@@ -213,16 +223,18 @@ def render_step_summary(step: wizard.Step, *, can_adapt: bool = False) -> str:
     this step never offered at all.
     """
     parts = [step.summary]
+    resolved = step.state in {"done", "skipped"}
+    if not resolved or step.editable:
+        parts.append(f"[Enter] {step.action_label}")
+        if step.costs_api:
+            parts.append("gasta dinero (API)")
     if can_adapt:
         parts.append("[A] adaptar el diseño a la ficha")
-    if step.state in {"done", "skipped"}:
+    if resolved:
         parts.append("[→] siguiente paso")
         if step.state == "done":
             parts.append("[R] repetir")
         return " · ".join(parts)
-    parts.append(f"[Enter] {step.action_label}")
-    if step.costs_api:
-        parts.append("gasta dinero (API)")
     if wizard.can_leave_behind(step):
         parts.append("[→] omitir")
     return " · ".join(parts)
@@ -408,7 +420,9 @@ class StudioApp(App[None]):
             yield Static(
                 "New project -- target is fixed once it exists. The brief is "
                 "what research reads to identify the game and what the "
-                "program writer is told to build; worth writing now."
+                "program writer is told to build; worth writing now. "
+                "Esc closes this panel without creating anything.",
+                id="create-help",
             )
             yield from self._field(
                 "Target",

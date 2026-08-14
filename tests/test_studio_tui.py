@@ -248,15 +248,43 @@ def test_render_step_summary_never_offers_to_skip_what_cannot_be_skipped():
 
 
 def test_render_step_summary_of_a_finished_step_offers_to_repeat_it():
-    from llmz80.studio.wizard import current
+    """A resolved step is done over with `R`, which asks first -- not with
+    `Enter`, which would redo minutes of paid work on a keystroke meant for
+    "do the step I am on". Checked on a step that is *not* editable:
+    research either found a game or it did not, and there is nothing to sit
+    and adjust by hand in what it left behind."""
+    from dataclasses import replace
+
+    from llmz80.studio.wizard import steps
 
     project = blank_project("Done", TargetPlatform.SPECTRUM)
-    step = current(project, None, passed={"proyecto", "referencia"})
+    walked = steps(project, None)
+    step = replace(next(walk for walk in walked if walk.name == "referencia"), state="done")
 
-    assert step.name == "diseño" and step.state == "done"
+    assert not step.editable
     summary = render_step_summary(step)
     assert "[R] repetir" in summary
     assert "[Enter]" not in summary
+
+
+def test_render_step_summary_of_a_finished_editable_step_still_names_enter():
+    """The twin of the test above, and the reason `Step.editable` exists.
+
+    `diseño` arrives `done` on a project that was only just created --
+    `screen._design_stage` never says `pending` -- so a rule that only
+    unresolved steps name their verb left the one step whose whole purpose
+    is to be edited as the one step that never said which key edits it."""
+    from llmz80.studio.wizard import current
+
+    project = blank_project("Editable", TargetPlatform.SPECTRUM)
+    step = current(project, None, passed={"proyecto", "referencia"})
+
+    assert step.name == "diseño" and step.state == "done" and step.editable
+    summary = render_step_summary(step)
+    assert "[Enter] editar" in summary
+    # And still the rest of what a resolved step offers.
+    assert "[→] siguiente paso" in summary
+    assert "[R] repetir" in summary
 
 
 @pytest.mark.asyncio
@@ -1530,3 +1558,18 @@ async def test_adapting_again_waits_for_the_pending_proposal_to_be_decided(tmp_p
         await pilot.press("a")
         await pilot.pause()
         assert reached == [True]
+
+
+@pytest.mark.asyncio
+async def test_the_creation_panel_says_which_key_leaves_it(tmp_path: Path):
+    """`Esc` is on the footer as "Volver", which is not the same as saying
+    it closes the panel you are standing in without creating anything."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.active_panel == "create"
+        assert "Esc" in str(app.query_one("#create-help").render())
