@@ -54,7 +54,12 @@ STATE_CONTRACT: tuple[StateSymbol, ...] = (
         False,
         "current level or screen number, counting from one, when the game " "advances through them",
     ),
-    StateSymbol("g_remaining", 1, False, "objectives still to clear on this level"),
+    StateSymbol(
+        "g_remaining",
+        1,
+        False,
+        "objectives still to clear here, when the game counts them",
+    ),
     StateSymbol("g_hiscore", 2, False, "best score of this session"),
     StateSymbol(
         "g_worst_frame_cost",

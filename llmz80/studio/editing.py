@@ -67,6 +67,11 @@ def set_tile(project: GameProject, screen_index: int, col: int, row: int, tile: 
         screen = document["screens"][screen_index]
     except IndexError:
         raise EditError(f"there is no screen {screen_index + 1}") from None
+    if not (0 <= col < screen["width"] and 0 <= row < screen["height"]):
+        raise EditError(
+            f"({col}, {row}) is outside the "
+            f"{screen['width']}x{screen['height']} grid of screen {screen['id']}"
+        )
     rows = list(screen["tiles"])
     line = rows[row]
     rows[row] = line[:col] + tile + line[col + 1 :]

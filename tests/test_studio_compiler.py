@@ -182,16 +182,22 @@ def test_the_config_header_states_the_target_and_the_design(tmp_path: Path):
     assert "#define HAS_FRAME_CLOCK 0" in header
 
 
-def test_the_state_header_declares_the_whole_contract(tmp_path: Path):
+def test_the_state_header_declares_what_every_program_has_and_offers_the_rest(
+    tmp_path: Path,
+):
+    """`contract_prompt` tells the writer not to declare a symbol its game has
+    no notion of, so the header must not declare one for it."""
     project = blank_project("State", TargetPlatform.SPECTRUM)
 
     header = (
         render_project(project, tmp_path / "build").output_dir / "src" / "game_state.h"
     ).read_text()
 
-    for symbol in ("g_score", "g_lives", "g_level", "g_state", "g_hiscore"):
-        assert f" {symbol};" in header
     assert "extern unsigned int g_score;" in header
+    assert "extern unsigned char g_state;" in header
+    for optional in ("g_lives", "g_level", "g_hiscore"):
+        assert f"extern unsigned char {optional};" not in header
+        assert optional in header, "the optional symbols are still offered"
 
 
 def test_scaffolding_is_byte_identical_across_runs(tmp_path: Path):

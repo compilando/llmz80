@@ -893,7 +893,7 @@ class StudioApp(App[None]):
             return
 
         have = {asset.id for asset in self.project.assets if asset.kind == "sprite"}
-        needed = sorted({entity.sprite for entity in self.project.entities})
+        needed = sorted({entity.sprite or entity.id for entity in self.project.entities})
         existing = [sprite_id for sprite_id in needed if sprite_id in have]
         if existing and not self._confirmed("sprites"):
             self.notify(

@@ -122,7 +122,15 @@ def render_config_header(project: GameProject) -> str:
 
 
 def render_state_header(project: GameProject) -> str:
-    """Declarations for the state contract plus this design's own observables."""
+    """Declarations for the state contract plus this design's own observables.
+
+    Only the required symbols are declared outright. The optional ones are
+    named in a comment instead, because `contract_prompt` tells the writer that
+    a design with no such notion must not declare them at all -- and handing it
+    a header that declares all of them anyway is the same prompt contradicting
+    itself twelve lines later. A game with lives declares g_lives itself; a
+    puzzle without them is not nudged into inventing one.
+    """
     lines = [
         "/* The observable state contract. Define these once in your program.",
         " * They are read out of emulated memory to judge the program's behaviour,",
@@ -132,8 +140,23 @@ def render_state_header(project: GameProject) -> str:
         "",
     ]
     for symbol in STATE_CONTRACT:
+        if not symbol.required:
+            continue
         ctype = "unsigned int" if symbol.width == 2 else "unsigned char"
         lines.append(f"extern {ctype} {symbol.name};  /* {symbol.meaning} */")
+    optional = [symbol for symbol in STATE_CONTRACT if not symbol.required]
+    if optional:
+        lines.extend(
+            [
+                "",
+                "/* Declare and define these yourself, and only the ones this game",
+                " * actually has a notion of:",
+            ]
+        )
+        for symbol in optional:
+            ctype = "unsigned int" if symbol.width == 2 else "unsigned char"
+            lines.append(f" *   {ctype} {symbol.name};  {symbol.meaning}")
+        lines.append(" */")
     if project.observables:
         lines.extend(["", "/* Declared by this design in game.yml. */"])
         for observable in project.observables:
