@@ -191,3 +191,17 @@ def test_zesarux_step_reading_carries_the_step_hold(monkeypatch, tmp_path):
     assert report["step_readings"] == [
         {"id": "rest", "hold": "none", "read": {"g_anim_frame": 7}}
     ]
+
+
+def test_the_emulator_lifetime_covers_a_scripted_run():
+    """A script whose steps outlive `--exit-after` loses its tail, and the tail
+    is where the idle step -- half of what the animation gate claims -- lives."""
+    from llmz80.quality.emulator_smoke import scripted_run_seconds
+
+    script = [{"id": f"s{index}", "frames": 50} for index in range(11)]
+    probes = {"addresses": {f"g_{index}": index for index in range(8)}}
+
+    budget = scripted_run_seconds(seconds=3, steps=script, probes=probes)
+
+    # 11 holds of one second, 12 reads of 8 symbols, 22 key commands.
+    assert budget >= 11 + 12 * 8 * 0.35 + 11 * 0.7

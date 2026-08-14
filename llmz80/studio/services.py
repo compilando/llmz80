@@ -15,6 +15,7 @@ from PIL import Image
 from .compiler import BuildResult, SourceResult, build_project, render_project
 from .feel import animation_report
 from .models import AssetSpec, EntitySpec, GameProject, TargetPlatform
+from .observation import observation_script
 from .samples import blank_project
 from .planner import ProjectProposal, proposal_diff
 from .reference import GameReference, ReferenceResearcher, load_reference, save_reference
@@ -446,7 +447,7 @@ class StudioService:
             project.target.platform.value,
             full=True,
             seconds=seconds,
-            script=[],
+            script=observation_script(project),
         )
         probes = self.probe_report(project, report)
         report["state_probe"] = probes

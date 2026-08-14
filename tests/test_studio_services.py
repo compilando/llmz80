@@ -317,3 +317,38 @@ def test_write_program_lets_runtime_test_narrate_from_inside_the_repair_loop(tmp
         "arrancando el emulador",
         "intento 1: build compiló, aceptación aprobada, animación aprobada",
     ], messages
+
+
+def test_the_runtime_test_drives_the_observation_script(tmp_path, monkeypatch):
+    """`runtime_test` passed `script=[]`, so `step_readings` came back empty and
+    every gate that reads it abstained. The pipeline was built and disconnected
+    by a literal."""
+    from llmz80.studio.compiler import BuildResult
+    from llmz80.studio.models import TargetPlatform
+    from llmz80.studio.observation import observation_script
+    from llmz80.studio.samples import blank_project
+    from llmz80.studio.services import StudioService
+
+    project = blank_project("Driven", TargetPlatform.SPECTRUM)
+    build_dir = tmp_path / "build"
+    build_dir.mkdir()
+    monkeypatch.setattr(
+        StudioService,
+        "build",
+        lambda self, p, d: BuildResult(
+            output_dir=build_dir, success=True, artifact=None, report={"quality_pass": True}
+        ),
+    )
+    captured: dict = {}
+
+    def fake_smoke(output_dir, platform, full=False, seconds=3, probes=None, script=None):
+        captured["script"] = script
+        return {"quality_pass": True, "step_readings": []}
+
+    monkeypatch.setattr("llmz80.studio.services.smoke_test", fake_smoke)
+
+    StudioService.at(tmp_path).runtime_test(project, tmp_path)
+
+    assert [step["id"] for step in captured["script"]] == [
+        step["id"] for step in observation_script(project)
+    ]

@@ -235,6 +235,30 @@ def _matrix_for_key(key: str) -> tuple[str, str]:
     return "".join(f"{value:02x}" for value in values) + "00", "1f" * 8 + "00"
 
 
+def scripted_run_seconds(
+    *, seconds: int, steps: list[dict[str, Any]], probes: dict[str, Any] | None
+) -> int:
+    """How long ZEsarUX must live to finish this script.
+
+    Every probe read and every hold costs wall-clock time inside the
+    emulator's bounded lifetime. Budget for them or the session is cut off
+    mid-read and the reason surfaces only as a broken pipe. Lives out here
+    rather than inside `_run_zesarux` because the arithmetic is the only part
+    of a scripted run that can be checked without starting an emulator.
+    """
+    reads = 1 + len(steps) if steps else 2
+    # A ZRCP read is not free and not 0.2s: `_zrcp_query` sleeps 0.12 outright
+    # and then drains the socket until a 0.2 timeout expires. Budgeting the
+    # optimistic figure is how a scripted run used to be cut off mid-script,
+    # losing the tail of `steps` -- the idle step among them -- and surfacing
+    # as a broken pipe rather than as the missing budget it was.
+    probe_cost = reads * len(((probes or {}).get("addresses") or {})) * 0.35
+    hold_cost = sum(int(step.get("frames", 50)) / 50.0 for step in steps)
+    # Each step presses its key and lets it go, and both are ZRCP commands.
+    command_cost = len(steps) * 0.7
+    return int(max(6, seconds) + probe_cost + hold_cost + command_cost + 5)
+
+
 def _run_zesarux(
     adapter: dict[str, Any], artifact: Path, output_dir: Path, source: str, seconds: int,
     probes: dict[str, Any] | None = None, script: list[dict[str, Any]] | None = None,
@@ -245,14 +269,8 @@ def _run_zesarux(
     after = capture_dir / "after.bmp"
     played = capture_dir / "played.bmp"
     port = _free_local_port()
-    # Every probe read and the sweep hold cost wall-clock time inside the
-    # emulator's bounded lifetime. Budget for them or the session is cut off
-    # mid-read and the reason surfaces only as a broken pipe.
     steps = list(script or [])
-    reads = 1 + len(steps) if steps else 2
-    probe_cost = reads * len(((probes or {}).get("addresses") or {})) * 0.2
-    hold_cost = sum(int(step.get("frames", 50)) / 50.0 for step in steps)
-    run_seconds = int(max(6, seconds) + probe_cost + hold_cost + 3)
+    run_seconds = scripted_run_seconds(seconds=seconds, steps=steps, probes=probes)
     command = [
         adapter["executable"], "--noconfigfile", "--machine", "48k",
         "--vo", "null", "--ao", "null", "--vofile", str(raw_frames),
