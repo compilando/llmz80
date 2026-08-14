@@ -259,6 +259,31 @@ python llm_z80.py --platform amstrad_cpc --populate-db
 
 ## 📖 Uso
 
+### Una sola orden: de la idea al juego
+
+```bash
+# Spectrum por defecto
+.venv/bin/llmz80 make "un minero cruza cornisas de piedra saltando entre ellas"
+
+# Amstrad CPC, en otro workspace
+.venv/bin/llmz80 make "cuatro fantasmas te persiguen por un laberinto" \
+    --cpc --workspace ~/juegos
+```
+
+`make` recorre el pipeline entero sin preguntar nada: crea el proyecto,
+investiga el juego real al que se parece, adapta el diseño a esa ficha, dibuja
+los sprites que falten, escribe el programa y lo repara contra el compilador, y
+por último compila y lo ejecuta en el emulador. La última línea que imprime es
+la ruta de la cinta o del disco.
+
+Gasta dinero de la API de OpenAI en cuatro etapas (`referencia`, `diseño`,
+`sprites`, `programa`) y lo dice al empezar; avisar no es preguntar. Si la
+investigación no identifica ningún juego real no es un fallo: se salta la
+adaptación y el diseño conserva su tipología. Si una etapa falla, la orden para
+ahí, dice en cuál y con qué error, y deja escrito cómo reintentar esa misma
+etapa sobre el proyecto que ya existe. Todo queda anotado, en pantalla y en
+`<proyecto>/studio.log`, mientras pasa.
+
 ### LLMZ80 Studio (recomendado para juegos completos)
 
 ```bash
