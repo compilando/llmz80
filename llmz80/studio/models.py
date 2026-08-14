@@ -66,6 +66,19 @@ KEY_LABELS: tuple[str, ...] = (
 #: One input byte carries one bit per binding, so eight is the hard ceiling.
 MAX_BINDINGS = 8
 
+#: The vocabulary a scripted step's `hold` may state, and the only thing that
+#: says whether the player was moving while the emulator read memory.
+#: `observation.observation_script` writes it and `feel.animation_report`
+#: reads it, so it lives here rather than in either of them: a copy in each
+#: drifted apart once already, and drift means a moving step judged as though
+#: the player stood still. A design coins its own binding names (`jump`,
+#: `fire`, `pump`), so a name outside `HOLD_DIRECTIONS` says nothing about
+#: movement and is held as `HOLD_ACTION`, which the gate leaves out of its
+#: comparison rather than guessing at.
+HOLD_NONE = "none"
+HOLD_ACTION = "action"
+HOLD_DIRECTIONS: tuple[str, ...] = ("left", "right", "up", "down")
+
 
 class Metadata(StrictModel):
     slug: str = Field(pattern=SLUG_PATTERN)

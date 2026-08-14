@@ -15,9 +15,11 @@ Each `step_readings` entry carries the scripted step's own `hold` alongside
 its id and reading -- see the line that builds them,
 `reading: dict[str, Any] = {"id": step.get("id"), "hold": step.get("hold"),
 "read": {}}`. `hold` is the literal "none" for a step that touches no key, or
-one of the four movement directions for a step that does (see
-`ScenarioHold` in `llmz80.studio.models`); a fifth value, "action", holds the
-start/fire key and says nothing about whether the player is moving. So this
+one of the four movement directions for a step that does (the vocabulary
+is `HOLD_NONE`, `HOLD_ACTION` and `HOLD_DIRECTIONS` in
+`llmz80.studio.models`, which `llmz80.studio.observation` writes and this
+module reads); a fifth value, "action", holds the start/fire key and says
+nothing about whether the player is moving. So this
 module classifies straight from that fact rather than from any naming
 convention on the id: "none" is idle, a direction is movement, and "action"
 (or an absent `hold`) is neither and is left out of the comparison.
@@ -27,10 +29,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from .models import HOLD_DIRECTIONS, HOLD_NONE
+
 #: The one state-contract symbol this gate is about.
 _SYMBOL = "g_anim_frame"
-
-_DIRECTIONS = {"left", "right", "up", "down"}
 
 
 def _classify(hold: Any) -> str | None:
@@ -42,9 +44,9 @@ def _classify(hold: Any) -> str | None:
     field was threaded through -- is unclassified for the same reason: no
     information beats a guess.
     """
-    if hold == "none":
+    if hold == HOLD_NONE:
         return "idle"
-    if hold in _DIRECTIONS:
+    if hold in HOLD_DIRECTIONS:
         return "moving"
     return None
 
