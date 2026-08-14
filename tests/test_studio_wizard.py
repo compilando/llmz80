@@ -1,14 +1,15 @@
-"""The wizard walks the pipeline in order and never guesses what is done."""
+"""The pipeline's steps, in order, and never a guess about what is done."""
 
-from llmz80.studio.models import GameProject, TargetPlatform
+from llmz80.studio.models import TargetPlatform
 from llmz80.studio.samples import blank_project
-from llmz80.studio.wizard import can_leave_behind, current, steps
+from llmz80.studio.wizard import steps
 
 
-def test_without_a_project_the_first_step_is_choosing_one():
-    step = current(None, None)
-    assert step.number == 0
-    assert step.name == "proyecto"
+def test_without_a_project_nothing_is_done_yet():
+    walked = steps(None, None)
+    assert walked[0].number == 0
+    assert walked[0].name == "proyecto"
+    assert {step.state for step in walked} == {"pending"}
 
 
 def test_with_a_project_step_zero_is_done_and_the_walk_begins():
@@ -26,62 +27,34 @@ def test_with_a_project_step_zero_is_done_and_the_walk_begins():
     ]
 
 
-def test_a_fresh_project_is_pointed_at_research(tmp_path):
-    project = blank_project("Fresh", TargetPlatform.SPECTRUM)
-    assert current(project, tmp_path, passed={"proyecto"}).name == "referencia"
-
-
-def test_the_wizard_stands_on_the_first_step_not_left_behind(tmp_path):
-    project = blank_project("Skip", TargetPlatform.SPECTRUM)
-    assert current(project, tmp_path, passed={"proyecto", "referencia"}).name == "diseño"
-
-
-def test_a_valid_design_is_still_a_stop_not_a_step_to_skip_over(tmp_path):
-    """The design stage is never `pending` -- it validates or it fails -- so a
-    wizard that advanced on "done" would never stop where the editing happens."""
+def test_a_valid_design_reads_as_done_rather_than_pending(tmp_path):
+    """The design stage is never `pending` -- it validates or it fails."""
     project = blank_project("Stop", TargetPlatform.SPECTRUM)
-    step = current(project, tmp_path, passed={"proyecto", "referencia"})
-    assert step.name == "diseño"
+    step = next(s for s in steps(project, tmp_path) if s.name == "diseño")
     assert step.state == "done"
 
 
-def test_only_research_and_sprites_may_be_skipped(tmp_path):
-    project = blank_project("Optional", TargetPlatform.SPECTRUM)
-    skippable = {step.name for step in steps(project, tmp_path) if step.skippable}
-    assert skippable == {"referencia", "sprites"}
-
-
-def test_only_the_design_step_is_editable(tmp_path):
-    project = blank_project("Editable", TargetPlatform.SPECTRUM)
-    editable = {step.name for step in steps(project, tmp_path) if step.editable}
-    assert editable == {"diseño"}
-
-
-def test_the_steps_that_spend_money_say_so(tmp_path):
-    project = blank_project("Money", TargetPlatform.SPECTRUM)
-    paid = {step.name for step in steps(project, tmp_path) if step.costs_api}
-    assert paid == {"referencia", "sprites", "programa"}
-
-
-def test_a_failure_wins_over_a_later_pending_step(tmp_path):
-    """Nothing is gained by pointing at "draw sprites" while the design is broken."""
+def test_a_broken_design_reads_as_failed_and_says_why(tmp_path):
     project = blank_project("Broken", TargetPlatform.SPECTRUM)
     wide = project.screens[0].model_copy(
         update={"width": 40, "tiles": [row.ljust(40, row[-1]) for row in project.screens[0].tiles]}
     )
     broken = project.model_copy(update={"screens": [wide]})
-    step = current(broken, tmp_path, passed={"proyecto", "referencia"})
-    assert step.name == "diseño"
+
+    step = next(s for s in steps(broken, tmp_path) if s.name == "diseño")
+
     assert step.state == "failed"
     assert step.detail
 
 
-def test_every_step_carries_words_a_person_can_read(tmp_path):
-    project = blank_project("Words", TargetPlatform.SPECTRUM)
-    for step in steps(project, tmp_path):
-        assert step.summary
-        assert step.action_label
-        assert step.title
+def test_a_step_walked_past_without_being_done_reads_as_skipped(tmp_path):
+    """The one state disk cannot answer: nothing writes down a decision to
+    walk past a step, so it can only ever be told."""
+    project = blank_project("Skipped", TargetPlatform.SPECTRUM)
+
+    walked = steps(project, tmp_path, passed={"proyecto", "referencia"})
+
+    assert next(s for s in walked if s.name == "referencia").state == "skipped"
 
 
 def test_a_step_keeps_its_id_and_carries_a_label_of_its_own(tmp_path):
@@ -112,54 +85,9 @@ def test_a_step_keeps_its_id_and_carries_a_label_of_its_own(tmp_path):
     ]
 
 
-# --- who may be left behind ------------------------------------------------
+def test_a_step_carries_nothing_a_wizard_would_have_needed():
+    """What each key did, what it cost and whether it could be skipped went
+    with the wizard that named them."""
+    fields = set(steps(None, None)[0].__dataclass_fields__)
 
-
-def test_a_resolved_step_is_behind_you_once_you_say_so(tmp_path):
-    """`diseño` is not skippable, but a design that validates is *done*: there
-    is nothing left to make it wait for."""
-    project = blank_project("Resolved", TargetPlatform.SPECTRUM)
-    step = current(project, tmp_path, passed={"proyecto", "referencia"})
-    assert step.name == "diseño"
-    assert step.state == "done"
-    assert can_leave_behind(step)
-
-
-def test_a_pending_step_the_pipeline_can_spare_may_be_left_behind(tmp_path):
-    project = blank_project("Optional", TargetPlatform.SPECTRUM)
-    step = current(project, tmp_path, passed={"proyecto"})
-    assert step.name == "referencia"
-    assert step.state == "pending"
-    assert can_leave_behind(step)
-
-
-def test_a_pending_step_the_pipeline_needs_may_not(tmp_path):
-    """Without a program there is nothing to gate and nothing to release."""
-    project = blank_project("Required", TargetPlatform.SPECTRUM)
-    step = current(project, tmp_path, passed={"proyecto", "referencia", "diseño", "sprites"})
-    assert step.name == "programa"
-    assert step.state == "pending"
-    assert not can_leave_behind(step)
-
-
-def test_a_step_already_skipped_stays_behind_you(tmp_path):
-    project = blank_project("Skipped", TargetPlatform.SPECTRUM)
-    step = next(
-        s
-        for s in steps(project, tmp_path, passed={"proyecto", "referencia"})
-        if s.name == "referencia"
-    )
-    assert step.state == "skipped"
-    assert can_leave_behind(step)
-
-
-def test_a_failed_step_may_not_be_walked_past(tmp_path):
-    """A broken design is the one thing worth being dragged back to."""
-    project = blank_project("Broken", TargetPlatform.SPECTRUM)
-    wide = project.screens[0].model_copy(
-        update={"width": 40, "tiles": [row.ljust(40, row[-1]) for row in project.screens[0].tiles]}
-    )
-    broken = project.model_copy(update={"screens": [wide]})
-    step = current(broken, tmp_path, passed={"proyecto", "referencia"})
-    assert step.state == "failed"
-    assert not can_leave_behind(step)
+    assert fields == {"name", "title", "number", "state", "detail"}

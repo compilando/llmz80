@@ -365,18 +365,17 @@ def test_release_is_pending_with_no_directory(project):
     assert stage.state == "pending"
 
 
-# --- what the stage line still owes the wizard ------------------------------
+# --- what the stage line is, and is not -------------------------------------
 #
 # `next_step` lived here and answered "what happens next" from the stages
-# alone. `wizard.current` answers it from the stages *and* what the person
-# has walked past, which is the only answer the screen ever uses; two
-# functions for one question is exactly the drift `wizard`'s own docstring
-# warns about, so the unused one went. Its rules are still tested, in
-# tests/test_studio_wizard.py, against the function that is actually called.
+# alone. Nothing asks that question any more: `llmz80 make` runs every stage
+# in order without being told, and the screen shows what each one came to.
+# What is left here is evidence, and `wizard.steps` is the only thing that
+# reads it.
 
 
 def test_the_stage_line_no_longer_names_keys():
-    """The keys it named are gone; the wizard decides what Enter does."""
+    """The keys it named are gone with the wizard that pressed them."""
     import llmz80.studio.screen as screen
 
     assert not hasattr(screen, "STAGE_KEY")
