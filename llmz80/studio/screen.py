@@ -1,10 +1,9 @@
 """State for the Studio command screen, decided without drawing anything.
 
-Precedent for this is `tui.render_map`: a module-level function over plain
-data, kept separate from the widgets so it can be read and tested without a
-running application. `stage_line` extends that principle from one pane's
-terrain to the whole project's status line -- what has been researched,
-designed, drawn, written, gated and released.
+A module-level function over plain data, kept apart from the widgets so it can
+be read and tested without a running application: `stage_line` answers, for
+the whole project, what has been researched, designed, drawn, written, gated
+and released.
 
 Every stage's state is read from the design already in memory and from what
 the pipeline has written to disk; nothing here calls an API or runs a build.
