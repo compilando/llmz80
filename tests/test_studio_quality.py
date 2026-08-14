@@ -1,7 +1,13 @@
 """The design gate checks the machine's limits, not the shape of the game."""
 
 from llmz80.studio.models import GameProject, TargetPlatform
-from llmz80.studio.quality import design_quality_report, studio_quality_report
+from llmz80.studio.quality import (
+    VERIFICATION_BUILT,
+    VERIFICATION_OBSERVED,
+    design_quality_report,
+    studio_quality_report,
+    verification_level,
+)
 from llmz80.studio.samples import blank_project
 
 
@@ -69,3 +75,50 @@ def test_the_retired_analyses_are_gone():
     ):
         with pytest.raises(ModuleNotFoundError):
             __import__(module)
+
+
+def test_a_run_where_every_behaviour_gate_abstained_is_only_built():
+    """Three gates that never watched cannot add up to a verified game: this is
+    the exact shape `runtime_test` produces today for a v4 project."""
+    runtime = {
+        "quality_pass": True,
+        "acceptance": {"quality_pass": None},
+        "animation": {"quality_pass": None},
+        "state_probe": {"quality_pass": None},
+    }
+
+    assert verification_level(runtime) == VERIFICATION_BUILT
+
+
+def test_one_gate_that_actually_watched_and_passed_makes_it_observed():
+    runtime = {
+        "quality_pass": True,
+        "acceptance": {"quality_pass": None},
+        "animation": {"quality_pass": True},
+        "state_probe": {"quality_pass": None},
+    }
+
+    assert verification_level(runtime) == VERIFICATION_OBSERVED
+
+
+def test_a_gate_that_watched_and_refused_is_not_observed():
+    """A refusal outranks a sibling's approval: one gate saying it watched and
+    disliked what it saw is not cancelled out by another that liked it."""
+    runtime = {"animation": {"quality_pass": False}, "acceptance": {"quality_pass": True}}
+
+    assert verification_level(runtime) == VERIFICATION_BUILT
+
+
+def test_no_runtime_at_all_is_only_built():
+    assert verification_level(None) == VERIFICATION_BUILT
+
+
+def test_the_quality_report_carries_the_level():
+    project = blank_project("Levelled", TargetPlatform.SPECTRUM)
+    report = studio_quality_report(
+        project,
+        build={"quality_pass": True},
+        runtime={"quality_pass": True, "animation": {"quality_pass": True}},
+    )
+
+    assert report["verification"] == VERIFICATION_OBSERVED

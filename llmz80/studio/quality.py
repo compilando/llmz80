@@ -10,6 +10,15 @@ to the examiner and the emulator, which can answer it for any design.
 
 `notices` is the other half of that restraint: things worth telling the person
 who wrote the design, which are none of Studio's business to refuse.
+
+`verification_level` is the one thing here that reads runtime evidence rather
+than the design, and it lives here because it is a verdict about the report
+this module writes, not about a run: `studio_quality_report` is what has to
+state how much of the game was ever watched, and a level computed in
+`services.py` beside the gates it reads would have to be carried back here
+anyway. `feel.py` and its siblings answer "was this run good"; this answers
+"did anyone look at all", which is the question the report claiming a pass is
+the one obliged to answer.
 """
 
 from __future__ import annotations
@@ -18,6 +27,43 @@ from typing import Any
 
 from .models import GameProject
 from .registry import audio_gaps, target_registry
+
+#: The game built and its artifact is valid, and that is the whole of what is
+#: known about it. Every behaviour gate abstained.
+VERIFICATION_BUILT = "built"
+
+#: At least one behaviour gate actually watched the program run and approved
+#: what it saw.
+VERIFICATION_OBSERVED = "observed"
+
+#: The gates whose verdict says something was watched. Read by name off the
+#: runtime report so a gate added later (see `pacing`, `attributes`) counts
+#: the moment it is wired in, without this function learning about it.
+BEHAVIOUR_GATES = ("acceptance", "animation", "state_probe", "pacing", "attributes")
+
+
+def verification_level(runtime: dict[str, Any] | None) -> str:
+    """How much is actually known about this program's behaviour.
+
+    Three verdicts are possible from a gate and they are not two: `True` (it
+    watched and approved), `False` (it watched and refused) and `None` (it
+    abstained -- no adapter, no script, nothing to judge). Folding `None` into
+    `True` is the defect this function exists to make impossible: it is what
+    let `studio-projects/zampabolas` be accepted on its first attempt with
+    every behaviour gate unobserved.
+
+    A single definite `True` is enough. Demanding all of them would make the
+    level unreachable until the phase 2 examiner lands, and an unreachable
+    level teaches people to pass `--force`.
+    """
+    if not runtime:
+        return VERIFICATION_BUILT
+    verdicts = [(runtime.get(name) or {}).get("quality_pass") for name in BEHAVIOUR_GATES]
+    if any(verdict is False for verdict in verdicts):
+        return VERIFICATION_BUILT
+    if any(verdict is True for verdict in verdicts):
+        return VERIFICATION_OBSERVED
+    return VERIFICATION_BUILT
 
 
 def design_notices(project: GameProject) -> list[str]:
@@ -80,5 +126,6 @@ def studio_quality_report(
         "design": design,
         "build_report": "build_report.json" if build else None,
         "runtime_report": "emulator_report.json" if runtime else None,
+        "verification": verification_level(runtime),
         "quality_pass": all(gates.values()),
     }
