@@ -134,11 +134,15 @@ def current(
     the design validated, and the one step that exists in order to be edited
     would have been the only one never reached.
 
-    A failure still wins over any later step, the same rule `screen.next_step`
-    applies and for the same reason: there is nothing to gain from pointing at
-    "draw the sprites" while the design itself is broken. It wins even over a
-    step already left behind, because a design that breaks after being passed
-    is exactly the case worth dragging someone back to.
+    A failure still wins over any later step, and for the plainest of
+    reasons: there is nothing to gain from pointing at "draw the sprites"
+    while the design itself is broken. It wins even over a step already left
+    behind, because a design that breaks after being passed is exactly the
+    case worth dragging someone back to. `screen.next_step` used to apply the
+    same rule over the stages alone; it had no notion of a step being walked
+    past, nothing called it, and two answers to "what next" is the drift this
+    module's own docstring warns about, so it was deleted rather than kept in
+    reserve.
 
     Once every step has been left behind the last one is returned rather than
     `None`: the wizard always has something to show, and "release, done" is the

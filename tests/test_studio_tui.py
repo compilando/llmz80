@@ -648,7 +648,11 @@ async def test_the_design_panel_holds_title_style_and_the_editable_brief(tmp_pat
         # Closing it saves what was typed: `ctrl+s` is gone, and an edit that
         # vanished when the panel closed would be worse than no key at all.
         app.query_one("#f-brief").text = "Four ghosts. A big dot makes them edible."
-        await pilot.press("g")
+        # `Esc`, not `g`: the panel focuses its title field when it opens, so
+        # letters typed in it are text rather than panel keys -- which is the
+        # point, since `g` used to close this panel and `s` used to open
+        # sprites out from under whoever was writing the brief.
+        await pilot.press("escape")
         await pilot.pause()
         assert app.active_panel is None
         assert "ghosts" in app.project.metadata.brief
@@ -1168,7 +1172,9 @@ def test_none_of_the_ten_shortcuts_survive():
     """The decision this whole change exists to make, written as a test."""
     from llmz80.studio.tui import StudioApp
 
-    bound = {binding[0] for binding in StudioApp.BINDINGS}
+    bound = {
+        binding.key if hasattr(binding, "key") else binding[0] for binding in StudioApp.BINDINGS
+    }
     for gone in (
         "ctrl+n",
         "ctrl+o",
@@ -1634,19 +1640,127 @@ async def test_an_empty_workspace_still_lists_creating_when_the_picker_is_opened
         assert str(first.prompt) == NEW_PROJECT_LABEL
 
 
+def _on_screen(app) -> str:
+    """Everything actually drawn, as one string.
+
+    Tests about what a panel *says* have to read this and not
+    `query_one(...).render()`: a widget renders its text whether or not the
+    compositor ever puts it on the screen, so an assertion on the renderable
+    passes just as happily when the line is off the bottom of the terminal.
+    That is how the map editor came to open on an 80x24 screen with none of
+    its instructions visible while a test swore they were there.
+    """
+    return " ".join(strip.text for strip in app.screen._compositor.render_strips())
+
+
 @pytest.mark.asyncio
-async def test_the_panels_name_the_key_that_leaves_them(tmp_path: Path):
-    """The map editor's hint enumerated four keys that paint and moved past
-    the one that saves."""
+async def test_the_panels_name_their_keys_where_a_person_can_read_them(tmp_path: Path):
+    """Each panel's own instructions, checked on the screen of the smallest
+    terminal anybody uses -- the size at which they were missing."""
     from llmz80.studio.tui import StudioApp
 
     app = StudioApp(tmp_path)
-    async with app.run_test(size=(120, 40)) as pilot:
+    async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
 
-        assert "esc" in str(app.query_one("#map-hint").render())
-        assert "Esc" in str(app.query_one("#open-help").render())
-        assert "Esc" in str(app.query_one("#create-help").render())
+        # Step 0 on an empty workspace: the creation panel.
+        await pilot.press("enter")
+        await pilot.pause()
+        shown = _on_screen(app)
+        for key in ("[Enter]", "[Tab]", "[Esc]"):
+            assert key in shown, (key, "create")
+
+        app.query_one("#f-create-title").value = "Legible"
+        app.action_create()
+        await pilot.pause()
+
+        # The map editor: every key it answers to, and the one that leaves.
+        app._set_panel("map")
+        await pilot.pause()
+        shown = _on_screen(app)
+        for word in ("flechas", "wasd", "space", "+/-", "[Esc]"):
+            assert word in shown, (word, "map")
+
+        # The design panel, where the brief is written.
+        app._set_panel("design")
+        await pilot.pause()
+        shown = _on_screen(app)
+        for word in ("brief", "[Tab]", "[Esc]"):
+            assert word in shown, (word, "design")
+
+        # And the workspace picker.
+        app._set_panel("open")
+        await pilot.pause()
+        assert "Esc" in _on_screen(app)
+
+
+@pytest.mark.asyncio
+async def test_a_panel_switches_off_the_wizard_keys_that_would_move_behind_it(
+    tmp_path: Path,
+):
+    """`→` stayed live while a panel covered the screen, so a press meant for
+    the map cursor left a step behind and wrote `OMITIR` for a decision nobody
+    made. `Esc` has to survive -- it is how a panel is left at all."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        app.query_one("#f-create-title").value = "Modal"
+        app.action_create()
+        await pilot.pause()
+        app._set_panel("map")
+        await pilot.pause()
+
+        for action in ("do", "advance", "repeat"):
+            assert app.check_action(action, ()) is False, action
+        assert app.check_action("back", ()) is True
+
+        before = set(app.passed)
+        await pilot.press("right")
+        await pilot.pause()
+        assert app.passed == before, "the wizard moved behind the editor"
+        assert app.active_panel == "map"
+        diary = (tmp_path / "modal" / "studio.log").read_text(encoding="utf-8")
+        assert "OMITIR" not in diary
+
+        # And the arrow did what the editor promises it does.
+        assert app.cursor == (1, 0)
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.active_panel is None
+        assert app.check_action("advance", ()) is True
+
+
+@pytest.mark.asyncio
+async def test_the_keys_the_screen_prints_in_capitals_answer_in_capitals(tmp_path: Path):
+    """`[R] repetir` and `[A] adaptar` are printed uppercase and answered only
+    lowercase, which reads as an interface that ignores you."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        app.query_one("#f-create-title").value = "Shifted"
+        app.action_create()
+        await pilot.pause()
+        app.passed = {"proyecto", "referencia"}
+        app._refresh_wizard()
+        await pilot.pause()
+        assert "[R] repetir" in app.status_text
+
+        # Shift+R reaches `action_repeat`, which asks before redoing a step.
+        await pilot.press("R")
+        await pilot.pause()
+        assert app._pending_confirm == "repeat:diseño"
+
+        # Shift+A reaches `_adapt_step`, which refuses without a dossier
+        # rather than doing nothing at all.
+        app._set_panel(None)
+        await pilot.press("A")
+        await pilot.pause()
+        assert app.active_panel != "diff"
 
 
 @pytest.mark.asyncio
@@ -1685,10 +1799,19 @@ async def test_a_project_can_be_created_on_an_eighty_by_twentyfour_terminal(tmp_
         # Focusing an Input selects its value, so typing replaces the default
         # rather than appending to it.
         await pilot.press(*"Pilot Game")
+        # `Tab` reaches the other fields, which is what the panel's help
+        # promises. Gating it along with the wizard's own keys once broke
+        # exactly this and the brief ended up appended to the title.
+        await pilot.press("tab", "tab")
+        await pilot.pause()
+        assert app.focused is app.query_one("#f-create-brief", Input)
+        await pilot.press(*"Four ghosts.")
+        # And `Enter` finishes the panel from a field that is not the first.
         await pilot.press("enter")
         await pilot.pause()
 
         assert (tmp_path / "pilot-game" / "game.yml").is_file()
+        assert app.project.metadata.brief == "Four ghosts."
         assert app.project.metadata.title == "Pilot Game"
         assert app.active_panel is None
         assert "proyecto" in app.passed
@@ -1788,12 +1911,216 @@ async def test_the_diary_panel_and_studio_log_hold_the_same_lines(tmp_path: Path
         app._save_and_log()
         await pilot.pause()
 
+        # And a piece of slow work, which is where the panel and the file
+        # drifted furthest: `_run` writes `INICIO`, the job's own result, and
+        # `FIN`, and the middle one used to reach only the screen.
+        app._run("Exporting", lambda: (True, "[green]Released[/green] releases/agreeing.zip"))
+        for _ in range(100):
+            await pilot.pause()
+            if "Exporting" not in app.status_text:
+                break
+        # As does deciding on an adaptation, which is a decision about the
+        # design and was said out loud to nobody who would remember it.
+        app._pending_proposal = ("a diff", app.project, [])
+        app._decide_proposal(False)
+        await pilot.pause()
+
         written = (tmp_path / "agreeing" / "studio.log").read_text(encoding="utf-8").splitlines()
         assert written, "the diary wrote nothing"
         assert any("  ABRIR   " in line for line in written)
         assert any("  GUARDAR " in line for line in written)
-        # Everything the screen said, said once to the file as well -- except
-        # the banner, which belongs to the workspace and to no project's diary.
-        extra = [message for message in said if message not in written]
+        assert any("  INICIO  " in line for line in written)
+        assert any("  FIN     " in line for line in written)
+        assert any("adaptación descartada" in line for line in written)
+        # Everything the screen said, the file kept -- as its own line, or,
+        # for a job's result, folded into the `FIN` line that closes the work
+        # (which is where a several-line result belongs: a diary is read by
+        # scanning its left margin). The one exception is the workspace
+        # banner, which belongs to no project and so to no project's diary.
+        from llmz80.studio.tui import _summary
+
+        kept = "\n".join(written)
+        extra = [message for message in said if _summary(message) not in kept]
         assert len(extra) == 1, extra
         assert extra[0].startswith("Workspace ")
+
+
+@pytest.mark.asyncio
+async def test_every_slow_step_narrates_itself_into_the_diary(tmp_path: Path, monkeypatch):
+    """The three long steps hand `on_progress` to the service so it can say
+    what it is doing while it does it. Nothing else pinned that wiring: delete
+    all three `on_progress=` arguments and the suite stayed green while the
+    screen went back to reporting a result and nothing before it.
+
+    Each stub calls the callback it is given and then returns the least the
+    caller will accept, so this checks the wiring and not the services.
+    """
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-create-title").value = "Narrating"
+        app.action_create()
+        await pilot.pause()
+
+        heard: dict[str, bool] = {}
+
+        def stub(name, result):
+            def call(*args, on_progress=None, **kwargs):
+                heard[name] = on_progress is not None
+                if on_progress is not None:
+                    on_progress(f"{name} is working")
+                return result
+
+            return call
+
+        monkeypatch.setattr(app.service, "draw_sprites", stub("sprites", []))
+        monkeypatch.setattr(
+            app.service,
+            "write_program",
+            stub("programa", {"attempts": [], "accepted": True, "last_error": ""}),
+        )
+        monkeypatch.setattr(
+            app.service,
+            "runtime_test",
+            stub("gates", {"quality_pass": True, "acceptance": {"scenarios": []}}),
+        )
+        # `_write` builds its own writer from the OpenAI client; neither is
+        # reached once `write_program` is a stub, but both are constructed.
+        import llmz80.cli as cli
+        import llmz80.studio.generator as generator
+
+        monkeypatch.setattr(cli, "_openai_client_and_model", lambda: (object(), "model"))
+        monkeypatch.setattr(generator, "ResponsesProgramWriter", lambda *a, **k: object())
+        app.artist = object()
+
+        for run in (app._draw_sprites, app._write, app._test):
+            run()
+            for _ in range(100):
+                await pilot.pause()
+                if app._pending_confirm is None and "..." not in app.status_text:
+                    break
+
+        assert heard == {"sprites": True, "programa": True, "gates": True}
+        diary = (tmp_path / "narrating" / "studio.log").read_text(encoding="utf-8")
+        for name in ("sprites", "programa", "gates"):
+            assert f"..      {name} is working" in diary, name
+
+
+@pytest.mark.asyncio
+async def test_the_diary_keeps_what_a_step_achieved_and_not_only_what_broke(tmp_path: Path):
+    """`FIN` recorded that a step ended and how long it took, and threw the
+    result away: which game was identified, which sprites were drawn, where
+    the release landed. Only failures survived, through the `ERROR` line."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-create-title").value = "Achieving"
+        app.action_create()
+        await pilot.pause()
+
+        app._run("Exporting", lambda: (True, "[green]Released[/green] releases/achieving.zip"))
+        for _ in range(100):
+            await pilot.pause()
+            if "Exporting" not in app.status_text:
+                break
+
+        diary = (tmp_path / "achieving" / "studio.log").read_text(encoding="utf-8")
+        finished = [line for line in diary.splitlines() if "  FIN " in line]
+        assert finished, diary
+        assert "ok en" in finished[-1]
+        assert "releases/achieving.zip" in finished[-1]
+        # And Rich markup does not leak into a file read in a pager.
+        assert "[green]" not in diary
+
+
+@pytest.mark.asyncio
+async def test_a_confirmation_does_not_survive_walking_to_another_step(tmp_path: Path):
+    """Arming `sprites` and coming back to it -- Enter, →, Esc, Enter -- read
+    the second press as confirming the first, which redraws existing art and
+    spends money on one press."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-create-title").value = "Armed"
+        app.action_create()
+        await pilot.pause()
+        app.passed = {"proyecto", "referencia", "diseño"}
+        app._refresh_wizard()
+        await pilot.pause()
+
+        app._pending_confirm = "sprites"
+        app._confirm_step = "sprites"
+
+        app.action_advance()  # on to programa
+        await pilot.pause()
+        assert app._pending_confirm is None
+
+        app._step_back()  # and back to sprites
+        await pilot.pause()
+        assert app._pending_confirm is None, "the old answer confirmed a new question"
+
+
+@pytest.mark.asyncio
+async def test_repeating_a_step_that_never_asks_leaves_no_answer_lying_around(tmp_path: Path):
+    """`action_repeat` pre-answered the overwrite question for every step,
+    including the four that never ask it."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-create-title").value = "Repeated"
+        app.action_create()
+        await pilot.pause()
+        app.passed = {"proyecto", "referencia"}
+        app._refresh_wizard()
+        await pilot.pause()
+
+        app.action_repeat()  # arms the "press R again" question
+        app.action_repeat()  # answers it: diseño is redone
+        await pilot.pause()
+
+        # diseño does not ask before overwriting anything, so nothing is left
+        # armed behind it.
+        assert app._pending_confirm is None
+
+
+@pytest.mark.asyncio
+async def test_looking_at_the_design_panel_is_not_an_event(tmp_path: Path):
+    """Opening the design panel and closing it again without typing wrote a
+    `GUARDAR` line and archived a revision, because `_apply` marks a project
+    edited whatever it is handed. A save that saved nothing is not an event --
+    the rule `_save_and_log` already states, reached here by another road."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        app.query_one("#f-create-title").value = "Untouched"
+        app.action_create()
+        await pilot.pause()
+
+        diary = tmp_path / "untouched" / "studio.log"
+        before = diary.read_text(encoding="utf-8").count("GUARDAR")
+        revisions = tmp_path / "untouched" / ".llmz80" / "revisions"
+        kept = len(list(revisions.glob("*.yml"))) if revisions.is_dir() else 0
+
+        await pilot.press("g")
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert diary.read_text(encoding="utf-8").count("GUARDAR") == before
+        after = len(list(revisions.glob("*.yml"))) if revisions.is_dir() else 0
+        assert after == kept
+
+        # And typing in it still saves on the way out.
+        await pilot.press("g")
+        await pilot.pause()
+        app.query_one("#f-brief").text = "Four ghosts."
+        await pilot.press("escape")
+        await pilot.pause()
+        assert diary.read_text(encoding="utf-8").count("GUARDAR") == before + 1
+        assert app.service.open_project(tmp_path / "untouched").metadata.brief == "Four ghosts."

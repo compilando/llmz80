@@ -731,3 +731,63 @@ working looked exactly like one that had hung.
   "Saved"), and the panel and `studio.log` agree line for line -- with one
   stated exception that cannot be otherwise: the workspace banner at mount,
   written before any project exists to own a diary.
+
+## 2026-08-14 (L): the keys the screen prints, and the ones it does not
+
+A review of (K) found the same family of fault three more times, all of it the
+gap between what the screen says a key does and what the key does.
+
+- `→` stayed bound while a panel covered the screen. A press meant for the map
+  cursor left a pipeline step behind and wrote `OMITIR` for a decision nobody
+  made -- and the spec assigns the arrows to moving that cursor, so anyone
+  following the documentation triggered it on the first press. The cause was
+  that a key was described in three places at once (`BINDINGS`, the `on_key`
+  cascade, and the label `render_step_summary` composes), and they had already
+  drifted. `App.check_action` collapses two of the three: Textual asks it
+  before firing a binding *and* before drawing that binding in the Footer, so
+  one rule -- a panel is a mode, and in a mode only `Esc` and `Q` survive --
+  now settles both what the keyboard does and what the bar advertises. The
+  third is not a rival: `render_step_summary` only ever draws on the resting
+  screen, which is exactly when those keys are live. Splitting `tui.py` so
+  that dispatch and label came from one table per context would be the fuller
+  answer and is not this branch's work.
+- The arrows now move the cursor in the map editor, as the spec promises and
+  as `wasd` already did.
+- `#map-hint` fell off the bottom of an 80x24 screen under a 14-row map, so
+  the editor opened saying nothing about how to work it or how to leave. It
+  sits above the grid now. The test that covered it was green by accident: it
+  read `query_one("#map-hint").render()`, which renders whether or not the
+  compositor ever puts it on screen, and ran at 120x40 where it was invisible
+  too. Panel-label tests now read the compositor at 80x24.
+- Textual delivers Shift+R as the key `"R"`, which the `"r"` binding does not
+  match, so `[R] repetir` and `[A] adaptar` were printed in capitals and
+  answered only in lower case, silently. Both are bound in both cases now.
+- The diary kept every failure and threw away every success. `Journal.finish`
+  has taken a `text` since it was written -- the spec even shows the line it
+  makes -- and no caller in production passed one. It carries the result now:
+  which game was identified, which sprites were drawn, where the release
+  landed. Accepting or discarding an adaptation is written down too; it is a
+  decision about the design, and it used to be said only on screen.
+- The design panel had the same fault the creation panel had: nothing focused,
+  no key named, and letters typed into it read as panel keys -- `g` closed it,
+  `s` opened sprites -- so the brief could not be edited without guessing
+  `Tab`. Every panel with something to aim at now focuses it on opening.
+- A pending overwrite confirmation outlived the step that asked for it, so
+  `Enter, →, Esc, Enter` on `sprites` destroyed existing art and spent money on
+  a single press. Confirmations die when the wizard changes step, and
+  `action_repeat` only pre-answers for the two steps that ask.
+- `screen.next_step` was deleted rather than kept: nothing called it, and it
+  answered "what happens next" from the stages alone while `wizard.current`
+  answers it from the stages and from what the person has walked past. Two
+  functions for one question is the drift `wizard`'s own docstring warns
+  about, and the surviving one is the one the screen actually uses.
+- Pinned by tests that did not exist: creation on 80x24 end to end, every
+  panel's instructions read off the screen rather than off the widget, a panel
+  switching off the keys that would move behind it, the capitals answering,
+  the three slow steps handing `on_progress` to their service, `FIN` carrying
+  what a step achieved, and a confirmation dying with its step.
+- Two things deliberately left alone, both real and both bigger than the end
+  of a branch: `tui.py` is long enough that dispatch, layout and the pipeline
+  steps want separating, and the interface mixes Spanish and English within a
+  single screen (`Paso 2 de 6` above `wasd move`, `Brief` beside `[Esc] guarda
+  y vuelve`). Neither should be done hurriedly.

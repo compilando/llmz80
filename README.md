@@ -794,22 +794,27 @@ the researched game as one diff you accept or discard, and is offered only once
 research has archived a dossier to adapt to.
 
 The diary sits underneath all of it and is never hidden: what Studio did, when,
-and how long it took. Everything the screen says once a project is open goes
-through it -- the same string on screen and in `<project>/studio.log`, not two
-renderings of one event -- so a session that skipped, saved, was refused or
-failed overnight can still be read the next morning. The single line that is in
-no file is the opening one naming the workspace: at that point there is no
-project to own a diary.
+how long it took, and what came of it. Everything the screen says once a
+project is open the file keeps -- as its own line, or, for the result of a
+long job, folded into the `FIN` line that closes the work, since a diary is
+read by scanning its left margin. So a session that skipped, saved, adapted,
+was refused or failed overnight can still be read the next morning. The single
+line that is in no file is the opening one naming the workspace: at that point
+there is no project to own a diary.
 
-Step 0's own panel -- picking a project, or starting one -- names its keys too:
-the title field is focused when it opens, `Tab` moves between fields, `Enter`
-creates the project from any of them, `Esc` closes without creating anything.
-The whole panel fits an 80x24 terminal.
+A panel is a mode, and while one is open the wizard's keys stand down -- `→`
+cannot walk past a step you cannot see. `Esc` is what leaves any panel, saving
+what was typed or drawn in it, and every panel names the keys that work inside
+it. Each opens with its first field already focused, so typing is typing and
+not a shortcut misfiring.
 
-`g` design, `m` map, `e` entities, `s` sprites, `d` diff open a panel over the
-resting screen, one at a time. On the Map panel, `wasd` moves the cursor,
-`space` toggles a wall, `m` moves the selected spawn, `+/-` change an entity
-count, and `esc` saves and returns.
+`g` design, `m` map, `e` entities, `s` sprites, `d` diff open one over the
+resting screen, one at a time. Step 0's own panel -- picking a project, or
+starting one -- is the same idea: `Tab` moves between fields, `Enter` creates
+the project from any of them, `Esc` closes without creating anything. On the
+Map panel, the arrow keys or `wasd` move the cursor, `space` toggles a wall,
+`m` moves the selected spawn, `+/-` change an entity count. Every panel fits an
+80x24 terminal.
 
 ### Headless
 

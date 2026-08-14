@@ -50,27 +50,6 @@ class Stage:
 STAGE_NAMES = ("referencia", "diseño", "sprites", "programa", "gates", "release")
 
 
-def next_step(stages: list[Stage]) -> Stage | None:
-    """The stage most worth fixing or trying next, or `None` once every
-    stage is `done`.
-
-    A failed stage already blocks the pipeline and its own detail already
-    says why (see `_design_stage`, `_program_stage` and friends) -- so the
-    earliest failure, in pipeline order, wins over any later pending stage:
-    there is nothing to gain from pointing at "draw sprites" while the
-    design itself is broken. Absent any failure, the earliest stage still
-    pending is simply what happens next on the ordinary path through the
-    pipeline. This mirrors `tui.pick_stage_detail`'s own priority (failed
-    before done) for the same reason: the two are read together, one
-    naming what is wrong or already achieved, the other naming the single
-    key that moves past it.
-    """
-    failed = next((stage for stage in stages if stage.state == "failed"), None)
-    if failed is not None:
-        return failed
-    return next((stage for stage in stages if stage.state == "pending"), None)
-
-
 def stage_line(project: GameProject | None, directory: Path | None) -> list[Stage]:
     """The six-stage status line for `project`, or nothing without one.
 
