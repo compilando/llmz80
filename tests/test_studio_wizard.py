@@ -47,14 +47,16 @@ def test_a_broken_design_reads_as_failed_and_says_why(tmp_path):
     assert step.detail
 
 
-def test_a_step_walked_past_without_being_done_reads_as_skipped(tmp_path):
-    """The one state disk cannot answer: nothing writes down a decision to
-    walk past a step, so it can only ever be told."""
-    project = blank_project("Skipped", TargetPlatform.SPECTRUM)
+def test_every_state_is_evidence_and_nothing_is_remembered(tmp_path):
+    """There is no state a caller can assert into a step. `skipped` was the
+    one -- a person walking past a step on purpose -- and nothing decides
+    that any more, so two readers of one project cannot disagree."""
+    project = blank_project("Evidence", TargetPlatform.SPECTRUM)
 
-    walked = steps(project, tmp_path, passed={"proyecto", "referencia"})
-
-    assert next(s for s in walked if s.name == "referencia").state == "skipped"
+    assert [step.state for step in steps(project, tmp_path)] == [
+        step.state for step in steps(project, tmp_path)
+    ]
+    assert {step.state for step in steps(project, tmp_path)} <= {"done", "pending", "failed"}
 
 
 def test_a_step_keeps_its_id_and_carries_a_label_of_its_own(tmp_path):
@@ -86,8 +88,8 @@ def test_a_step_keeps_its_id_and_carries_a_label_of_its_own(tmp_path):
 
 
 def test_a_step_carries_nothing_a_wizard_would_have_needed():
-    """What each key did, what it cost and whether it could be skipped went
-    with the wizard that named them."""
+    """What each key did, what it cost and whether a person could walk past
+    it went with the wizard that named them."""
     fields = set(steps(None, None)[0].__dataclass_fields__)
 
     assert fields == {"name", "title", "number", "state", "detail"}

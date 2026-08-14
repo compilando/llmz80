@@ -299,7 +299,7 @@ def test_sprites_asks_before_overwriting_existing_art(opened):
     service, project, directory = opened
     pipeline.sprites(service, project, directory, _FakeArtist())
     project = service.open_project(directory)
-    existing = pipeline.drawn_already(project)
+    existing = pipeline._drawn_already(project)
     assert existing
 
     declined = _FakeArtist()
@@ -320,12 +320,12 @@ def test_what_counts_as_already_drawn_is_what_draw_sprites_would_draw(opened):
     wants its own, which is the id the art is registered under. Asking the
     question any other way lets the guard miss art that is really there."""
     service, project, directory = opened
-    assert pipeline.drawn_already(project) == []
+    assert pipeline._drawn_already(project) == []
 
     pipeline.sprites(service, project, directory, _FakeArtist())
     project = service.open_project(directory)
 
-    assert pipeline.drawn_already(project) == [
+    assert pipeline._drawn_already(project) == [
         entity.sprite or entity.id for entity in project.entities
     ]
 

@@ -184,7 +184,7 @@ def adapt(
     return updated
 
 
-def drawn_already(project: GameProject) -> list[str]:
+def _drawn_already(project: GameProject) -> list[str]:
     """The sprite ids this project already has art for.
 
     `entity.sprite or entity.id` is the id `draw_sprites` itself draws under
@@ -216,7 +216,7 @@ def sprites(
     stays and only the gaps are filled: a caller with nobody to ask must not
     destroy artwork on its own authority.
     """
-    existing = drawn_already(project)
+    existing = _drawn_already(project)
     if existing and confirm is not None:
         if not confirm(", ".join(existing)):
             raise Declined("the existing art was kept")

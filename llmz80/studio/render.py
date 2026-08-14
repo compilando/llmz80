@@ -30,12 +30,14 @@ from . import wizard
 from .journal import parse
 from .screen import Stage
 
-#: One character per `screen.StageState`, plus the one state only the
-#: wizard knows about (`skipped`: walked past on purpose, and not coming
-#: back). Drawn plain for `status_text`, which tests and scripts read as a
-#: string, and wrapped in colour markup only for the widget a person looks at.
-STAGE_ICON = {"done": "✓", "pending": "—", "failed": "✗", "skipped": "»"}
-STAGE_COLOR = {"done": "green", "pending": "dim", "failed": "red", "skipped": "yellow"}
+#: One character per `screen.StageState`, and no more: those three are every
+#: state a stage can be in, because every one of them is read off evidence.
+#: (There was a fourth, `skipped`, for a step a person walked past on purpose;
+#: nothing decides that any more.) Drawn plain for `status_text`, which tests
+#: and scripts read as a string, and wrapped in colour markup only for the
+#: widget a person looks at.
+STAGE_ICON = {"done": "✓", "pending": "—", "failed": "✗"}
+STAGE_COLOR = {"done": "green", "pending": "dim", "failed": "red"}
 
 #: The characters left of the brief preview's one line, before it is cut off
 #: with an ellipsis. Chosen to comfortably fit a typical terminal width
@@ -52,9 +54,9 @@ def render_stage_marks(stages: Sequence[Stage | wizard.Step], *, colour: bool) -
     `colour` picks Rich markup (for the widget a person reads) or plain text
     (for `status_text`, so a test can search it without stripping markup).
     A pure function over `screen.stage_line`'s own output -- or over
-    `wizard.steps`'s, which carries the same two fields plus the `skipped`
-    state -- kept apart from the widget so it can be read, and tested,
-    without a running application.
+    `wizard.steps`'s, which carries the same two fields under a title --
+    kept apart from the widget so it can be read, and tested, without a
+    running application.
     """
     parts = []
     for stage in stages:

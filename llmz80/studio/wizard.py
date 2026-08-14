@@ -20,35 +20,38 @@ that key spent money, and whether a person could edit or skip the step --
 `can_leave_behind` decided the last of those. All of it was a wizard naming
 its keys, and there is no wizard: `llmz80 make` runs the whole order and the
 screen watches it.
+
+For the same reason there is no `skipped` state and no `passed` argument to
+carry one. A step was skipped when a person decided to walk past it, and
+nothing writes that decision anywhere -- it lived in the session that made
+it. So every state here is `screen.StageState`, read off evidence and
+nothing else. If a human decision ever re-enters the pipeline it will be a
+different decision with a shape of its own, and keeping this one's empty
+socket would not help it fit.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Iterable, Literal
 
 from .models import GameProject
-from .screen import stage_line
-
-#: `screen.StageState` plus the one state a stage cannot know about itself:
-#: that the person decided to go past it.
-StepState = Literal["done", "pending", "failed", "skipped"]
+from .screen import StageState, stage_line
 
 
 @dataclass(frozen=True)
 class Step:
-    #: The stage's id, and never a label: `screen.stage_line` produces it,
-    #: `passed` holds it and the diary records it. Two fields rather than one
-    #: because a single one had to be both, and lost: the interface reads
-    #: English and showed `diseño`.
+    #: The stage's id, and never a label: `screen.stage_line` produces it and
+    #: the diary records it. Two fields rather than one because a single one
+    #: had to be both, and lost: the interface reads English and showed
+    #: `diseño`.
     name: str
     #: What a person reads where this step is named, on the progress strip.
     #: Translating this translates the screen; translating `name` would
     #: rename the stage.
     title: str
     number: int
-    state: StepState
+    state: StageState
     detail: str = ""
 
 
@@ -57,11 +60,11 @@ class Step:
 #:
 #: The title is what a person reads, and it is English like the rest of the
 #: interface. The *name* is not prose: it is the id `screen.stage_line`
-#: writes, `passed` holds and the diary records, and renaming it would be
-#: renaming the stage rather than translating a label. That is why every
-#: entry carries both -- and why the diary goes on writing the name: a log
-#: that translates is a log that cannot be searched, and a `studio.log` begun
-#: in one language and continued in another is a log nobody can read.
+#: writes and the diary records, and renaming it would be renaming the stage
+#: rather than translating a label. That is why every entry carries both --
+#: and why the diary goes on writing the name: a log that translates is a log
+#: that cannot be searched, and a `studio.log` begun in one language and
+#: continued in another is a log nobody can read.
 _PIPELINE: tuple[tuple[str, str], ...] = (
     ("referencia", "Reference"),
     ("diseño", "Design"),
@@ -78,28 +81,20 @@ _PIPELINE: tuple[tuple[str, str], ...] = (
 _PROJECT_STEP = Step(number=0, name="proyecto", title="Project", state="pending")
 
 
-def steps(
-    project: GameProject | None,
-    directory: Path | None,
-    passed: Iterable[str] = (),
-) -> list[Step]:
+def steps(project: GameProject | None, directory: Path | None) -> list[Step]:
     """The seven steps, in order, with the state each one is in right now.
 
-    `passed` is the one thing disk cannot answer: a step walked past on
-    purpose is `skipped` rather than `pending`, and nothing writes that
-    decision down. Both callers leave it out today -- `make` runs every stage
-    and the screen only watches -- so every state below is read off evidence.
+    Every state is evidence: what `stage_line` found on disk, plus the one
+    thing it does not look for, which is whether there is a project at all.
+    Nothing is remembered between calls, so two readers of the same project
+    -- the order doing the work and the screen watching it -- cannot disagree
+    about where it stands.
     """
-    left_behind = set(passed)
     stages = {stage.name: stage for stage in stage_line(project, directory)}
     walked = [replace(_PROJECT_STEP, state="done" if project is not None else "pending")]
     for number, (name, title) in enumerate(_PIPELINE, start=1):
         stage = stages.get(name)
-        state: StepState = stage.state if stage is not None else "pending"
-        #: Left behind without being done is what "skipped" means; left behind
-        #: after being done is just having moved on, and says nothing extra.
-        if name in left_behind and state == "pending":
-            state = "skipped"
+        state: StageState = stage.state if stage is not None else "pending"
         walked.append(
             Step(
                 number=number,
