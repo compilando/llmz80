@@ -1,24 +1,26 @@
+import ast
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from llmz80.studio import editing
+from llmz80.studio import editing, render
 from llmz80.studio.models import TargetPlatform
 from llmz80.studio.planner import ProjectChange, ProjectProposal
 from llmz80.studio.reference import GameReference, ReferenceSource
-from llmz80.studio.samples import blank_project
-from llmz80.studio.screen import Stage
-from llmz80.studio.spriting import SPRITE_SIZE
-from llmz80.studio.tui import (
-    StudioApp,
+from llmz80.studio.render import (
     brief_preview,
     pick_stage_detail,
     render_map,
     render_stage_marks,
     render_step_head,
     render_step_summary,
+    render_tile_legend,
 )
+from llmz80.studio.samples import blank_project
+from llmz80.studio.screen import Stage
+from llmz80.studio.spriting import SPRITE_SIZE
+from llmz80.studio.tui import StudioApp
 
 
 @pytest.mark.asyncio
@@ -35,7 +37,7 @@ async def test_creating_a_project_fills_the_editor(tmp_path: Path):
         # A freshly created default project fits its target machine, which
         # is the six-stage line's "diseño" (design) stage reading done --
         # the direct replacement for the old one-line "ready" verdict.
-        assert "diseño ✓" in app.status_text
+        assert "Design ✓" in app.status_text
 
 
 @pytest.mark.asyncio
@@ -80,6 +82,23 @@ async def test_a_refused_edit_warns_instead_of_crashing(tmp_path: Path):
         assert app.project.metadata.title == before
 
 
+def test_render_composes_the_screen_without_importing_textual():
+    """The property that makes `render.py` worth having as its own module.
+
+    Every function in it is text over plain data, so none of them may reach
+    for a widget: that is what lets the map, the wizard's summary and the
+    brief preview be tested by calling them, with no application running.
+    Read off the module's own import statements rather than off
+    `sys.modules`, which any other test importing Textual would pollute.
+    """
+    tree = ast.parse(Path(render.__file__).read_text())
+    imported = [
+        name.name for node in ast.walk(tree) if isinstance(node, ast.Import) for name in node.names
+    ] + [node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
+
+    assert not [module for module in imported if module.split(".")[0] == "textual"]
+
+
 def test_render_map_draws_terrain_spawns_and_cursor():
     project = blank_project("Map", TargetPlatform.SPECTRUM)
     screen = project.screens[0]
@@ -97,6 +116,75 @@ def test_render_map_draws_terrain_spawns_and_cursor():
     # is the first letter of the entity's own `kind`, uppercased; the blank
     # project's one entity has kind="actor".
     assert plain[actor.row][actor.col] == "A"
+
+
+def _with_a_ladder(project):
+    """`project` plus a third tile it declares for itself, and uses.
+
+    The case the editor could not draw: a wall, a floor and a ladder the
+    design coined for itself, like `fase-uno`'s. `H` goes down a column of
+    the interior that no spawn stands on, so the design still validates.
+    Returns the project and the column the ladder occupies.
+    """
+    from llmz80.studio.models import TileSpec
+
+    screen = project.screens[0]
+    taken = {(spawn.col, spawn.row) for spawn in screen.spawns}
+    column = next(
+        col
+        for col in range(1, screen.width - 1)
+        if all((col, row) not in taken for row in range(1, screen.height - 1))
+    )
+    rows = list(screen.tiles)
+    for row in range(1, screen.height - 1):
+        rows[row] = rows[row][:column] + "H" + rows[row][column + 1 :]
+    document = project.model_dump(mode="json")
+    document["tiles"].append(
+        TileSpec(id="escalera", char="H", traits=["climbable"]).model_dump(mode="json")
+    )
+    document["screens"][0]["tiles"] = rows
+    return type(project).model_validate(document), column
+
+
+def _three_tile_project(title: str = "Ladders"):
+    return _with_a_ladder(blank_project(title, TargetPlatform.SPECTRUM))
+
+
+def test_render_map_draws_every_tile_the_design_declares():
+    """A design with three tiles used to show two: everything that was not the
+    solid character was painted with the same floor dot, so the ladder this
+    design declares could be neither seen nor told apart from the floor."""
+    project, column = _three_tile_project()
+    screen = project.screens[0]
+
+    plain = [
+        line.replace("[reverse]", "").replace("[/reverse]", "")
+        for line in render_map(project, 0, (0, 0)).splitlines()
+    ]
+
+    # Three declared tiles, three different glyphs on the grid.
+    drawn = {char for line in plain for char in line}
+    assert {"▓", ".", "H"} <= drawn
+    # And the ladder is where `game.yml` says it is, row for row.
+    for row in range(1, screen.height - 1):
+        assert plain[row][column] == "H", row
+
+
+def test_render_tile_legend_names_every_declared_tile_by_its_id():
+    """A glyph nobody can name is visible, not identifiable -- and the point
+    is to edit the map, not to look at it."""
+    project, _column = _three_tile_project()
+
+    legend = render_tile_legend(project, selected="H")
+
+    for tile in project.tiles:
+        assert tile.id in legend, tile.id
+    assert "▓ wall" in legend
+    assert ". floor" in legend
+    # The selected tile -- the one `space` paints -- is marked twice: reverse
+    # video for the eye, and `▸` for anything reading the line as text.
+    assert "[reverse]▸H escalera[/reverse]" in legend
+    assert "▸. floor" not in legend
 
 
 def test_render_map_marks_the_cursor_wherever_it_sits():
@@ -174,7 +262,7 @@ async def test_the_brief_is_saved_and_reaches_the_prompt(tmp_path: Path):
 
 def test_render_stage_marks_shows_one_icon_per_stage():
     stages = [
-        Stage("referencia", "done", "Zampa Bolas (System 4, 1990) · 8 fuentes"),
+        Stage("referencia", "done", "Zampa Bolas (System 4, 1990) · 8 sources"),
         Stage("diseño", "done"),
         Stage("sprites", "failed", "0/2 accepted by the blitter"),
         Stage("programa", "pending"),
@@ -221,7 +309,7 @@ def test_render_step_head_says_where_in_the_pipeline_you_are():
     project = blank_project("Placed", TargetPlatform.SPECTRUM)
     step = current(project, None, passed={"proyecto"})
 
-    assert render_step_head(step) == "Paso 1 de 6: referencia"
+    assert render_step_head(step) == "Step 1 of 6: Reference"
 
 
 def test_render_step_summary_names_the_key_and_warns_about_the_bill():
@@ -230,11 +318,11 @@ def test_render_step_summary_names_the_key_and_warns_about_the_bill():
     project = blank_project("Costly", TargetPlatform.SPECTRUM)
     summary = render_step_summary(current(project, None, passed={"proyecto"}))
 
-    assert "[Enter] investigar" in summary
-    assert "gasta dinero" in summary
+    assert "[Enter] research" in summary
+    assert "spends money" in summary
     # Research is optional to the pipeline, so the key that walks past it is
     # offered too -- and only where it would actually be allowed.
-    assert "[→] omitir" in summary
+    assert "[→] skip" in summary
 
 
 def test_render_step_summary_never_offers_to_skip_what_cannot_be_skipped():
@@ -244,7 +332,7 @@ def test_render_step_summary_never_offers_to_skip_what_cannot_be_skipped():
     step = current(project, None, passed={"proyecto", "referencia", "diseño", "sprites"})
 
     assert step.name == "programa"
-    assert "[→] omitir" not in render_step_summary(step)
+    assert "[→] skip" not in render_step_summary(step)
 
 
 def test_render_step_summary_of_a_finished_step_offers_to_repeat_it():
@@ -263,7 +351,7 @@ def test_render_step_summary_of_a_finished_step_offers_to_repeat_it():
 
     assert not step.editable
     summary = render_step_summary(step)
-    assert "[R] repetir" in summary
+    assert "[R] repeat" in summary
     assert "[Enter]" not in summary
 
 
@@ -281,10 +369,10 @@ def test_render_step_summary_of_a_finished_editable_step_still_names_enter():
 
     assert step.name == "diseño" and step.state == "done" and step.editable
     summary = render_step_summary(step)
-    assert "[Enter] editar" in summary
+    assert "[Enter] edit" in summary
     # And still the rest of what a resolved step offers.
-    assert "[→] siguiente paso" in summary
-    assert "[R] repetir" in summary
+    assert "[→] next step" in summary
+    assert "[R] repeat" in summary
 
 
 @pytest.mark.asyncio
@@ -471,10 +559,10 @@ async def test_the_wizard_names_the_step_and_moves_on_once_it_is_done(tmp_path: 
 
         # A brand new project: research is where the wizard stands, and the
         # screen says so in words rather than naming a key to memorise.
-        assert "Paso 1 de 6: referencia" in app.query_one("#wizard-head").content
+        assert "Step 1 of 6: Reference" in app.query_one("#wizard-head").content
         summary = app.query_one("#wizard-summary").content
-        assert "[Enter] investigar" in summary
-        assert "gasta dinero" in summary
+        assert "[Enter] research" in summary
+        assert "spends money" in summary
 
         fake = _FakeResearcher(title="Real Game")
         app.researcher = fake
@@ -487,7 +575,7 @@ async def test_the_wizard_names_the_step_and_moves_on_once_it_is_done(tmp_path: 
         # Researched: the step it just did is behind it, and the wizard has
         # moved on to the next one on its own.
         assert "referencia" in app.passed
-        assert "Paso 2 de 6: diseño" in app.query_one("#wizard-head").content
+        assert "Step 2 of 6: Design" in app.query_one("#wizard-head").content
         # The dossier it found still names itself on the detail line.
         assert "Real Game" in app.query_one("#stage-detail").content
 
@@ -674,7 +762,7 @@ async def test_the_workspace_picker_lists_and_opens_a_project(tmp_path: Path):
 
         # No project open, so the wizard stands on step 0, and doing it is
         # what opens the picker -- there is no ctrl+o any more.
-        assert "Paso 0 de 6: proyecto" in app.status_text
+        assert "Step 0 of 6: Project" in app.status_text
         app.action_do()
         await pilot.pause()
 
@@ -821,7 +909,7 @@ async def test_research_reaches_the_service_and_the_stage_line_shows_it(tmp_path
         # No panel of its own: the result surfaces on the stage line's
         # "referencia" detail, the same place `screen.stage_line` already
         # names a dossier's title and source count for any project.
-        assert "referencia ✓" in app.status_text
+        assert "Reference ✓" in app.status_text
         assert "Zampa Bolas" in app.status_text
         assert app.active_panel != "diff" and app.active_panel != "sprites"
 
@@ -948,7 +1036,7 @@ async def test_a_step_that_failed_leaves_the_wizard_standing_on_it(tmp_path: Pat
 
         assert "referencia" not in app.passed
         diary = (app.project_dir / "studio.log").read_text(encoding="utf-8")
-        assert "FALLÓ" in diary
+        assert "FAILED" in diary
         assert "ERROR" in diary
 
 
@@ -1217,7 +1305,7 @@ async def test_the_right_arrow_leaves_a_step_behind(tmp_path):
         await pilot.pause()
         assert "referencia" in app.passed
         diary = (app.project_dir / "studio.log").read_text(encoding="utf-8")
-        assert "OMITIR" in diary
+        assert "SKIP" in diary
 
 
 @pytest.mark.asyncio
@@ -1299,7 +1387,7 @@ async def test_opening_a_project_points_the_diary_at_it(tmp_path):
         app.action_open(str(directory))
         await pilot.pause()
         assert app.journal is not None and app.journal.path.parent == directory
-        assert "ABRIR" in (directory / "studio.log").read_text(encoding="utf-8")
+        assert "OPEN" in (directory / "studio.log").read_text(encoding="utf-8")
 
 
 @pytest.mark.asyncio
@@ -1312,12 +1400,16 @@ async def test_leaving_the_editor_saves_and_says_so(tmp_path):
         app.passed = {"proyecto", "referencia"}
         app._refresh_wizard()
         await pilot.press("enter")  # entra al editor
+        await pilot.press("d", "s")  # a una celda interior
         await pilot.press("space")  # pinta una celda
         await pilot.press("escape")  # sale, y al salir guarda
         await pilot.pause()
         assert app.active_panel is None
         diary = (app.project_dir / "studio.log").read_text(encoding="utf-8")
-        assert "GUARDAR" in diary
+        assert "SAVE" in diary
+        # And says what it saved: naming the file told whoever reads this the
+        # next morning the one thing they already knew.
+        assert "1 cell painted" in diary
 
 
 @pytest.mark.asyncio
@@ -1340,7 +1432,7 @@ async def test_leaving_the_editor_untouched_writes_no_save_down(tmp_path):
         assert app.active_panel is None
         log = app.project_dir / "studio.log"
         diary = log.read_text(encoding="utf-8") if log.is_file() else ""
-        assert "GUARDAR" not in diary
+        assert "SAVE" not in diary
 
 
 @pytest.mark.asyncio
@@ -1364,7 +1456,7 @@ async def test_leaving_a_step_behind_saves_what_was_edited(tmp_path):
 
         assert "diseño" in app.passed
         diary = (app.project_dir / "studio.log").read_text(encoding="utf-8")
-        assert "GUARDAR" in diary
+        assert "SAVE" in diary
 
 
 @pytest.mark.asyncio
@@ -1422,7 +1514,7 @@ def test_the_design_step_names_the_adapt_key_only_where_it_works():
     design = current(project, None, passed={"proyecto", "referencia"})
     assert design.name == "diseño"
 
-    assert "[A] adaptar el diseño a la ficha" in render_step_summary(design, can_adapt=True)
+    assert "[A] adapt the design to the dossier" in render_step_summary(design, can_adapt=True)
     assert "[A]" not in render_step_summary(design)
 
 
@@ -1446,7 +1538,7 @@ async def test_the_design_step_offers_adapting_once_a_dossier_exists(tmp_path: P
 
         # No dossier archived: the key is not offered, and pressing it does
         # not start a proposal there is nothing to base on.
-        assert "[A] adaptar" not in app.status_text
+        assert "[A] adapt" not in app.status_text
         await pilot.press("a")
         await pilot.pause()
         assert reached == []
@@ -1456,7 +1548,7 @@ async def test_the_design_step_offers_adapting_once_a_dossier_exists(tmp_path: P
         app._refresh_wizard()
         await pilot.pause()
 
-        assert "[A] adaptar el diseño a la ficha" in app.status_text
+        assert "[A] adapt the design to the dossier" in app.status_text
         await pilot.press("a")
         await pilot.pause()
         assert reached == [True]
@@ -1479,7 +1571,7 @@ async def test_adapting_is_offered_in_no_other_step(tmp_path: Path):
         reached: list[bool] = []
         app._adapt = lambda: reached.append(True)
 
-        assert "[A] adaptar" not in app.status_text
+        assert "[A] adapt" not in app.status_text
         await pilot.press("a")
         await pilot.pause()
         assert reached == []
@@ -1571,7 +1663,7 @@ async def test_adapting_again_waits_for_the_pending_proposal_to_be_decided(tmp_p
 
 @pytest.mark.asyncio
 async def test_the_creation_panel_says_which_key_leaves_it(tmp_path: Path):
-    """`Esc` is on the footer as "Volver", which is not the same as saying
+    """`Esc` is on the footer as "Back", which is not the same as saying
     it closes the panel you are standing in without creating anything."""
     from llmz80.studio.tui import StudioApp
 
@@ -1678,7 +1770,7 @@ async def test_the_panels_name_their_keys_where_a_person_can_read_them(tmp_path:
         app._set_panel("map")
         await pilot.pause()
         shown = _on_screen(app)
-        for word in ("flechas", "wasd", "space", "+/-", "[Esc]"):
+        for word in ("arrows", "wasd", "space", "+/-", "[Esc]"):
             assert word in shown, (word, "map")
 
         # The design panel, where the brief is written.
@@ -1699,7 +1791,7 @@ async def test_a_panel_switches_off_the_wizard_keys_that_would_move_behind_it(
     tmp_path: Path,
 ):
     """`→` stayed live while a panel covered the screen, so a press meant for
-    the map cursor left a step behind and wrote `OMITIR` for a decision nobody
+    the map cursor left a step behind and wrote `SKIP` for a decision nobody
     made. `Esc` has to survive -- it is how a panel is left at all."""
     from llmz80.studio.tui import StudioApp
 
@@ -1722,7 +1814,7 @@ async def test_a_panel_switches_off_the_wizard_keys_that_would_move_behind_it(
         assert app.passed == before, "the wizard moved behind the editor"
         assert app.active_panel == "map"
         diary = (tmp_path / "modal" / "studio.log").read_text(encoding="utf-8")
-        assert "OMITIR" not in diary
+        assert "SKIP" not in diary
 
         # And the arrow did what the editor promises it does.
         assert app.cursor == (1, 0)
@@ -1735,7 +1827,7 @@ async def test_a_panel_switches_off_the_wizard_keys_that_would_move_behind_it(
 
 @pytest.mark.asyncio
 async def test_the_keys_the_screen_prints_in_capitals_answer_in_capitals(tmp_path: Path):
-    """`[R] repetir` and `[A] adaptar` are printed uppercase and answered only
+    """`[R] repeat` and `[A] adapt` are printed uppercase and answered only
     lowercase, which reads as an interface that ignores you."""
     from llmz80.studio.tui import StudioApp
 
@@ -1748,7 +1840,7 @@ async def test_the_keys_the_screen_prints_in_capitals_answer_in_capitals(tmp_pat
         app.passed = {"proyecto", "referencia"}
         app._refresh_wizard()
         await pilot.pause()
-        assert "[R] repetir" in app.status_text
+        assert "[R] repeat" in app.status_text
 
         # Shift+R reaches `action_repeat`, which asks before redoing a step.
         await pilot.press("R")
@@ -1821,7 +1913,7 @@ async def test_a_project_can_be_created_on_an_eighty_by_twentyfour_terminal(tmp_
 async def test_no_key_the_wizard_offers_falls_off_an_eighty_column_screen(tmp_path: Path):
     """The summary is where the keys are named, so it is the one line that
     must never be cut. Pinned at one row it fitted 120 columns and dropped
-    `[→] omitir` and the money warning off the right-hand edge of an 80, which
+    `[→] skip` and the money warning off the right-hand edge of an 80, which
     hid the key for walking past a step that spends money."""
     from llmz80.studio.tui import StudioApp
 
@@ -1837,7 +1929,7 @@ async def test_no_key_the_wizard_offers_falls_off_an_eighty_column_screen(tmp_pa
             await pilot.press("right")
             await pilot.pause()
             on_screen = " ".join(strip.text for strip in app.screen._compositor.render_strips())
-            for word in ("gasta", "dinero", "(API)", "omitir"):
+            for word in ("spends", "money", "(API)", "skip"):
                 if word in app.status_text:
                     assert word in on_screen, (word, app.status_text)
 
@@ -1876,8 +1968,8 @@ async def test_a_step_that_refuses_to_be_skipped_says_so_in_the_diary(tmp_path: 
         await pilot.pause()
 
         diary = (tmp_path / "refusing" / "studio.log").read_text(encoding="utf-8")
-        assert "AVISO" in diary
-        assert "programa: no se puede omitir" in diary
+        assert "WARN" in diary
+        assert "programa: cannot be skipped" in diary
         # And the wizard did not move.
         assert "programa" not in app.passed
 
@@ -1912,7 +2004,7 @@ async def test_the_diary_panel_and_studio_log_hold_the_same_lines(tmp_path: Path
         await pilot.pause()
 
         # And a piece of slow work, which is where the panel and the file
-        # drifted furthest: `_run` writes `INICIO`, the job's own result, and
+        # drifted furthest: `_run` writes `START`, the job's own result, and
         # `FIN`, and the middle one used to reach only the screen.
         app._run("Exporting", lambda: (True, "[green]Released[/green] releases/agreeing.zip"))
         for _ in range(100):
@@ -1927,17 +2019,17 @@ async def test_the_diary_panel_and_studio_log_hold_the_same_lines(tmp_path: Path
 
         written = (tmp_path / "agreeing" / "studio.log").read_text(encoding="utf-8").splitlines()
         assert written, "the diary wrote nothing"
-        assert any("  ABRIR   " in line for line in written)
-        assert any("  GUARDAR " in line for line in written)
-        assert any("  INICIO  " in line for line in written)
-        assert any("  FIN     " in line for line in written)
-        assert any("adaptación descartada" in line for line in written)
+        assert any("  OPEN    " in line for line in written)
+        assert any("  SAVE    " in line for line in written)
+        assert any("  START   " in line for line in written)
+        assert any("  END     " in line for line in written)
+        assert any("adaptation discarded" in line for line in written)
         # Everything the screen said, the file kept -- as its own line, or,
         # for a job's result, folded into the `FIN` line that closes the work
         # (which is where a several-line result belongs: a diary is read by
         # scanning its left margin). The one exception is the workspace
         # banner, which belongs to no project and so to no project's diary.
-        from llmz80.studio.tui import _summary
+        from llmz80.studio.render import _summary
 
         kept = "\n".join(written)
         extra = [message for message in said if _summary(message) not in kept]
@@ -2027,9 +2119,9 @@ async def test_the_diary_keeps_what_a_step_achieved_and_not_only_what_broke(tmp_
                 break
 
         diary = (tmp_path / "achieving" / "studio.log").read_text(encoding="utf-8")
-        finished = [line for line in diary.splitlines() if "  FIN " in line]
+        finished = [line for line in diary.splitlines() if "  END " in line]
         assert finished, diary
-        assert "ok en" in finished[-1]
+        assert "ok in" in finished[-1]
         assert "releases/achieving.zip" in finished[-1]
         # And Rich markup does not leak into a file read in a pager.
         assert "[green]" not in diary
@@ -2090,7 +2182,7 @@ async def test_repeating_a_step_that_never_asks_leaves_no_answer_lying_around(tm
 @pytest.mark.asyncio
 async def test_looking_at_the_design_panel_is_not_an_event(tmp_path: Path):
     """Opening the design panel and closing it again without typing wrote a
-    `GUARDAR` line and archived a revision, because `_apply` marks a project
+    `SAVE` line and archived a revision, because `_apply` marks a project
     edited whatever it is handed. A save that saved nothing is not an event --
     the rule `_save_and_log` already states, reached here by another road."""
     from llmz80.studio.tui import StudioApp
@@ -2103,7 +2195,7 @@ async def test_looking_at_the_design_panel_is_not_an_event(tmp_path: Path):
         await pilot.pause()
 
         diary = tmp_path / "untouched" / "studio.log"
-        before = diary.read_text(encoding="utf-8").count("GUARDAR")
+        before = diary.read_text(encoding="utf-8").count("SAVE")
         revisions = tmp_path / "untouched" / ".llmz80" / "revisions"
         kept = len(list(revisions.glob("*.yml"))) if revisions.is_dir() else 0
 
@@ -2112,7 +2204,7 @@ async def test_looking_at_the_design_panel_is_not_an_event(tmp_path: Path):
         await pilot.press("escape")
         await pilot.pause()
 
-        assert diary.read_text(encoding="utf-8").count("GUARDAR") == before
+        assert diary.read_text(encoding="utf-8").count("SAVE") == before
         after = len(list(revisions.glob("*.yml"))) if revisions.is_dir() else 0
         assert after == kept
 
@@ -2122,5 +2214,155 @@ async def test_looking_at_the_design_panel_is_not_an_event(tmp_path: Path):
         app.query_one("#f-brief").text = "Four ghosts."
         await pilot.press("escape")
         await pilot.pause()
-        assert diary.read_text(encoding="utf-8").count("GUARDAR") == before + 1
+        assert diary.read_text(encoding="utf-8").count("SAVE") == before + 1
         assert app.service.open_project(tmp_path / "untouched").metadata.brief == "Four ghosts."
+
+
+@pytest.mark.asyncio
+async def test_the_map_editor_paints_any_tile_the_design_declares(tmp_path: Path):
+    """`space` used to flip a cell between the solid and the open character,
+    which meant a design's third tile could be drawn on screen and still not
+    be paintable. `t` walks the declared tiles, `space` paints the selected
+    one, and the legend says which that is."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        app.query_one("#f-create-title").value = "Painter"
+        app.action_create()
+        await pilot.pause()
+        laddered, _column = _with_a_ladder(app.project)
+        app._apply(lambda: laddered)
+        await pilot.pause()
+
+        app._set_panel("map")
+        await pilot.pause()
+        # The selection starts on the design's own solid tile, so `space`
+        # goes on painting a wall for anyone who never presses `t`.
+        assert app.tile_char == "#"
+
+        # Walk the tiles: wall, floor, ladder -- in the order the design
+        # declares them, which is the order the legend prints.
+        await pilot.press("t")
+        await pilot.pause()
+        assert app.tile_char == "."
+        await pilot.press("t")
+        await pilot.pause()
+        assert app.tile_char == "H"
+
+        # An interior cell that is floor and holds no spawn.
+        await pilot.press("d", "d", "s", "s")
+        await pilot.pause()
+        assert app.cursor == (2, 2)
+        assert app.project.screens[0].tiles[2][2] == "."
+
+        await pilot.press("space")
+        await pilot.pause()
+
+        assert app.project.screens[0].tiles[2][2] == "H"
+        # And it went to disk with everything else the editor saves.
+        assert app.service.open_project(app.project_dir).screens[0].tiles[2][2] == "H"
+
+
+@pytest.mark.asyncio
+async def test_the_map_legend_names_the_tiles_on_an_eighty_column_screen(tmp_path: Path):
+    """Checked on what the compositor actually drew, not on what the widget
+    would render: this panel has twice been fixed for saying things that were
+    off the edge or below the fold of the smallest terminal anybody uses."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        app.query_one("#f-create-title").value = "Narrow Map"
+        app.action_create()
+        await pilot.pause()
+        laddered, _column = _with_a_ladder(app.project)
+        app._apply(lambda: laddered)
+        await pilot.pause()
+        app._set_panel("map")
+        await pilot.pause()
+
+        shown = _on_screen(app)
+        # Every declared tile is named, by the id its own design gave it.
+        for tile in app.project.tiles:
+            assert tile.id in shown, tile.id
+        # The whole grid is on screen too, all twenty columns of it -- a
+        # legend that fits by pushing the map off the edge is no fix.
+        assert "▓" * app.project.screens[0].width in shown
+        # And the panel keeps its own keys visible while saying all of it.
+        for word in ("wasd", "space", "[t]", "[Esc]"):
+            assert word in shown, word
+        # Nothing is drawn wider than the terminal.
+        assert all(strip.cell_length <= 80 for strip in app.screen._compositor.render_strips())
+
+
+@pytest.mark.asyncio
+async def test_a_save_says_what_changed_not_only_which_file(tmp_path: Path):
+    """`SAVE cave-runner/game.yml` named the file and nothing else, so a
+    wall painted by mistake and a map rebuilt from scratch left the same line
+    behind. Three different edits, three different lines."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        app.query_one("#f-create-title").value = "Told"
+        app.action_create()
+        await pilot.pause()
+        diary = app.project_dir / "studio.log"
+
+        # Terrain, from the map editor.
+        app._set_panel("map")
+        await pilot.pause()
+        await pilot.press("d", "d", "s", "s", "space")
+        await pilot.press("escape")
+        await pilot.pause()
+        assert "1 cell painted" in diary.read_text(encoding="utf-8").splitlines()[-1]
+
+        # The roster, which places a spawn on every screen as it goes.
+        app._apply(lambda: editing.add_entity(app.project, "ghost", "enemy", count=2))
+        app._note_saved()
+        await pilot.pause()
+        line = diary.read_text(encoding="utf-8").splitlines()[-1]
+        assert "1 entity added: ghost" in line
+        assert "2 spawns placed" in line
+
+        # And the scalar fields the design panel edits, named rather than
+        # quoted -- a brief runs to paragraphs and a diary line does not.
+        app.query_one("#f-title").value = "Told Again"
+        app.query_one("#f-brief").text = "Four ghosts. A big dot makes them edible."
+        app.action_save()
+        await pilot.pause()
+        line = diary.read_text(encoding="utf-8").splitlines()[-1]
+        assert "title changed" in line and "brief changed" in line
+        assert "ghosts" not in line
+
+
+@pytest.mark.asyncio
+async def test_the_screen_names_a_step_in_english_and_the_diary_records_its_id(
+    tmp_path: Path,
+):
+    """The last of the two languages: an otherwise English screen said `Step 2
+    of 6: diseño`, because one field was both the stage's id and its label.
+
+    The split has to fall this way round. The diary keeps the id: a line is a
+    record, and a `studio.log` whose words follow whatever language the
+    interface speaks can neither be searched nor read beside the lines written
+    before it.
+    """
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        app.query_one("#f-create-title").value = "Labelled"
+        app.action_create()
+        await pilot.pause()
+
+        # The head and the progress strip, in the interface's one language.
+        assert "Step 1 of 6: Reference" in app.query_one("#wizard-head").content
+        strip = app.query_one("#stage-line").content
+        for title in ("Project", "Reference", "Design", "Sprites", "Program"):
+            assert title in strip, title
+        for identifier in ("proyecto", "referencia", "diseño", "programa"):
+            assert identifier not in strip, identifier
+
+        # And the file, which is a record and stays in ids.
+        await pilot.press("right")  # skip research
+        await pilot.pause()
+        diary = (app.project_dir / "studio.log").read_text(encoding="utf-8")
+        assert "SKIP    1 referencia" in diary
+        assert "Reference" not in diary
+        # `passed` is keyed by the id too -- it is what `_actions` and
+        # `stage_line` agree on.
+        assert "referencia" in app.passed

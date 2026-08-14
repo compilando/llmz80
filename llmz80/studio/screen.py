@@ -110,7 +110,7 @@ def _reference_stage(directory: Path | None) -> Stage:
     return Stage(
         "referencia",
         "done",
-        f"{dossier.title} · {len(dossier.sources)} fuentes",
+        f"{dossier.title} · {len(dossier.sources)} sources",
     )
 
 

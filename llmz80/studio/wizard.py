@@ -28,8 +28,16 @@ StepState = Literal["done", "pending", "failed", "skipped"]
 
 @dataclass(frozen=True)
 class Step:
-    number: int
+    #: The stage's id, and never a label: `screen.stage_line` produces it,
+    #: `passed` holds it, `StudioApp._actions` keys on it and the diary
+    #: records it. Two fields rather than one because a single one had to be
+    #: both, and lost: the interface reads English and showed `diseño`.
     name: str
+    #: What a person reads where this step is named -- the wizard's head and
+    #: its progress strip. Translating this translates the screen; translating
+    #: `name` would rename the stage.
+    title: str
+    number: int
     summary: str
     action_label: str
     costs_api: bool
@@ -39,40 +47,52 @@ class Step:
     skippable: bool = False
 
 
-#: name, summary, action label, costs API, editable, skippable.
+#: name, title, summary, action label, costs API, editable, skippable.
+#:
+#: The title, the summary and the action label are what a person reads, and
+#: they are English like the rest of the interface. The *name* is not prose:
+#: it is the id `screen.stage_line` writes, `passed` holds, the diary records
+#: and `StudioApp._actions` keys on, and renaming it would be renaming the
+#: stage rather than translating a label. That is why every entry carries
+#: both -- and why the diary goes on writing the name: a log that translates
+#: is a log that cannot be searched, and a `studio.log` begun in one language
+#: and continued in another is a log nobody can read.
 #:
 #: `referencia` and `sprites` are skippable because they are optional in the
 #: pipeline itself, not as a convenience: a game need not be based on a real
 #: one, and a game without sprite art is drawn with characters. Demanding
 #: "done" from them would invent a requirement the pipeline does not have.
-_PIPELINE: tuple[tuple[str, str, str, bool, bool, bool], ...] = (
+_PIPELINE: tuple[tuple[str, str, str, str, bool, bool, bool], ...] = (
     (
         "referencia",
-        "Buscar el juego real en la web y archivar su ficha citada",
-        "investigar",
+        "Reference",
+        "Search the web for the real game and archive its cited dossier",
+        "research",
         True,
         False,
         True,
     ),
-    ("diseño", "Revisar y ajustar el diseño", "editar", False, True, False),
-    ("sprites", "Dibujar el arte que le falte a alguna entidad", "dibujar", True, False, True),
+    ("diseño", "Design", "Review and adjust the design", "edit", False, True, False),
+    ("sprites", "Sprites", "Draw the art any entity is missing", "draw", True, False, True),
     (
         "programa",
-        "Escribir el juego en C y repararlo contra el compilador",
-        "escribir",
+        "Program",
+        "Write the game in C and repair it against the compiler",
+        "write",
         True,
         False,
         False,
     ),
     (
         "gates",
-        "Compilar, ejecutar en el emulador y pasar las puertas",
-        "probar",
+        "Gates",
+        "Build it, run it in the emulator and pass the gates",
+        "test",
         False,
         False,
         False,
     ),
-    ("release", "Empaquetar el zip con su evidencia", "publicar", False, False, False),
+    ("release", "Release", "Package the zip with its evidence", "publish", False, False, False),
 )
 
 #: Step zero is the wizard's own: `stage_line` knows the six pipeline stages
@@ -82,8 +102,9 @@ _PIPELINE: tuple[tuple[str, str, str, bool, bool, bool], ...] = (
 _PROJECT_STEP = Step(
     number=0,
     name="proyecto",
-    summary="Elegir un proyecto del workspace, o crear uno nuevo",
-    action_label="abrir",
+    title="Project",
+    summary="Choose a project from the workspace, or start a new one",
+    action_label="open",
     costs_api=False,
     state="pending",
 )
@@ -98,7 +119,9 @@ def steps(
     left_behind = set(passed)
     stages = {stage.name: stage for stage in stage_line(project, directory)}
     walked = [replace(_PROJECT_STEP, state="done" if project is not None else "pending")]
-    for number, (name, summary, label, costs, editable, skippable) in enumerate(_PIPELINE, start=1):
+    for number, (name, title, summary, label, costs, editable, skippable) in enumerate(
+        _PIPELINE, start=1
+    ):
         stage = stages.get(name)
         state: StepState = stage.state if stage is not None else "pending"
         #: Left behind without being done is what "skipped" means; left behind
@@ -109,6 +132,7 @@ def steps(
             Step(
                 number=number,
                 name=name,
+                title=title,
                 summary=summary,
                 action_label=label,
                 costs_api=costs,
