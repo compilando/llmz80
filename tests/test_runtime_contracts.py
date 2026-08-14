@@ -97,3 +97,21 @@ void main(void) {
     output = result.stdout + result.stderr
     assert result.returncode == 0, output
     assert "warning 357" not in output
+
+
+def test_only_the_two_symbols_every_program_has_are_required():
+    """A puzzle with no score, no lives and no levels is still a program.
+
+    Requiring all five was the same rule as the fixed player/enemy/collectible
+    roles: it decided what kind of game this could be.
+    """
+    from llmz80.core.state_contract import REQUIRED_SYMBOLS
+
+    assert set(REQUIRED_SYMBOLS) == {"g_score", "g_state"}
+
+
+def test_no_symbol_meaning_points_at_a_field_v4_deleted():
+    from llmz80.core.state_contract import STATE_CONTRACT
+
+    for symbol in STATE_CONTRACT:
+        assert "the design states" not in symbol.meaning, symbol.name

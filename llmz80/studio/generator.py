@@ -32,7 +32,7 @@ PLATFORM_HEADER = (
     Path(__file__).resolve().parents[2] / "resources" / "studio_lib" / "common" / "platform.h"
 )
 
-#: Read once at import, mirroring BUILTIN_PACKS in packs.py: the header is
+#: Read once at import: the header is
 #: invariant across every writer attempt in the repair loop, and a missing or
 #: unreadable file should fail loudly at startup rather than surface deep
 #: inside write_program's blanket except as an indistinguishable "writer
@@ -94,9 +94,7 @@ class ProgramSources(BaseModel):
 
 
 class ProgramWriter(Protocol):
-    def write(
-        self, project: GameProject, feedback: str | None = None
-    ) -> ProgramSources: ...
+    def write(self, project: GameProject, feedback: str | None = None) -> ProgramSources: ...
 
 
 def writing_prompt(
@@ -135,9 +133,10 @@ under {project.budgets.static_data_bytes} bytes.
 
 Draw the game. The state contract is read from memory, but a program that
 updates its variables without putting anything on screen is not a game and
-is rejected: the screen after the scripted inputs is compared against the
-screen before them, and it must differ. Draw the playfield, the actors and
-the score, and redraw only what changed.
+is rejected: the emulated screen is captured while the program runs, it must
+not be blank, and two captures taken as the game advances must differ. Draw
+what this design declares -- its terrain, its entities, whatever its
+observables say a player can see -- and redraw only what changed.
 
 Write no build files, no Makefile and no prose outside code comments.
 """
@@ -168,9 +167,7 @@ def repair_prompt(
         for scenario in acceptance.get("scenarios", []):
             if scenario.get("passed"):
                 continue
-            lines.append(
-                f"  After holding {scenario['hold']} for {scenario['frames']} frames:"
-            )
+            lines.append(f"  After holding {scenario['hold']} for {scenario['frames']} frames:")
             for mismatch in scenario["mismatches"] or ["no reading arrived"]:
                 lines.append(f"    {mismatch}")
         lines.append("")
@@ -300,9 +297,7 @@ def write_program(
             return result
         program_dir = store_program(project, directory, sources)
         result.program_dir = program_dir
-        attempt = Attempt(
-            number=number, summary=sources.summary, files=sorted(sources.sources)
-        )
+        attempt = Attempt(number=number, summary=sources.summary, files=sorted(sources.sources))
         result.attempts.append(attempt)
 
         evidence = verify(project, directory)

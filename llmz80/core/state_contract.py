@@ -28,18 +28,31 @@ class StateSymbol:
     meaning: str
 
 
-#: Required symbols are the minimum any playable design must expose. Optional
-#: ones are probed when present and skipped when not, so a design that has no
-#: notion of, say, remaining objectives is not punished for lacking one.
+#: Only two symbols are required, because only two say something true of every
+#: program: a number it can put on screen and which screen is showing. Lives,
+#: levels and remaining objectives are notions some designs have and others do
+#: not; they are probed when present and skipped when not, so a puzzle with no
+#: score to lose and no level to reach is not failed for lacking them.
 STATE_CONTRACT: tuple[StateSymbol, ...] = (
     StateSymbol("g_score", 2, True, "current score; zero when a game begins"),
-    StateSymbol("g_lives", 1, True, "lives left; the design states the starting value"),
-    StateSymbol("g_level", 1, True, "current level, counting from one"),
     StateSymbol(
         "g_state",
         1,
         True,
         "0 title screen, 1 playing, 2 game over, 3 victory",
+    ),
+    StateSymbol(
+        "g_lives",
+        1,
+        False,
+        "attempts left, when the game has such a notion; the design's mechanics "
+        "say how many it starts with",
+    ),
+    StateSymbol(
+        "g_level",
+        1,
+        False,
+        "current level or screen number, counting from one, when the game " "advances through them",
     ),
     StateSymbol("g_remaining", 1, False, "objectives still to clear on this level"),
     StateSymbol("g_hiscore", 2, False, "best score of this session"),
@@ -85,7 +98,8 @@ scope with external linkage and exactly these names and types:
 
 {required}
 
-Declare these too when the game has the corresponding concept:
+Declare these too, and only these, when the game has the corresponding
+concept. A design with no such notion must not declare the symbol at all:
 
 {optional}
 
