@@ -266,7 +266,7 @@ python llm_z80.py --platform amstrad_cpc --populate-db
 make studio
 
 # Equivalente, eligiendo el directorio de proyectos
-.venv/bin/python -m llmz80.cli studio studio-projects
+.venv/bin/llmz80 studio studio-projects
 ```
 
 El asistente recorre el pipeline un paso cada vez: elegir o crear el proyecto
@@ -280,11 +280,11 @@ anotado, con su hora y su duración, en `<proyecto>/studio.log`.
 También existe un flujo reproducible para CI:
 
 ```bash
-.venv/bin/python -m llmz80.cli project validate studio-projects/my-game
-.venv/bin/python -m llmz80.cli project generate studio-projects/my-game
-.venv/bin/python -m llmz80.cli project build studio-projects/my-game
-.venv/bin/python -m llmz80.cli project test studio-projects/my-game
-.venv/bin/python -m llmz80.cli project release studio-projects/my-game
+.venv/bin/llmz80 project validate studio-projects/my-game
+.venv/bin/llmz80 project generate studio-projects/my-game
+.venv/bin/llmz80 project build studio-projects/my-game
+.venv/bin/llmz80 project test studio-projects/my-game
+.venv/bin/llmz80 project release studio-projects/my-game
 ```
 
 La asistencia IA de Studio usa Responses API con salidas estructuradas para
@@ -813,20 +813,20 @@ count, and `esc` saves and returns.
 
 ### Headless
 
-    .venv/bin/python -m llmz80.cli project types                    # kinds of game that exist, for inspiration
-    .venv/bin/python -m llmz80.cli project new ~/games "Cave Runner" spectrum \
+    .venv/bin/llmz80 project types                    # kinds of game that exist, for inspiration
+    .venv/bin/llmz80 project new ~/games "Cave Runner" spectrum \
         "The miner crosses ledges to reach the keys. Falling off costs a life."
 
     P=~/games/cave-runner/game.yml
-    .venv/bin/python -m llmz80.cli project validate $P              # the design, without building
-    .venv/bin/python -m llmz80.cli project contract $P              # what a program must satisfy
-    .venv/bin/python -m llmz80.cli project reference $P             # searches the web, archives the dossier
-    .venv/bin/python -m llmz80.cli project adapt $P                 # proposes a design diff, asks to apply
-    .venv/bin/python -m llmz80.cli project write $P                 # spends money: calls the API
-    .venv/bin/python -m llmz80.cli project sprites $P               # draws and previews sprite art, in the researched game's style
-    .venv/bin/python -m llmz80.cli project build $P
-    .venv/bin/python -m llmz80.cli project test $P                  # emulator, reading memory
-    .venv/bin/python -m llmz80.cli project release $P
+    .venv/bin/llmz80 project validate $P              # the design, without building
+    .venv/bin/llmz80 project contract $P              # what a program must satisfy
+    .venv/bin/llmz80 project reference $P             # searches the web, archives the dossier
+    .venv/bin/llmz80 project adapt $P                 # proposes a design diff, asks to apply
+    .venv/bin/llmz80 project write $P                 # spends money: calls the API
+    .venv/bin/llmz80 project sprites $P               # draws and previews sprite art, in the researched game's style
+    .venv/bin/llmz80 project build $P
+    .venv/bin/llmz80 project test $P                  # emulator, reading memory
+    .venv/bin/llmz80 project release $P
 
 Each step runs what precedes it, so `test` builds and `release` refuses unless
 every gate passed. Exit codes are 0 or 1, so they compose in CI.
