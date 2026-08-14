@@ -1003,6 +1003,15 @@ class StudioApp(App[None]):
         offers where it works, so pressing it elsewhere is a question worth
         an answer.
         """
+        if self._pending_proposal is not None:
+            # A proposal is already on the table and costs nothing more to
+            # decide; asking for another would spend money at the API to
+            # replace an answer nobody has read yet.
+            self.notify(
+                "Hay una propuesta sin decidir: [y] aplicarla, [n] descartarla",
+                severity="warning",
+            )
+            return
         if not self._adaptable:
             self.notify(
                 "Adaptar el diseño a la ficha sólo se puede en el paso diseño, "
@@ -1172,6 +1181,9 @@ class StudioApp(App[None]):
             "Proposing an adaptation with the OpenAI API",
             job,
             on_finished=self._show_pending_proposal,
+            # A proposal is not the design step finished: nothing is applied
+            # until [y], and the person may well go on editing afterwards.
+            leaves_behind=False,
         )
 
     def _draw_sprites(self) -> None:
@@ -1305,7 +1317,7 @@ class StudioApp(App[None]):
 
         return say
 
-    def _run(self, label: str, job, *, on_finished=None) -> None:
+    def _run(self, label: str, job, *, on_finished=None, leaves_behind: bool = True) -> None:
         """Run a slow job off the UI thread and report it as it finishes.
 
         Building takes seconds and a runtime test takes tens of them. Run on the
@@ -1323,6 +1335,11 @@ class StudioApp(App[None]):
         been logged and the wizard redrawn -- adapt and draw-sprites use it to
         open the panel their result belongs in (diff, sprites respectively)
         without teaching this generic runner anything about either.
+
+        `leaves_behind` is what tells a step's own work apart from work done
+        *within* a step: `_adapt` runs inside `diseño` and only produces a
+        diff for someone to accept or discard, so finishing it must not walk
+        the wizard past the very step whose result is still on the table.
         """
         if self.project is None or self.project_dir is None:
             self.notify("Create or open a project first", severity="warning")
@@ -1333,10 +1350,12 @@ class StudioApp(App[None]):
         token = self.journal.start(f"{step.number} {step.name} — {label}")
         self._log(token.line)
         self._busy(label)
-        self._background(job, label, step.name, token, on_finished)
+        self._background(job, label, step.name, token, on_finished, leaves_behind)
 
     @work(exclusive=True)
-    async def _background(self, job, label: str, step: str, token, on_finished=None) -> None:
+    async def _background(
+        self, job, label: str, step: str, token, on_finished=None, leaves_behind: bool = True
+    ) -> None:
         """Await the job on a thread, then update from the UI task itself.
 
         Handing the result back through the event loop rather than across
@@ -1358,7 +1377,7 @@ class StudioApp(App[None]):
             self._log(self.journal.finish(token, ok=ok))
             if not ok:
                 self._log(self.journal.write("ERROR", f"{step}: {reason}"))
-        if ok:
+        if ok and leaves_behind:
             self.passed.add(step)
         self._finished(label)
         if on_finished is not None:

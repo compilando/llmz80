@@ -1490,3 +1490,43 @@ async def test_escaping_out_of_the_editor_does_not_also_step_back(tmp_path: Path
         await pilot.pause()
 
         assert app.passed == {"proyecto"}
+
+
+@pytest.mark.asyncio
+async def test_adapting_again_waits_for_the_pending_proposal_to_be_decided(tmp_path: Path):
+    """[y] and [n] cost nothing and answer the question already asked;
+    another [A] would spend money at the API to replace a diff nobody has
+    read yet."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Pending"
+        app.action_create()
+        await pilot.pause()
+        _focus_away_from_text_entry(app)
+        _archive_dossier(app.project_dir)
+        app.passed = {"proyecto", "referencia"}
+        app._refresh_wizard()
+        await pilot.pause()
+
+        app.designer = _FakeDesigner()
+        app._adapt()
+        for _ in range(100):
+            await pilot.pause()
+            if app.active_panel == "diff":
+                break
+        assert app._pending_proposal is not None
+        # Proposing is not finishing the design step: nothing is applied
+        # until [y], so the wizard is still standing on diseño.
+        assert "diseño" not in app.passed
+
+        reached: list[bool] = []
+        app._adapt = lambda: reached.append(True)
+        await pilot.press("a")
+        await pilot.pause()
+        assert reached == []
+
+        # Decided, and [A] is available again.
+        await pilot.press("n")
+        await pilot.press("a")
+        await pilot.pause()
+        assert reached == [True]
