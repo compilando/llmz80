@@ -561,6 +561,60 @@ git commit -m "feat(studio): let the long jobs say what they are doing"
 
 ---
 
+### Task 3b: bajar el aviso hasta donde está la espera
+
+> **Tarea añadida durante la ejecución.** La 3 dejó `on_progress` en `services.py`, que es
+> un piso por encima de donde se tarda: `generator.write_program` tiene el bucle de los
+> cinco intentos y `sprite_artist.draw_frames` el de los reintentos del artista. El
+> resultado es que la pantalla sigue callada los dos minutos y luego vuelca cinco líneas
+> de golpe — que es justo lo que la tarea 3 existía para evitar.
+
+**Files:**
+- Modify: `llmz80/studio/generator.py` (`write_program`), `llmz80/studio/sprite_artist.py` (`draw_frames`), `llmz80/studio/services.py` (`write_program`, `verify_program`, `draw_sprites`)
+- Modify: `tests/test_studio_generator.py`, `tests/test_sprite_artist.py`
+
+- [ ] **Step 1: Escribe los tests que fallan**
+
+```python
+def test_the_repair_loop_reports_each_attempt_as_it_happens():
+    """Reporting them afterwards is the same silence with a louder ending."""
+    from llmz80.studio.generator import write_program
+
+    said: list[str] = []
+    ...  # writer de mentira que falla el primer intento y acierta el segundo
+    write_program(project, directory, writer, verify, on_progress=said.append)
+    assert said[0].startswith("intento 1")
+    assert len(said) == 2
+```
+
+y el gemelo en `tests/test_sprite_artist.py` para `draw_frames`, comprobando que un
+reintento se anuncia **antes** de que el siguiente empiece, no al final.
+
+- [ ] **Step 2: Enhebra el parámetro**
+
+`generator.write_program(..., *, on_progress=None)` avisa al empezar cada intento y al
+conocer su veredicto. `SpriteArtist.draw_frames(..., *, on_progress=None)` avisa por
+fotograma juzgado y por reintento, con el motivo. `services` los pasa hacia abajo.
+
+`verify_program` es hoy un `Callable[[GameProject, Path], dict]` que no reenvía nada, así
+que las líneas de `runtime_test` no salen cuando se llama desde dentro del bucle de
+reparación. Amplía esa firma a `Callable[[GameProject, Path, Progress], dict]` o pásale el
+callback por cierre; decide y explica cuál en el commit.
+
+- [ ] **Step 3: La prueba que de verdad importa**
+
+Que el primer aviso salga **antes** de que termine el trabajo. Un test con un trabajo
+falso que tarde puede comprobarlo: guarda el instante de cada aviso y el del retorno, y
+afirma que el primero es anterior.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "feat(studio): report the wait while it is still waiting"
+```
+
+---
+
 ### Task 4: `tui.py` — el wizard sustituye a los atajos
 
 Es la tarea grande y la que fija la decisión del spec.
