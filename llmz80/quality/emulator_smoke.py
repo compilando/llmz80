@@ -450,7 +450,14 @@ def _run_caprice32(
     environment["SDL_VIDEODRIVER"] = "dummy"
     # Caprice32 advances at emulated 50 Hz and virtual-key events are serialized.
     # Keep a hard bound, but leave enough margin for AMSDOS loading on slow hosts.
-    timeout = max(30, seconds + 25)
+    #
+    # The floor was 30, and a passing run of tests/test_sprite_blitter_toolchain.py's
+    # CPC blitter probe measures ~32 seconds of wall clock on an idle machine -- so
+    # the budget was under the work it had to cover, and the test passed alone and
+    # failed inside the suite, where the toolchain tests running before it keep the
+    # host busy. A suite that is red on every full run teaches people to ignore red,
+    # which costs more than the minute this margin can waste.
+    timeout = max(90, seconds + 25)
     completed = subprocess.run(
         command, cwd=output_dir, env=environment, capture_output=True, text=True,
         timeout=timeout, check=False,
