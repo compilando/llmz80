@@ -474,8 +474,67 @@ git commit -m "feat(studio): give the emulator steps to drive, and no expectatio
 ## Task 4: El emulador ejecuta el guion
 
 **Files:**
-- Modify: `llmz80/studio/services.py:424-468` (`runtime_test`)
-- Test: `tests/test_studio_services.py`
+- Modify: `llmz80/studio/services.py:424-468` (`runtime_test`), `llmz80/quality/emulator_smoke.py:248-254`
+- Test: `tests/test_studio_services.py`, `tests/test_emulator_smoke.py`
+
+**Añadido tras la revisión de la tarea 3.** El guion no cabe en la vida que el emulador se concede a sí mismo. `_run_zesarux` calcula su `--exit-after` así:
+
+```python
+    reads = 1 + len(steps) if steps else 2
+    probe_cost = reads * len(addresses) * 0.2
+    hold_cost = sum(int(step.get("frames", 50)) / 50.0 for step in steps)
+    run_seconds = int(max(6, seconds) + probe_cost + hold_cost + 3)
+```
+
+Dos costes reales no están en esa cuenta. Una lectura ZRCP no cuesta 0.2 s sino ~0.32 (`_zrcp_query` duerme 0.12 fijo y luego lee hasta agotar un timeout de socket de 0.2), y cada paso manda dos `set-ui-io-ports` — pulsar y soltar — que cuestan otros ~0.64 s que nadie presupuesta, más ~3.7 s de conexión y capturas. Con los 11 pasos que produce `observation_script`:
+
+| símbolos sondados | `--exit-after` | lo que el guion necesita | desfase |
+|---|---|---|---|
+| 2 (sólo los requeridos) | 24 s | ~29 s | +5 s |
+| 5 | 32 s | ~40 s | +8 s |
+| 8 (contrato completo) | 39 s | ~52 s | +13 s |
+
+El emulador se cierra a mitad del guion, la siguiente orden ZRCP revienta con `BrokenPipeError` y la cola de `steps` no se llega a añadir — incluida la última, `idle`, que es justo la que `animation_report` necesita para la mitad de su afirmación. El síntoma que se ve es `scripted_input_sent: False` y un fallo de animación que no es del programa.
+
+Bajar `STEP_FRAMES` no arregla nada: `hold_cost` sí está bien contado, así que recortarlo baja el presupuesto y el coste a la vez. Lo que falta es el coste por orden, que se multiplica por el número de pasos.
+
+- [ ] **Step 0: Ensanchar el presupuesto antes de darle pasos que no caben**
+
+En `llmz80/quality/emulator_smoke.py`, sustituir el bloque del cálculo:
+
+```python
+    steps = list(script or [])
+    reads = 1 + len(steps) if steps else 2
+    # A ZRCP read is not free and not 0.2s: `_zrcp_query` sleeps 0.12 outright
+    # and then drains the socket until a 0.2 timeout expires. Budgeting the
+    # optimistic figure is how a scripted run used to be cut off mid-script,
+    # losing the tail of `steps` -- the idle step among them -- and surfacing
+    # as a broken pipe rather than as the missing budget it was.
+    probe_cost = reads * len(((probes or {}).get("addresses") or {})) * 0.35
+    hold_cost = sum(int(step.get("frames", 50)) / 50.0 for step in steps)
+    # Each step presses its key and lets it go, and both are ZRCP commands.
+    command_cost = len(steps) * 0.7
+    run_seconds = int(max(6, seconds) + probe_cost + hold_cost + command_cost + 5)
+```
+
+Test en `tests/test_emulator_smoke.py`, que fija la aritmética sin arrancar nada:
+
+```python
+def test_the_emulator_lifetime_covers_a_scripted_run():
+    """A script whose steps outlive `--exit-after` loses its tail, and the tail
+    is where the idle step -- half of what the animation gate claims -- lives."""
+    from llmz80.quality.emulator_smoke import scripted_run_seconds
+
+    script = [{"id": f"s{index}", "frames": 50} for index in range(11)]
+    probes = {"addresses": {f"g_{index}": index for index in range(8)}}
+
+    budget = scripted_run_seconds(seconds=3, steps=script, probes=probes)
+
+    # 11 holds of one second, 12 reads of 8 symbols, 22 key commands.
+    assert budget >= 11 + 12 * 8 * 0.35 + 11 * 0.7
+```
+
+Extraer el cálculo a `scripted_run_seconds(*, seconds, steps, probes)` en `emulator_smoke.py` y llamarla desde `_run_zesarux`: la aritmética es lo único comprobable sin un emulador, y hoy está enterrada en una función que arranca uno.
 
 - [ ] **Step 1: Write the failing test**
 
