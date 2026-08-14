@@ -3,9 +3,9 @@ from zipfile import ZipFile
 
 import pytest
 
-from llmz80.studio.models import GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import TargetPlatform
 from llmz80.studio.release import export_release
+from llmz80.studio.samples import blank_project
 from llmz80.studio.store import ProjectStore
 
 
@@ -19,7 +19,7 @@ def _evidence(directory, passing=True):
 
 
 def test_release_is_reproducible_and_contains_evidence(tmp_path):
-    project = create_default_project("Release", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Release", TargetPlatform.SPECTRUM)
     directory = ProjectStore(tmp_path).create(project)
     _evidence(directory)
 
@@ -37,7 +37,7 @@ def test_release_is_reproducible_and_contains_evidence(tmp_path):
 
 
 def test_release_rejects_missing_or_failed_quality_gate(tmp_path):
-    project = create_default_project("Rejected", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Rejected", TargetPlatform.SPECTRUM)
     directory = ProjectStore(tmp_path).create(project)
     with pytest.raises(RuntimeError, match="runtime test"):
         export_release(project, directory)

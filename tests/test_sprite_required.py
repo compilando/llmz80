@@ -36,15 +36,15 @@ from PIL import Image
 from llmz80.studio import compiler as compiler_module
 from llmz80.studio.compiler import build_project, render_project, sprite_usage_errors
 from llmz80.studio.generator import ProgramFile, ProgramSources, write_program
-from llmz80.studio.models import AssetSpec, GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import AssetSpec, TargetPlatform
+from llmz80.studio.samples import blank_project
 from llmz80.studio.store import ProjectStore
 
 NO_SPRITE_MAIN = (
     '#include "platform.h"\n\n'
     "void main(void) {\n"
     "    plat_init();\n"
-    "    plat_cell(0, 0, 1);\n"
+    "    plat_cell(0, 0, '#');\n"
     "    while (1) { }\n"
     "}\n"
 )
@@ -89,13 +89,13 @@ def _sprite_asset(directory: Path, asset_id: str = "hero") -> AssetSpec:
 
 def test_no_sprites_means_no_check_regardless_of_source():
     """A design with no art must build exactly as it does today."""
-    project = create_default_project("NoArt", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("NoArt", TargetPlatform.SPECTRUM)
     assert project.assets == []
     assert sprite_usage_errors(project, {"main.c": NO_SPRITE_MAIN}) == []
 
 
 def test_sprites_but_no_plat_sprite_call_is_refused(tmp_path: Path):
-    project = create_default_project("Ungrateful", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Ungrateful", TargetPlatform.SPECTRUM)
     project.assets = [_sprite_asset(tmp_path)]
 
     errors = sprite_usage_errors(project, {"main.c": NO_SPRITE_MAIN})
@@ -106,7 +106,7 @@ def test_sprites_but_no_plat_sprite_call_is_refused(tmp_path: Path):
 
 
 def test_sprites_and_a_real_call_are_accepted(tmp_path: Path):
-    project = create_default_project("Grateful", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Grateful", TargetPlatform.SPECTRUM)
     project.assets = [_sprite_asset(tmp_path)]
 
     assert sprite_usage_errors(project, {"main.c": DRAWS_SPRITE_MAIN}) == []
@@ -117,14 +117,14 @@ def test_a_call_only_inside_a_comment_or_string_does_not_count(tmp_path: Path):
     literals before searching (see `compiler._blanked`) is why this check is
     not that -- see `sprite_usage_errors`'s docstring for what it still
     cannot catch (a real call that is merely unreachable)."""
-    project = create_default_project("Sneaky", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Sneaky", TargetPlatform.SPECTRUM)
     project.assets = [_sprite_asset(tmp_path)]
     source = (
         '#include "platform.h"\n\n'
         "/* plat_sprite(0, 0, SPRITE_HERO, 0); -- TODO draw the hero */\n"
         'static const char *note = "call plat_sprite(0,0,0,0) later";\n'
         "void main(void) {\n"
-        "    plat_cell(0, 0, 1);\n"
+        "    plat_cell(0, 0, '#');\n"
         "    while (1) { }\n"
         "}\n"
     )
@@ -174,7 +174,7 @@ def _fake_toolchain(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
 
 
 def _project_with_program(tmp_path: Path, *, name: str, main_c: str, with_sprite: bool):
-    project = create_default_project(name, TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project(name, TargetPlatform.SPECTRUM)
     directory = ProjectStore(tmp_path).create(project)
     if with_sprite:
         project.assets = [_sprite_asset(directory)]
@@ -247,7 +247,7 @@ def test_the_refusal_reaches_the_repair_loop_as_actionable_feedback(
     the remaining attempts.
     """
     _fake_toolchain(monkeypatch)
-    project = create_default_project("Repaired", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Repaired", TargetPlatform.SPECTRUM)
     directory = ProjectStore(tmp_path).create(project)
     project.assets = [_sprite_asset(directory)]
 

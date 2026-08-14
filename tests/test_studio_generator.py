@@ -12,14 +12,14 @@ from llmz80.studio.generator import (
     write_program,
     writing_prompt,
 )
-from llmz80.studio.models import GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import TargetPlatform
+from llmz80.studio.samples import blank_project
 from llmz80.studio.reference import GameReference, ReferenceSource
 
 
 @pytest.fixture
 def project():
-    return create_default_project("Written", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    return blank_project("Written", TargetPlatform.SPECTRUM)
 
 
 class ScriptedWriter:
@@ -65,12 +65,13 @@ def test_storing_a_program_replaces_what_was_there(tmp_path: Path, project):
     assert "second" in (program / "main.c").read_text()
 
 
-def test_the_writing_prompt_carries_contract_design_acceptance_and_hazards(project):
+def test_the_writing_prompt_carries_contract_design_and_hazards(project):
     prompt = writing_prompt(project)
 
     assert "OBSERVABLE STATE CONTRACT" in prompt
     assert "DESIGN" in prompt
-    assert "RUNTIME ACCEPTANCE" in prompt
+    # No acceptance section: task 10 removed the derivation that wrote one.
+    assert "Terrain characters" in prompt
     assert "PLATFORM NOTES" in prompt
     assert "ROM frame counter" in prompt
     assert str(project.budgets.binary_bytes) in prompt
@@ -339,17 +340,17 @@ def test_a_writer_that_fails_ends_the_loop_with_its_reason(tmp_path: Path, proje
 
 def test_the_writing_prompt_shows_the_platform_interface():
     """A writer told to include platform.h must be shown what is in it."""
-    project = create_default_project("Iface", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Iface", TargetPlatform.SPECTRUM)
 
     prompt = writing_prompt(project, with_examples=False)
 
     assert "unsigned char plat_wait_frame(void);" in prompt
-    assert "void plat_cell(unsigned char col, unsigned char row, unsigned char kind);" in prompt
+    assert "void plat_cell(unsigned char col, unsigned char row, char glyph);" in prompt
     assert "PLATFORM LIBRARY INTERFACE" in prompt
 
 
 def test_the_writing_prompt_carries_the_dossier_when_the_project_has_one():
-    project = create_default_project("Ref", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Ref", TargetPlatform.SPECTRUM)
     dossier = GameReference(
         identified=True,
         confidence="high",
@@ -372,7 +373,7 @@ def test_the_writing_prompt_carries_the_dossier_when_the_project_has_one():
 
 
 def test_the_writing_prompt_is_unchanged_without_a_dossier():
-    project = create_default_project("Ref", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Ref", TargetPlatform.SPECTRUM)
 
     assert "REFERENCE GAME" not in writing_prompt(project, with_examples=False)
 
@@ -399,7 +400,7 @@ def test_the_writer_actually_sends_the_dossier_to_the_model():
     directly, so none of them would notice write() forgetting to pass the
     reference through. This one inspects what actually reached
     client.responses.parse."""
-    project = create_default_project("Ref", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Ref", TargetPlatform.SPECTRUM)
     dossier = GameReference(
         identified=True,
         confidence="high",

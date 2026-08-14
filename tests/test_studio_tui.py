@@ -4,10 +4,10 @@ from pathlib import Path
 import pytest
 
 from llmz80.studio import editing
-from llmz80.studio.models import GenreId, TargetPlatform
-from llmz80.studio.packs import BUILTIN_PACKS, create_default_project
+from llmz80.studio.models import TargetPlatform
 from llmz80.studio.planner import ProjectChange, ProjectProposal
 from llmz80.studio.reference import GameReference, ReferenceSource
+from llmz80.studio.samples import blank_project
 from llmz80.studio.screen import Stage
 from llmz80.studio.spriting import SPRITE_SIZE
 from llmz80.studio.tui import (
@@ -20,28 +20,6 @@ from llmz80.studio.tui import (
 )
 
 
-def _neighbours(cell):
-    col, row = cell
-    return [(col + 1, row), (col - 1, row), (col, row + 1), (col, row - 1)]
-
-
-def _isolated_collectible(project):
-    """A collectible whose neighbours hold no other spawn.
-
-    Walling a cell that holds a spawn is refused by the model, so a test that
-    seals a collectible in has to pick one with room around it.
-    """
-    occupied = {(s.col, s.row) for s in project.levels[0].spawns}
-    roles = {e.id: e.role for e in project.entities}
-    for spawn in project.levels[0].spawns:
-        if roles.get(spawn.entity) != "collectible":
-            continue
-        cell = (spawn.col, spawn.row)
-        if not any(n in occupied for n in _neighbours(cell)):
-            return cell
-    raise AssertionError("every collectible has a neighbour that is occupied")
-
-
 @pytest.mark.asyncio
 async def test_creating_a_project_fills_the_editor(tmp_path: Path):
     app = StudioApp(tmp_path)
@@ -52,11 +30,10 @@ async def test_creating_a_project_fills_the_editor(tmp_path: Path):
 
         assert (tmp_path / "pilot-game" / "game.yml").is_file()
         assert app.project is not None
-        assert app.query_one("#f-lives").value == str(app.project.gameplay.lives)
         assert app.query_one("#entity-table").row_count == len(app.project.entities)
-        # A freshly created default project is a solvable, structured design,
-        # which is the six-stage line's "diseño" (design) stage reading done
-        # -- the direct replacement for the old one-line "ready" verdict.
+        # A freshly created default project fits its target machine, which
+        # is the six-stage line's "diseño" (design) stage reading done --
+        # the direct replacement for the old one-line "ready" verdict.
         assert "diseño ✓" in app.status_text
 
 
@@ -68,17 +45,21 @@ async def test_saving_applies_every_scalar_field_at_once(tmp_path: Path):
         app.action_create()
         await pilot.pause()
 
-        # `win_score` is no longer a field this screen edits at all -- it is
-        # derived, per `quality.py`, and no widget offers it any more -- so
-        # this test now only covers the fields that remain: lives and style.
-        app.query_one("#f-lives").value = "5"
+        # `rename_project` applies title, style and brief together in one
+        # validated step -- the fields this screen still edits.
+        app.query_one("#f-title").value = "Renamed Game"
         app.query_one("#f-style").value = "neon"
+        app.query_one("#f-brief").text = "Four ghosts."
         app.action_save()
         await pilot.pause()
 
-        assert app.project.gameplay.lives == 5
+        assert app.project.metadata.title == "Renamed Game"
         assert app.project.presentation.style == "neon"
-        assert app.service.open_project(tmp_path / "pilot-game").gameplay.lives == 5
+        assert app.project.metadata.brief == "Four ghosts."
+        reopened = app.service.open_project(tmp_path / "pilot-game")
+        assert reopened.metadata.title == "Renamed Game"
+        assert reopened.presentation.style == "neon"
+        assert reopened.metadata.brief == "Four ghosts."
 
 
 @pytest.mark.asyncio
@@ -88,79 +69,37 @@ async def test_a_refused_edit_warns_instead_of_crashing(tmp_path: Path):
         app.query_one("#f-title").value = "Refused"
         app.action_create()
         await pilot.pause()
-        before = app.project.gameplay.lives
+        before = app.project.metadata.title
 
-        # Lives outside the model's range must be refused, not stored.
-        app.query_one("#f-lives").value = "99"
+        # A title beyond Metadata's max_length=32 must be refused, not stored.
+        app.query_one("#f-title").value = "x" * 40
         app.action_save()
         await pilot.pause()
 
-        assert app.project.gameplay.lives == before
-
-
-@pytest.mark.asyncio
-async def test_the_stage_line_reports_an_unsolvable_design(tmp_path: Path):
-    """Formerly `test_the_status_line_reports_an_unsolvable_design`: the
-    one-line "ready"/"not releasable" verdict this asserted on is gone, but
-    the underlying fact -- an unsolvable design is refused, and says why --
-    still holds, now carried by the "diseño" stage of the new stage line
-    (`screen._design_stage` folds the same solvability failures in)."""
-    app = StudioApp(tmp_path)
-    async with app.run_test(size=(120, 40)) as pilot:
-        app.query_one("#f-title").value = "Sealed"
-        app.action_create()
-        await pilot.pause()
-
-        target = _isolated_collectible(app.project)
-        sealed = app.project
-        for col, row in _neighbours(target):
-            sealed = editing.set_tile(sealed, 0, col, row, "#")
-        app.project = sealed
-        app._refresh_stage()
-        await pilot.pause()
-
-        status = app.status_text
-        assert "diseño ✗" in status
-        assert "seal off" in status
-
-
-@pytest.mark.asyncio
-async def test_every_typology_can_be_chosen(tmp_path: Path):
-    """The genre `Select` now lives inside the creation panel rather than a
-    "Project" tab -- opened by ctrl+n -- but it is still queryable whether or
-    not the panel is open (hidden widgets stay in the tree), and it still
-    has to offer every built-in typology."""
-    app = StudioApp(tmp_path)
-    async with app.run_test(size=(120, 40)) as pilot:
-        app.action_new_dialog()
-        await pilot.pause()
-        assert app.active_panel == "create"
-
-        offered = {str(value) for _label, value in app.query_one("#f-genre")._options}
-
-        assert offered == {pack.id for pack in BUILTIN_PACKS}
+        assert app.project.metadata.title == before
 
 
 def test_render_map_draws_terrain_spawns_and_cursor():
-    project = create_default_project("Map", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
-    level = project.levels[0]
-    player = next(
-        spawn for spawn in level.spawns
-        if next(e for e in project.entities if e.id == spawn.entity).role == "player"
-    )
+    project = blank_project("Map", TargetPlatform.SPECTRUM)
+    screen = project.screens[0]
+    entity = project.entities[0]
+    actor = next(spawn for spawn in screen.spawns if spawn.entity == entity.id)
 
     drawn = render_map(project, 0, (0, 0))
     lines = drawn.splitlines()
 
-    assert len(lines) == level.height
+    assert len(lines) == screen.height
     assert lines[0].startswith("[reverse]▓[/reverse]")
     plain = [line.replace("[reverse]", "").replace("[/reverse]", "") for line in lines]
-    assert all(len(line) == level.width for line in plain)
-    assert plain[player.row][player.col] == "@"
+    assert all(len(line) == screen.width for line in plain)
+    # The map editor has no fixed roster of entity roles in v4 -- the glyph
+    # is the first letter of the entity's own `kind`, uppercased; the blank
+    # project's one entity has kind="actor".
+    assert plain[actor.row][actor.col] == "A"
 
 
 def test_render_map_marks_the_cursor_wherever_it_sits():
-    project = create_default_project("Cursor", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Cursor", TargetPlatform.SPECTRUM)
 
     drawn = render_map(project, 0, (3, 2)).splitlines()
 
@@ -198,9 +137,9 @@ async def test_a_slow_operation_leaves_the_interface_usable(tmp_path: Path):
         # While it runs the app still redraws and accepts input.
         await pilot.pause()
         assert "Working" in app.status_text
-        app.query_one("#f-lives").value = "7"
+        app.query_one("#f-style").value = "neon"
         await pilot.pause()
-        assert app.query_one("#f-lives").value == "7"
+        assert app.query_one("#f-style").value == "neon"
 
         release.set()
         for _ in range(50):
@@ -360,15 +299,15 @@ async def test_map_editing_keys_still_toggle_a_wall(tmp_path: Path):
         await pilot.pause()
         assert app.active_panel == "map"
 
-        level = app.project.levels[0]
+        screen = app.project.screens[0]
         app.query_one("#map-grid").focus()
         await pilot.pause()
         # Walk the cursor to a floor cell with no spawn, then toggle it.
-        occupied = {(s.col, s.row) for s in level.spawns}
+        occupied = {(s.col, s.row) for s in screen.spawns}
         col = col_row = None
-        for row in range(level.height):
-            for col in range(level.width):
-                if (col, row) not in occupied and level.tiles[row][col] != "#":
+        for row in range(screen.height):
+            for col in range(screen.width):
+                if (col, row) not in occupied and screen.tiles[row][col] != "#":
                     col_row = (col, row)
                     break
             if col_row:
@@ -384,7 +323,7 @@ async def test_map_editing_keys_still_toggle_a_wall(tmp_path: Path):
         await pilot.press("space")
         await pilot.pause()
 
-        assert app.project.levels[0].tiles[col_row[1]][col_row[0]] == "#"
+        assert app.project.screens[0].tiles[col_row[1]][col_row[0]] == "#"
 
 
 def _resting_content_height(app: StudioApp) -> int:
@@ -530,12 +469,23 @@ async def test_a_fully_done_project_shows_no_dangling_hint(tmp_path: Path):
         releases.mkdir()
         name = f"{app.project.metadata.slug}-{app.project.target.platform.value}.zip"
         (releases / name).write_bytes(b"PK\x03\x04")
-        # No sprite assets exist for this genre's entities, so sprites would
-        # otherwise stay pending -- give every entity one to reach "done".
+        # `blank_project`'s one entity has no sprite id yet -- give it one so
+        # there is something to register an asset for, then give every such
+        # id an asset, so sprites reaches "done" instead of staying pending.
         from llmz80.studio.models import AssetSpec
 
+        app.project = app.project.model_copy(
+            update={"entities": [app.project.entities[0].model_copy(update={"sprite": "actor"})]}
+        )
         sprites = [
-            AssetSpec(id=sprite_id, kind="sprite", source=f"assets/{sprite_id}.png", width=16, height=16, frames=1)
+            AssetSpec(
+                id=sprite_id,
+                kind="sprite",
+                source=f"assets/{sprite_id}.png",
+                width=16,
+                height=16,
+                frames=1,
+            )
             for sprite_id in sorted({e.sprite for e in app.project.entities})
         ]
         app.project.assets = sprites
@@ -754,6 +704,16 @@ def _focus_away_from_text_entry(app: StudioApp) -> None:
     app.query_one("#entity-table").focus()
 
 
+def _give_entity_a_sprite(app: StudioApp, sprite_id: str = "actor") -> None:
+    """`blank_project`'s one entity wears no sprite id (`entity.sprite is
+    None`) -- `draw_sprites` needs a valid asset identifier to draw and
+    register, so tests that exercise it give the entity one first."""
+    app.project = app.project.model_copy(
+        update={"entities": [app.project.entities[0].model_copy(update={"sprite": sprite_id})]}
+    )
+    app.service.save_project(app.project, app.project_dir)
+
+
 @pytest.mark.asyncio
 async def test_research_reaches_the_service_and_the_stage_line_shows_it(tmp_path: Path):
     app = StudioApp(tmp_path)
@@ -941,9 +901,9 @@ async def test_a_failing_adapt_notifies_instead_of_crashing(tmp_path: Path):
         assert app.project is not None  # the app is still usable
 
         # Still responsive: an ordinary field edit still works.
-        app.query_one("#f-lives").value = "6"
+        app.query_one("#f-style").value = "neon"
         await pilot.pause()
-        assert app.query_one("#f-lives").value == "6"
+        assert app.query_one("#f-style").value == "neon"
 
 
 @pytest.mark.asyncio
@@ -953,6 +913,7 @@ async def test_draw_sprites_reaches_the_service_and_registers_assets(tmp_path: P
         app.query_one("#f-title").value = "Sprited"
         app.action_create()
         await pilot.pause()
+        _give_entity_a_sprite(app)
         needed = sorted({entity.sprite for entity in app.project.entities})
 
         artist = _FakeArtist()
@@ -980,6 +941,7 @@ async def test_draw_sprites_asks_before_overwriting_existing_art(tmp_path: Path)
         app.query_one("#f-title").value = "Redraw"
         app.action_create()
         await pilot.pause()
+        _give_entity_a_sprite(app)
 
         first_artist = _FakeArtist()
         app.artist = first_artist

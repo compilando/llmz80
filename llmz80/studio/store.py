@@ -7,64 +7,29 @@ from pathlib import Path
 
 import yaml
 
-from .layout import default_spawns, default_tiles
 from .models import GameProject
 
-CURRENT_SCHEMA_VERSION = 3
-
-
-class _EntityView:
-    """Minimal entity shape the layout helpers need, read from raw YAML."""
-
-    def __init__(self, document: dict) -> None:
-        self.id = document["id"]
-        self.role = document["role"]
-        self.count = int(document.get("count", 1))
-
-
-def _upgrade_v2_to_v3(data: dict) -> dict:
-    """Author terrain and spawns for a design that predates the tile grid.
-
-    v2 levels carried only dimensions, and the engine derived positions itself.
-    Migration authors that same layout into the document so it becomes editable
-    content rather than an implicit generator rule.
-    """
-    entities = [_EntityView(entity) for entity in data.get("entities", [])]
-    genre = data.get("genre", "")
-    levels = []
-    for index, level in enumerate(data.get("levels", [])):
-        upgraded = dict(level)
-        width = int(level["width"])
-        height = int(level["height"])
-        tiles = default_tiles(genre, width, height, index)
-        upgraded["tiles"] = tiles
-        upgraded["spawns"] = [
-            spawn.model_dump(mode="json")
-            for spawn in default_spawns(entities, tiles, width, height, index)
-        ]
-        levels.append(upgraded)
-    upgraded_document = dict(data)
-    upgraded_document["levels"] = levels
-    upgraded_document["schema_version"] = 3
-    return upgraded_document
-
-
-#: Applied in order until the document reaches `CURRENT_SCHEMA_VERSION`.
-MIGRATIONS = {2: _upgrade_v2_to_v3}
+CURRENT_SCHEMA_VERSION = 4
 
 
 def migrate(data: dict) -> dict:
-    """Bring a persisted document up to the current schema version."""
+    """Bring a persisted document up to the current schema version.
+
+    There is no v3 to v4 upgrade and there is not meant to be one. v3 described
+    a game as roles on a two-character grid; v4 lets a design declare its own
+    vocabulary, and inventing tiles, entity kinds and mechanics for an old
+    document would be authoring a game, not migrating one. Old projects are
+    kept as they are and re-designed, which is why this says so out loud.
+    """
     version = data.get("schema_version", 1)
-    while version != CURRENT_SCHEMA_VERSION:
-        upgrade = MIGRATIONS.get(version)
-        if upgrade is None:
-            raise ValueError(
-                f"cannot migrate schema version {version} to {CURRENT_SCHEMA_VERSION}"
-            )
-        data = upgrade(data)
-        version = data["schema_version"]
-    return data
+    if version == CURRENT_SCHEMA_VERSION:
+        return data
+    raise ValueError(
+        f"this project uses schema version {version}; Studio now reads v4 only. "
+        "Designs before v4 described a game in a vocabulary v4 does not have, so "
+        "there is no automatic upgrade: start a new project and carry over what "
+        "you want from the old game.yml."
+    )
 
 
 class ProjectStore:

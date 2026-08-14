@@ -116,26 +116,23 @@ static void draw_hud(void) {
 static void restore_cell(unsigned char col, unsigned char row) {
     unsigned char index;
     if (is_wall(col, row)) {
-        plat_cell(col, (unsigned char)(row + FIELD_TOP), CELL_WALL);
+        plat_cell(col, (unsigned char)(row + FIELD_TOP), GLYPH_WALL);
         return;
     }
     for (index = 0; index < g_actor_count; ++index) {
-        if (a_alive[index] && g_actor_kind[index] == CELL_COLLECTIBLE
+        if (a_alive[index] && g_actor_kind[index] == KIND_COLLECTIBLE
             && a_col[index] == col && a_row[index] == row) {
-            plat_cell(col, (unsigned char)(row + FIELD_TOP), CELL_COLLECTIBLE);
+            plat_cell(col, (unsigned char)(row + FIELD_TOP), GLYPH_COLLECTIBLE);
             return;
         }
     }
-    plat_cell(col, (unsigned char)(row + FIELD_TOP), CELL_EMPTY);
+    plat_cell(col, (unsigned char)(row + FIELD_TOP), GLYPH_FLOOR);
 }
 
+/* Later levels move faster: the design says the chase tightens, and this is
+ * where this program decided that means one step of speed per level. */
 static unsigned char actor_tick_limit(unsigned char index) {
-    unsigned char speed = g_actor_speed[index];
-#if DIFFICULTY_CURVE == 1
-    speed = (unsigned char)(speed + g_level - 1);
-#elif DIFFICULTY_CURVE == 2
-    speed = (unsigned char)(speed + ((g_level - 1) >> 1));
-#endif
+    unsigned char speed = (unsigned char)(g_actor_speed[index] + g_level - 1);
     if (speed > 4) speed = 4;
     return (unsigned char)(5 - speed);
 }
@@ -147,11 +144,19 @@ static void draw_terrain(void) {
     unsigned char col;
     for (row = 0; row < height; ++row) {
         for (col = 0; col < width; ++col) {
-            if (is_wall(col, row)) {
-                plat_cell(col, (unsigned char)(row + FIELD_TOP), CELL_WALL);
-            }
+            plat_cell(col, (unsigned char)(row + FIELD_TOP),
+                      is_wall(col, row) ? GLYPH_WALL : GLYPH_FLOOR);
         }
     }
+}
+
+/* One character per kind of actor. g_actor_kind is this program's own
+ * numbering, so this is the only place the two vocabularies meet. */
+static char kind_glyph(unsigned char kind) {
+    if (kind == KIND_PLAYER) return GLYPH_PLAYER;
+    if (kind == KIND_ENEMY) return GLYPH_ENEMY;
+    if (kind == KIND_COLLECTIBLE) return GLYPH_COLLECTIBLE;
+    return GLYPH_FLOOR;
 }
 
 static void load_level(void) {
@@ -173,8 +178,9 @@ static void load_level(void) {
         a_dir[index] = 1;
         a_dir_v[index] = 1;
         if (g_actor_behaviour[index] == BEHAVIOUR_PLAYER) player_index = index;
-        if (g_actor_kind[index] == CELL_COLLECTIBLE) ++g_remaining;
-        plat_cell(a_col[index], (unsigned char)(a_row[index] + FIELD_TOP), g_actor_kind[index]);
+        if (g_actor_kind[index] == KIND_COLLECTIBLE) ++g_remaining;
+        plat_cell(a_col[index], (unsigned char)(a_row[index] + FIELD_TOP),
+                  kind_glyph(g_actor_kind[index]));
     }
 }
 
@@ -186,7 +192,7 @@ static void reset_game(void) {
     load_level();
 }
 
-#define START_KEYS (IN_ACTION | IN_RIGHT)
+#define START_KEYS (INPUT_ACTION | INPUT_RIGHT)
 
 /* Menus poll tightly rather than once per frame: a scripted emulator keypress
  * lasts only a few hundred milliseconds and a frame-gated poll can miss it. */
@@ -234,7 +240,7 @@ static void title_screen(void) {
 static void collect_at(unsigned char col, unsigned char row) {
     unsigned char index;
     for (index = 0; index < g_actor_count; ++index) {
-        if (a_alive[index] && g_actor_kind[index] == CELL_COLLECTIBLE
+        if (a_alive[index] && g_actor_kind[index] == KIND_COLLECTIBLE
             && a_col[index] == col && a_row[index] == row) {
             a_alive[index] = 0;
             --g_remaining;
@@ -253,10 +259,10 @@ static void move_player(void) {
     unsigned char width = g_level_width[g_level - 1];
     unsigned char height = g_level_height[g_level - 1];
 
-    if ((keys & IN_LEFT) && col > 0) --col;
-    else if ((keys & IN_RIGHT) && col + 1 < width) ++col;
-    if ((keys & IN_UP) && row > 0) --row;
-    else if ((keys & IN_DOWN) && row + 1 < height) ++row;
+    if ((keys & INPUT_LEFT) && col > 0) --col;
+    else if ((keys & INPUT_RIGHT) && col + 1 < width) ++col;
+    if ((keys & INPUT_UP) && row > 0) --row;
+    else if ((keys & INPUT_DOWN) && row + 1 < height) ++row;
 
     if (col == a_col[player_index] && row == a_row[player_index]) return;
     if (is_wall(col, row)) {
@@ -270,7 +276,7 @@ static void move_player(void) {
     a_col[player_index] = col;
     a_row[player_index] = row;
     collect_at(col, row);
-    plat_cell(col, (unsigned char)(row + FIELD_TOP), CELL_PLAYER);
+    plat_cell(col, (unsigned char)(row + FIELD_TOP), GLYPH_PLAYER);
 }
 
 /* Out of bounds counts as blocked. Unsigned wrap turns col - 1 at column zero
@@ -364,7 +370,7 @@ static unsigned char move_enemies(void) {
         restore_cell(a_col[index], a_row[index]);
         a_col[index] = col;
         a_row[index] = row;
-        plat_cell(col, (unsigned char)(row + FIELD_TOP), CELL_ENEMY);
+        plat_cell(col, (unsigned char)(row + FIELD_TOP), GLYPH_ENEMY);
         if (col == a_col[player_index] && row == a_row[player_index]) return 1;
     }
     return 0;
@@ -396,7 +402,7 @@ void engine_run(void) {
                 load_level();
             }
         } else if (g_remaining == 0) {
-            if (g_level < LEVEL_COUNT) {
+            if (g_level < SCREEN_COUNT) {
                 ++g_level;
                 plat_sound(SOUND_LEVEL);
                 banner("LEVEL COMPLETE", "GET READY");

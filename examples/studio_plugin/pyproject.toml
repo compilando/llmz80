@@ -8,7 +8,7 @@ version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = ["llmz80>=0.1.0"]
 
-[project.entry-points."llmz80.genre_packs"]
+[project.entry-points."llmz80.target_plugins"]
 dodge_arena = "retro_bonus_pack:PACK"
 
 [tool.setuptools]

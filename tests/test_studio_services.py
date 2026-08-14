@@ -20,14 +20,30 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from llmz80.studio.models import GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import TargetPlatform
+from llmz80.studio.samples import blank_project
 from llmz80.studio.services import StudioService
 from llmz80.studio.sprite_artist import FRAMES_PER_SHEET, MAX_DRAW_ATTEMPTS, SpriteArtist
 from llmz80.studio.sprite_sheet import split_frames
 from llmz80.studio.spriting import SPRITE_SIZE, pack_spectrum
 
 _FIXTURE_SHEET = Path(__file__).parent / "fixtures" / "sprite_sheet_running_figure.png"
+
+
+def _create_sprited_project(service: StudioService, title: str, platform=TargetPlatform.SPECTRUM):
+    """`create_project` -> `blank_project`'s one entity ("actor") has no
+    `sprite` id at all -- v4 has no fixed roster of roles to default one
+    from -- but `draw_sprites` groups entities by `entity.sprite`, so a
+    project actually worth drawing art for needs one. Gives the entity a
+    sprite id of "hero" and re-saves, the way a designer using the map/
+    entities panel would before ever pressing ctrl+d.
+    """
+    project, directory = service.create_project(title, platform)
+    project = project.model_copy(
+        update={"entities": [project.entities[0].model_copy(update={"sprite": "hero"})]}
+    )
+    service.save_project(project, directory)
+    return project, directory
 
 
 class _FakeGenerator:
@@ -51,8 +67,8 @@ class _FixtureArtist:
     """
 
     def __init__(self) -> None:
-        project = create_default_project("Fixture", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
-        entity = next(e for e in project.entities if e.role == "player")
+        project = blank_project("Fixture", TargetPlatform.SPECTRUM)
+        entity = project.entities[0]
         with Image.open(_FIXTURE_SHEET) as sheet:
             real_artist = SpriteArtist(_FakeGenerator(sheet.copy()))
             self.frames = real_artist.draw_frames(project, entity)
@@ -74,7 +90,7 @@ def test_draw_sprites_round_trip_through_disk_keeps_a_recognisable_silhouette(tm
     not a blank frame (0 set pixels -- the same defect's mirror image).
     """
     service = StudioService.at(tmp_path)
-    project, directory = service.create_project("Round Trip", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project, directory = _create_sprited_project(service, "Round Trip")
     artist = _FixtureArtist()
 
     drawn = service.draw_sprites(project, directory, artist)
@@ -94,16 +110,19 @@ def test_draw_sprites_round_trip_through_disk_keeps_a_recognisable_silhouette(tm
     set_bits_per_frame = [
         sum(
             bin(byte).count("1")
-            for byte in packed.data[index * packed.bytes_per_frame : (index + 1) * packed.bytes_per_frame]
+            for byte in packed.data[
+                index * packed.bytes_per_frame : (index + 1) * packed.bytes_per_frame
+            ]
         )
         for index in range(packed.frames)
     ]
 
     assert len(set_bits_per_frame) == FRAMES_PER_SHEET
     for index, count in enumerate(set_bits_per_frame):
-        assert count not in (0, 256), (
-            f"frame {index} packed to {count}/256 set pixels after the disk round trip"
-        )
+        assert count not in (
+            0,
+            256,
+        ), f"frame {index} packed to {count}/256 set pixels after the disk round trip"
 
 
 # --- Keeping the evidence: the raw sheet, saved beside the asset it produced --
@@ -119,9 +138,7 @@ def test_draw_sprites_round_trip_through_disk_keeps_a_recognisable_silhouette(tm
 
 def test_draw_sprites_saves_the_raw_sheet_beside_the_registered_asset(tmp_path: Path):
     service = StudioService.at(tmp_path)
-    project, directory = service.create_project(
-        "Raw Sheet", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE
-    )
+    project, directory = _create_sprited_project(service, "Raw Sheet")
     artist = _FixtureArtist()
 
     drawn = service.draw_sprites(project, directory, artist)
@@ -134,9 +151,9 @@ def test_draw_sprites_saves_the_raw_sheet_beside_the_registered_asset(tmp_path: 
 
     with Image.open(raw_path) as raw, Image.open(_FIXTURE_SHEET) as original:
         assert raw.size == original.size
-        assert raw.convert("RGB").tobytes() == original.convert("RGB").tobytes(), (
-            "the saved file must be the model's raw response, not a cleaned/packed frame"
-        )
+        assert (
+            raw.convert("RGB").tobytes() == original.convert("RGB").tobytes()
+        ), "the saved file must be the model's raw response, not a cleaned/packed frame"
 
     # The real fixture passes judgement on the first attempt, so the numbered
     # attempt history (see the failure-path test below) is exactly one entry
@@ -158,9 +175,7 @@ def test_draw_sprites_saves_every_attempts_raw_sheet_after_a_failure(tmp_path: P
     lose them because the loop ended in a raise instead of a return.
     """
     service = StudioService.at(tmp_path)
-    project, directory = service.create_project(
-        "Persistent Failure", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE
-    )
+    project, directory = _create_sprited_project(service, "Persistent Failure")
     # Filled edge to edge, no white margin at all -- `_clean_image`'s tight
     # bounding-box crop leaves nothing but figure, so every attempt is judged
     # a solid block and none of the three ever wins.
@@ -175,9 +190,9 @@ def test_draw_sprites_saves_every_attempts_raw_sheet_after_a_failure(tmp_path: P
     assert [path.name for path in attempts] == [
         f"hero.raw.attempt-{n}.png" for n in range(1, MAX_DRAW_ATTEMPTS + 1)
     ], "every attempt must be saved, numbered so their order is obvious"
-    assert not (assets_dir / "hero.raw.png").is_file(), (
-        "no attempt won, so the unsuffixed 'the winner' file must not exist"
-    )
+    assert not (
+        assets_dir / "hero.raw.png"
+    ).is_file(), "no attempt won, so the unsuffixed 'the winner' file must not exist"
     assert not (assets_dir / "hero.png").is_file(), "a failed draw must never register an asset"
 
 
@@ -193,9 +208,7 @@ def test_draw_sprites_tolerates_an_artist_that_carries_no_raw_sheet(tmp_path: Pa
             return [Image.new("RGBA", (SPRITE_SIZE, SPRITE_SIZE), (200, 40, 40, 255))]
 
     service = StudioService.at(tmp_path)
-    project, directory = service.create_project(
-        "Bare Artist", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE
-    )
+    project, directory = _create_sprited_project(service, "Bare Artist")
 
     drawn = service.draw_sprites(project, directory, _BareArtist())
 
@@ -204,3 +217,16 @@ def test_draw_sprites_tolerates_an_artist_that_carries_no_raw_sheet(tmp_path: Pa
     assert asset_path.is_file()
     raw_path = asset_path.with_name(f"{asset_path.stem}.raw.png")
     assert not raw_path.is_file()
+
+
+def test_a_v3_document_is_refused_with_a_message_that_says_what_to_do(tmp_path):
+    from llmz80.studio.store import ProjectStore
+
+    path = tmp_path / "old" / "game.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text("schema_version: 3\nmetadata: {}\n", encoding="utf-8")
+    with pytest.raises(ValueError) as error:
+        ProjectStore(tmp_path).load(path)
+    message = str(error.value)
+    assert "schema version 3" in message
+    assert "v4" in message

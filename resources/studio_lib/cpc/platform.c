@@ -19,22 +19,9 @@
 #define set_draw_char cpct_setDrawCharM1
 #endif
 
-/* Mode 1 offers only four pens, so wall, enemy and player take one each and the
- * collectible shares the enemy pen but is drawn as a smaller box. */
-#if CPC_MODE == 0
-#define PIXELS_PLAYER 0xFF
-#define PIXELS_WALL 0x0F
-#define PIXELS_ENEMY 0xF0
-#else
-#define PIXELS_PLAYER 0xFF
-#define PIXELS_WALL 0xF0
-#define PIXELS_ENEMY 0x0F
-#endif
-#define PIXELS_ITEM PIXELS_ENEMY
-#define PIXELS_EMPTY 0x00
-
-/* Pen 0 black, pen 1 wall, pen 2 actors, pen 3 player. Set explicitly so the
- * result does not depend on whichever palette the firmware left behind.
+/* Four pens, set explicitly so the result does not depend on whichever
+ * palette the firmware left behind. Which pen means what is the design's
+ * business, not this library's; mode 1 offers no more than these four.
  *
  * Built on the stack on purpose. A file-scope initialised array lands in the
  * DATA segment, which this link does not initialise at run time, and a const
@@ -77,11 +64,9 @@ unsigned char plat_wait_frame(void) {
 unsigned char plat_input(void) {
     unsigned char keys = 0;
     cpct_scanKeyboard_f();
-    if (cpct_isKeyPressed(Key_CursorLeft)) keys |= IN_LEFT;
-    if (cpct_isKeyPressed(Key_CursorRight)) keys |= IN_RIGHT;
-    if (cpct_isKeyPressed(Key_CursorUp)) keys |= IN_UP;
-    if (cpct_isKeyPressed(Key_CursorDown)) keys |= IN_DOWN;
-    if (cpct_isKeyPressed(Key_Space)) keys |= IN_ACTION;
+#define X(bit, code) if (cpct_isKeyPressed(code)) keys |= bit;
+    INPUT_BINDINGS(X)
+#undef X
     return keys;
 }
 
@@ -90,21 +75,14 @@ void plat_text(unsigned char col, unsigned char row, const char *text) {
     draw_string((void *)text, screen);
 }
 
-void plat_cell(unsigned char col, unsigned char row, unsigned char kind) {
-    u8 *screen;
+/* Reuses the proven text path rather than a second glyph blitter: one
+ * character, drawn where a cell is. */
+void plat_cell(unsigned char col, unsigned char row, char glyph) {
+    char text[2];
     if (col >= (80 / CELL_BYTES) || row >= 25) return;
-    screen = cpct_getScreenPtr(CPCT_VMEM_START, (u8)(col * CELL_BYTES), (u8)(row * 8));
-    if (kind == CELL_COLLECTIBLE) {
-        /* Same pen as an enemy, half the height, so the two never look alike. */
-        cpct_drawSolidBox(screen, PIXELS_EMPTY, CELL_BYTES, 8);
-        screen = cpct_getScreenPtr(CPCT_VMEM_START, (u8)(col * CELL_BYTES), (u8)(row * 8 + 2));
-        cpct_drawSolidBox(screen, PIXELS_ITEM, CELL_BYTES, 4);
-        return;
-    }
-    if (kind == CELL_PLAYER) cpct_drawSolidBox(screen, PIXELS_PLAYER, CELL_BYTES, 8);
-    else if (kind == CELL_ENEMY) cpct_drawSolidBox(screen, PIXELS_ENEMY, CELL_BYTES, 8);
-    else if (kind == CELL_WALL) cpct_drawSolidBox(screen, PIXELS_WALL, CELL_BYTES, 8);
-    else cpct_drawSolidBox(screen, PIXELS_EMPTY, CELL_BYTES, 8);
+    text[0] = glyph;
+    text[1] = 0;
+    plat_text(col, row, text);
 }
 
 /* The CPC target declares no audio, so this is deliberately silent. The design

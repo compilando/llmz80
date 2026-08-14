@@ -3,6 +3,42 @@
 This is the durable execution record for the project-first guided game creator. A stage is only
 marked complete when its acceptance evidence exists in the repository or test output.
 
+## Direction change, 2026-08-14 — the IR stops deciding what a game is
+
+Phase 1 of the v4 cut is in. The IR no longer fixes the vocabulary of every
+game. `tiles` carry a `char` and free `traits`, `entities` carry a `kind` the
+design coins for itself, `mechanics` are prose the writer and the examiner
+read, `observables` add symbols on top of the state contract, and `screens` are
+connected by `exits`. Gone with v3: `genre`, `gameplay`, `levels`, the fixed
+`player`/`enemy`/`collectible` roles, the `#`/`.` terrain and the genre
+registry. The state contract now requires only `g_score` and `g_state`; lives
+and levels are notions a design may or may not have.
+
+The reason is in `studio-projects/archive-v3/`. Eighteen "genres" produced one
+game — four archived projects declare four different genres and describe the
+same grid sweep — and two of the seven generated projects, `zampabolas` and
+`atic-atac-2000`, burned all five attempts against an examiner that predicted
+one game's cadence and failed anything else. `brick-wall` fell to the same
+expectation on its third.
+
+Three gates are withdrawn, not deferred: solvability, difficulty curve and
+terrain structure. All three assumed a four-direction grid with no jump, so on
+a platformer they did not measure a weakness, they reported a fiction.
+
+The behaviour gate **abstains**. `probe_report` records what memory said and
+returns `quality_pass: None`; acceptance no longer derives scenarios from the
+design. Deriving a real expectation from a design's own mechanics is the phase 2
+examiner's job, and until it exists there is nothing honest to judge a reading
+against. An abstention is the accurate report; a guess is what rejected
+`zampabolas` five times.
+
+Acceptance evidence for the phase: `studio-projects/fase-uno` validates and
+reopens with two screens joined by `exits` (`screen_1 -right-> screen_2`,
+`screen_2 -left-> screen_1`), an entity of `kind: perseguidor`, a `jump: SPACE`
+binding beside `left`/`right`, and a third tile carrying its own `climbable`
+trait — four things v3 could not express, none of which needed a validation
+rule relaxed to pass.
+
 ## Direction change, 2026-08-11
 
 The engine was the wrong deliverable; the verification apparatus was the right
@@ -22,7 +58,9 @@ have to be rewritten when the change lands, not quietly ignored.
 
 ## Product contract
 
-- `game.yml` (GameProject schema v3) is the editable source of truth.
+- `game.yml` (GameProject schema v4) is the editable source of truth, and it declares its
+  own vocabulary: tiles, entity kinds, control bindings and mechanics are the design's words,
+  not Studio's.
 - The program is written into the project and owned by it. It is the artifact of record, not a
   reproducible build output, because a written program cannot be reconstructed from the design.
 - AI returns typed design proposals; applying them is a separate, reviewable operation.
@@ -40,7 +78,7 @@ have to be rewritten when the change lands, not quietly ignored.
 | S05 | Modular deterministic game engine | Withdrawn | Replaced by scaffolding: `resources/studio_lib` offers platform pieces with no game loop, and the program lives in the project's `program_dir`. The former engine is kept as a reference program under `resources/studio_reference` |
 | S06 | Asset pipeline | In progress | Project-owned image import and deterministic Spectrum/CPC packing; a sprite-kind 16x16 asset is packed into `sprites.h` and blittable on both targets (S12), but every other imported asset still falls back to the generic `assets.c` conversion, which no generated C references |
 | S07 | Structured AI design assistance | Implemented | Responses typed proposals, visible diff, separate apply action and protected contracts |
-| S08 | Automated gameplay QA | In progress | Design, build and runtime gates plus solvability, terrain-structure and difficulty-curve analysis; on Spectrum, memory-probed assertions that a scripted sweep scores exactly what the design predicts, that a chasing enemy's catch costs exactly one life, and that `g_anim_frame` (when a program declares it) advances while moving and holds still at rest; CPC state probes and level transitions next |
+| S08 | Automated gameplay QA | Withdrawn and rebuilt in F2 | The solvability, terrain-structure and difficulty-curve analyses are deleted: each assumed a four-direction grid with no jump and so judged designs it could not read. The scripted-sweep and one-life-per-catch assertions are deleted with the fixed roles they predicted. What survives is the machinery, not the verdict: both toolchains still export `probes.json`, the emulator still reads the state contract out of memory, and the report now records the reading and abstains (`quality_pass: None`). F2 rebuilds the verdict on an examiner that derives expectations from the design's own `mechanics` and `observables` |
 | S09 | Commercial vertical slices | In progress | Quality-gated reproducible release archive; content/presentation polish next |
 | S10 | Extension SDK | Implemented | Public typed protocols, entry-point groups, compatibility rules and installable example |
 | S11 | Real-game references driving the design | Implemented | Cited dossier in `reference.yml`, a proposal with an approvable diff, and a prompt block for the writer; adaptation is one-shot, so a refused proposal is discarded whole and retrying starts from a designer with no memory of what failed |

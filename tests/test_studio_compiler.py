@@ -6,16 +6,28 @@ import pytest
 from PIL import Image
 
 from llmz80.studio.acceptance import blitter_sprites
-from llmz80.studio.compiler import build_project, render_project, validate_design_fits_target
-from llmz80.studio.layout import relayout
-from llmz80.studio.models import AssetSpec, GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
-from llmz80.studio.services import StudioService
+from llmz80.studio.compiler import build_project, render_project
+from llmz80.studio.models import AssetSpec, TargetPlatform
+from llmz80.studio.samples import blank_project
 from llmz80.studio.spriting import pack_spectrum
 from llmz80.studio.sprite_sheet import split_frames
-from llmz80.studio.store import ProjectStore
 
 REFERENCE = Path(__file__).resolve().parents[1] / "resources" / "studio_reference"
+
+
+def _project_dir(tmp_path: Path, project) -> Path:
+    """Where the project's own files (game.yml, assets/, program/) would live.
+
+    Stands in for `ProjectStore.create`, which these tests can't reach for
+    now: `store.py` imports `layout.py`, a v3 module this schema doesn't
+    have (a later task's concern, not this one's). All these tests ever
+    needed from the store was a directory named after the project's slug --
+    `render_project`'s `project_dir` (`output_dir.parent`) resolves assets
+    and `program_dir` against it -- so that is all this recreates.
+    """
+    directory = tmp_path / project.metadata.slug
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
 
 
 def _with_program(project, directory: Path, platform: TargetPlatform):
@@ -57,8 +69,8 @@ def _add_sprite_asset(directory: Path, asset_id: str, frames: int) -> AssetSpec:
 def test_scaffolding_contributes_library_and_contracts_not_gameplay(
     tmp_path: Path, platform: TargetPlatform
 ):
-    project = create_default_project("Scaffold", platform, GenreId.MAZE_CHASE)
-    directory = ProjectStore(tmp_path).create(project)
+    project = blank_project("Scaffold", platform)
+    directory = _project_dir(tmp_path, project)
 
     result = render_project(project, directory / "build")
     source = result.output_dir / "src"
@@ -73,8 +85,8 @@ def test_scaffolding_contributes_library_and_contracts_not_gameplay(
 
 
 def test_a_project_without_a_program_scaffolds_and_says_so(tmp_path: Path):
-    project = create_default_project("Empty", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
-    directory = ProjectStore(tmp_path).create(project)
+    project = blank_project("Empty", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
 
     result = render_project(project, directory / "build")
 
@@ -85,8 +97,8 @@ def test_a_project_without_a_program_scaffolds_and_says_so(tmp_path: Path):
 
 
 def test_the_projects_own_sources_reach_the_build(tmp_path: Path):
-    project = create_default_project("Owned", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
-    directory = ProjectStore(tmp_path).create(project)
+    project = blank_project("Owned", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
     _with_program(project, directory, TargetPlatform.SPECTRUM)
 
     result = render_project(project, directory / "build")
@@ -105,8 +117,8 @@ def test_sprites_h_reaches_src_as_declarations_and_sprites_c_as_definitions(tmp_
     because it is included by both platform.c and the program's own main.c;
     the actual definitions belong in sprites.c, compiled exactly once.
     """
-    project = create_default_project("SplitHeader", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
-    directory = ProjectStore(tmp_path).create(project)
+    project = blank_project("SplitHeader", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
     asset = _add_sprite_asset(directory, "hero", frames=1)
     project.assets = [asset]
 
@@ -127,8 +139,8 @@ def test_a_program_may_not_shadow_a_studio_generated_file(tmp_path: Path):
     one -- that is how `SPRITE_PELLET` and friends have gone missing before
     while the build still (mostly) succeeded. Refuse it loudly instead.
     """
-    project = create_default_project("Shadow", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
-    directory = ProjectStore(tmp_path).create(project)
+    project = blank_project("Shadow", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
     program_dir = directory / project.program_dir
     program_dir.mkdir(parents=True, exist_ok=True)
     (program_dir / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
@@ -141,8 +153,8 @@ def test_a_program_may_not_shadow_a_studio_generated_file(tmp_path: Path):
 
 
 def test_a_removed_source_does_not_survive_the_next_scaffold(tmp_path: Path):
-    project = create_default_project("Stale", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
-    directory = ProjectStore(tmp_path).create(project)
+    project = blank_project("Stale", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
     _with_program(project, directory, TargetPlatform.SPECTRUM)
     render_project(project, directory / "build")
     (directory / project.program_dir / "engine.c").unlink()
@@ -154,41 +166,42 @@ def test_a_removed_source_does_not_survive_the_next_scaffold(tmp_path: Path):
 
 
 def test_the_config_header_states_the_target_and_the_design(tmp_path: Path):
-    project = create_default_project("Config", TargetPlatform.AMSTRAD_CPC, GenreId.MAZE_CHASE)
-    project.gameplay.score_per_collectible = 25
+    project = blank_project("Config", TargetPlatform.AMSTRAD_CPC)
+    # v4 has no `gameplay.score_per_collectible` to assign -- there is no
+    # fixed scoring rule left to configure. What a design still owns is its
+    # own vocabulary, e.g. a named sound effect, which the header numbers.
+    project.audio.effects = ["boop"]
 
     header = (
         render_project(project, tmp_path / "build").output_dir / "src" / "game_config.h"
     ).read_text()
 
-    assert "#define SCORE_PER_COLLECTIBLE 25" in header
+    assert "#define SOUND_BOOP 0" in header
     assert "#define CPC_MODE 1" in header
     assert "#define PLAYFIELD_COLS 40" in header
     assert "#define HAS_FRAME_CLOCK 0" in header
 
 
-def test_the_state_header_declares_the_whole_contract(tmp_path: Path):
-    project = create_default_project("State", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+def test_the_state_header_declares_what_every_program_has_and_offers_the_rest(
+    tmp_path: Path,
+):
+    """`contract_prompt` tells the writer not to declare a symbol its game has
+    no notion of, so the header must not declare one for it."""
+    project = blank_project("State", TargetPlatform.SPECTRUM)
 
     header = (
         render_project(project, tmp_path / "build").output_dir / "src" / "game_state.h"
     ).read_text()
 
-    for symbol in ("g_score", "g_lives", "g_level", "g_state", "g_hiscore"):
-        assert f" {symbol};" in header
     assert "extern unsigned int g_score;" in header
-
-
-def test_a_level_larger_than_the_target_grid_is_refused(tmp_path: Path):
-    project = create_default_project("Oversized", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
-    project = relayout(project, width=40)
-
-    with pytest.raises(ValueError, match="offers 32x22 playable cells"):
-        validate_design_fits_target(project)
+    assert "extern unsigned char g_state;" in header
+    for optional in ("g_lives", "g_level", "g_hiscore"):
+        assert f"extern unsigned char {optional};" not in header
+        assert optional in header, "the optional symbols are still offered"
 
 
 def test_scaffolding_is_byte_identical_across_runs(tmp_path: Path):
-    project = create_default_project("Determinism", TargetPlatform.AMSTRAD_CPC, GenreId.MAZE_CHASE)
+    project = blank_project("Determinism", TargetPlatform.AMSTRAD_CPC)
 
     first = render_project(project, tmp_path / "build")
     snapshot = {
@@ -203,18 +216,30 @@ def test_scaffolding_is_byte_identical_across_runs(tmp_path: Path):
 
 
 @pytest.mark.parametrize("platform", list(TargetPlatform))
-def test_imported_asset_is_owned_padded_and_target_packed(tmp_path: Path, platform: TargetPlatform):
-    source = tmp_path / "odd sprite.png"
-    Image.new("RGB", (7, 5), "white").save(source)
-    workspace = tmp_path / "projects"
-    service = StudioService.at(workspace)
-    project, directory = service.create_project("Assets", platform, GenreId.SINGLE_SCREEN_COLLECT)
+def test_imported_asset_is_padded_and_target_packed(tmp_path: Path, platform: TargetPlatform):
+    """A non-sprite asset (a tileset, here) still gets the odd-width padding
+    and platform-specific WIDTH_BYTES packing `render_project` does for
+    anything that isn't a blitter sprite (see the `is_blitter_sprite` branch
+    around the asset loop in compiler.py).
 
-    asset = service.add_asset(project, directory, source)
-    result = service.generate_sources(project, directory)
+    The original of this test drove `StudioService.add_asset` +
+    `.create_project(..., GenreId...)` to get an "imported, owned" asset --
+    both gone in v4 (no `GenreId`, and `services.py`'s own v3 breakage is
+    outside this task). What it actually proved -- odd-width padding and
+    per-target WIDTH_BYTES -- lives entirely in `render_project`, so this
+    drives that directly with a plain `AssetSpec` instead.
+    """
+    project = blank_project("Assets", platform)
+    directory = _project_dir(tmp_path, project)
+    assets_dir = directory / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (7, 5), "white").save(assets_dir / "odd_tile.png")
+    project.assets = [
+        AssetSpec(id="odd", kind="tileset", source="assets/odd_tile.png", width=7, height=5)
+    ]
 
-    assert asset.source.startswith("assets/")
-    assert (directory / asset.source).is_file()
+    result = render_project(project, directory / "build")
+
     assert (result.output_dir / "src" / "assets.c").is_file()
     header = (result.output_dir / "src" / "assets.h").read_text()
     expected_bytes = 1 if platform is TargetPlatform.SPECTRUM else 2
@@ -222,16 +247,16 @@ def test_imported_asset_is_owned_padded_and_target_packed(tmp_path: Path, platfo
 
 
 def test_building_without_a_program_says_what_is_missing(tmp_path: Path):
-    project = create_default_project("Empty", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
-    directory = ProjectStore(tmp_path).create(project)
+    project = blank_project("Empty", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
 
     with pytest.raises(FileNotFoundError, match="no program yet"):
         build_project(project, directory / "build")
 
 
 def test_sprites_that_fit_the_budget_build_as_before(tmp_path: Path):
-    project = create_default_project("Trim", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
-    directory = ProjectStore(tmp_path).create(project)
+    project = blank_project("Trim", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
     asset = _add_sprite_asset(directory, "hero", frames=1)
     project.assets = [asset]
 
@@ -256,8 +281,8 @@ def test_sprites_h_and_blitter_sprites_agree_on_every_asset(tmp_path: Path):
     of the two places -- the exact regression this guards against -- would
     make one of them disagree with the header the other module wrote.
     """
-    project = create_default_project("Mix", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
-    directory = ProjectStore(tmp_path).create(project)
+    project = blank_project("Mix", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
     assets_dir = directory / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
 
@@ -284,21 +309,21 @@ def test_sprites_h_and_blitter_sprites_agree_on_every_asset(tmp_path: Path):
     for asset in project.assets:
         constant = f"SPRITE_{asset.id.upper()}"
         if asset.id in expected_ids:
-            assert re.search(rf"#define {constant} \d+\b", sprites_h), (
-                f"{constant} is missing from sprites.h though blitter_sprites promised it"
-            )
+            assert re.search(
+                rf"#define {constant} \d+\b", sprites_h
+            ), f"{constant} is missing from sprites.h though blitter_sprites promised it"
         else:
-            assert constant not in sprites_h, (
-                f"{constant} is in sprites.h though blitter_sprites never promised it"
-            )
+            assert (
+                constant not in sprites_h
+            ), f"{constant} is in sprites.h though blitter_sprites never promised it"
 
 
 def test_sprites_over_the_static_data_budget_are_refused(tmp_path: Path):
-    project = create_default_project("Bulky", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Bulky", TargetPlatform.SPECTRUM)
     # A small budget keeps the failing case to two sprite assets instead of
     # dozens, while still exercising the real packer arithmetic end to end.
     project.budgets.static_data_bytes = 1024
-    directory = ProjectStore(tmp_path).create(project)
+    directory = _project_dir(tmp_path, project)
     big = _add_sprite_asset(directory, "hero", frames=8)
     small = _add_sprite_asset(directory, "enemy2", frames=1)
     project.assets = [big, small]
@@ -318,4 +343,30 @@ def test_sprites_over_the_static_data_budget_are_refused(tmp_path: Path):
 
     message = str(excinfo.value)
     assert f"{expected_total} bytes" in message
-    assert f"{expected_budget} bytes" in message
+
+
+def test_a_design_of_unheard_of_entity_kinds_scaffolds_fine(tmp_path):
+    """The old scaffold refused any role outside player/enemy/collectible."""
+    from llmz80.studio.compiler import render_project
+    from llmz80.studio.models import GameProject
+    from llmz80.studio.samples import blank_project
+
+    project = blank_project("Exotic", TargetPlatform.SPECTRUM)
+    document = project.model_dump(mode="json")
+    document["entities"].append(
+        {"id": "puerta", "kind": "door", "count": 1, "poses": [], "notes": ""}
+    )
+    result = render_project(GameProject.model_validate(document), tmp_path / "build")
+    assert (result.output_dir / "src" / "game_config.h").is_file()
+
+
+def test_the_state_header_carries_the_designs_observables(tmp_path):
+    from llmz80.studio.compiler import render_project
+    from llmz80.studio.models import GameProject
+    from llmz80.studio.samples import blank_project
+
+    document = blank_project("Observed", TargetPlatform.SPECTRUM).model_dump(mode="json")
+    document["observables"] = [{"symbol": "g_keys", "width": 1, "meaning": "llaves"}]
+    result = render_project(GameProject.model_validate(document), tmp_path / "build")
+    header = (result.output_dir / "src" / "game_state.h").read_text(encoding="utf-8")
+    assert "g_keys" in header

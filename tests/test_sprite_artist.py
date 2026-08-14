@@ -15,9 +15,9 @@ import pytest
 from PIL import Image, ImageDraw
 
 from image_utils import _clean_image
-from llmz80.studio.models import GameProject, GenreId, TargetPlatform, VideoMode
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import GameProject, TargetPlatform, VideoMode
 from llmz80.studio.reference import GameReference, ReferenceSource
+from llmz80.studio.samples import blank_project
 from llmz80.studio.sprite_artist import (
     BACKGROUND_TOLERANCE,
     FRAMES_PER_SHEET,
@@ -163,11 +163,29 @@ class _SequenceGenerator:
 
 
 def _project(platform: TargetPlatform = TargetPlatform.SPECTRUM) -> GameProject:
-    return create_default_project("Test Game", platform, GenreId.MAZE_CHASE)
+    """`blank_project` ships a single generic `actor` entity; these tests need
+    a handful of entities of different *kinds* to stand in for what v3's fixed
+    `player`/`enemy`/`collectible` roles used to guarantee. `kind` is free
+    vocabulary now, so this project simply declares three -- reached the same
+    way `_cpc_mode0_project` reaches an alternate video mode: dump, edit,
+    revalidate, since nothing else in Studio constructs a multi-entity project
+    directly.
+    """
+    data = blank_project("Test Game", platform).model_dump()
+    data["entities"] = [
+        {"id": "hero", "kind": "player", "count": 1, "notes": ""},
+        {"id": "chaser", "kind": "enemy", "count": 1, "notes": ""},
+        {"id": "gem", "kind": "collectible", "count": 1, "notes": ""},
+    ]
+    for screen in data["screens"]:
+        for spawn in screen["spawns"]:
+            if spawn["entity"] == "actor":
+                spawn["entity"] = "hero"
+    return GameProject.model_validate(data)
 
 
 def _cpc_mode0_project() -> GameProject:
-    """`create_default_project` always builds CPC projects in mode 1; mode 0
+    """`blank_project` always builds CPC projects in mode 1; mode 0
     is reached the same way `test_studio_models.py` reaches an alternate
     video mode -- dump, edit, revalidate -- since nothing else in Studio
     constructs one directly.
@@ -302,7 +320,7 @@ def _four_pose_sheet(colours: list[tuple[int, int, int, int]] = _POSE_COLOURS) -
 
 def test_prompt_carries_the_dossiers_visual_style_and_publisher():
     project = _project()
-    entity = next(e for e in project.entities if e.role == "enemy")
+    entity = next(e for e in project.entities if e.kind == "enemy")
     dossier = _dossier()
 
     prompt = compose_prompt(project, entity, dossier)
@@ -313,7 +331,7 @@ def test_prompt_carries_the_dossiers_visual_style_and_publisher():
 
 def test_prompt_states_the_spectrums_monochrome_constraint():
     project = _project(TargetPlatform.SPECTRUM)
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
 
     prompt = compose_prompt(project, entity, None)
 
@@ -322,7 +340,7 @@ def test_prompt_states_the_spectrums_monochrome_constraint():
 
 def test_prompt_states_cpc_mode0s_sixteen_pens():
     project = _cpc_mode0_project()
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
 
     prompt = compose_prompt(project, entity, None)
 
@@ -330,9 +348,9 @@ def test_prompt_states_cpc_mode0s_sixteen_pens():
 
 
 def test_prompt_states_cpc_mode1s_four_pens():
-    project = _project(TargetPlatform.AMSTRAD_CPC)  # create_default_project builds mode 1
+    project = _project(TargetPlatform.AMSTRAD_CPC)  # blank_project builds mode 1
     assert project.target.video_mode is VideoMode.CPC_MODE_1
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
 
     prompt = compose_prompt(project, entity, None)
 
@@ -341,7 +359,7 @@ def test_prompt_states_cpc_mode1s_four_pens():
 
 def test_prompt_asks_for_a_four_frame_sheet_at_the_requested_size():
     project = _project()
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
 
     prompt = compose_prompt(project, entity, None)
 
@@ -349,14 +367,55 @@ def test_prompt_asks_for_a_four_frame_sheet_at_the_requested_size():
     assert f"{REQUEST_WIDTH}x{REQUEST_HEIGHT}" in prompt
 
 
-def test_prompt_without_a_dossier_falls_back_to_role_and_presentation_style():
+def test_prompt_without_a_dossier_falls_back_to_kind_and_presentation_style():
     project = _project()
-    entity = next(e for e in project.entities if e.role == "enemy")
+    entity = next(e for e in project.entities if e.kind == "enemy")
 
     prompt = compose_prompt(project, entity, dossier=None)
 
-    assert entity.role in prompt
+    assert entity.kind in prompt
     assert project.presentation.style in prompt
+
+
+def test_prompt_includes_the_entitys_notes_when_present():
+    """`entity.notes` is prose a fixed `player`/`enemy`/`collectible` role had
+    no field for at all -- what this particular actor *does*, in the
+    designer's own words. It describes the character being drawn, so it
+    belongs in the subject the image model reads, whether or not a reference
+    dossier was identified for this project (see `compose_prompt`).
+    """
+    project = _project()
+    entity = next(e for e in project.entities if e.kind == "enemy")
+    entity = entity.model_copy(update={"notes": "chases the player relentlessly"})
+
+    prompt = compose_prompt(project, entity, dossier=None)
+
+    assert "chases the player relentlessly" in prompt
+
+
+def test_prompt_carries_notes_even_with_an_identified_dossier():
+    """The notes live in the subject line `compose_prompt` builds itself, not
+    in `_style_context` -- so they must survive when a dossier *is*
+    identified too, not only in the no-dossier fallback.
+    """
+    project = _project()
+    entity = next(e for e in project.entities if e.kind == "player")
+    entity = entity.model_copy(update={"notes": "the character the player controls"})
+    dossier = _dossier()
+
+    prompt = compose_prompt(project, entity, dossier)
+
+    assert "the character the player controls" in prompt
+
+
+def test_prompt_has_no_stray_notes_parenthetical_when_entity_has_none():
+    project = _project()
+    entity = next(e for e in project.entities if e.kind == "collectible")
+    assert entity.notes == "", "the fixture entity must carry no notes for this to test anything"
+
+    prompt = compose_prompt(project, entity, dossier=None)
+
+    assert "()" not in prompt
 
 
 def test_technical_requirements_come_after_the_style_block_and_close_the_prompt():
@@ -376,19 +435,19 @@ def test_technical_requirements_come_after_the_style_block_and_close_the_prompt(
     second).
     """
     project = _project()
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
     dossier = _dossier()
 
     prompt = compose_prompt(project, entity, dossier)
 
     style_index = prompt.index("REFERENCE GAME")
     technical_index = prompt.index(TECHNICAL_REQUIREMENTS_HEADING)
-    assert style_index < technical_index, (
-        "the style block must be read before the technical requirements"
-    )
-    assert prompt.rstrip().endswith("Studio colours the sprite itself afterwards."), (
-        "the technical requirements must be the last thing the prompt says"
-    )
+    assert (
+        style_index < technical_index
+    ), "the style block must be read before the technical requirements"
+    assert prompt.rstrip().endswith(
+        "Studio colours the sprite itself afterwards."
+    ), "the technical requirements must be the last thing the prompt says"
 
 
 def test_source_urls_do_not_reach_the_image_prompt():
@@ -400,7 +459,7 @@ def test_source_urls_do_not_reach_the_image_prompt():
     reach the model at all.
     """
     project = _project()
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
     dossier = _dossier()
     assert dossier.sources, "the fixture dossier must actually carry sources to be a real check"
 
@@ -418,12 +477,12 @@ def test_prompt_with_an_unidentified_dossier_also_falls_back():
     too.
     """
     project = _project()
-    entity = next(e for e in project.entities if e.role == "enemy")
+    entity = next(e for e in project.entities if e.kind == "enemy")
     unidentified = GameReference(identified=False, confidence="low")
 
     prompt = compose_prompt(project, entity, unidentified)
 
-    assert entity.role in prompt
+    assert entity.kind in prompt
     assert project.presentation.style in prompt
 
 
@@ -432,7 +491,7 @@ def test_prompt_with_an_unidentified_dossier_also_falls_back():
 
 def test_draw_frames_returns_four_sprite_sized_frames():
     project = _project()
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
     artist = SpriteArtist(_FakeGenerator(_four_pose_sheet()))
 
     frames = artist.draw_frames(project, entity)
@@ -443,7 +502,7 @@ def test_draw_frames_returns_four_sprite_sized_frames():
 
 def test_draw_frames_asks_the_generator_for_the_composed_prompt():
     project = _project()
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
     generator = _FakeGenerator(_four_pose_sheet())
     artist = SpriteArtist(generator)
 
@@ -486,7 +545,7 @@ def test_draw_frames_survives_an_oddly_sized_but_real_response():
     `FRAMES_PER_SHEET` real frames without needing a retry.
     """
     project = _project()
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
     odd = _four_pose_sheet().resize((999, 333), Image.Resampling.NEAREST)
     generator = _FakeGenerator(odd)
     artist = SpriteArtist(generator)
@@ -509,7 +568,7 @@ def test_draw_frames_keeps_all_four_distinct_poses():
     survive, and that they are not all the same frame repeated.
     """
     project = _project()
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
     artist = SpriteArtist(_FakeGenerator(_four_pose_sheet()))
 
     frames = artist.draw_frames(project, entity)
@@ -519,12 +578,12 @@ def test_draw_frames_keeps_all_four_distinct_poses():
         sum(1 for pixel in frame.convert("RGB").getdata() if pixel != (255, 255, 255))
         for frame in frames
     ]
-    assert all(count > 0 for count in non_background_pixel_counts), (
-        f"every frame must carry drawn pixels of its own pose; got {non_background_pixel_counts}"
-    )
-    assert len({frame.tobytes() for frame in frames}) == FRAMES_PER_SHEET, (
-        "the four frames must differ from each other -- four distinct poses went in"
-    )
+    assert all(
+        count > 0 for count in non_background_pixel_counts
+    ), f"every frame must carry drawn pixels of its own pose; got {non_background_pixel_counts}"
+    assert (
+        len({frame.tobytes() for frame in frames}) == FRAMES_PER_SHEET
+    ), "the four frames must differ from each other -- four distinct poses went in"
 
 
 def test_the_sheet_and_request_sizes_are_consistent_with_the_packer():
@@ -551,7 +610,9 @@ def _spectrum_set_bits_per_frame(packed) -> list[int]:
     return [
         sum(
             bin(byte).count("1")
-            for byte in packed.data[index * packed.bytes_per_frame : (index + 1) * packed.bytes_per_frame]
+            for byte in packed.data[
+                index * packed.bytes_per_frame : (index + 1) * packed.bytes_per_frame
+            ]
         )
         for index in range(packed.frames)
     ]
@@ -571,9 +632,13 @@ def _cpc_mode1_opaque_pixels_per_frame(packed) -> list[int]:
     """
     counts = []
     for index in range(packed.frames):
-        frame_bytes = packed.data[index * packed.bytes_per_frame : (index + 1) * packed.bytes_per_frame]
+        frame_bytes = packed.data[
+            index * packed.bytes_per_frame : (index + 1) * packed.bytes_per_frame
+        ]
         opaque = 0
-        for mask_byte in frame_bytes[0::2]:  # every other byte is the mask; see pack_cpc's docstring
+        for mask_byte in frame_bytes[
+            0::2
+        ]:  # every other byte is the mask; see pack_cpc's docstring
             for pos in range(4):
                 low_bit = (mask_byte >> (7 - pos)) & 1
                 high_bit = (mask_byte >> (3 - pos)) & 1
@@ -595,7 +660,7 @@ def test_a_real_black_on_white_sheet_packs_as_a_recognisable_silhouette_not_a_so
     checked "not 256").
     """
     project = _project(TargetPlatform.SPECTRUM)
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
     with Image.open(_FIXTURE_SHEET) as sheet:
         artist = SpriteArtist(_FakeGenerator(sheet.copy()))
         frames = artist.draw_frames(project, entity)
@@ -616,7 +681,7 @@ def test_the_same_real_sheet_does_not_pack_as_a_solid_block_for_the_cpc_either()
     covers it without any change to `pack_cpc` itself.
     """
     project = _project(TargetPlatform.AMSTRAD_CPC)
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
     with Image.open(_FIXTURE_SHEET) as sheet:
         artist = SpriteArtist(_FakeGenerator(sheet.copy()))
         frames = artist.draw_frames(project, entity)
@@ -643,7 +708,7 @@ def test_the_real_black_on_white_fixture_yields_a_visible_attribute():
     paper genuinely differ -- see `spriting._MONOCHROME_FALLBACK_INK`.
     """
     project = _project(TargetPlatform.SPECTRUM)
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
     with Image.open(_FIXTURE_SHEET) as sheet:
         artist = SpriteArtist(_FakeGenerator(sheet.copy()))
         frames = artist.draw_frames(project, entity)
@@ -666,7 +731,7 @@ def test_coloured_art_still_yields_its_own_colour_not_the_monochrome_fallback():
     exactly as it did before this fix.
     """
     project = _project(TargetPlatform.SPECTRUM)
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
     cyan = (0, 255, 255, 255)
     artist = SpriteArtist(_FakeGenerator(_four_pose_sheet([cyan, cyan, cyan, cyan])))
 
@@ -697,7 +762,7 @@ def test_a_dark_background_response_still_yields_usable_frames():
     detection gets it right immediately, with no retry needed.
     """
     project = _project(TargetPlatform.SPECTRUM)
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
     generator = _FakeGenerator(_dark_background_sheet())
     artist = SpriteArtist(generator)
 
@@ -707,9 +772,9 @@ def test_a_dark_background_response_still_yields_usable_frames():
     total = SPRITE_SIZE * SPRITE_SIZE
     for index, frame in enumerate(frames):
         opaque = int((np.asarray(frame)[..., 3] >= 128).sum())
-        assert 0 < opaque < total, (
-            f"frame {index} packed to {opaque}/{total} -- still a solid block or blank"
-        )
+        assert (
+            0 < opaque < total
+        ), f"frame {index} packed to {opaque}/{total} -- still a solid block or blank"
     assert len(generator.prompts) == 1, "a correctly detected background needs no retry"
 
 
@@ -721,7 +786,7 @@ def test_a_solid_block_is_retried_and_the_feedback_names_the_problem():
     fields rather than just saying "try again".
     """
     project = _project(TargetPlatform.SPECTRUM)
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
     good = _four_pose_sheet()
     generator = _SequenceGenerator([_solid_block_sheet(), good])
     artist = SpriteArtist(generator)
@@ -749,7 +814,7 @@ def test_a_persistently_bad_response_raises_with_the_last_reason():
     refusal reason forward instead of a generic failure.
     """
     project = _project(TargetPlatform.SPECTRUM)
-    entity = next(e for e in project.entities if e.role == "player")
+    entity = next(e for e in project.entities if e.kind == "player")
     generator = _FakeGenerator(_solid_block_sheet())
     artist = SpriteArtist(generator)
 
@@ -770,11 +835,11 @@ def test_a_statically_repeated_pose_is_accepted_without_retrying():
     pixel-identical on principle, which cost three wasted image generations
     on exactly this response before raising (see `_judge_frames`'s
     docstring for why that check was dropped rather than made to depend on
-    `EntitySpec.role`). Only the 0/256 pixel-count check remains, and a
+    `EntitySpec.kind`). Only the 0/256 pixel-count check remains, and a
     real, non-degenerate silhouette repeated four times does not trip it.
     """
     project = _project(TargetPlatform.SPECTRUM)
-    entity = next(e for e in project.entities if e.role == "collectible")
+    entity = next(e for e in project.entities if e.kind == "collectible")
     static = _solid_image((512, 128), (255, 255, 255, 255))
     draw = ImageDraw.Draw(static)
     for index in range(FRAMES_PER_SHEET):
@@ -788,9 +853,9 @@ def test_a_statically_repeated_pose_is_accepted_without_retrying():
     assert len(frames) == FRAMES_PER_SHEET
     assert len(generator.prompts) == 1, "a correctly-static sprite must not be retried"
     assert frames.attempts == 1
-    assert len({frame.tobytes() for frame in frames}) == 1, (
-        "the four frames should indeed come back identical -- that is the point"
-    )
+    assert (
+        len({frame.tobytes() for frame in frames}) == 1
+    ), "the four frames should indeed come back identical -- that is the point"
 
 
 def test_a_sprite_touching_its_frame_edge_is_not_destroyed_by_background_detection():
@@ -872,7 +937,9 @@ def test_binarizing_a_haloed_column_tightens_the_bounding_box_the_old_path_left_
 
     old_cleaned = _clean_image(column, background_color=background, tolerance=BACKGROUND_TOLERANCE)
     binarized = _binarize_against_background(column, background, HALO_TOLERANCE)
-    new_cleaned = _clean_image(binarized, background_color=background, tolerance=BACKGROUND_TOLERANCE)
+    new_cleaned = _clean_image(
+        binarized, background_color=background, tolerance=BACKGROUND_TOLERANCE
+    )
 
     assert old_cleaned.width == column.width, (
         "sanity check on the fixture itself: the old path must still reproduce the "
@@ -948,9 +1015,9 @@ def test_a_narrower_than_tall_object_keeps_its_proportions():
     assert height >= SPRITE_SIZE - 2, f"the longer axis should reach close to the frame; got {bbox}"
     original_ratio = 40 / 200
     fitted_ratio = width / height
-    assert abs(fitted_ratio - original_ratio) < 0.15, (
-        f"the 40:200 aspect ratio should survive scaling; got {width}:{height}"
-    )
+    assert (
+        abs(fitted_ratio - original_ratio) < 0.15
+    ), f"the 40:200 aspect ratio should survive scaling; got {width}:{height}"
 
 
 def test_a_small_object_does_not_fill_the_frame():
@@ -977,7 +1044,9 @@ def test_a_small_object_does_not_fill_the_frame():
     )
     total = SPRITE_SIZE * SPRITE_SIZE
     count = int((np.asarray(frame)[..., 3] >= 128).sum())
-    assert count < total // 4, f"a genuinely small object must leave most of the frame as background; got {count}/{total}"
+    assert (
+        count < total // 4
+    ), f"a genuinely small object must leave most of the frame as background; got {count}/{total}"
 
 
 def test_an_entirely_background_column_does_not_crash():
@@ -1017,9 +1086,9 @@ def test_the_real_fixture_still_yields_sane_non_degenerate_counts():
     total = SPRITE_SIZE * SPRITE_SIZE
     for index, frame in enumerate(frames):
         count = int((np.asarray(frame)[..., 3] >= 128).sum())
-        assert 20 <= count <= 200, (
-            f"frame {index}: {count}/{total} opaque -- not a sane silhouette count"
-        )
+        assert (
+            20 <= count <= 200
+        ), f"frame {index}: {count}/{total} opaque -- not a sane silhouette count"
         bbox = _opaque_bbox(frame)
         assert bbox is not None
         width, height = bbox

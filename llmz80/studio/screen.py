@@ -164,21 +164,25 @@ def _design_stage(project: GameProject) -> Stage:
     """diseño -- `editing_status`'s own verdict on the design in memory.
 
     Unlike every other stage, this one has no `pending`: a `GameProject`
-    cannot exist without entities, levels and scenes already in place, so
-    there is no "not yet attempted" state for its own rules to be in --
-    `editing_status` always has an answer, computed fresh from what the
+    cannot exist without tiles, entities, screens and scenes already in
+    place, so there is no "not yet attempted" state for its own rules to be
+    in -- `editing_status` always has an answer, computed fresh from what the
     project holds right now. `ready` is `done`; anything else is `failed`,
-    with the solvability and structure failures (and the target-fit error,
-    when the design does not even fit the hardware) joined as the detail, the
-    same reasons `editing_status` already collects for the terminal UI.
+    with `backend_error` as the detail.
+
+    This used to also fold in solvability and structure failures --
+    `editing_status` reported both once, on top of whether the design fit
+    the target machine. v4 abolished that judgement (see `editing.py`'s own
+    docstring: it was a rule about grid games with no jump, and it lied
+    about anything else), so `editing_status` no longer has anything of the
+    kind to report, and this stage does not fake having one either: the only
+    question left that can be answered by reading the design alone is
+    whether it fits its target machine.
     """
     status = editing_status(project)
     if status["ready"]:
         return Stage("diseño", "done")
-    reasons = [*status["solvability_failures"], *status["structure_failures"]]
-    if status["backend_error"]:
-        reasons.append(status["backend_error"])
-    return Stage("diseño", "failed", "; ".join(reasons))
+    return Stage("diseño", "failed", status["backend_error"] or "")
 
 
 def _sprite_stage(project: GameProject) -> Stage:
@@ -203,9 +207,7 @@ def _sprite_stage(project: GameProject) -> Stage:
     accepted = [asset for asset in sprites if is_blitter_sprite(asset)]
     if len(accepted) == len(sprites):
         return Stage("sprites", "done", f"{len(accepted)} sprites")
-    return Stage(
-        "sprites", "failed", f"{len(accepted)}/{len(sprites)} accepted by the blitter"
-    )
+    return Stage("sprites", "failed", f"{len(accepted)}/{len(sprites)} accepted by the blitter")
 
 
 def _program_stage(project: GameProject, directory: Path | None) -> Stage:
@@ -292,7 +294,9 @@ def _release_stage(project: GameProject, directory: Path | None) -> Stage:
     """
     if directory is None:
         return Stage("release", "pending")
-    archive = directory / "releases" / f"{project.metadata.slug}-{project.target.platform.value}.zip"
+    archive = (
+        directory / "releases" / f"{project.metadata.slug}-{project.target.platform.value}.zip"
+    )
     if archive.is_file():
         return Stage("release", "done", archive.name)
     return Stage("release", "pending")

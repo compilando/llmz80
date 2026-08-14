@@ -1,180 +1,84 @@
-# Game typologies Studio can start a design from.
+# Typologies Studio's designer prompt can suggest.
 #
-# A typology is data, not code: it says what the game is made of and what shape
-# its space has, and everything else -- terrain, spawns, acceptance criteria,
-# retrieval query -- is derived. Adding one is an entry here, not a new branch.
-#
-# terrain: how the level is laid out
-#   open       bordered empty space
-#   maze       regular interior pillars
-#   ledges     horizontal platforms with gaps
-#   corridors  serpentine passages
-#   chambers   rooms joined by doorways
-#
-# Entity roles stay within what the design vocabulary understands: player,
-# enemy and collectible. What a program makes of them is its own business; a
-# "bullet" and a "pellet" are both collectibles to the design.
+# This is inspiration, not a schema: `typology_hints()` reads only `name` and
+# `description` from each entry below to describe a kind of game a designer
+# might propose. Nothing in Studio validates a design against a typology --
+# v3 did that (fixed terrain shape, a fixed enemy count, a fixed roster of
+# collectibles per genre), and it is why eighteen typologies produced one
+# generated game. A design may match one of these, blend several, or be none
+# of them.
 schema_version: 1
 
 genres:
+
   - id: maze_chase
     name: Maze chase
     description: Clear a maze of pellets while pursuers close in.
-    terrain: maze
-    style: colourful maze arcade
-    enemies: {count: 2, behaviour: chase, speed: 1}
-    collectibles: 8
-    keywords: maze pellets pursuit tunnels
 
   - id: single_screen_collect
     name: Single-screen collect
     description: Gather everything on one arcade screen while avoiding hazards.
-    terrain: open
-    style: clean arcade
-    enemies: {count: 2, behaviour: patrol_h, speed: 1}
-    collectibles: 8
-    keywords: collect items avoid single screen
 
   - id: platform_single_screen
     name: Single-screen platformer
     description: Cross ledges to collect keys before the nasties reach you.
-    terrain: ledges
-    style: underground platform arcade
-    enemies: {count: 2, behaviour: patrol_h, speed: 1}
-    collectibles: 8
-    keywords: platform ledges jump gravity climb keys
 
   - id: platform_rooms
     name: Room-to-room platformer
     description: Work through connected caverns, each with its own hazards.
-    terrain: chambers
-    style: cavern exploration
-    enemies: {count: 3, behaviour: patrol_h, speed: 1}
-    collectibles: 8
-    keywords: platform rooms exploration doors caverns
 
   - id: climb
     name: Climbing game
     description: Ascend girders and ladders while obstacles fall past you.
-    terrain: ledges
-    style: girders and ladders
-    enemies: {count: 3, behaviour: patrol_h, speed: 2}
-    collectibles: 6
-    keywords: climb ladders girders ascend barrels
 
   - id: shooter_vertical
     name: Vertical shooter
     description: Fly upward against descending waves of attackers.
-    terrain: open
-    style: starfield vertical shooter
-    enemies: {count: 4, behaviour: patrol_v, speed: 2}
-    collectibles: 6
-    keywords: shoot bullets waves vertical scrolling space
 
   - id: shooter_horizontal
     name: Horizontal shooter
     description: Fly across the screen shooting what comes at you.
-    terrain: open
-    style: side-on space shooter
-    enemies: {count: 4, behaviour: patrol_h, speed: 2}
-    collectibles: 6
-    keywords: shoot bullets horizontal side scrolling space
 
   - id: fixed_shooter
     name: Fixed shooter
     description: Hold the base line and shoot the formation before it lands.
-    terrain: open
-    style: invaders formation
-    enemies: {count: 6, behaviour: patrol_h, speed: 1}
-    collectibles: 6
-    keywords: invaders formation base shoot column
 
   - id: breakout
     name: Brick breaker
     description: Bounce a ball into the wall until every brick is gone.
-    terrain: ledges
-    style: bat and ball
-    enemies: {count: 1, behaviour: bounce, speed: 3}
-    collectibles: 10
-    keywords: ball bat bricks bounce paddle deflect
 
   - id: snake
     name: Growing snake
     description: Eat and grow without running into your own tail.
-    terrain: open
-    style: minimal grid snake
-    enemies: {count: 1, behaviour: patrol_h, speed: 1}
-    collectibles: 8
-    keywords: snake grow tail grid eat trail
 
   - id: sokoban
     name: Block pusher
     description: Push crates onto their marks in the fewest moves.
-    terrain: chambers
-    style: warehouse puzzle
-    enemies: {count: 1, behaviour: patrol_v, speed: 1}
-    collectibles: 5
-    keywords: push crates blocks puzzle warehouse targets
 
   - id: top_down_adventure
     name: Top-down adventure
     description: Explore rooms, find what opens the way onward.
-    terrain: chambers
-    style: overhead adventure
-    enemies: {count: 3, behaviour: guard, speed: 1}
-    collectibles: 8
-    keywords: adventure rooms keys doors explore overhead
 
   - id: dodge_falling
     name: Dodge the falling
     description: Stay alive under a sky that keeps dropping things on you.
-    terrain: open
-    style: rain of hazards
-    enemies: {count: 5, behaviour: patrol_v, speed: 2}
-    collectibles: 6
-    keywords: dodge falling avoid survive rain drop
 
   - id: lane_racer
     name: Lane racer
     description: Weave between traffic at speed without touching anything.
-    terrain: corridors
-    style: overhead road racer
-    enemies: {count: 4, behaviour: patrol_v, speed: 3}
-    collectibles: 6
-    keywords: race lanes traffic road weave speed
 
   - id: static_defence
     name: Static defence
     description: Hold one position against everything that comes for it.
-    terrain: open
-    style: last stand
-    enemies: {count: 5, behaviour: chase, speed: 1}
-    collectibles: 6
-    keywords: defend hold position waves siege turret
 
   - id: boss_arena
     name: Boss arena
     description: One large opponent, one room, one pattern to learn.
-    terrain: open
-    style: single combat arena
-    enemies: {count: 1, behaviour: chase, speed: 2}
-    collectibles: 8
-    keywords: boss arena pattern duel health
 
   - id: dig_and_collect
     name: Dig and collect
     description: Tunnel through earth to reach what is buried in it.
-    terrain: maze
-    style: underground digger
-    enemies: {count: 3, behaviour: chase, speed: 1}
-    collectibles: 10
-    keywords: dig tunnel earth underground boulders
 
   - id: memory_sequence
     name: Memory sequence
     description: Watch the pattern, then repeat it back without a mistake.
-    terrain: open
-    style: pattern memory panels
-    enemies: {count: 1, behaviour: patrol_h, speed: 1}
-    collectibles: 4
-    keywords: memory sequence pattern repeat panels lights

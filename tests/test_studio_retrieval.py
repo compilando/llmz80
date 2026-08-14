@@ -2,10 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from llmz80.studio.editing import set_entity_behaviour
 from llmz80.studio.generator import writing_prompt
-from llmz80.studio.models import GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import GameProject, TargetPlatform
+from llmz80.studio.samples import blank_project
 from llmz80.studio.retrieval import (
     MAX_EXAMPLE_CHARS,
     catalog_examples,
@@ -17,27 +16,23 @@ from llmz80.studio.retrieval import (
 
 @pytest.fixture
 def project():
-    return create_default_project("Retrieved", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    return blank_project("Retrieved", TargetPlatform.SPECTRUM)
 
 
-def test_the_query_describes_the_design_not_the_title(project):
-    query = retrieval_query(project)
-
-    assert "maze chase" in query
-    assert "player" in query and "enemy" in query
-    assert "tile map walls" in query
-    assert project.metadata.title.lower() not in query
-
-
-def test_a_designed_behaviour_widens_the_query(project):
-    edited = set_entity_behaviour(project, "enemy", "chase")
-
-    assert "chase" in retrieval_query(edited)
+def test_the_retrieval_query_is_built_from_the_designs_own_words():
+    document = blank_project("Query", TargetPlatform.SPECTRUM).model_dump(mode="json")
+    document["metadata"]["brief"] = "laberinto de piedra"
+    document["mechanics"] = ["el jugador salta"]
+    document["entities"][0]["kind"] = "explorador"
+    query = retrieval_query(GameProject.model_validate(document))
+    assert "laberinto de piedra" in query
+    assert "explorador" in query
+    assert "salta" in query
 
 
 @pytest.mark.parametrize("platform", list(TargetPlatform))
 def test_examples_come_from_the_projects_own_platform(platform):
-    project = create_default_project("Platform", platform, GenreId.MAZE_CHASE)
+    project = blank_project("Platform", platform)
 
     found = catalog_examples(project)
 
@@ -51,7 +46,7 @@ def test_examples_come_from_the_projects_own_platform(platform):
 
 def test_the_reference_program_is_offered_for_both_targets():
     for platform in TargetPlatform:
-        project = create_default_project("Ref", platform, GenreId.MAZE_CHASE)
+        project = blank_project("Ref", platform)
 
         found = reference_program(project)
 
@@ -81,4 +76,6 @@ def test_examples_are_optional_in_the_writing_prompt(project):
     # The contract must survive either way; examples are help, not the brief.
     for prompt in (with_examples, without):
         assert "OBSERVABLE STATE CONTRACT" in prompt
-        assert "RUNTIME ACCEPTANCE" in prompt
+        # There is no acceptance section any more: deriving one assumed a
+        # pellet sweeper, and the examiner that replaces it is phase 2.
+        assert "Terrain characters" in prompt

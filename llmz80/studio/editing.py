@@ -13,10 +13,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from .compiler import validate_design_fits_target
-from .layout import default_tiles
-from .models import TILE_FLOOR, TILE_WALL, GameProject
-from .solvability import solvability_report
-from .terrain_structure import structure_report
+from .models import GameProject
 
 
 class EditError(ValueError):
@@ -36,97 +33,116 @@ def _document(project: GameProject) -> dict[str, Any]:
     return project.model_dump(mode="json")
 
 
-def _free_cells(level: dict[str, Any]) -> list[tuple[int, int]]:
-    taken = {(spawn["col"], spawn["row"]) for spawn in level["spawns"]}
-    return [
-        (col, row)
-        for row, line in enumerate(level["tiles"])
-        for col, tile in enumerate(line)
-        if tile == TILE_FLOOR and (col, row) not in taken
-    ]
+def solid_char(project: GameProject) -> str:
+    """The character this design uses for terrain it called solid.
+
+    `solid` is a trait like any other and Studio attaches no meaning to it; this
+    only picks which character a "fill with wall" style edit paints. A design
+    that declares no solid tile paints with its first declared tile.
+    """
+    for tile in project.tiles:
+        if "solid" in tile.traits:
+            return tile.char
+    return project.tiles[0].char
+
+
+def open_char(project: GameProject) -> str:
+    """The character this design uses for terrain it did not call solid."""
+    for tile in project.tiles:
+        if "solid" not in tile.traits:
+            return tile.char
+    return project.tiles[-1].char
 
 
 # --- terrain -----------------------------------------------------------------
 
 
-def set_tile(project: GameProject, level_index: int, col: int, row: int, tile: str) -> GameProject:
-    """Paint one cell. Walling a cell that holds a spawn is refused."""
-    if tile not in (TILE_FLOOR, TILE_WALL):
-        raise EditError(f"unknown tile '{tile}'")
+def set_tile(project: GameProject, screen_index: int, col: int, row: int, tile: str) -> GameProject:
+    """Paint one cell with a character this design declared."""
+    known = {declared.char for declared in project.tiles}
+    if tile not in known:
+        raise EditError(f"'{tile}' is not one of this design's tiles: " + " ".join(sorted(known)))
     document = _document(project)
     try:
-        level = document["levels"][level_index]
+        screen = document["screens"][screen_index]
     except IndexError:
-        raise EditError(f"there is no level {level_index + 1}") from None
-    if not (0 <= col < level["width"] and 0 <= row < level["height"]):
-        raise EditError(f"({col}, {row}) is outside the {level['width']}x{level['height']} grid")
-    occupant = next(
-        (
-            spawn
-            for spawn in level["spawns"]
-            if spawn["col"] == col and spawn["row"] == row
-        ),
-        None,
-    )
-    if tile == TILE_WALL and occupant is not None:
-        raise EditError(f"move {occupant['entity']} before walling ({col}, {row})")
-    rows = [list(line) for line in level["tiles"]]
-    rows[row][col] = tile
-    level["tiles"] = ["".join(line) for line in rows]
+        raise EditError(f"there is no screen {screen_index + 1}") from None
+    if not (0 <= col < screen["width"] and 0 <= row < screen["height"]):
+        raise EditError(
+            f"({col}, {row}) is outside the "
+            f"{screen['width']}x{screen['height']} grid of screen {screen['id']}"
+        )
+    rows = list(screen["tiles"])
+    line = rows[row]
+    rows[row] = line[:col] + tile + line[col + 1 :]
+    screen["tiles"] = rows
     return _validated(document)
 
 
-def toggle_tile(project: GameProject, level_index: int, col: int, row: int) -> GameProject:
-    current = project.levels[level_index].tiles[row][col]
-    return set_tile(
-        project, level_index, col, row, TILE_FLOOR if current == TILE_WALL else TILE_WALL
-    )
+def _free_cells(project: GameProject, screen: dict[str, Any]) -> list[tuple[int, int]]:
+    taken = {(spawn["col"], spawn["row"]) for spawn in screen["spawns"]}
+    free = open_char(project)
+    return [
+        (col, row)
+        for row, line in enumerate(screen["tiles"])
+        for col, tile in enumerate(line)
+        if tile == free and (col, row) not in taken
+    ]
 
 
-def fill_level(project: GameProject, level_index: int, tile: str) -> GameProject:
-    """Reset terrain to the generated pattern, or clear it to open floor."""
+def toggle_tile(project: GameProject, screen_index: int, col: int, row: int) -> GameProject:
+    """Swap one cell between this design's solid and open characters."""
+    current = project.screens[screen_index].tiles[row][col]
+    solid, free = solid_char(project), open_char(project)
+    return set_tile(project, screen_index, col, row, free if current == solid else solid)
+
+
+def fill_screen(project: GameProject, screen_index: int, tile: str) -> GameProject:
+    """Repaint a whole screen with one declared character, keeping its border."""
+    known = {declared.char for declared in project.tiles}
+    if tile not in known:
+        raise EditError(f"'{tile}' is not one of this design's tiles: " + " ".join(sorted(known)))
     document = _document(project)
-    level = document["levels"][level_index]
-    if tile == "pattern":
-        level["tiles"] = default_tiles(project.genre, level["width"], level["height"], level_index)
-    elif tile == TILE_FLOOR:
-        level["tiles"] = [TILE_FLOOR * level["width"] for _ in range(level["height"])]
-    else:
-        raise EditError("fill accepts the generated pattern or open floor")
-    return _repaired(document)
+    try:
+        screen = document["screens"][screen_index]
+    except IndexError:
+        raise EditError(f"there is no screen {screen_index + 1}") from None
+    screen["tiles"] = [tile * screen["width"] for _ in range(screen["height"])]
+    return _validated(document)
 
 
 # --- spawns ------------------------------------------------------------------
 
 
 def move_spawn(
-    project: GameProject, level_index: int, spawn_index: int, col: int, row: int
+    project: GameProject, screen_index: int, spawn_index: int, col: int, row: int
 ) -> GameProject:
     document = _document(project)
-    level = document["levels"][level_index]
+    screen = document["screens"][screen_index]
     try:
-        spawn = level["spawns"][spawn_index]
+        spawn = screen["spawns"][spawn_index]
     except IndexError:
-        raise EditError(f"level {level['id']} has no spawn {spawn_index}") from None
-    if not (0 <= col < level["width"] and 0 <= row < level["height"]):
-        raise EditError(f"({col}, {row}) is outside the {level['width']}x{level['height']} grid")
+        raise EditError(f"screen {screen['id']} has no spawn {spawn_index}") from None
+    if not (0 <= col < screen["width"] and 0 <= row < screen["height"]):
+        raise EditError(f"({col}, {row}) is outside the {screen['width']}x{screen['height']} grid")
     spawn["col"] = col
     spawn["row"] = row
     return _validated(document)
 
 
-def _repaired(document: dict[str, Any]) -> GameProject:
-    """Move spawns that terrain or a resize left in a wall or out of bounds."""
-    for level in document["levels"]:
-        width = level["width"]
-        height = level["height"]
+def _repaired(project: GameProject, document: dict[str, Any]) -> GameProject:
+    """Move spawns that terrain or a resize left off this design's open cells."""
+    free_char = open_char(project)
+    for screen in document["screens"]:
+        width = screen["width"]
+        height = screen["height"]
         placed: set[tuple[int, int]] = set()
         stranded: list[dict[str, Any]] = []
-        for spawn in level["spawns"]:
+        for spawn in screen["spawns"]:
             inside = 0 <= spawn["col"] < width and 0 <= spawn["row"] < height
-            on_floor = inside and level["tiles"][spawn["row"]][spawn["col"]] == TILE_FLOOR
+            on_open = inside and screen["tiles"][spawn["row"]][spawn["col"]] == free_char
             cell = (spawn["col"], spawn["row"])
-            if on_floor and cell not in placed:
+            if on_open and cell not in placed:
                 placed.add(cell)
             else:
                 stranded.append(spawn)
@@ -134,13 +150,13 @@ def _repaired(document: dict[str, Any]) -> GameProject:
             continue
         supply = [
             (col, row)
-            for row, line in enumerate(level["tiles"])
+            for row, line in enumerate(screen["tiles"])
             for col, tile in enumerate(line)
-            if tile == TILE_FLOOR and (col, row) not in placed
+            if tile == free_char and (col, row) not in placed
         ]
         if len(supply) < len(stranded):
             raise EditError(
-                f"level {level['id']} has {len(supply)} free floor cells for "
+                f"screen {screen['id']} has {len(supply)} free floor cells for "
                 f"{len(stranded)} displaced entities"
             )
         for spawn, cell in zip(stranded, supply):
@@ -149,37 +165,37 @@ def _repaired(document: dict[str, Any]) -> GameProject:
     return _validated(document)
 
 
-# --- levels ------------------------------------------------------------------
+# --- screens -------------------------------------------------------------
 
 
-def resize_level(project: GameProject, level_index: int, width: int, height: int) -> GameProject:
-    """Crop or extend one level, keeping the terrain that still fits."""
+def resize_screen(project: GameProject, screen_index: int, width: int, height: int) -> GameProject:
+    """Crop or extend one screen, keeping the terrain that still fits."""
     document = _document(project)
-    level = document["levels"][level_index]
-    old = level["tiles"]
+    screen = document["screens"][screen_index]
+    free = open_char(project)
+    old = screen["tiles"]
     rows = []
     for row in range(height):
         source = old[row] if row < len(old) else ""
-        line = [
-            source[col] if col < len(source) else TILE_FLOOR
-            for col in range(width)
-        ]
+        line = [source[col] if col < len(source) else free for col in range(width)]
         rows.append("".join(line))
-    level["width"] = width
-    level["height"] = height
-    level["tiles"] = rows
-    return _repaired(document)
+    screen["width"] = width
+    screen["height"] = height
+    screen["tiles"] = rows
+    return _repaired(project, document)
 
 
-def rename_level(project: GameProject, level_index: int, name: str) -> GameProject:
+def rename_screen(project: GameProject, screen_index: int, name: str) -> GameProject:
     document = _document(project)
-    document["levels"][level_index]["name"] = name.strip()
+    document["screens"][screen_index]["name"] = name.strip()
     return _validated(document)
 
 
-def set_time_limit(project: GameProject, level_index: int, seconds: int | None) -> GameProject:
+def set_screen_time_limit(
+    project: GameProject, screen_index: int, seconds: int | None
+) -> GameProject:
     document = _document(project)
-    document["levels"][level_index]["time_limit_seconds"] = seconds
+    document["screens"][screen_index]["time_limit_seconds"] = seconds
     return _validated(document)
 
 
@@ -187,7 +203,7 @@ def set_time_limit(project: GameProject, level_index: int, seconds: int | None) 
 
 
 def set_entity_count(project: GameProject, entity_id: str, count: int) -> GameProject:
-    """Change how many instances exist, adding or dropping spawns per level."""
+    """Change how many instances exist, adding or dropping spawns on every screen."""
     document = _document(project)
     entity = next((item for item in document["entities"] if item["id"] == entity_id), None)
     if entity is None:
@@ -196,79 +212,59 @@ def set_entity_count(project: GameProject, entity_id: str, count: int) -> GamePr
         raise EditError("an entity needs at least one instance; remove it instead")
     previous = entity["count"]
     entity["count"] = count
-    for level in document["levels"]:
-        owned = [spawn for spawn in level["spawns"] if spawn["entity"] == entity_id]
+    for screen in document["screens"]:
+        owned = [spawn for spawn in screen["spawns"] if spawn["entity"] == entity_id]
         if count < previous:
             kept = 0
             remaining = []
-            for spawn in level["spawns"]:
+            for spawn in screen["spawns"]:
                 if spawn["entity"] == entity_id:
                     kept += 1
                     if kept > count:
                         continue
                 remaining.append(spawn)
-            level["spawns"] = remaining
+            screen["spawns"] = remaining
             continue
-        supply = _free_cells(level)
+        supply = _free_cells(project, screen)
         needed = count - len(owned)
         if needed <= 0:
-            # This level already carries enough; only the others need filling.
+            # This screen already carries enough; only the others need filling.
             continue
         if len(supply) < needed:
             raise EditError(
-                f"level {level['id']} has {len(supply)} free floor cells for "
+                f"screen {screen['id']} has {len(supply)} free floor cells for "
                 f"{needed} more {entity_id}"
             )
         stride = max(1, len(supply) // needed)
         for step in range(needed):
             col, row = supply[step * stride]
-            level["spawns"].append({"entity": entity_id, "col": col, "row": row})
-    return _validated(document)
-
-
-def set_entity_speed(project: GameProject, entity_id: str, speed: int) -> GameProject:
-    document = _document(project)
-    entity = next((item for item in document["entities"] if item["id"] == entity_id), None)
-    if entity is None:
-        raise EditError(f"there is no entity '{entity_id}'")
-    entity["speed"] = speed
-    return _validated(document)
-
-
-def set_entity_behaviour(project: GameProject, entity_id: str, behaviour: str) -> GameProject:
-    document = _document(project)
-    entity = next((item for item in document["entities"] if item["id"] == entity_id), None)
-    if entity is None:
-        raise EditError(f"there is no entity '{entity_id}'")
-    entity["behaviour"] = behaviour
+            screen["spawns"].append({"entity": entity_id, "col": col, "row": row})
     return _validated(document)
 
 
 def add_entity(
     project: GameProject,
     entity_id: str,
-    role: str,
+    kind: str,
     *,
-    sprite: str = "sprite",
+    sprite: str | None = None,
     count: int = 1,
-    speed: int = 1,
 ) -> GameProject:
+    """Declare a new entity and place it on every screen."""
     document = _document(project)
     if any(item["id"] == entity_id for item in document["entities"]):
         raise EditError(f"entity '{entity_id}' already exists")
-    document["entities"].append(
-        {"id": entity_id, "role": role, "sprite": sprite, "speed": speed, "count": count}
-    )
-    for level in document["levels"]:
-        supply = _free_cells(level)
+    document["entities"].append({"id": entity_id, "kind": kind, "sprite": sprite, "count": count})
+    for screen in document["screens"]:
+        supply = _free_cells(project, screen)
         if len(supply) < count:
             raise EditError(
-                f"level {level['id']} has {len(supply)} free floor cells for {count} {entity_id}"
+                f"screen {screen['id']} has {len(supply)} free floor cells for {count} {entity_id}"
             )
         stride = max(1, len(supply) // count)
         for step in range(count):
             col, row = supply[step * stride]
-            level["spawns"].append({"entity": entity_id, "col": col, "row": row})
+            screen["spawns"].append({"entity": entity_id, "col": col, "row": row})
     return _validated(document)
 
 
@@ -277,13 +273,9 @@ def remove_entity(project: GameProject, entity_id: str) -> GameProject:
     entity = next((item for item in document["entities"] if item["id"] == entity_id), None)
     if entity is None:
         raise EditError(f"there is no entity '{entity_id}'")
-    if entity["role"] == "player":
-        raise EditError("the player entity cannot be removed")
     document["entities"] = [item for item in document["entities"] if item["id"] != entity_id]
-    for level in document["levels"]:
-        level["spawns"] = [
-            spawn for spawn in level["spawns"] if spawn["entity"] != entity_id
-        ]
+    for screen in document["screens"]:
+        screen["spawns"] = [spawn for spawn in screen["spawns"] if spawn["entity"] != entity_id]
     return _validated(document)
 
 
@@ -308,30 +300,20 @@ def set_scene_next(project: GameProject, scene_index: int, next_scene: str | Non
 def editing_status(project: GameProject) -> dict[str, Any]:
     """Gate state for the design as it currently stands.
 
-    Model invariants are already enforced by every operation above, so this
-    reports the three an editor cannot enforce keystroke by keystroke: whether
-    the design fits the target machine, whether its levels are solvable, and
-    whether each level's terrain carries the structure its genre implies. All
-    three are advisory while editing and blocking at release: a maze drawn cell
-    by cell passes through states with no interior walls yet, and that is fine
-    here, exactly as an unsolvable half-drawn level already is.
+    Only one question survives here: does this design fit the machine. Whether
+    it can be played is no longer answerable by reading the map -- that was a
+    rule about grid games, and it lied about anything with a jump -- and
+    belongs to the examiner and the emulator.
     """
-    solvability = solvability_report(project)
-    structure = structure_report(project)
     backend_error: str | None = None
     try:
         validate_design_fits_target(project)
     except ValueError as exc:
         backend_error = str(exc)
     return {
-        "solvable": solvability.solvable,
-        "solvability_failures": solvability.failures,
-        "warnings": solvability.warnings,
-        "structured": structure.structured,
-        "structure_failures": structure.failures,
         "buildable": backend_error is None,
         "backend_error": backend_error,
-        "ready": solvability.solvable and structure.structured and backend_error is None,
+        "ready": backend_error is None,
     }
 
 
@@ -356,8 +338,6 @@ def rename_project(
     project: GameProject,
     title: str,
     *,
-    lives: int | None = None,
-    win_score: int | None = None,
     style: str | None = None,
     brief: str | None = None,
 ) -> GameProject:
@@ -368,10 +348,6 @@ def rename_project(
     """
     document = _document(project)
     document["metadata"]["title"] = title
-    if lives is not None:
-        document["gameplay"]["lives"] = lives
-    if win_score is not None:
-        document["gameplay"]["win_score"] = win_score
     if style is not None:
         document["presentation"]["style"] = style
     if brief is not None:

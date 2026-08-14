@@ -14,7 +14,6 @@ from .models import GameProject, TargetPlatform
 from .planner import ProjectProposal
 
 
-GENRE_PACK_GROUP = "llmz80.genre_packs"
 TARGET_PLUGIN_GROUP = "llmz80.target_plugins"
 CAPABILITY_GROUP = "llmz80.capabilities"
 EXPORTER_GROUP = "llmz80.exporters"

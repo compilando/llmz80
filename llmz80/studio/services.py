@@ -5,19 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-import logging
 import re
 import shutil
 import tempfile
 
-from llmz80.core.state_contract import STATE_PLAYING
 from llmz80.quality.emulator_smoke import smoke_test, write_smoke_report
 from PIL import Image
 
 from .compiler import BuildResult, SourceResult, build_project, render_project
 from .feel import animation_report
-from .models import AssetSpec, EntitySpec, GameProject, GenreId, ProjectScope, TargetPlatform
-from .packs import create_default_project
+from .models import AssetSpec, EntitySpec, GameProject, TargetPlatform
+from .samples import blank_project
 from .planner import ProjectProposal, proposal_diff
 from .reference import GameReference, ReferenceResearcher, load_reference, save_reference
 from .reference_design import ReferenceDesigner, propose_and_apply
@@ -30,8 +28,6 @@ from .generator import write_program
 from .release import export_release
 import json
 
-logger = logging.getLogger(__name__)
-
 
 @dataclass
 class StudioService:
@@ -41,14 +37,8 @@ class StudioService:
     def at(cls, workspace: Path) -> "StudioService":
         return cls(ProjectStore(workspace))
 
-    def create_project(
-        self,
-        title: str,
-        platform: TargetPlatform,
-        genre: GenreId,
-        scope: ProjectScope = ProjectScope.COMPLETE,
-    ) -> tuple[GameProject, Path]:
-        project = create_default_project(title, platform, genre, scope)
+    def create_project(self, title: str, platform: TargetPlatform) -> tuple[GameProject, Path]:
+        project = blank_project(title, platform)
         directory = self.store.create(project)
         return project, directory
 
@@ -147,8 +137,22 @@ class StudioService:
         have = {asset.id for asset in project.assets if asset.kind == "sprite"}
         wanted: dict[str, EntitySpec] = {}
         for entity in project.entities:
-            if entity.sprite not in have:
-                wanted.setdefault(entity.sprite, entity)
+            # `sprite` is optional on `EntitySpec` -- a fresh v4 project's
+            # entity carries none until a designer assigns one (v3 always
+            # had a genre pack do that for it). But `structure.py` refuses a
+            # document where `entity.sprite` names an id no asset declares
+            # (see its `test_an_entity_sprite_must_name_a_declared_asset`),
+            # so there is no way to *pre*-assign one before the art exists --
+            # any attempt to save that half-finished state would be rejected
+            # the moment it round-trips through `GameProject.model_validate`.
+            # The only way this ever balances is doing both at once: an
+            # entity with no sprite yet wants its own id as its sprite id,
+            # the same default a designer naming a new entity by hand would
+            # reach for, and the loop below writes it onto `entity` in the
+            # same breath `add_asset` registers the asset it now names.
+            sprite_id = entity.sprite or entity.id
+            if sprite_id not in have:
+                wanted.setdefault(sprite_id, entity)
 
         drawn: list[AssetSpec] = []
         for sprite_id, entity in wanted.items():
@@ -156,9 +160,9 @@ class StudioService:
             # sanitising the filename stem into the same character set
             # `AssetSpec.id` requires. Staging the sheet under `sprite_id`
             # itself only round-trips to that same id if `sprite_id` was
-            # already in that set -- true for every sprite this Studio has
-            # ever generated (see `packs.py`), but `EntitySpec.sprite` carries
-            # no such pattern constraint of its own, so a design that broke
+            # already in that set -- true of every sprite id a design is
+            # expected to coin, but `EntitySpec.sprite` carries no such
+            # pattern constraint of its own, so a design that broke
             # that convention would otherwise register an asset silently
             # misnamed relative to the entity that is meant to wear it.
             if not re.fullmatch(r"[a-z][a-z0-9_]{1,31}", sprite_id):
@@ -167,6 +171,16 @@ class StudioService:
                     "not a valid asset identifier (expected lowercase letters, "
                     "digits and underscores, starting with a letter)"
                 )
+            if entity.sprite is None:
+                # Assigning it now, before the frames are even drawn, means
+                # a `SpriteDrawFailure` below leaves `entity.sprite` set to
+                # an id with no asset behind it -- exactly the state
+                # `structure.py` refuses -- but nothing saves `project` on
+                # that path (see the `except` clause immediately below), so
+                # it never reaches disk; `add_asset`'s own save, a few lines
+                # down, is the first (and only) point this project is
+                # persisted, and by then the asset exists too.
+                entity.sprite = sprite_id
             try:
                 frames = artist.draw_frames(project, entity, dossier)
             except ValueError as exc:
@@ -287,9 +301,7 @@ class StudioService:
         if dossier is None:
             raise ValueError("there is no researched game for this project yet")
         if not dossier.identified:
-            raise ValueError(
-                "no researched game was identified, so there is nothing to adapt to"
-            )
+            raise ValueError("no researched game was identified, so there is nothing to adapt to")
         adaptation = propose_and_apply(project, dossier, designer, attempts=attempts)
         return (
             adaptation.proposal,
@@ -302,54 +314,7 @@ class StudioService:
         self.generate_sources(project, directory)
         return build_project(project, directory / "build")
 
-    #: Direction to key, per control scheme, for the scripted collect sweep.
-    SWEEP_KEYS = {
-        "qaop_space": {"left": "o", "right": "p", "up": "q", "down": "a"},
-        "cursor_space": {"left": "5", "right": "8", "up": "7", "down": "6"},
-    }
-
-    def scenario_script(self, project: GameProject) -> list[dict[str, Any]]:
-        """Executable acceptance steps, with each input resolved to a real key.
-
-        `ScenarioHold` documents `"none"` as waiting without touching the
-        keyboard, and that is exactly what a step with no `"key"` entry does
-        in `_run_zesarux` (`llmz80.quality.emulator_smoke`): it reads
-        `step.get("key")`, and a key that is not one of `_SPECTRUM_ROWS` --
-        which `None` never is -- presses nothing but still holds for the
-        step's frames and reads the state contract. So a `"none"` hold is
-        left with no `"key"` field rather than being resolved through
-        `SWEEP_KEYS`, where it was never going to be found, and dropped.
-
-        A direction (or `"action"`) the control scheme genuinely has no key
-        for -- `"joystick"` has no `SWEEP_KEYS` entry at all -- still cannot
-        be driven through the keyboard matrix this emulator scripts, so that
-        step is dropped. But not without a trace: losing acceptance coverage
-        because a design's control scheme lacks a mapping is exactly the
-        kind of thing that hid this method's own bug, so it is logged rather
-        than silently swallowed.
-        """
-        keys = dict(self.SWEEP_KEYS.get(project.controls.scheme) or {})
-        keys["action"] = "space"
-        steps = []
-        for step in runtime_script(project):
-            hold = step["hold"]
-            if hold == "none":
-                steps.append(dict(step))
-                continue
-            key = keys.get(hold)
-            if key is None:
-                logger.warning(
-                    "dropping acceptance step %r: control scheme %r has no key "
-                    "for hold %r",
-                    step["id"], project.controls.scheme, hold,
-                )
-                continue
-            steps.append({**step, "key": key})
-        return steps
-
-    def acceptance_report(
-        self, project: GameProject, runtime: dict[str, Any]
-    ) -> dict[str, Any]:
+    def acceptance_report(self, project: GameProject, runtime: dict[str, Any]) -> dict[str, Any]:
         """Judge each executable acceptance step against what memory showed.
 
         A step whose reading never arrived is reported as unobserved, never as
@@ -364,7 +329,7 @@ class StudioService:
             return {
                 "schema_version": 1,
                 "observed": False,
-                "reason": "this design states no executable acceptance scenario",
+                "reason": "no examiner has derived what this design should do",
                 "scenarios": [],
                 "quality_pass": None,
             }
@@ -413,63 +378,22 @@ class StudioService:
             "quality_pass": all(item["passed"] for item in results),
         }
 
-    def expected_state(self, project: GameProject, collected: int = 0) -> dict[str, int]:
-        """Engine state the design demands after the scripted input.
+    def probe_report(self, project: GameProject, runtime: dict[str, Any]) -> dict[str, Any]:
+        """Report what memory said, without judging it.
 
-        With no sweep this is the state a freshly loaded level must show. After
-        a sweep the same rules predict the exact score and remaining count.
-        """
-        total = sum(
-            entity.count for entity in project.entities if entity.role == "collectible"
-        )
-        return {
-            "g_level": 1,
-            "g_state": STATE_PLAYING,
-            "g_lives": project.gameplay.lives,
-            "g_score": collected * project.gameplay.score_per_collectible,
-            "g_remaining": total - collected,
-            "g_worst_frame_cost": 0,
-            # The high score tracks the run live, so on a first run it equals it.
-            "g_hiscore": collected * project.gameplay.score_per_collectible,
-        }
-
-    def probe_report(
-        self, project: GameProject, runtime: dict[str, Any], collected: int = 0
-    ) -> dict[str, Any]:
-        """Compare emulator memory reads against what the design asked for.
-
-        Where no reading is available the gate abstains rather than passing: an
-        unobserved rule is recorded as unobserved, never as satisfied.
+        Judging needs an expectation, and the only expectation Studio could
+        produce was the pellet-sweeper's. Until the examiner derives a real one
+        from the design, this records the reading and abstains.
         """
         observed = runtime.get("probe_after") or {}
-        expected = self.expected_state(project, collected)
-        if not observed:
-            return {
-                "schema_version": 1,
-                "observed": False,
-                "reason": "this target has no memory probe adapter",
-                "checks": {},
-                "mismatches": [],
-                "quality_pass": None,
-            }
-        checks = {
-            name: observed.get(name) == value
-            for name, value in expected.items()
-            if name in observed
-        }
-        mismatches = [
-            f"{name}: expected {expected[name]}, read {observed.get(name)}"
-            for name, passed in checks.items()
-            if not passed
-        ]
         return {
-            "schema_version": 1,
-            "observed": True,
-            "expected": expected,
+            "schema_version": 2,
+            "observed": bool(observed),
+            "reason": "no examiner has derived what this design should read",
             "read": observed,
-            "checks": checks,
-            "mismatches": mismatches,
-            "quality_pass": not mismatches,
+            "checks": {},
+            "mismatches": [],
+            "quality_pass": None,
         }
 
     def runtime_test(
@@ -478,23 +402,14 @@ class StudioService:
         build = self.build(project, directory)
         if not build.success:
             raise RuntimeError("runtime test requires a quality-passing build")
-        script = self.scenario_script(project)
         report = smoke_test(
             build.output_dir,
             project.target.platform.value,
             full=True,
             seconds=seconds,
-            script=script,
+            script=[],
         )
-        # The end state the design predicts is whatever the last scoring step
-        # was meant to leave behind.
-        scoring = [step for step in script if step["expect"].get("g_score")]
-        collected = (
-            scoring[-1]["expect"]["g_score"] // max(1, project.gameplay.score_per_collectible)
-            if scoring
-            else 0
-        )
-        probes = self.probe_report(project, report, collected)
+        probes = self.probe_report(project, report)
         report["state_probe"] = probes
         acceptance = self.acceptance_report(project, report)
         report["acceptance"] = acceptance

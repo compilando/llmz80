@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 from openai.lib._pydantic import to_strict_json_schema
 
-from llmz80.studio.models import GenreId, TargetPlatform
-from llmz80.studio.packs import create_default_project
+from llmz80.studio.models import TargetPlatform
+from llmz80.studio.samples import blank_project
 import pytest
 
 from llmz80.studio.planner import (
@@ -12,7 +12,7 @@ from llmz80.studio.planner import (
     apply_proposal,
     proposal_diff,
 )
-from llmz80.studio.registry import genre_registry, target_registry
+from llmz80.studio.registry import target_registry
 
 
 def _iter_property_schemas(schema: dict):
@@ -47,16 +47,29 @@ def test_project_proposal_is_usable_as_a_strict_structured_output_schema():
     assert untyped == []
 
 
-def test_builtin_genre_registry_has_stable_ids():
-    registry = genre_registry(load_external=False)
+def test_there_is_no_genre_registry_left_to_ask():
+    import llmz80.studio.registry as registry
 
-    identifiers = {
-        pack.id.value if hasattr(pack.id, "value") else pack.id for pack in registry.values()
-    }
-    # The enum names the two originals; the catalogue is free to add more.
-    assert identifiers >= {genre.value for genre in GenreId}
-    assert len(identifiers) == len(registry.values()), "typology ids must be unique"
-    assert "maze" in registry.get("maze_chase").capabilities
+    assert not hasattr(registry, "genre_registry")
+    assert not hasattr(registry, "GenrePack")
+
+
+def test_a_third_party_target_still_registers():
+    """The extension SDK keeps the group that Studio actually loads."""
+    from llmz80.studio.models import TargetPlatform, VideoMode
+    from llmz80.studio.registry import Registry, TargetPack
+
+    extra = TargetPack(
+        TargetPlatform.SPECTRUM,
+        "ZX Spectrum 128K",
+        (VideoMode.SPECTRUM_BITMAP,),
+        49152,
+        16384,
+        ("zesarux",),
+        audio_effects=True,
+    )
+    registry = Registry([extra])
+    assert registry.get("spectrum").binary_budget == 49152
 
 
 def test_target_registry_declares_modes_budgets_and_emulators():
@@ -65,10 +78,7 @@ def test_target_registry_declares_modes_budgets_and_emulators():
     cpc = registry.get("amstrad_cpc")
 
     assert spectrum.binary_budget == 24576
-    assert (
-        spectrum.validate(create_default_project("ZX", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE))
-        == []
-    )
+    assert spectrum.validate(blank_project("ZX", TargetPlatform.SPECTRUM)) == []
     assert {mode.value for mode in cpc.video_modes} == {"cpc_mode_0", "cpc_mode_1"}
     assert "cap32" in cpc.emulator_adapters
 
@@ -93,35 +103,35 @@ def test_responses_planner_requests_typed_proposal():
             return SimpleNamespace(output_parsed=proposal)
 
     planner = ResponsesProjectPlanner(SimpleNamespace(responses=FakeResponses()))
-    project = create_default_project("Maze", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Maze", TargetPlatform.SPECTRUM)
 
     assert planner.propose(project, "Make it harder") == proposal
 
 
 def test_reviewed_proposal_is_transactional_and_validated():
-    project = create_default_project("Maze", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Maze", TargetPlatform.SPECTRUM)
     proposal = ProjectProposal(
-        summary="Tune difficulty",
+        summary="Tune the HUD",
         changes=[
             {
-                "path": "/gameplay/lives",
+                "path": "/presentation/hud_rows",
                 "operation": "replace",
-                "value_number": 2,
-                "reason": "Create a more demanding commercial mode.",
+                "value_number": 1,
+                "reason": "Free up a row for a taller playfield.",
             }
         ],
     )
 
     changed = apply_proposal(project, proposal)
 
-    assert changed.gameplay.lives == 2
-    assert project.gameplay.lives == 3
-    assert "REPLACE /gameplay/lives = 2" in proposal_diff(proposal)
+    assert changed.presentation.hud_rows == 1
+    assert project.presentation.hud_rows == 2
+    assert "REPLACE /presentation/hud_rows = 1" in proposal_diff(proposal)
 
 
 @pytest.mark.parametrize("path", ["/schema_version", "/target/platform", "/acceptance/0"])
 def test_ai_cannot_change_protected_contract(path):
-    project = create_default_project("Maze", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Maze", TargetPlatform.SPECTRUM)
     proposal = ProjectProposal(
         summary="Unsafe change",
         changes=[{"path": path, "operation": "replace", "value_number": 1, "reason": "test"}],
@@ -132,7 +142,7 @@ def test_ai_cannot_change_protected_contract(path):
 
 
 def test_budget_change_requires_explicit_approval():
-    project = create_default_project("Maze", TargetPlatform.SPECTRUM, GenreId.MAZE_CHASE)
+    project = blank_project("Maze", TargetPlatform.SPECTRUM)
     proposal = ProjectProposal(
         summary="Larger binary",
         changes=[
