@@ -14,9 +14,14 @@ void plat_init(void);
 void plat_clear(void);
 /* Waits for the next display frame and returns how many whole display frames
  * elapsed while the previous iteration did its work. Zero means the work fitted
- * inside its frame; anything higher counts frames the loop missed. Targets with
- * no free-running frame clock always return zero, and game_config.h reports
- * which is which through HAS_FRAME_CLOCK. */
+ * inside its frame; anything higher counts frames the loop missed. Call this in
+ * every loop you write -- title, menu, game over, not only gameplay -- because
+ * the cost is measured between consecutive calls: a loop that skips it charges
+ * its whole duration to the next iteration that does. A gap too large to be one
+ * slow iteration is read as a resynchronisation and reported as zero rather
+ * than blamed on the iteration that follows it. Targets with no free-running
+ * frame clock always return zero, and game_config.h reports which is which
+ * through HAS_FRAME_CLOCK. */
 unsigned char plat_wait_frame(void);
 unsigned char plat_input(void);
 void plat_text(unsigned char col, unsigned char row, const char *text);

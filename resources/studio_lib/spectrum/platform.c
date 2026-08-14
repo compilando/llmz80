@@ -42,9 +42,34 @@ void plat_border(unsigned char colour) {
     zx_border(colour);
 }
 
+/* Above this many missed frames the gap was not one iteration running long: it
+ * was a stretch during which this loop was not running at all -- a title
+ * screen polling for a key without pacing itself, a level being built, a tape
+ * access. Both look identical from here, because all this counter knows is how
+ * long it has been since somebody last called; so rather than report an
+ * absence as a slowness, the wait treats it as a resynchronisation and charges
+ * nothing. This is not hypothetical. my-retro-game's title screen polls the
+ * action key in a tight loop with no wait, so the first wait inside gameplay
+ * charged the whole title screen -- 38 frames -- to an iteration that really
+ * ran in about three, and the pacing gate failed a program whose loop was fast.
+ *
+ * The trade-off, stated plainly: a program that overran by more than this on
+ * *every* iteration would report zero and be judged as keeping pace. That is a
+ * program drawing under six frames a second, which the animation gate, the
+ * visual-change check and any person looking at the screen all reject long
+ * before frame pacing becomes the interesting question. What stays measured is
+ * 2..RESYNC_FRAMES, which is exactly the band where a game judders instead of
+ * looking broken -- the band MAX_MISSED_FRAMES in llmz80/studio/pacing.py
+ * exists to catch. */
+#define RESYNC_FRAMES 8
+
 /* Uses the ROM frame counter, with a guard so a stopped interrupt cannot hang.
  * The counter also measures the work: the number of frames that elapsed since
- * the previous wait is exactly what the last iteration cost. */
+ * the previous wait is what the last iteration cost, up to the resynchronisation
+ * bound above. Only the counter's low byte is read, so a gap longer than 256
+ * frames wraps and can land back inside the plausible band; the bound is a
+ * plausibility filter, not a proof, and the honest fix stays the same -- every
+ * loop a program writes should call this, including its menus. */
 unsigned char plat_wait_frame(void) {
     static unsigned char previous;
     unsigned char start = *FRAMES;
@@ -53,6 +78,9 @@ unsigned char plat_wait_frame(void) {
     unsigned char elapsed = (unsigned char)(start - previous);
     unsigned char cost = elapsed > 1 ? (unsigned char)(elapsed - 1) : 0;
     unsigned int guard = 0;
+    if (cost > RESYNC_FRAMES) {
+        cost = 0;
+    }
     while (*FRAMES == start && ++guard < 12000) {
     }
     previous = *FRAMES;
