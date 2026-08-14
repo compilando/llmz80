@@ -295,7 +295,7 @@ make studio
 ```
 
 Esta pantalla no hace nada: mira. Enseña la identidad del proyecto, la tira de
-las siete etapas con su estado (`✓` hecha, `✗` fallida, `—` pendiente) leída de
+las seis etapas con su estado (`✓` hecha, `✗` fallida, `—` pendiente) leída de
 lo que el pipeline va dejando en disco, el diario según se escribe, y al final
 dónde quedó el juego o qué lo detuvo. Sigue el proyecto escrito más
 recientemente del workspace, así que basta abrirla antes y lanzar `llmz80 make`
@@ -800,9 +800,15 @@ Run everything through the project virtual environment, as the Makefile does.
 
 `llmz80 make` is the whole pipeline and it runs in the terminal it was typed
 in. This is the other terminal: a screen that does no work, decides nothing,
-and writes nothing. It shows the project's identity, the seven-stage strip with
-each stage's state (`✓` done, `✗` failed, `—` still to do), the diary as it is
+and writes nothing. It shows the project's identity, the six-step strip with
+each step's state (`✓` done, `✗` failed, `—` still to do), the diary as it is
 written, and the verdict -- what stopped the run, or where the game landed.
+
+Six, not seven: `release` is not a step of the order. `llmz80 make` ends when
+the game exists, boots and passes its gates, and packaging a zip with its
+evidence stays the deliberate act it is (`llmz80 project release`). A strip
+carrying a stage the order never performs would read `Release —` for the whole
+life of every game ever made.
 
 Nothing tells it anything. The strip is read off the evidence each stage leaves
 on disk, the same evidence `screen.stage_line` reads, so it advances by itself;

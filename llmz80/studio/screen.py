@@ -2,12 +2,12 @@
 
 A module-level function over plain data, kept apart from the widgets so it can
 be read and tested without a running application: `stage_line` answers, for
-the whole project, what has been researched, designed, drawn, written, gated
-and released.
+the whole project, what has been researched, designed, drawn, written and
+gated.
 
 Every stage's state is read from the design already in memory and from what
 the pipeline has written to disk; nothing here calls an API or runs a build.
-That is what lets the six stages of a project be known instantly, including
+That is what lets the five stages of a project be known instantly, including
 for a project that was never opened.
 """
 
@@ -45,12 +45,20 @@ class Stage:
 
 
 #: The order the status line draws stages in: the pipeline a project moves
-#: through, from identifying a real game to shipping one.
-STAGE_NAMES = ("referencia", "diseño", "sprites", "programa", "gates", "release")
+#: through, from identifying a real game to watching one run.
+#:
+#: `release` is not among them, and that is a statement about the pipeline
+#: rather than an omission. `llmz80 make` ends when the game exists, boots and
+#: passes its gates; packaging a zip with its evidence is a separate intention
+#: -- archiving it, sending it to somebody -- and stays the deliberate act it
+#: is, `llmz80 project release`. A strip carrying a stage the order never
+#: performs would read `Release —` forever on every game ever made, which
+#: teaches people not to read the strip.
+STAGE_NAMES = ("referencia", "diseño", "sprites", "programa", "gates")
 
 
 def stage_line(project: GameProject | None, directory: Path | None) -> list[Stage]:
-    """The six-stage status line for `project`, or nothing without one.
+    """The five-stage status line for `project`, or nothing without one.
 
     A pure function over the project already in memory and whatever
     `directory` (the project's own folder, the one holding `game.yml`) holds
@@ -71,7 +79,6 @@ def stage_line(project: GameProject | None, directory: Path | None) -> list[Stag
         _sprite_stage(project),
         _program_stage(project, directory),
         _gates_stage(directory),
-        _release_stage(project, directory),
     ]
 
 
@@ -227,29 +234,3 @@ def _gates_stage(directory: Path | None) -> Stage:
         return Stage("gates", "done", f"{len(gates)}/{len(gates)} gates")
     failing = [name for name, passed in gates.items() if not passed]
     return Stage("gates", "failed", "failing: " + ", ".join(failing) if failing else "not passing")
-
-
-def _release_stage(project: GameProject, directory: Path | None) -> Stage:
-    """release -- whether `release.export_release`'s own archive exists.
-
-    `export_release` writes to `<project>/releases/<slug>-<platform>.zip` by
-    default (or wherever the caller points it, but the command screen only
-    knows the default it would use); its presence is `done`. Its absence is
-    `pending`.
-
-    There is no reachable `failed` here: `export_release` raises before it
-    creates the `releases` directory or any file in it, whether the reason is
-    a missing quality report, a failing one, or missing build evidence -- so a
-    rejected release attempt leaves exactly the same nothing on disk that no
-    attempt at all does. Telling those apart would need `export_release` (or
-    its caller) to persist a record of the attempt and why it was refused,
-    the way `write_report.json` already does for the program stage.
-    """
-    if directory is None:
-        return Stage("release", "pending")
-    archive = (
-        directory / "releases" / f"{project.metadata.slug}-{project.target.platform.value}.zip"
-    )
-    if archive.is_file():
-        return Stage("release", "done", archive.name)
-    return Stage("release", "pending")

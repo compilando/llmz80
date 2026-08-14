@@ -90,9 +90,10 @@ async def test_the_strip_advances_by_reading_what_the_run_left_on_disk(tmp_path:
 
         assert "Reference ✓" in app.status_text
         assert "Manic Miner" in app.status_text
-        # Seven stages, the pipeline's own, and the project step among them.
+        # Six steps: the five the order runs, and having a project at all.
         assert "Project ✓" in app.status_text
-        assert "Release —" in app.status_text
+        assert "Gates —" in app.status_text
+        assert "Release" not in app.status_text
 
 
 @pytest.mark.asyncio
@@ -233,7 +234,7 @@ async def test_an_empty_workspace_says_so_rather_than_crashing(tmp_path: Path):
         # The strip is still drawn, with nothing done in it: an empty
         # workspace is a run that has not started, not a broken screen.
         assert app.status_text == (
-            "Project —  Reference —  Design —  Sprites —  Program —  Gates —  Release —"
+            "Project —  Reference —  Design —  Sprites —  Program —  Gates —"
         )
         assert str(app.query_one("#brief-preview").content) == "no project yet"
 
@@ -296,7 +297,7 @@ async def test_the_whole_path_of_the_game_is_readable_at_eighty_columns(tmp_path
 @pytest.mark.asyncio
 async def test_the_screen_fits_an_eighty_by_twentyfour_terminal(tmp_path: Path):
     """The narrowest terminal anybody still uses, with a run at its noisiest:
-    seven stages, a detail, a verdict and a diary."""
+    six steps, a detail, a verdict and a diary."""
     directory = _project(tmp_path, "Cornered", brief="x" * 400)
     save_reference(_dossier("A Game With A Long Enough Name"), directory)
     diary = Journal.for_project(directory)
@@ -333,7 +334,7 @@ def test_render_stage_marks_shows_one_icon_per_stage():
 
 
 def test_render_stage_marks_colours_each_state():
-    stages = [Stage("gates", "done"), Stage("release", "pending")]
+    stages = [Stage("gates", "done"), Stage("programa", "pending")]
 
     coloured = render_stage_marks(stages, colour=True)
 

@@ -23,7 +23,6 @@ def test_with_a_project_step_zero_is_done_and_the_walk_begins():
         "sprites",
         "programa",
         "gates",
-        "release",
     ]
 
 
@@ -74,7 +73,6 @@ def test_a_step_keeps_its_id_and_carries_a_label_of_its_own(tmp_path):
         "sprites",
         "programa",
         "gates",
-        "release",
     ]
     assert [step.title for step in walked] == [
         "Project",
@@ -83,7 +81,6 @@ def test_a_step_keeps_its_id_and_carries_a_label_of_its_own(tmp_path):
         "Sprites",
         "Program",
         "Gates",
-        "Release",
     ]
 
 

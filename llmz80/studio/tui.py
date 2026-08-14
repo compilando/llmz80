@@ -6,7 +6,7 @@ this is the other terminal, the one somebody leaves open to watch. It shows
 four things and offers one key:
 
 * the project's identity, in the header;
-* the seven-stage strip, read off the evidence the pipeline leaves on disk
+* the six-step strip, read off the evidence the pipeline leaves on disk
   (`wizard.steps`, over `screen.stage_line`), so it advances by itself as the
   run advances -- nothing here is told anything;
 * the diary, followed line by line out of `<project>/studio.log` as it is
@@ -68,7 +68,7 @@ class StudioViewer(App[None]):
     ENABLE_COMMAND_PALETTE = False
     CSS = """
     #brief-box { height: 3; border: round $primary; margin: 0 1; padding: 0 1; }
-    /* Auto rather than a fixed row: seven stages fit one line on 80 columns
+    /* Auto rather than a fixed row: six steps fit one line on 80 columns
        and take two on a narrower terminal, and the strip is the one line that
        must never be cut. It cannot grow with a project either -- every word
        in it comes from `wizard`'s own fixed vocabulary. */

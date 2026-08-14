@@ -71,7 +71,6 @@ _PIPELINE: tuple[tuple[str, str], ...] = (
     ("sprites", "Sprites"),
     ("programa", "Program"),
     ("gates", "Gates"),
-    ("release", "Release"),
 )
 
 #: Step zero is this module's own: `stage_line` knows the six pipeline stages
@@ -82,7 +81,7 @@ _PROJECT_STEP = Step(number=0, name="proyecto", title="Project", state="pending"
 
 
 def steps(project: GameProject | None, directory: Path | None) -> list[Step]:
-    """The seven steps, in order, with the state each one is in right now.
+    """The six steps, in order, with the state each one is in right now.
 
     Every state is evidence: what `stage_line` found on disk, plus the one
     thing it does not look for, which is whether there is a project at all.
