@@ -74,7 +74,7 @@ llmz80 = "llmz80.cli:main"
 
 [tool.setuptools]
 packages = ["llmz80", "llmz80.api", "llmz80.core", "llmz80.quality", "llmz80.studio", "llmz80.utils", "generators"]
-py-modules = ["llm_z80", "vector_db"]
+py-modules = ["llm_z80", "vector_db", "image_utils", "config"]
 
 [tool.black]
 line-length = 100
