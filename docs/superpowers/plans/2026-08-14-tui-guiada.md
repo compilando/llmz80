@@ -225,6 +225,9 @@ git commit -m "feat(studio): give a project a diary that outlives the session"
 
 ### Task 2: `wizard.py` — qué paso toca
 
+> **Corregida durante la ejecución. El código de abajo tiene un fallo de diseño.**
+> `current` estaba escrita como "el primer paso que no está hecho", y `screen._design_stage` nunca devuelve `pending` — un diseño está `done` o `failed`. Con esa regla el wizard salta el paso 2 en cuanto el diseño valida, y el paso que existe para editar sería el único al que nunca se llega. La regla correcta es **el primer paso por el que la persona no ha pasado**, con `passed` en lugar de `skipped`, y una tecla `→` para dejar atrás un paso — que estaba en el mockup aprobado y se perdió al escribir el plan. Ver el spec y `git show` de la tarea 2.
+
 **Files:**
 - Create: `llmz80/studio/wizard.py`
 - Create: `tests/test_studio_wizard.py`
@@ -639,10 +642,10 @@ Expected: FAIL — las diez teclas siguen atadas y `_refresh_wizard` no existe.
 
 ```python
     BINDINGS = [
-        ("enter", "advance", "Hacer / avanzar"),
+        ("enter", "do", "Hacer"),
+        ("right", "advance", "Siguiente paso"),
         ("escape", "back", "Volver"),
         ("r", "repeat", "Repetir"),
-        ("s", "skip", "Omitir"),
         ("q", "quit", "Salir"),
     ]
 ```
@@ -652,23 +655,39 @@ Expected: FAIL — las diez teclas siguen atadas y `_refresh_wizard` no existe.
 En `__init__`, junto a los demás campos:
 
 ```python
-        #: Steps the person chose to go past. Session state on purpose: the
-        #: diary records the decision, but skipping is not evidence of work
-        #: done, so it must not be read back as if it were.
-        self.skipped: set[str] = set()
+        #: Steps the person has already left behind -- done, moved past, or
+        #: skipped. Session state on purpose: the diary records the decision,
+        #: but having walked past a step is not evidence of work done, and must
+        #: not be read back as if it were.
+        self.passed: set[str] = set()
         self.journal: Journal | None = None
 ```
 
 Y el despachador, que es la única entrada a las acciones del pipeline:
 
 ```python
-    def action_advance(self) -> None:
-        """Do whatever the current step is for, or move past it if it is done."""
-        step = wizard.current(self.project, self.project_dir, self.skipped)
-        if step.state in {"done", "skipped"}:
-            self._advance_past(step)
-            return
+    def action_do(self) -> None:
+        """Do whatever the current step is for. Advancing is `action_advance`."""
+        step = wizard.current(self.project, self.project_dir, self.passed)
         self._actions()[step.name]()
+
+    def action_advance(self) -> None:
+        """Leave the current step behind.
+
+        On a step already resolved this is simply moving on. On a pending one it
+        is skipping, and then it only works if the step is skippable: the
+        pipeline does not need `referencia` or `sprites`, but without `programa`
+        or `gates` there is nothing to release. Skipping is written down;
+        walking past a finished step is not, because no decision was made.
+        """
+        step = wizard.current(self.project, self.project_dir, self.passed)
+        if step.state == "pending" and not step.skippable:
+            self.notify(f"El paso {step.name} no se puede omitir", severity="warning")
+            return
+        if step.state == "pending":
+            self._log(self.journal.write("OMITIR", f"{step.number} {step.name}"))
+        self.passed.add(step.name)
+        self._refresh_wizard()
 
     def _actions(self) -> dict[str, Callable[[], None]]:
         """One entry per step, holding the methods that used to be reachable by
@@ -702,7 +721,7 @@ algo — sin él sólo se puede mirar:
         finished step unable to touch it. The confirmation is the one
         `research_reference` and `draw_sprites` already ask before overwriting.
         """
-        step = wizard.current(self.project, self.project_dir, self.skipped)
+        step = wizard.current(self.project, self.project_dir, self.passed)
         if step.state != "done":
             self.notify("Ese paso no está hecho todavía", severity="warning")
             return
