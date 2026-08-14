@@ -41,6 +41,12 @@ class Step:
 
 #: name, summary, action label, costs API, editable, skippable.
 #:
+#: The summaries and the action labels are what a person reads on the wizard
+#: line, and they are English like the rest of the interface. The *names* are
+#: not prose: they are the ids `screen.stage_line` writes, `passed` holds and
+#: `StudioApp._actions` keys, and renaming them would be renaming the stages
+#: rather than translating a label.
+#:
 #: `referencia` and `sprites` are skippable because they are optional in the
 #: pipeline itself, not as a convenience: a game need not be based on a real
 #: one, and a game without sprite art is drawn with characters. Demanding
@@ -48,31 +54,31 @@ class Step:
 _PIPELINE: tuple[tuple[str, str, str, bool, bool, bool], ...] = (
     (
         "referencia",
-        "Buscar el juego real en la web y archivar su ficha citada",
-        "investigar",
+        "Search the web for the real game and archive its cited dossier",
+        "research",
         True,
         False,
         True,
     ),
-    ("diseño", "Revisar y ajustar el diseño", "editar", False, True, False),
-    ("sprites", "Dibujar el arte que le falte a alguna entidad", "dibujar", True, False, True),
+    ("diseño", "Review and adjust the design", "edit", False, True, False),
+    ("sprites", "Draw the art any entity is missing", "draw", True, False, True),
     (
         "programa",
-        "Escribir el juego en C y repararlo contra el compilador",
-        "escribir",
+        "Write the game in C and repair it against the compiler",
+        "write",
         True,
         False,
         False,
     ),
     (
         "gates",
-        "Compilar, ejecutar en el emulador y pasar las puertas",
-        "probar",
+        "Build it, run it in the emulator and pass the gates",
+        "test",
         False,
         False,
         False,
     ),
-    ("release", "Empaquetar el zip con su evidencia", "publicar", False, False, False),
+    ("release", "Package the zip with its evidence", "publish", False, False, False),
 )
 
 #: Step zero is the wizard's own: `stage_line` knows the six pipeline stages
@@ -82,8 +88,8 @@ _PIPELINE: tuple[tuple[str, str, str, bool, bool, bool], ...] = (
 _PROJECT_STEP = Step(
     number=0,
     name="proyecto",
-    summary="Elegir un proyecto del workspace, o crear uno nuevo",
-    action_label="abrir",
+    summary="Choose a project from the workspace, or start a new one",
+    action_label="open",
     costs_api=False,
     state="pending",
 )

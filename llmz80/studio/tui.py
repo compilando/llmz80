@@ -174,7 +174,7 @@ PANEL_IDS = {
 #: the command line. A lost feature, not a lost key. It lives here now, where
 #: choosing a project already lives.
 NEW_PROJECT_ID = "new"
-NEW_PROJECT_LABEL = "＋ nuevo proyecto…"
+NEW_PROJECT_LABEL = "＋ new project…"
 
 #: The steps whose own action asks before overwriting what is already on
 #: disk (`reference.yml`, existing sprite art). `action_repeat` pre-answers
@@ -271,12 +271,12 @@ def pick_stage_detail(stages: Sequence[Stage | wizard.Step]) -> str:
 def render_step_head(step: wizard.Step) -> str:
     """The one line that says where in the pipeline the person is standing.
 
-    Counted "de 6" rather than "de 7": the six pipeline stages are the work,
+    Counted "of 6" rather than "of 7": the six pipeline stages are the work,
     and step zero -- having a project open at all -- is the precondition for
     any of them, so numbering it 0 keeps the six named steps at the numbers
     `wizard` and the diary already give them.
     """
-    return f"Paso {step.number} de 6: {step.name}"
+    return f"Step {step.number} of 6: {step.name}"
 
 
 def render_step_summary(step: wizard.Step, *, can_adapt: bool = False) -> str:
@@ -314,16 +314,16 @@ def render_step_summary(step: wizard.Step, *, can_adapt: bool = False) -> str:
     if not resolved or step.editable:
         parts.append(f"[Enter] {step.action_label}")
         if step.costs_api:
-            parts.append("gasta dinero (API)")
+            parts.append("spends money (API)")
     if can_adapt:
-        parts.append("[A] adaptar el diseño a la ficha")
+        parts.append("[A] adapt the design to the dossier")
     if resolved:
-        parts.append("[→] siguiente paso")
+        parts.append("[→] next step")
         if step.state == "done":
-            parts.append("[R] repetir")
+            parts.append("[R] repeat")
         return " · ".join(parts)
     if wizard.can_leave_behind(step):
-        parts.append("[→] omitir")
+        parts.append("[→] skip")
     return " · ".join(parts)
 
 
@@ -411,7 +411,7 @@ class StudioApp(App[None]):
     #stage-line { height: 1; padding: 0 1; }
     /* The one line that must never be cut: it is where the keys are named.
        Fixed at `height: 1` it fitted 120 columns and silently dropped
-       `[→] omitir` and the `gasta dinero (API)` warning off the right-hand
+       `[→] skip` and the `spends money (API)` warning off the right-hand
        edge of an 80-column terminal -- hiding the key that walks past a step
        that spends money, on the narrowest screen. `auto` lets it take a
        second row where it needs one; it still cannot grow with a project,
@@ -439,15 +439,15 @@ class StudioApp(App[None]):
     #:
     #: `R` is bound twice on purpose. Textual delivers Shift+R as the key
     #: `"R"`, which the `"r"` binding does not match, so the screen offered
-    #: `[R] repetir` and answered only the lowercase one, silently. The second
+    #: `[R] repeat` and answered only the lowercase one, silently. The second
     #: binding is hidden: one row in the Footer, two keys that reach it.
     BINDINGS = [
-        ("enter", "do", "Hacer"),
-        ("right", "advance", "Siguiente paso"),
-        ("escape", "back", "Volver"),
-        ("r", "repeat", "Repetir"),
-        Binding("R", "repeat", "Repetir", show=False),
-        ("q", "quit", "Salir"),
+        ("enter", "do", "Do it"),
+        ("right", "advance", "Next step"),
+        ("escape", "back", "Back"),
+        ("r", "repeat", "Repeat"),
+        Binding("R", "repeat", "Repeat", show=False),
+        ("q", "quit", "Quit"),
     ]
 
     #: The actions this screen's own bindings name. `check_action` is asked
@@ -524,7 +524,7 @@ class StudioApp(App[None]):
         #: no longer be answered by comparing the two.
         self._edited = False
         #: The design as it was when the diary last recorded it -- what a
-        #: `GUARDAR` line is compared against to say what the save actually
+        #: `SAVE` line is compared against to say what the save actually
         #: saved. A deep copy, because `store.save` stamps `updated_at` on
         #: the very object it is handed and a shared reference would be
         #: quietly rewritten under this one.
@@ -564,7 +564,7 @@ class StudioApp(App[None]):
         # Textual draws from BINDINGS itself and therefore cannot fall out of
         # step with them the way a second hand-written copy would.
         yield Static(
-            "[g] diseño  [m] mapa  [e] entidades  [s] sprites  [d] diff",
+            "[g] design  [m] map  [e] entities  [s] sprites  [d] diff",
             id="shortcuts",
             markup=False,
         )
@@ -663,7 +663,7 @@ class StudioApp(App[None]):
         # key the wizard advances with.
         diary = RichLog(id="log-view", wrap=True, markup=True)
         diary.can_focus = False
-        diary.border_title = "Diario"
+        diary.border_title = "Diary"
         yield diary
         yield Footer()
 
@@ -674,13 +674,13 @@ class StudioApp(App[None]):
         # that now does something worth knowing about: it saves what was
         # drawn here and returns to the wizard.
         self.query_one("#map-hint", Static).update(
-            "flechas o wasd mueven · [t] elige tile · space pinta · "
-            "m mueve el spawn · +/- cantidad · [Esc] guarda y vuelve"
+            "arrows or wasd move · [t] picks the tile · space paints · "
+            "m moves the spawn · +/- count · [Esc] saves and returns"
         )
         self.query_one("#design-help", Static).update(
-            "Título, brief y estilo. El brief es lo primero que leen la "
-            "investigación y quien escribe el programa. "
-            "[Tab] cambia de campo · [Esc] guarda y vuelve"
+            "Title, brief and style. The brief is the first thing research "
+            "and whoever writes the program read. "
+            "[Tab] changes field · [Esc] saves and returns"
         )
         self._set_panel(None)
         # The one line in this panel that is not a diary line, and the only
@@ -702,7 +702,7 @@ class StudioApp(App[None]):
         A panel is a mode, and in a mode its own keys rule. `→` stayed bound
         while the map editor covered the screen, so a press meant for the
         cursor walked the wizard past steps the person could not even see and
-        wrote `OMITIR` for a decision nobody made. Returning `False` (rather
+        wrote `SKIP` for a decision nobody made. Returning `False` (rather
         than `None`) also takes the key out of the Footer, so the bar stops
         promising what the keyboard will not do.
         """
@@ -797,7 +797,7 @@ class StudioApp(App[None]):
     def _refresh_wizard(self) -> None:
         """Redraw the three things the wizard says, and the detail under them.
 
-        The head names where the person is standing (`Paso 3 de 6: sprites`),
+        The head names where the person is standing (`Step 3 of 6: sprites`),
         the strip shows every step's state at a glance, and the summary says
         what this one is for and which key does it -- including its warning
         when pressing that key spends money. `#stage-detail` keeps its old
@@ -914,7 +914,7 @@ class StudioApp(App[None]):
         # one yet. `action_create`/`action_open` set it for anybody arriving
         # through the screen; this covers the caller -- a script, a test --
         # that put a project here itself, the same courtesy `_ensure_journal`
-        # does for the diary, and it is what lets the `GUARDAR` line say what
+        # does for the diary, and it is what lets the `SAVE` line say what
         # the edit changed rather than only which file it went to.
         if self._saved is None and self.project is not None:
             self._saved = self.project.model_copy(deep=True)
@@ -983,14 +983,14 @@ class StudioApp(App[None]):
             # decision about the game -- as much as skipping a step is -- and
             # it used to be said on screen and to no file at all. `_apply` has
             # already marked the project edited, so `_note_saved` writes the
-            # `GUARDAR` that follows this.
+            # `SAVE` that follows this.
             if self.journal is not None:
-                self._log(self.journal.note("adaptación aplicada"))
+                self._log(self.journal.note("adaptation applied"))
             self._note_saved()
         else:
             self.query_one("#diff-view", Static).update("Left unchanged.")
             if self.journal is not None:
-                self._log(self.journal.note("adaptación descartada"))
+                self._log(self.journal.note("adaptation discarded"))
 
     def _show_drawn_sprites(self) -> None:
         """After `_draw_sprites`'s job returns, look at what it drew.
@@ -1222,18 +1222,18 @@ class StudioApp(App[None]):
         """
         step = wizard.current(self.project, self.project_dir, self.passed)
         if not wizard.can_leave_behind(step):
-            refusal = f"{step.number} {step.name}: no se puede omitir"
-            self.notify(f"El paso {step.name} no se puede omitir", severity="warning")
+            refusal = f"{step.number} {step.name}: cannot be skipped"
+            self.notify(f"Step {step.name} cannot be skipped", severity="warning")
             # A toast lives five seconds. Wanting to walk past this step was a
             # decision the person made and the pipeline denied, and reading the
             # diary the next morning without it would leave the gap between
             # "skipped sprites" and "wrote the program" unexplained.
             self._ensure_journal()
             if self.journal is not None:
-                self._log(self.journal.write("AVISO", refusal))
+                self._log(self.journal.write("WARN", refusal))
             return
         if step.state == "pending" and self.journal is not None:
-            self._log(self.journal.write("OMITIR", f"{step.number} {step.name}"))
+            self._log(self.journal.write("SKIP", f"{step.number} {step.name}"))
         # Whatever this step changed is committed before it is left behind:
         # walking on must never be the thing that loses an edit, and the
         # diary says so where there was anything to say.
@@ -1256,7 +1256,7 @@ class StudioApp(App[None]):
 
         Split out of `_save_and_log` so `action_save`, which saves through
         `_apply` and therefore has nothing left to write to disk, can still
-        put the same `GUARDAR` line in the diary. It used to answer with a
+        put the same `SAVE` line in the diary. It used to answer with a
         screen-only "Saved" that the file never heard about, which is how the
         panel and `studio.log` came to be telling different stories.
 
@@ -1280,7 +1280,7 @@ class StudioApp(App[None]):
             )
             if changed:
                 detail = f"{detail} — {changed}"
-            self._log(self.journal.write("GUARDAR", detail))
+            self._log(self.journal.write("SAVE", detail))
         self._saved = self.project.model_copy(deep=True)
         self._edited = False
 
@@ -1317,7 +1317,7 @@ class StudioApp(App[None]):
         here = wizard.current(self.project, self.project_dir, self.passed)
         behind = [step for step in walked[: here.number] if step.name in self.passed]
         if not behind:
-            self.notify("Ya estás en el primer paso", severity="warning")
+            self.notify("You are already on the first step", severity="warning")
             return
         self.passed.discard(behind[-1].name)
         self._refresh_wizard()
@@ -1332,10 +1332,10 @@ class StudioApp(App[None]):
         """
         step = wizard.current(self.project, self.project_dir, self.passed)
         if step.state != "done":
-            self.notify("Ese paso no está hecho todavía", severity="warning")
+            self.notify("That step is not done yet", severity="warning")
             return
         if not self._confirmed(f"repeat:{step.name}"):
-            self.notify(f"Pulsa R otra vez para rehacer {step.name}", severity="warning")
+            self.notify(f"Press R again to redo {step.name}", severity="warning")
             return
         # The step's own guard asks the same question before overwriting what
         # is already there, and this was the answer: arm it, so one decision
@@ -1373,7 +1373,7 @@ class StudioApp(App[None]):
         creating too, or the second project would be unreachable from here.
 
         Both paths end in `action_open`/`action_create`, which point the
-        diary at the project's own directory, write `ABRIR` in it, and put
+        diary at the project's own directory, write `OPEN` in it, and put
         `proyecto` in `passed`. That last part is what actually lets the
         wizard move: `wizard.current` returns the first step *not left
         behind*, so a project that is open but whose step nobody marked
@@ -1416,14 +1416,14 @@ class StudioApp(App[None]):
             # decide; asking for another would spend money at the API to
             # replace an answer nobody has read yet.
             self.notify(
-                "Hay una propuesta sin decidir: [y] aplicarla, [n] descartarla",
+                "There is a proposal still undecided: [y] applies it, [n] discards it",
                 severity="warning",
             )
             return
         if not self._adaptable:
             self.notify(
-                "Adaptar el diseño a la ficha sólo se puede en el paso diseño, "
-                "y con una ficha que haya identificado un juego",
+                "The design can only be adapted to the dossier on the diseño "
+                "step, and only with a dossier that identified a game",
                 severity="warning",
             )
             return
@@ -1455,15 +1455,15 @@ class StudioApp(App[None]):
             self.passed = {"proyecto"}
             self.journal = Journal.for_project(self.project_dir)
             self._edited = False
-            # What the next `GUARDAR` is measured against: a project starts
+            # What the next `SAVE` is measured against: a project starts
             # as whatever it was created (or opened) as, so the first save
             # after that reports the edits, not the whole document.
             self._saved = self.project.model_copy(deep=True)
             self._refresh()
             self._log(
                 self.journal.write(
-                    "ABRIR",
-                    f"creado {self.project_dir / 'game.yml'} · "
+                    "OPEN",
+                    f"created {self.project_dir / 'game.yml'} · "
                     f"{self.project.target.platform.value}",
                 )
             )
@@ -1486,8 +1486,8 @@ class StudioApp(App[None]):
             self._refresh()
             self._log(
                 self.journal.write(
-                    "ABRIR",
-                    f"abierto {self.project_dir} · {self.project.target.platform.value}",
+                    "OPEN",
+                    f"opened {self.project_dir} · {self.project.target.platform.value}",
                 )
             )
         except Exception as exc:
@@ -1498,7 +1498,7 @@ class StudioApp(App[None]):
 
         Asked before applying, not after. `_apply` marks the project edited
         whatever it was handed, so opening the design panel and closing it
-        again without typing anything wrote a second `GUARDAR` for a save that
+        again without typing anything wrote a second `SAVE` for a save that
         saved nothing -- the very thing `_save_and_log` refuses to do, arrived
         at by another road. `rename_project` applies all three together
         because a rename can be valid only once all three are in place, which
@@ -1814,7 +1814,7 @@ class StudioApp(App[None]):
         self._log(message)
         if self.journal is not None:
             # The result goes into the `FIN` line, which is what `finish`'s
-            # `text` was always for (`FIN 3 sprites — ok en 84 s. Drawn ...`).
+            # `text` was always for (`END 3 sprites — ok in 84 s. Drawn ...`).
             # Without it the diary kept every failure -- the `ERROR` line
             # below -- and threw away every success: which game research
             # identified, which sprites were drawn, where the release landed.

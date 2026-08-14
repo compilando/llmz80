@@ -20,7 +20,12 @@ from typing import Callable, Literal
 #: The kinds of line a diary carries. Few and fixed-width on purpose: a reader
 #: scanning the left margin sees the shape of a session -- what started, what
 #: it said along the way, what it ended as -- before reading any of it.
-Kind = Literal["ABRIR", "ETAPA", "INICIO", "..", "FIN", "AVISO", "ERROR", "GUARDAR", "OMITIR"]
+#:
+#: English, like everything else a person reads in Studio; `..` is not a word
+#: and stays as it is. The column keeps the eight characters it always had
+#: even though the longest word is now five, so the lines a diary already
+#: holds and the ones written after this go on lining up in the same file.
+Kind = Literal["OPEN", "STAGE", "START", "..", "END", "WARN", "ERROR", "SAVE", "SKIP"]
 
 FILENAME = "studio.log"
 
@@ -61,7 +66,7 @@ class Journal:
     def start(self, text: str) -> Token:
         """Open a piece of work. The token remembers when, so `finish` can say."""
         began = self.clock()
-        return Token(text=text, began=began, line=self.write("INICIO", text))
+        return Token(text=text, began=began, line=self.write("START", text))
 
     def note(self, text: str) -> str:
         """One line of running commentary from inside a piece of work."""
@@ -69,6 +74,6 @@ class Journal:
 
     def finish(self, token: Token, *, ok: bool, text: str = "") -> str:
         seconds = int((self.clock() - token.began).total_seconds())
-        verdict = "ok" if ok else "FALLÓ"
+        verdict = "ok" if ok else "FAILED"
         tail = f" {text}" if text else ""
-        return self.write("FIN", f"{token.text} — {verdict} en {seconds} s.{tail}")
+        return self.write("END", f"{token.text} — {verdict} in {seconds} s.{tail}")
