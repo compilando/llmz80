@@ -315,7 +315,7 @@ def test_write_program_lets_runtime_test_narrate_from_inside_the_repair_loop(tmp
         "intento 1: escribiendo...",
         "compilando el programa",
         "arrancando el emulador",
-        "intento 1: build compiló, aceptación aprobada, animación aprobada",
+        "intento 1: build compiló, aceptación aprobada, animación aprobada, ritmo sin observar",
     ], messages
 
 

@@ -147,6 +147,7 @@ def repair_prompt(
     acceptance: dict[str, Any] | None,
     probes: dict[str, Any] | None,
     animation: dict[str, Any] | None = None,
+    pacing: dict[str, Any] | None = None,
 ) -> str:
     """Turn gate output into the most specific instruction the evidence allows."""
     sections: list[str] = []
@@ -193,6 +194,17 @@ def repair_prompt(
             "while it is not. Update it whenever you redraw a moving actor, and "
             "leave it untouched on a step where no direction is held. Memory was "
             "read directly, so these are facts about your program."
+        )
+        sections.append("\n".join(lines))
+    if pacing and pacing.get("quality_pass") is False:
+        lines = ["THE GAME LOOP DID NOT FIT INSIDE ITS DISPLAY FRAME", ""]
+        for reason in pacing.get("failures") or []:
+            lines.append(f"  {reason}")
+        lines.append("")
+        lines.append(
+            "plat_wait_frame returns how many whole frames the previous iteration "
+            "overran by; keep the worst you ever see in g_worst_frame_cost. Memory "
+            "was read directly, so these are facts about your program."
         )
         sections.append("\n".join(lines))
     return "\n\n".join(sections)
@@ -246,6 +258,11 @@ class Attempt:
     #: never declared g_anim_frame) -- exactly as unobserved as `acceptance`'s
     #: own abstention, and just as non-fatal. See `write_program`.
     animation_passed: bool | None = None
+    #: `None` means the pacing gate abstained -- no adapter, no reading of
+    #: g_worst_frame_cost, or a target whose plat_wait_frame never counts a
+    #: frame at all (the CPC returns a literal zero). Non-fatal for the same
+    #: reason as the two above: a number nobody measured is not a pass.
+    pacing_passed: bool | None = None
     feedback: str = ""
 
 
@@ -276,9 +293,10 @@ def _attempt_line(attempt: Attempt) -> str:
     build = "compiló" if attempt.build_passed else "no compiló"
     acceptance = _gate_verdict(attempt.acceptance_passed)
     animation = _gate_verdict(attempt.animation_passed)
+    pacing = _gate_verdict(attempt.pacing_passed)
     return (
         f"intento {attempt.number}: build {build}, "
-        f"aceptación {acceptance}, animación {animation}"
+        f"aceptación {acceptance}, animación {animation}, ritmo {pacing}"
     )
 
 
@@ -355,26 +373,31 @@ def write_program(
         acceptance = evidence.get("acceptance")
         probes = evidence.get("probes")
         animation = evidence.get("animation")
+        pacing = evidence.get("pacing")
         attempt.build_passed = bool(build and build.get("quality_pass"))
         attempt.acceptance_passed = (acceptance or {}).get("quality_pass")
         attempt.animation_passed = (animation or {}).get("quality_pass")
+        attempt.pacing_passed = (pacing or {}).get("quality_pass")
         _say(on_progress, _attempt_line(attempt))
 
         # An unobservable target cannot confirm behaviour, so a clean build is
         # as far as the evidence goes; it is recorded as such, not as a pass.
         # `is not False` treats an abstaining gate (`quality_pass: None`,
         # which the CPC always produces since it has no memory probe adapter)
-        # the same way for both acceptance and animation: not a pass earned,
+        # the same way for acceptance, animation and pacing -- and pacing
+        # abstains on the CPC twice over, since that target's plat_wait_frame
+        # returns zero without ever counting a frame: not a pass earned,
         # but not a refusal either. Only a definite `False` -- a gate that
         # actually watched and found something wrong -- blocks acceptance.
         if (
             attempt.build_passed
             and attempt.acceptance_passed is not False
             and attempt.animation_passed is not False
+            and attempt.pacing_passed is not False
         ):
             result.accepted = True
             return result
-        feedback = repair_prompt(build, acceptance, probes, animation)
+        feedback = repair_prompt(build, acceptance, probes, animation, pacing)
         attempt.feedback = feedback
         if not feedback:
             result.last_error = "the program was rejected without any diagnostic to act on"

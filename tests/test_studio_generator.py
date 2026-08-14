@@ -227,7 +227,10 @@ def test_write_program_narrates_before_a_slow_attempt_returns(tmp_path: Path, pr
         "precedes finishes, not only before write_program returns"
     )
     assert messages[0] == "intento 1: escribiendo..."
-    assert messages[1] == ("intento 1: build compiló, aceptación aprobada, animación sin observar")
+    assert messages[1] == (
+        "intento 1: build compiló, aceptación aprobada, animación sin observar, "
+        "ritmo sin observar"
+    )
 
 
 def test_a_program_that_builds_but_misbehaves_is_repaired_from_memory_reads(
@@ -493,3 +496,35 @@ def test_a_missing_platform_header_is_not_silently_survivable():
     finally:
         missing.rename(header)
         importlib.reload(generator_module)
+
+
+def test_repair_prompt_names_a_failing_pacing_gate():
+    prompt = repair_prompt(
+        {"quality_pass": True},
+        {"quality_pass": True},
+        None,
+        {"quality_pass": True},
+        {
+            "quality_pass": False,
+            "failures": ["g_worst_frame_cost reached 7 at step hold_right_b"],
+        },
+    )
+
+    assert "DID NOT FIT INSIDE ITS DISPLAY FRAME" in prompt
+    assert "g_worst_frame_cost reached 7 at step hold_right_b" in prompt
+    assert "plat_wait_frame returns how many whole frames" in prompt
+
+
+def test_repair_prompt_says_nothing_about_pacing_when_the_gate_abstained():
+    # The CPC's plat_wait_frame returns zero without counting anything, so the
+    # gate abstains there however good the number looks; abstention is not a
+    # bug to report back to the writer.
+    prompt = repair_prompt(
+        {"quality_pass": True},
+        {"quality_pass": True},
+        None,
+        {"quality_pass": True},
+        {"quality_pass": None},
+    )
+
+    assert prompt == ""

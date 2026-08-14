@@ -16,6 +16,7 @@ from .compiler import BuildResult, SourceResult, build_project, render_project
 from .feel import animation_report
 from .models import AssetSpec, EntitySpec, GameProject, TargetPlatform
 from .observation import observation_script
+from .pacing import pacing_report
 from .samples import blank_project
 from .planner import ProjectProposal, proposal_diff
 from .reference import GameReference, ReferenceResearcher, load_reference, save_reference
@@ -455,10 +456,13 @@ class StudioService:
         report["acceptance"] = acceptance
         animation = animation_report(report)
         report["animation"] = animation
+        pacing = pacing_report(report)
+        report["pacing"] = pacing
         if (
             probes["quality_pass"] is False
             or acceptance["quality_pass"] is False
             or animation["quality_pass"] is False
+            or pacing["quality_pass"] is False
         ):
             report["quality_pass"] = False
         write_smoke_report(report, build.output_dir / "emulator_report.json")
@@ -493,12 +497,13 @@ class StudioService:
             "acceptance": None,
             "probes": None,
             "animation": None,
+            "pacing": None,
         }
         build = self.build(project, directory)
         evidence["build"] = build.report
         evidence["probes"] = build.report.get("probes")
         if not build.success:
-            # No emulator has run yet, so there is no animation verdict either
+            # No emulator has run yet, so there is no animation or pacing verdict
             # -- a build failure is refused on the build diagnostics alone.
             return evidence
         try:
@@ -509,6 +514,7 @@ class StudioService:
         evidence["runtime"] = runtime
         evidence["acceptance"] = runtime.get("acceptance")
         evidence["animation"] = runtime.get("animation")
+        evidence["pacing"] = runtime.get("pacing")
         return evidence
 
     def write_program(
