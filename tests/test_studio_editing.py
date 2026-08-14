@@ -3,6 +3,7 @@ import pytest
 from llmz80.studio.editing import (
     EditError,
     add_entity,
+    describe_changes,
     editing_status,
     fill_screen,
     move_spawn,
@@ -213,3 +214,78 @@ def test_setting_the_count_an_entity_already_has_is_a_no_op(project):
     assert next(e.count for e in result.entities if e.id == "actor") == current
     for screen in result.screens:
         assert len([s for s in screen.spawns if s.entity == "actor"]) == current
+
+
+# --- what a save actually saved ---------------------------------------------
+
+
+def test_a_design_that_did_not_change_is_described_as_nothing(project):
+    """`store.save` stamps `updated_at` on every write, so a version that
+    differs only there is the same design and must read as no change at all."""
+    from datetime import datetime, timezone
+
+    same = project.model_copy(deep=True)
+    same.metadata.updated_at = datetime(2030, 1, 1, tzinfo=timezone.utc)
+
+    assert describe_changes(project, same) == ""
+
+
+def test_painted_cells_are_counted(project):
+    painted = set_tile(set_tile(project, 0, 2, 2, "#"), 0, 3, 3, "#")
+
+    assert describe_changes(project, painted) == "2 cells painted"
+    assert describe_changes(project, set_tile(project, 0, 2, 2, "#")) == "1 cell painted"
+
+
+def test_a_moved_spawn_reads_as_moved_rather_than_as_two(project):
+    """One spawn of an entity gone and one arrived is that entity moved --
+    which is what `m` does in the map editor, and what the person who pressed
+    it will recognise."""
+    spawn = project.screens[0].spawns[0]
+    cell = _free_cell(project)
+
+    moved = move_spawn(project, 0, 0, *cell)
+
+    assert (spawn.col, spawn.row) != cell
+    assert describe_changes(project, moved) == "1 spawn moved"
+
+
+def test_the_roster_names_what_was_added_and_recounted(project):
+    described = describe_changes(project, add_entity(project, "ghost", "enemy", count=2))
+    assert "1 entity added: ghost" in described
+    # Adding an entity places it on every screen, and that is worth saying too.
+    assert "2 spawns placed" in described
+
+    recounted = describe_changes(project, set_entity_count(project, "actor", 3))
+    assert "actor count 1->3" in recounted
+
+
+def test_the_scalar_fields_a_form_edits_are_named_not_quoted(project):
+    """A brief runs to paragraphs; a diary line is one line."""
+    from llmz80.studio.editing import rename_project
+
+    described = describe_changes(
+        project, rename_project(project, "Another Name", brief="Four ghosts.")
+    )
+
+    assert described == "title changed, brief changed"
+    assert "Four ghosts." not in described
+
+
+def test_a_field_this_summary_does_not_read_is_still_named(project):
+    """An adaptation rewrites tiles, mechanics and scenes at once, and a
+    sprite run adds assets: a line that only knew how to look at terrain
+    would report that nothing had happened."""
+    document = project.model_dump(mode="json")
+    document["mechanics"] = ["the player jumps"]
+    document["tiles"].append({"id": "ladder", "char": "H", "traits": ["climbable"]})
+
+    described = describe_changes(project, GameProject.model_validate(document))
+
+    assert described == "mechanics, tiles changed"
+
+
+def test_a_resized_screen_says_so_instead_of_counting_its_new_rows(project):
+    described = describe_changes(project, resize_screen(project, 0, 24, 14))
+
+    assert "screen_1 is now 24x14" in described

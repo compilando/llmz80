@@ -523,6 +523,12 @@ class StudioApp(App[None]):
         #: from the one before it, and "did anything actually change?" can
         #: no longer be answered by comparing the two.
         self._edited = False
+        #: The design as it was when the diary last recorded it -- what a
+        #: `GUARDAR` line is compared against to say what the save actually
+        #: saved. A deep copy, because `store.save` stamps `updated_at` on
+        #: the very object it is handed and a shared reference would be
+        #: quietly rewritten under this one.
+        self._saved: GameProject | None = None
         #: Whether [A] -- adapting the design to the researched game -- is on
         #: offer right now. Decided in `_refresh_wizard`, off the same
         #: reading of the project's evidence that draws the summary naming
@@ -904,6 +910,14 @@ class StudioApp(App[None]):
 
     def _apply(self, operation) -> None:
         """Run an editing operation, reporting refusals instead of crashing."""
+        # The design as it stands before this edit, where nothing has recorded
+        # one yet. `action_create`/`action_open` set it for anybody arriving
+        # through the screen; this covers the caller -- a script, a test --
+        # that put a project here itself, the same courtesy `_ensure_journal`
+        # does for the diary, and it is what lets the `GUARDAR` line say what
+        # the edit changed rather than only which file it went to.
+        if self._saved is None and self.project is not None:
+            self._saved = self.project.model_copy(deep=True)
         try:
             self.project = operation()
             self._edited = True
@@ -1237,19 +1251,37 @@ class StudioApp(App[None]):
         self._step_back()
 
     def _note_saved(self) -> None:
-        """Write down that the design was committed -- once, and only if it was.
+        """Write down that the design was committed -- once, only if it was,
+        and saying what changed.
 
         Split out of `_save_and_log` so `action_save`, which saves through
         `_apply` and therefore has nothing left to write to disk, can still
         put the same `GUARDAR` line in the diary. It used to answer with a
         screen-only "Saved" that the file never heard about, which is how the
         panel and `studio.log` came to be telling different stories.
+
+        The line used to name the file and nothing else, which told the person
+        reading it the next morning the one thing they already knew. What
+        changed is answered by `editing.describe_changes` against the design
+        as the diary last recorded it -- kept in memory rather than read back
+        off disk, because the file has already been overwritten by the time
+        this runs, and its previous revision is only archived when the text
+        differs.
         """
         if self.project is None or not self._edited:
             return
         self._ensure_journal()
         if self.journal is not None:
-            self._log(self.journal.write("GUARDAR", f"{self.project.metadata.slug}/game.yml"))
+            detail = f"{self.project.metadata.slug}/game.yml"
+            changed = (
+                editing.describe_changes(self._saved, self.project)
+                if self._saved is not None
+                else ""
+            )
+            if changed:
+                detail = f"{detail} — {changed}"
+            self._log(self.journal.write("GUARDAR", detail))
+        self._saved = self.project.model_copy(deep=True)
         self._edited = False
 
     def _save_and_log(self) -> None:
@@ -1423,6 +1455,10 @@ class StudioApp(App[None]):
             self.passed = {"proyecto"}
             self.journal = Journal.for_project(self.project_dir)
             self._edited = False
+            # What the next `GUARDAR` is measured against: a project starts
+            # as whatever it was created (or opened) as, so the first save
+            # after that reports the edits, not the whole document.
+            self._saved = self.project.model_copy(deep=True)
             self._refresh()
             self._log(
                 self.journal.write(
@@ -1446,6 +1482,7 @@ class StudioApp(App[None]):
             self.passed = {"proyecto"}
             self.journal = Journal.for_project(self.project_dir)
             self._edited = False
+            self._saved = self.project.model_copy(deep=True)
             self._refresh()
             self._log(
                 self.journal.write(

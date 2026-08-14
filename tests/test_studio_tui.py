@@ -1382,12 +1382,16 @@ async def test_leaving_the_editor_saves_and_says_so(tmp_path):
         app.passed = {"proyecto", "referencia"}
         app._refresh_wizard()
         await pilot.press("enter")  # entra al editor
+        await pilot.press("d", "s")  # a una celda interior
         await pilot.press("space")  # pinta una celda
         await pilot.press("escape")  # sale, y al salir guarda
         await pilot.pause()
         assert app.active_panel is None
         diary = (app.project_dir / "studio.log").read_text(encoding="utf-8")
         assert "GUARDAR" in diary
+        # And says what it saved: naming the file told whoever reads this the
+        # next morning the one thing they already knew.
+        assert "1 cell painted" in diary
 
 
 @pytest.mark.asyncio
@@ -2268,3 +2272,42 @@ async def test_the_map_legend_names_the_tiles_on_an_eighty_column_screen(tmp_pat
             assert word in shown, word
         # Nothing is drawn wider than the terminal.
         assert all(strip.cell_length <= 80 for strip in app.screen._compositor.render_strips())
+
+
+@pytest.mark.asyncio
+async def test_a_save_says_what_changed_not_only_which_file(tmp_path: Path):
+    """`GUARDAR cave-runner/game.yml` named the file and nothing else, so a
+    wall painted by mistake and a map rebuilt from scratch left the same line
+    behind. Three different edits, three different lines."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        app.query_one("#f-create-title").value = "Told"
+        app.action_create()
+        await pilot.pause()
+        diary = app.project_dir / "studio.log"
+
+        # Terrain, from the map editor.
+        app._set_panel("map")
+        await pilot.pause()
+        await pilot.press("d", "d", "s", "s", "space")
+        await pilot.press("escape")
+        await pilot.pause()
+        assert "1 cell painted" in diary.read_text(encoding="utf-8").splitlines()[-1]
+
+        # The roster, which places a spawn on every screen as it goes.
+        app._apply(lambda: editing.add_entity(app.project, "ghost", "enemy", count=2))
+        app._note_saved()
+        await pilot.pause()
+        line = diary.read_text(encoding="utf-8").splitlines()[-1]
+        assert "1 entity added: ghost" in line
+        assert "2 spawns placed" in line
+
+        # And the scalar fields the design panel edits, named rather than
+        # quoted -- a brief runs to paragraphs and a diary line does not.
+        app.query_one("#f-title").value = "Told Again"
+        app.query_one("#f-brief").text = "Four ghosts. A big dot makes them edible."
+        app.action_save()
+        await pilot.pause()
+        line = diary.read_text(encoding="utf-8").splitlines()[-1]
+        assert "title changed" in line and "brief changed" in line
+        assert "ghosts" not in line
