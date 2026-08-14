@@ -22,7 +22,7 @@ from .codegen import (
 )
 from .structure import playfield
 from .models import GameProject, TargetPlatform, VideoMode
-from .probes import write_probe_report
+from .probes import contract_failures, write_probe_report
 from .sprite_header import render_sprite_header, render_sprite_source
 from .sprite_sheet import split_frames
 from .spriting import PackedSprite, is_blitter_sprite, pack_cpc, pack_spectrum
@@ -484,7 +484,13 @@ def build_project(
     report["stdout"] = process.stdout[-12000:]
     report["stderr"] = process.stderr[-12000:]
     if report["quality_pass"]:
-        report["probes"] = write_probe_report(output_dir, platform)
+        probes = write_probe_report(output_dir, platform)
+        report["probes"] = probes
+        failures = contract_failures(probes)
+        if failures:
+            report["quality_pass"] = False
+            report["contract_errors"] = failures
+            report["stderr"] = (report.get("stderr") or "") + "\n" + "\n".join(failures)
     write_build_report(report, output_dir / "build_report.json")
     return BuildResult(
         output_dir=output_dir,

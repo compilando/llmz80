@@ -151,7 +151,16 @@ def repair_prompt(
     """Turn gate output into the most specific instruction the evidence allows."""
     sections: list[str] = []
     if build and not build.get("quality_pass"):
-        diagnostics = (str(build.get("stderr") or "") + str(build.get("stdout") or ""))[-3000:]
+        # Each stream gets its own budget. Slicing the concatenation instead
+        # kept the tail of stdout and threw away all of stderr whenever the
+        # two together cleared the ceiling -- and stderr is where both the
+        # compiler's errors and `compiler.build_project`'s own contract
+        # diagnostic live. A CPCtelera build spamming SDCC warning 283 clears
+        # 3000 characters on its own, so the refusal the writer most needed to
+        # read was exactly the one a noisy toolchain buried.
+        diagnostics = (
+            str(build.get("stderr") or "")[-1500:] + str(build.get("stdout") or "")[-1500:]
+        )
         sections.append(
             "THE BUILD FAILED\n\nFix these diagnostics. Do not change the design.\n\n"
             + diagnostics.strip()

@@ -99,15 +99,18 @@ void main(void) {
     assert "warning 357" not in output
 
 
-def test_only_the_two_symbols_every_program_has_are_required():
-    """A puzzle with no score, no lives and no levels is still a program.
+def test_only_the_symbols_every_program_has_are_required():
+    """A puzzle with no lives and no levels is still a program.
 
     Requiring all five was the same rule as the fixed player/enemy/collectible
-    roles: it decided what kind of game this could be.
+    roles: it decided what kind of game this could be. `g_worst_frame_cost`
+    joined the required three later on different grounds -- it says nothing
+    about what kind of game this is, only how badly its loop overran the
+    display, which is true of a puzzle and a shoot-em-up alike.
     """
     from llmz80.core.state_contract import REQUIRED_SYMBOLS
 
-    assert set(REQUIRED_SYMBOLS) == {"g_score", "g_state"}
+    assert set(REQUIRED_SYMBOLS) == {"g_score", "g_state", "g_worst_frame_cost"}
 
 
 def test_no_symbol_meaning_points_at_a_field_v4_deleted():

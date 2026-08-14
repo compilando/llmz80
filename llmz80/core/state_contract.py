@@ -28,11 +28,21 @@ class StateSymbol:
     meaning: str
 
 
-#: Only two symbols are required, because only two say something true of every
-#: program: a number it can put on screen and which screen is showing. Lives,
-#: levels and remaining objectives are notions some designs have and others do
-#: not; they are probed when present and skipped when not, so a puzzle with no
-#: score to lose and no level to reach is not failed for lacking them.
+#: Three symbols are required, but not on the same grounds. `g_score` and
+#: `g_state` are demands on the design: a number it can put on screen, and
+#: which screen is showing. `g_worst_frame_cost` is a demand on the
+#: instrumentation -- it says nothing about what kind of game this is, only
+#: how badly the loop overran the display. That is why it can be required of
+#: everything when `g_lives` cannot: a game may have no score to lose and no
+#: level to reach, but there is no game whose loop takes no time. It was
+#: optional until a game that cannot report how badly it missed its frame
+#: turned out to be a game nothing can judge on pacing, and pacing is the one
+#: performance claim the machine can make about any design at all.
+#:
+#: Lives, levels and remaining objectives are notions some designs have and
+#: others do not; they are probed when present and skipped when not, so a
+#: puzzle with no score to lose and no level to reach is not failed for
+#: lacking them.
 STATE_CONTRACT: tuple[StateSymbol, ...] = (
     StateSymbol("g_score", 2, True, "current score; zero when a game begins"),
     StateSymbol(
@@ -64,8 +74,9 @@ STATE_CONTRACT: tuple[StateSymbol, ...] = (
     StateSymbol(
         "g_worst_frame_cost",
         1,
-        False,
-        "worst number of display frames a single game iteration missed; zero is ideal",
+        True,
+        "worst number of display frames a single game iteration missed since the "
+        "game began; zero is ideal, and plat_wait_frame returns the count for you",
     ),
     StateSymbol(
         "g_anim_frame",
@@ -81,9 +92,25 @@ REQUIRED_SYMBOLS = tuple(symbol.name for symbol in STATE_CONTRACT if symbol.requ
 PROBE_WIDTHS = {symbol.name: symbol.width for symbol in STATE_CONTRACT}
 
 
+def _ctype(symbol: StateSymbol) -> str:
+    return "unsigned int" if symbol.width == 2 else "unsigned char"
+
+
 def _declaration(symbol: StateSymbol) -> str:
-    ctype = "unsigned int" if symbol.width == 2 else "unsigned char"
-    return f"    {ctype} {symbol.name};  /* {symbol.meaning} */"
+    return f"    {_ctype(symbol)} {symbol.name};  /* {symbol.meaning} */"
+
+
+def required_declarations() -> str:
+    """The required symbols as C definitions, one per line, ready to paste.
+
+    Exists so a program that only needs to satisfy the gate -- a test fixture
+    proving something else entirely, say -- can honour the contract without
+    hand-copying the names and their types. Two such copies had already been
+    written out by hand in different test modules; adding a fourth required
+    symbol would have broken them with a linker diagnostic pointing at the
+    toolchain rather than at the stale fixture.
+    """
+    return "".join(f"{_ctype(SYMBOLS_BY_NAME[name])} {name};\n" for name in REQUIRED_SYMBOLS)
 
 
 def contract_prompt() -> str:
