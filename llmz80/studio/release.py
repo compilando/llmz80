@@ -8,6 +8,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 from .models import GameProject
+from .quality import VERIFICATION_OBSERVED
 
 
 def export_release(project: GameProject, directory: Path, destination: Path | None = None) -> Path:
@@ -18,6 +19,23 @@ def export_release(project: GameProject, directory: Path, destination: Path | No
     quality = json.loads(quality_path.read_text(encoding="utf-8"))
     if not quality.get("quality_pass"):
         raise RuntimeError("release export requires every Studio quality gate to pass")
+    # `quality_pass` stays true when every behaviour gate abstained -- see
+    # `quality.verification_level` for why None is not True and which incident
+    # proved it. A release is a claim about a program someone watched run, so
+    # the claim is checked here, at the last door out, rather than trusted to
+    # whoever assembled the reports. Until the observation script lands this
+    # closes the door entirely: a door that opens for nothing beats one that
+    # opens for anything.
+    if quality.get("verification") != VERIFICATION_OBSERVED:
+        raise RuntimeError(
+            f"studio_quality_report.json records verification "
+            f"{quality.get('verification')!r}, not {VERIFICATION_OBSERVED!r}: every "
+            "behaviour gate abstained, so the only thing known about this game is "
+            "that it compiled. "
+            f"{quality.get('runtime_report') or 'emulator_report.json'} says which "
+            "gates abstained and why. A release is refused until one of them "
+            "actually watched the program run"
+        )
     artifact_name = "output.tap" if project.target.platform.value == "spectrum" else "output.dsk"
     required = [
         directory / "game.yml",
@@ -47,7 +65,7 @@ def export_release(project: GameProject, directory: Path, destination: Path | No
         f"{project.metadata.title}\n"
         f"Target: {project.target.platform.value}\n"
         f"Screens: {len(project.screens)}\n"
-        "Built and runtime-verified by LLMZ80 Studio.\n"
+        f"Verification: {quality.get('verification')}\n"
     ).encode("utf-8")
     entries["RELEASE_NOTES.txt"] = notes
     checksums = "".join(

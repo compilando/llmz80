@@ -312,6 +312,11 @@ También existe un flujo reproducible para CI:
 .venv/bin/llmz80 project release studio-projects/my-game
 ```
 
+`release` no empaqueta lo que no se ha visto correr: además de exigir que todas
+las puertas pasen, exige que al menos una puerta de comportamiento haya
+observado el programa de verdad. Si todas se abstuvieron, el juego compila pero
+no se publica.
+
 La asistencia IA de Studio usa Responses API con salidas estructuradas para
 proponer cambios revisables sobre el diseño; nunca sustituye directamente el C
 ni relaja presupuestos o tests de aceptación.
@@ -843,7 +848,9 @@ One key: `q` quits.
     .venv/bin/llmz80 project release $P
 
 Each step runs what precedes it, so `test` builds and `release` refuses unless
-every gate passed. Exit codes are 0 or 1, so they compose in CI.
+every gate passed *and* at least one behaviour gate actually watched the program
+run: a build whose gates all abstained is a candidate, not a release. Exit codes
+are 0 or 1, so they compose in CI.
 
 ### Where the evidence lives
 
