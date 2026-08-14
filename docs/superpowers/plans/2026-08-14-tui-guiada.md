@@ -988,3 +988,41 @@ git commit -m "docs(studio): describe the wizard instead of the shortcuts"
 - **`skipped` es estado de sesión, no del proyecto.** Omitir un paso queda escrito en el diario porque es una decisión que conviene ver, pero no es evidencia de trabajo hecho y no debe leerse como si lo fuera al reabrir.
 - **No amplíes el editor.** Sigue pintando muro y suelo con dos glifos fijos, así que un tercer tile sigue invisible. Está fuera de alcance a propósito y anotado como trabajo aparte; arreglarlo aquí mezclaría dos cosas.
 - Si un test existente de `tui.py` prueba algo que sigue valiendo pero por otra tecla, **pórtalo**. Bórralo sólo si prueba un atajo que ya no existe como concepto.
+
+## Ejecutado, y lo que la revisión final dejó pendiente a propósito
+
+Las siete tareas están hechas (más una 3b que la ejecución destapó: el aviso vivía un piso
+por encima de donde se espera). Las casillas de arriba se quedan sin marcar: el estado real
+es el historial de la rama, y marcarlas ahora sugeriría que el plan se siguió al pie de la
+letra cuando la mitad del valor salió de corregirlo sobre la marcha.
+
+**Seis fallos que la ejecución encontró y arregló**, todos de la misma familia — la interfaz
+sabiendo algo que no dice, o diciendo algo que no hace:
+
+1. `current` estaba escrita como "el primer paso no hecho", y `_design_stage` nunca devuelve
+   `pending`, así que el wizard saltaba el único paso que existe para editarse.
+2. `_adapt` se quedó sin tecla al desaparecer `ctrl+a`.
+3. Un `Esc` cerraba el editor **y** retrocedía un paso, con lo que salir del diseño te
+   devolvía a la referencia.
+4. Crear un segundo proyecto se volvió inalcanzable: el panel de creación sólo se abría con
+   el workspace vacío.
+5. El paso editable no anunciaba `[Enter] editar` por llegar en `done`.
+6. `#wizard-summary` a una línea tiraba fuera del borde derecho, a 80 columnas, `[→] omitir`
+   y el aviso `gasta dinero (API)` — se ocultaba justo la tecla que evita gastar.
+
+**Deuda anotada, no hecha:**
+
+- **Tres fuentes de verdad sobre qué hace cada tecla**: `BINDINGS`, la cascada de `on_key` y
+  el rótulo de `render_step_summary`. Ya han discrepado dos veces. Una tabla por contexto de
+  la que salgan las tres a la vez es lo que impediría el séptimo fallo de esta familia.
+- **`tui.py` en 1562 líneas.** El corte limpio y rentable, hoy mismo: `studio/render.py` con
+  `render_map`, `render_stage_marks`, `pick_stage_detail`, `render_step_head`,
+  `render_step_summary`, `brief_preview` y sus constantes — no importan Textual y ya se
+  prueban como funciones puras. Después, los siete métodos de paso a `studio/steps.py`.
+- **Idioma mezclado**: el wizard y el diario hablan español, y el panel de creación, el hint
+  del mapa y las etiquetas de `_run` hablan inglés — estas últimas acaban dentro de líneas
+  `INICIO`/`FIN` españolas.
+- **`GUARDAR` no dice qué se guardó** (nombra el fichero, no el cambio), y **el diario no
+  tiene línea de cierre de sesión**, así que el de mañana arranca pegado al de hoy.
+- **`#map-hint` anuncia `+/- count`**, que sólo funciona en el panel de entidades. Viene de
+  antes de esta rama.
