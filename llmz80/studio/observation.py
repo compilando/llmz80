@@ -53,6 +53,19 @@ def observation_script(project: GameProject) -> list[dict[str, Any]]:
     trailing idle step is what lets it check the other half of its claim: that
     the animation frame holds still while the player does not move.
 
+    The two holds of a direction are not adjacent: the script sweeps every
+    direction once, then sweeps them all again. Grouping them -- `left_a`,
+    `left_b`, `right_a`, ... -- is what the first real emulator run showed to
+    be worthless. A second helping of the same direction finds the player
+    pinned against the wall the first one drove it into, so a program that
+    animates only while the actor moves reports the same frame twice, and all
+    four pairs of the sample bindings contributed nothing at all; the run
+    passed on the three transitions *between* direction groups, which no test
+    covered and no comment claimed. Interleaved, every adjacent moving pair
+    changes direction, which is both what gives the player somewhere to move
+    and the straddle `feel.animation_report` requires before it will call a
+    still frame a failure.
+
     Action bindings go first and directions last, so the idle step is
     *temporally* adjacent to the moving reading it will be compared against.
     The gate drops the action steps from its comparison but the emulator still
@@ -76,29 +89,35 @@ def observation_script(project: GameProject) -> list[dict[str, Any]]:
     """
     if project.target.platform is not TargetPlatform.SPECTRUM:
         return []
-    # Stable sort, so the design's own declaration order survives within each
-    # group and only the action-before-direction split is imposed.
-    ordered = sorted(project.controls.bindings.items(), key=lambda item: item[0] in HOLD_DIRECTIONS)
-    steps: list[dict[str, Any]] = []
-    for name, label in ordered:
-        # Indexed, not `.get`: `KEY_LABELS` is a source constant that
-        # `ControlsSpec` validates every binding against, so a label missing
-        # here is a developer error and should be loud rather than silently
-        # dropping the binding from the script.
-        key = SPECTRUM_KEYS[label]
-        hold = name if name in HOLD_DIRECTIONS else HOLD_ACTION
-        for repeat in ("a", "b"):
-            steps.append(
-                {
-                    "id": f"hold_{name}_{repeat}",
-                    "hold": hold,
-                    "key": key,
-                    "frames": STEP_FRAMES,
-                    "expect": {},
-                }
-            )
-    if not any(step["hold"] in HOLD_DIRECTIONS for step in steps):
+    bindings = project.controls.bindings.items()
+    # The design's own declaration order survives within each group; only the
+    # action-before-direction split is imposed.
+    actions = [item for item in bindings if item[0] not in HOLD_DIRECTIONS]
+    directions = [item for item in bindings if item[0] in HOLD_DIRECTIONS]
+    if not directions:
         return []
+
+    def _hold(name: str, label: str, repeat: str) -> dict[str, Any]:
+        return {
+            "id": f"hold_{name}_{repeat}",
+            # Indexed, not `.get`: `KEY_LABELS` is a source constant that
+            # `ControlsSpec` validates every binding against, so a label
+            # missing here is a developer error and should be loud rather than
+            # silently dropping the binding from the script.
+            "key": SPECTRUM_KEYS[label],
+            "hold": name if name in HOLD_DIRECTIONS else HOLD_ACTION,
+            "frames": STEP_FRAMES,
+            "expect": {},
+        }
+
+    # Actions stay grouped at the front rather than joining the sweep: the gate
+    # drops them, but the emulator still spends their seconds holding a key, and
+    # one landing between two direction readings would let a program that
+    # animates on the fire key supply a change the moving pair did not earn.
+    steps: list[dict[str, Any]] = [
+        _hold(name, label, repeat) for repeat in ("a", "b") for name, label in actions
+    ]
+    steps += [_hold(name, label, repeat) for repeat in ("a", "b") for name, label in directions]
     steps.append(
         {"id": "idle", "hold": HOLD_NONE, "key": None, "frames": STEP_FRAMES, "expect": {}}
     )

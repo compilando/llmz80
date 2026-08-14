@@ -349,6 +349,7 @@ def test_the_runtime_test_drives_the_observation_script(tmp_path, monkeypatch):
 
     StudioService.at(tmp_path).runtime_test(project, tmp_path)
 
-    assert [step["id"] for step in captured["script"]] == [
-        step["id"] for step in observation_script(project)
-    ]
+    # Whole steps, not just their ids: the field `feel.animation_report` reads
+    # is `hold`, and both modules carry a docstring about the run where `hold`
+    # never reached it. An id-only assertion would have passed through that.
+    assert captured["script"] == observation_script(project)

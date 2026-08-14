@@ -133,10 +133,16 @@ def _degenerate_animation_readings():
     purpose: the animation gate must still reach a definite (failing)
     verdict on evidence this degenerate -- the same shape of bug a real
     failing run showed, where `g_anim_frame` read 0 at every scripted step.
+
+    The two moving steps hold *different* directions, and must: a still frame
+    across two holds of the same direction is what a correct program reports
+    once the arena has clamped the player, so `feel.animation_report` abstains
+    there rather than blaming it. Straddling a direction change is what makes
+    this evidence definite instead of ambiguous.
     """
     return [
         {"id": "move_1", "hold": "right", "read": {"g_anim_frame": 0}},
-        {"id": "move_2", "hold": "right", "read": {"g_anim_frame": 0}},
+        {"id": "move_2", "hold": "left", "read": {"g_anim_frame": 0}},
         {"id": "idle_1", "hold": "none", "read": {"g_anim_frame": 0}},
     ]
 

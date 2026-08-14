@@ -3,7 +3,7 @@
 import pytest
 
 from llmz80.studio.feel import animation_report
-from llmz80.studio.models import KEY_LABELS, TargetPlatform
+from llmz80.studio.models import HOLD_DIRECTIONS, KEY_LABELS, TargetPlatform
 from llmz80.studio.observation import SPECTRUM_KEYS, STEP_FRAMES, observation_script
 from llmz80.studio.samples import blank_project
 
@@ -15,17 +15,29 @@ def _bind(title: str, bindings: dict[str, str]):
     return project
 
 
-def _readings(script: list[dict], animates_on_action: bool) -> dict:
+def _readings(
+    script: list[dict], animates_on_action: bool = False, moves_on: set[str] | None = None
+) -> dict:
     """What a correct program would leave in memory for this script.
 
     `_run_zesarux` reads the probes at the *end* of each step's hold, so a
     reading carries everything that happened since the previous one -- which
     is the whole point of item 1: a step the gate ignores still moves time.
+
+    `moves_on` names the steps during which the player *actually moved*, which
+    is what `main.c` gates the frame on and is not the same thing as a key
+    being held: the arena clamps, and a pinned player animates on no step at
+    all. Modelling it is how this file finally catches what the emulator run
+    showed. Omitting it keeps the optimistic "every held key moves the player"
+    program, which is harmless for the tests about step *ordering*.
     """
     frame, step_readings = 0, []
     for step in script:
-        held = step["key"] is not None
-        if held and (step["hold"] != "action" or animates_on_action):
+        if moves_on is None:
+            moved = step["key"] is not None and (step["hold"] != "action" or animates_on_action)
+        else:
+            moved = step["id"] in moves_on
+        if moved:
             # An unsigned char cycling 0..3: advancing, never monotonic.
             frame = (frame + 1) % 4
         step_readings.append(
@@ -131,19 +143,94 @@ def test_a_design_that_never_names_a_direction_gets_no_script():
     assert report["quality_pass"] is None
 
 
+def test_the_repeats_are_interleaved_so_consecutive_moving_steps_change_direction():
+    """Grouping each direction's two holds together was the bug the first real
+    emulator run exposed. Every `_a`/`_b` pair reported the *same* frame -- the
+    player spent the second hold pinned against the wall the first one drove it
+    into -- so all four pairs contributed nothing, and the run passed only on
+    the three transitions between direction groups, a mechanism nobody designed
+    and no test covered.
+
+    Interleaved, every adjacent moving pair changes direction by construction,
+    which both gives the player somewhere to move and is exactly the straddle
+    `feel.animation_report` needs before it will issue a definite failure.
+    """
+    project = blank_project("Interleaved", TargetPlatform.SPECTRUM)
+
+    script = observation_script(project)
+
+    directions = [step for step in script if step["hold"] in HOLD_DIRECTIONS]
+    assert [step["id"] for step in directions] == [
+        "hold_left_a",
+        "hold_right_a",
+        "hold_up_a",
+        "hold_down_a",
+        "hold_left_b",
+        "hold_right_b",
+        "hold_up_b",
+        "hold_down_b",
+    ]
+    assert all(one["hold"] != later["hold"] for one, later in zip(directions, directions[1:]))
+
+
 def test_the_script_gives_the_animation_gate_both_comparisons_it_needs():
     """The reason this module exists: without steps, `step_readings` is empty
     and the gate abstains on every game. It needs consecutive moving readings
-    and an idle one to be observed at all."""
-    project = blank_project("Watched", TargetPlatform.SPECTRUM)
+    and an idle one to be observed at all.
 
-    report = animation_report(_readings(observation_script(project), animates_on_action=False))
+    Modelled on a program that animates only while the actor really moves --
+    `main.c`'s own rule -- rather than on one that animates whenever a key is
+    down. Under the optimistic model this passed even for the grouped script
+    the emulator showed it should not have.
+    """
+    project = blank_project("Watched", TargetPlatform.SPECTRUM)
+    script = observation_script(project)
+    # Interleaved, every direction step pushes away from the wall the previous
+    # one drove the player into, so a clamped player still moves on all of them.
+    moving = {step["id"] for step in script if step["hold"] in HOLD_DIRECTIONS}
+
+    report = animation_report(_readings(script, moves_on=moving))
 
     assert report["observed"] is True
     states = [reading["state"] for reading in report["readings"]]
     assert states.count("moving") >= 2
     assert "idle" in states
     assert report["quality_pass"] is True
+
+
+def test_a_clamped_player_under_a_single_direction_is_not_blamed_for_it():
+    """One bound direction, and `models.ControlsSpec` accepts it: the player
+    reaches the wall inside the first hold and cannot move again, so a correct
+    program reports the same frame twice. The gate used to call that "never
+    advanced" and hand `repair_prompt` a complaint whose only fix is to animate
+    on input rather than on movement -- teaching the writer an invariant the
+    state contract's own prose contradicts. It abstains instead."""
+    project = _bind("Un Sentido", {"jump": "SPACE", "left": "O"})
+
+    script = observation_script(project)
+
+    assert [step["id"] for step in script] == [
+        "hold_jump_a",
+        "hold_jump_b",
+        "hold_left_a",
+        "hold_left_b",
+        "idle",
+    ]
+    report = animation_report(_readings(script, moves_on={"hold_left_a"}))
+    assert report["quality_pass"] is None
+    assert report["failures"] == []
+
+
+def test_a_program_that_never_animates_still_fails_under_the_sample_bindings():
+    """The abstention above must not become a way through. With four directions
+    the script straddles on every adjacent pair, so a frame that never moves is
+    the program's own doing and is reported as a definite failure."""
+    project = blank_project("Frozen", TargetPlatform.SPECTRUM)
+
+    report = animation_report(_readings(observation_script(project), moves_on=set()))
+
+    assert report["quality_pass"] is False
+    assert "never advanced" in " ".join(report["failures"])
 
 
 def test_a_program_that_animates_while_the_action_key_is_held_still_passes():
@@ -156,7 +243,7 @@ def test_a_program_that_animates_while_the_action_key_is_held_still_passes():
 
     script = observation_script(project)
 
-    assert [step["id"] for step in script][-3:] == ["hold_right_a", "hold_right_b", "idle"]
+    assert [step["id"] for step in script][-3:] == ["hold_left_b", "hold_right_b", "idle"]
     report = animation_report(_readings(script, animates_on_action=True))
     assert report["failures"] == []
     assert report["quality_pass"] is True
