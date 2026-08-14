@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Callable, Literal, get_args
 
 #: The kinds of line a diary carries. Few and fixed-width on purpose: a reader
 #: scanning the left margin sees the shape of a session -- what started, what
@@ -26,6 +26,11 @@ from typing import Callable, Literal
 #: even though the longest word is now five, so the lines a diary already
 #: holds and the ones written after this go on lining up in the same file.
 Kind = Literal["OPEN", "STAGE", "START", "..", "END", "WARN", "ERROR", "SAVE", "SKIP"]
+
+#: `Kind` read back as plain strings, for `parse` below: a line is only a
+#: diary line if its margin holds one of these, and there is no second list of
+#: them to keep in step with the first.
+KINDS = get_args(Kind)
 
 FILENAME = "studio.log"
 
@@ -77,3 +82,23 @@ class Journal:
         verdict = "ok" if ok else "FAILED"
         tail = f" {text}" if text else ""
         return self.write("END", f"{token.text} — {verdict} in {seconds} s.{tail}")
+
+
+def parse(line: str) -> tuple[str, str]:
+    """A written line read back as `(kind, text)`.
+
+    The inverse of `write`, and the reason the format is fixed-width: the
+    stamp is 19 characters, two spaces separate it from an eight-character
+    kind, and the rest is what was said. A line that does not hold one of
+    `KINDS` in that column is not one of ours -- a stack trace someone pasted
+    in, a line from an older format -- and is handed back whole under an empty
+    kind rather than guessed at.
+
+    Reading a diary back is how a screen that did not do the work can still
+    show it: `llmz80 make` writes this file from one terminal and `llmz80
+    studio` follows it from another, with nothing between them but the file.
+    """
+    kind = line[21:29].strip()
+    if line[19:21] == "  " and kind in KINDS:
+        return kind, line[29:]
+    return "", line

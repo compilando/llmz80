@@ -1,4 +1,4 @@
-"""Extensible registries for target and genre plugins."""
+"""Extensible registry for the machines Studio can target."""
 
 from __future__ import annotations
 
@@ -8,7 +8,21 @@ from typing import Generic, Iterable, TypeVar
 from dataclasses import dataclass
 
 from .models import GameProject, TargetPlatform, VideoMode
-from .plugins import TARGET_PLUGIN_GROUP
+
+#: The entry-point group an installed package registers a `TargetPack` under,
+#: and the only extension seam Studio really has: `target_registry` below
+#: iterates it and adds whatever it finds to the built-in machines.
+#:
+#: It lived in a `plugins.py` that also declared six other protocols --
+#: capability modules, code backends, model providers, release exporters --
+#: none of which anything ever implemented or checked, and two other group
+#: names nothing ever read. Contracts nobody has implemented are not an
+#: extension seam; they are a description of one. This is the seam, and it
+#: lives with its only reader.
+#:
+#: `examples/studio_plugin` is a working registration; nothing in this
+#: repository registers one, so the loop below finds nothing here.
+TARGET_PLUGIN_GROUP = "llmz80.target_plugins"
 
 
 @dataclass(frozen=True)

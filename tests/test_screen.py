@@ -62,7 +62,6 @@ def test_a_fresh_project_with_no_directory_is_pending_except_its_design(project)
     assert stages["sprites"].state == "pending"
     assert stages["programa"].state == "pending"
     assert stages["gates"].state == "pending"
-    assert stages["release"].state == "pending"
 
 
 def test_a_fresh_project_saved_to_an_empty_directory_reads_the_same_way(project, tmp_path):
@@ -73,7 +72,6 @@ def test_a_fresh_project_saved_to_an_empty_directory_reads_the_same_way(project,
     assert stages["sprites"].state == "pending"
     assert stages["programa"].state == "pending"
     assert stages["gates"].state == "pending"
-    assert stages["release"].state == "pending"
 
 
 def test_stage_order_matches_the_pipeline(project, tmp_path):
@@ -338,45 +336,36 @@ def test_gates_is_failed_rather_than_crashing_on_a_malformed_report(project, tmp
     assert _by_name(stages)["gates"].state == "failed"
 
 
-# --- release ------------------------------------------------------------
+# --- what is not a stage ----------------------------------------------------
 
 
-def test_release_is_pending_with_no_archive(project, tmp_path):
-    stage = _by_name(stage_line(project, tmp_path))["release"]
-
-    assert stage.state == "pending"
-
-
-def test_release_is_done_once_the_archive_exists(project, tmp_path):
+def test_the_line_stops_at_the_gates(project, tmp_path):
+    """`release` was the sixth stage here, and reading a zip off disk was all
+    it ever did. Nothing in `llmz80 make` packages one -- archiving a game is
+    a separate intention, and `llmz80 project release` is still how it is
+    asked for -- so a strip that carried it read `Release —` for the whole
+    life of every project ever made."""
     releases = tmp_path / "releases"
     releases.mkdir()
-    name = f"{project.metadata.slug}-{project.target.platform.value}.zip"
-    (releases / name).write_bytes(b"PK\x03\x04")
+    (releases / f"{project.metadata.slug}-{project.target.platform.value}.zip").write_bytes(b"PK")
 
-    stage = _by_name(stage_line(project, tmp_path))["release"]
+    named = [stage.name for stage in stage_line(project, tmp_path)]
 
-    assert stage.state == "done"
-    assert stage.detail == name
-
-
-def test_release_is_pending_with_no_directory(project):
-    stage = _by_name(stage_line(project, None))["release"]
-
-    assert stage.state == "pending"
+    assert named == list(STAGE_NAMES)
+    assert "release" not in named
 
 
-# --- what the stage line still owes the wizard ------------------------------
+# --- what the stage line is, and is not -------------------------------------
 #
 # `next_step` lived here and answered "what happens next" from the stages
-# alone. `wizard.current` answers it from the stages *and* what the person
-# has walked past, which is the only answer the screen ever uses; two
-# functions for one question is exactly the drift `wizard`'s own docstring
-# warns about, so the unused one went. Its rules are still tested, in
-# tests/test_studio_wizard.py, against the function that is actually called.
+# alone. Nothing asks that question any more: `llmz80 make` runs every stage
+# in order without being told, and the screen shows what each one came to.
+# What is left here is evidence, and `wizard.steps` is the only thing that
+# reads it.
 
 
 def test_the_stage_line_no_longer_names_keys():
-    """The keys it named are gone; the wizard decides what Enter does."""
+    """The keys it named are gone with the wizard that pressed them."""
     import llmz80.studio.screen as screen
 
     assert not hasattr(screen, "STAGE_KEY")

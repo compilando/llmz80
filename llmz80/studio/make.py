@@ -10,8 +10,8 @@ watches it run. It asks nothing -- the order either runs to the end or stops
 at the stage that failed and says so.
 
 It owns no pipeline logic of its own. Each stage is one call into
-`StudioService` (the same call `steps.py` makes for the interface), so a fix
-to what a stage *does* lands in one place and both callers get it. What this
+`pipeline.py`, the same call `llmz80 project <stage>` makes, so a fix to what
+a stage *does* lands in one place and both callers get it. What this
 module adds is the three things a chain of commands never had: the order, a
 diary written while it happens rather than a report handed over at the end,
 and the rule for what a failure means -- which is "stop", because a program
@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from . import wizard
+from . import pipeline, wizard
 from .journal import FILENAME as JOURNAL_FILENAME, Journal
 from .models import AssetSpec, GameProject, TargetPlatform
 from .reference import GameReference
@@ -161,9 +161,10 @@ class _Diary:
         """Run one stage between a START and an END line, and stop the order
         if it fails.
 
-        The heading is `"{number} {name} — {label}"`, byte for byte what
-        `tui.py` writes for the same stage, so one project's diary reads the
-        same whether the work was done from the interface or from here.
+        The heading is `"{number} {name} — {label}"`: the stage's number and
+        its id, never its label, so a diary can be searched a year later and
+        `4 programa` goes on meaning the same thing whatever the interface
+        watching it happens to call that stage.
         """
         token = self.journal.start(f"{step.number} {step.name} — {label}")
         self.out(token.line)
@@ -182,13 +183,14 @@ class _Diary:
 
 @dataclass
 class ServiceStages:
-    """The real six, each one a call into `StudioService`.
+    """The real six: `pipeline`'s stages, under the names this order calls them.
 
-    The OpenAI collaborators are built inside the stage that needs them, not
-    in `__init__`, and for the same reason `steps.py` builds them inside its
-    jobs: a missing API key should stop the stage that needed it, with the
-    project already on disk and the diary already saying how far it got --
-    not the whole order before it has written anything.
+    Nothing but an adapter, and deliberately: what a stage *does* lives in
+    `pipeline.py`, which `llmz80 project ...` calls too, so a fix to a stage
+    reaches both. What is left here is this order's own two decisions -- that
+    a taken name becomes the next number rather than a refusal, and that
+    nothing is ever asked (no `confirm` is passed, which is what tells
+    `pipeline` to keep existing work rather than destroy it unattended).
     """
 
     service: StudioService
@@ -202,85 +204,44 @@ class ServiceStages:
         mistake. So a taken slug becomes "… 2", "… 3": two runs of one idea
         leave two games side by side rather than one refusal.
         """
-        from .editing import rename_project
-
         for attempt in range(1, MAX_SAME_TITLE + 1):
             candidate = title if attempt == 1 else f"{title} {attempt}"
             try:
-                project, directory = self.service.create_project(candidate, platform)
+                return pipeline.create(self.service, candidate, platform, brief)
             except FileExistsError:
                 continue
-            if brief:
-                project = rename_project(project, project.metadata.title, brief=brief)
-                self.service.save_project(project, directory)
-            return project, directory
         raise StageRefused(
             f"the workspace already holds {MAX_SAME_TITLE} projects called {title!r}; "
             "give the idea different words, or point --workspace somewhere else"
         )
 
     def research(self, project: GameProject, directory: Path, say: Say) -> GameReference:
-        from ..cli import _openai_client_and_model
-        from .reference import ResponsesReferenceResearcher
-
-        client, model = _openai_client_and_model()
-        say(f"searching the web with {model}")
-        researcher = ResponsesReferenceResearcher(client, model=model)
-        return self.service.research_reference(project, directory, researcher)
+        return pipeline.research(self.service, project, directory, say=say)
 
     def adapt(
         self, project: GameProject, directory: Path, dossier: GameReference, say: Say
     ) -> GameProject:
         """Adapt the design to the researched game and save it.
 
-        Nothing is shown for approval, unlike `llmz80 project adapt`: the
-        proposal has already been validated through `apply_proposal` (that is
-        what `propose_from_reference` returns), and there is nobody at the
+        No `confirm`, unlike `llmz80 project adapt`: the proposal has already
+        been validated through `apply_proposal`, and there is nobody at the
         keyboard to read a diff. The diff is not lost -- `game.yml`'s previous
         revision is kept by `ProjectStore.save`, as it is for every save.
         """
-        from ..cli import _openai_client_and_model
-        from .reference_design import ResponsesReferenceDesigner
-
-        client, model = _openai_client_and_model()
-        designer = ResponsesReferenceDesigner(client, model=model)
-        _proposal, _diff, updated, refusals = self.service.propose_from_reference(
-            project, directory, designer, dossier
-        )
-        for number, reason in enumerate(refusals, start=1):
-            say(f"attempt {number} was refused, repairing: {reason}")
-        self.service.save_project(updated, directory)
-        return updated
+        return pipeline.adapt(self.service, project, directory, dossier=dossier, say=say)
 
     def sprites(
         self, project: GameProject, directory: Path, dossier: GameReference | None, say: Say
     ) -> list[AssetSpec]:
-        from generators.openai_generator import OpenAIImageGenerator
-
-        from ..cli import _openai_client_and_model, _openai_image_model
-        from .sprite_artist import SpriteArtist
-
-        # `OpenAIImageGenerator` takes an API key rather than a client, so the
-        # key is read off the client already built instead of loaded twice --
-        # the same shortcut `llmz80 project sprites` takes.
-        client, _model = _openai_client_and_model()
-        artist = SpriteArtist(
-            OpenAIImageGenerator(api_key=client.api_key, model=_openai_image_model())
-        )
-        return self.service.draw_sprites(project, directory, artist, dossier, on_progress=say)
+        return pipeline.sprites(self.service, project, directory, dossier=dossier, say=say)
 
     def write(
         self, project: GameProject, directory: Path, dossier: GameReference | None, say: Say
     ) -> dict[str, Any]:
-        from ..cli import _openai_client_and_model
-        from .generator import ResponsesProgramWriter
-
-        client, model = _openai_client_and_model()
-        writer = ResponsesProgramWriter(client, model=model, reference=dossier)
-        return self.service.write_program(project, directory, writer, on_progress=say)
+        return pipeline.write(self.service, project, directory, dossier=dossier, say=say)
 
     def test(self, project: GameProject, directory: Path, say: Say) -> dict[str, Any]:
-        return self.service.runtime_test(project, directory, on_progress=say)
+        return pipeline.test(self.service, project, directory, say=say)
 
 
 def title_from(idea: str) -> str:

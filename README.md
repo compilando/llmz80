@@ -284,23 +284,23 @@ ahí, dice en cuál y con qué error, y deja escrito cómo reintentar esa misma
 etapa sobre el proyecto que ya existe. Todo queda anotado, en pantalla y en
 `<proyecto>/studio.log`, mientras pasa.
 
-### LLMZ80 Studio (recomendado para juegos completos)
+### Mirar la tirada mientras pasa
 
 ```bash
-# Asistente visual en terminal; no necesita API para crear el proyecto base
+# En otra terminal, mientras `llmz80 make` trabaja
 make studio
 
-# Equivalente, eligiendo el directorio de proyectos
+# Equivalente, eligiendo el directorio de proyectos (o un proyecto concreto)
 .venv/bin/llmz80 studio studio-projects
 ```
 
-El asistente recorre el pipeline un paso cada vez: elegir o crear el proyecto
-(Spectrum o CPC), investigar el juego real, revisar el diseño, dibujar sprites,
-escribir el programa, pasar las puertas y publicar. El proyecto base trae
-título, controles, entidades, pantallas, escenarios de aceptación y
-presupuestos técnicos; el diseño declara su propio vocabulario de tiles,
-entidades y mecánicas, y no hay géneros de catálogo que elegir. Cada paso queda
-anotado, con su hora y su duración, en `<proyecto>/studio.log`.
+Esta pantalla no hace nada: mira. Enseña la identidad del proyecto, la tira de
+las seis etapas con su estado (`✓` hecha, `✗` fallida, `—` pendiente) leída de
+lo que el pipeline va dejando en disco, el diario según se escribe, y al final
+dónde quedó el juego o qué lo detuvo. Sigue el proyecto escrito más
+recientemente del workspace, así que basta abrirla antes y lanzar `llmz80 make`
+al lado; apuntada a un proyecto concreto, mira ése y ninguno más, que es como
+se revisa la tirada de ayer. Una sola tecla: `q` para salir.
 
 También existe un flujo reproducible para CI:
 
@@ -794,52 +794,36 @@ project and is the artifact of record.
 
 Run everything through the project virtual environment, as the Makefile does.
 
-### Guided
+### Watching a run
 
     make studio                     # or: make studio WORKSPACE=~/games
 
-The free-text brief says what makes this game itself, and it is the first thing
-both the researcher and the program's author are shown. Write "four ghosts, and
-a power dot makes them edible" there: a design declares its own tiles, entities
-and mechanics, and nothing else conveys that on its behalf.
+`llmz80 make` is the whole pipeline and it runs in the terminal it was typed
+in. This is the other terminal: a screen that does no work, decides nothing,
+and writes nothing. It shows the project's identity, the six-step strip with
+each step's state (`✓` done, `✗` failed, `—` still to do), the diary as it is
+written, and the verdict -- what stopped the run, or where the game landed.
 
-One step at a time, and the screen says which one. At rest it shows identity, a
-one-line reminder of the brief, the seven-step strip with each step's state
-(`✓` done, `»` walked past, `✗` failed, `—` still to do), and the sentence that
-replaces having to know the pipeline: where you are standing (`Paso 3 de 6:
-sprites`), what this step is for, and which key does it.
+Six, not seven: `release` is not a step of the order. `llmz80 make` ends when
+the game exists, boots and passes its gates, and packaging a zip with its
+evidence stays the deliberate act it is (`llmz80 project release`). A strip
+carrying a stage the order never performs would read `Release —` for the whole
+life of every game ever made.
 
-Five keys, and each step names the ones it offers. `Enter` does the step, and
-says `gasta dinero (API)` first where pressing it would. `→` leaves the step
-behind -- offered as `omitir` only where the pipeline can genuinely spare it, so
-`referencia` and `sprites` can be walked past and `programa` cannot. `Esc` steps
-back, or leaves an open editor, saving what was drawn in it. `R` does a finished
-step over, after asking. `Q` quits. Inside `diseño`, `A` adapts the design to
-the researched game as one diff you accept or discard, and is offered only once
-research has archived a dossier to adapt to.
+Nothing tells it anything. The strip is read off the evidence each stage leaves
+on disk, the same evidence `screen.stage_line` reads, so it advances by itself;
+the diary is followed line by line out of `<project>/studio.log`, which
+`Journal` writes and hands back verbatim, so the file and the screen cannot
+tell different stories about the same event. That is also what lets the run
+survive the screen being closed, the screen survive the run crashing, and
+yesterday's run be looked at this morning with the same command.
 
-The diary sits underneath all of it and is never hidden: what Studio did, when,
-how long it took, and what came of it. Everything the screen says once a
-project is open the file keeps -- as its own line, or, for the result of a
-long job, folded into the `FIN` line that closes the work, since a diary is
-read by scanning its left margin. So a session that skipped, saved, adapted,
-was refused or failed overnight can still be read the next morning. The single
-line that is in no file is the opening one naming the workspace: at that point
-there is no project to own a diary.
+Pointed at a workspace it follows whichever project was written to last, asked
+again on every tick, so opening the screen first and typing `llmz80 make` next
+door works without touching it. Pointed at a project directory it follows that
+one and no other.
 
-A panel is a mode, and while one is open the wizard's keys stand down -- `→`
-cannot walk past a step you cannot see. `Esc` is what leaves any panel, saving
-what was typed or drawn in it, and every panel names the keys that work inside
-it. Each opens with its first field already focused, so typing is typing and
-not a shortcut misfiring.
-
-`g` design, `m` map, `e` entities, `s` sprites, `d` diff open one over the
-resting screen, one at a time. Step 0's own panel -- picking a project, or
-starting one -- is the same idea: `Tab` moves between fields, `Enter` creates
-the project from any of them, `Esc` closes without creating anything. On the
-Map panel, the arrow keys or `wasd` move the cursor, `space` toggles a wall,
-`m` moves the selected spawn, `+/-` change an entity count. Every panel fits an
-80x24 terminal.
+One key: `q` quits.
 
 ### Headless
 

@@ -13,7 +13,8 @@ def _print_help() -> None:
         "\n"
         "  llmz80 make 'what the game should be' [--cpc] [--workspace PATH]\n"
         "                                   (the whole pipeline; calls the OpenAI API)\n"
-        "  llmz80 studio [WORKSPACE]\n"
+        "  llmz80 studio [WORKSPACE|PROJECT]\n"
+        "                                   (watch a run: stages, diary, verdict)\n"
         "  llmz80 project new WORKSPACE TITLE [spectrum|amstrad_cpc]"
         " ['what this game should be']\n"
         "  llmz80 project types             (kinds of game that exist, for inspiration)\n"
@@ -114,13 +115,10 @@ def _new_command(arguments: list[str]) -> int:
     except ValueError as exc:
         print(f"ERROR: {exc}")
         return 2
-    service = StudioService.at(workspace)
-    project, directory = service.create_project(title, platform)
-    if brief:
-        from llmz80.studio.editing import rename_project
+    from llmz80.studio import pipeline
 
-        project = rename_project(project, project.metadata.title, brief=brief)
-        service.save_project(project, directory)
+    service = StudioService.at(workspace)
+    _project, directory = pipeline.create(service, title, platform, brief)
     print(directory / "game.yml")
     return 0
 
@@ -214,43 +212,41 @@ def _project_command(arguments: list[str]) -> int:
         print(generation_prompt(project))
         return 0
     if arguments[0] == "reference":
-        from llmz80.studio.reference import ResponsesReferenceResearcher
+        from llmz80.studio import pipeline
 
-        # reference.yml is meant to be hand-corrected once a search gets a
-        # detail wrong, and re-running this command would silently overwrite
-        # those corrections. A malformed archive is treated as unreadable
-        # rather than absent -- load_reference raises for exactly that reason
-        # -- so this refuses rather than guessing whether it is safe to
-        # replace something it cannot show the user. This check happens
-        # before the OpenAI client is built, so declining costs nothing.
+        def replace_dossier(title: str) -> bool:
+            # reference.yml is meant to be hand-corrected once a search gets a
+            # detail wrong, and a fresh search would silently overwrite those
+            # corrections. `pipeline.research` puts this question before it
+            # builds the OpenAI client, so declining costs nothing.
+            print(f"An archived dossier already exists: {title}")
+            return input("Replace it with a fresh search? [y/N] ").strip().casefold() == "y"
+
         try:
-            existing = service.reference(directory)
-        except ValueError as exc:
+            # The OpenAI SDK parses the model's JSON into GameReference itself,
+            # so a response that satisfies the JSON schema but violates a
+            # cross-field rule -- an "identified" dossier with no sources, a
+            # source missing its retrieved_at -- raises pydantic.ValidationError
+            # from inside the SDK's post-parser, before Studio code ever sees
+            # the object. That subclasses ValueError, so it is caught here
+            # alongside the explicit ValueError research_reference raises when
+            # parsing yields nothing. A network or API failure (a connection
+            # drop, a bad key, a rate limit) is a different kind of problem
+            # with a different remedy and is not a ValueError, so it is
+            # deliberately left to propagate rather than folded into this.
+            dossier = pipeline.research(
+                service, project, directory, say=print, confirm=replace_dossier
+            )
+        except pipeline.Declined:
+            print("Left unchanged.")
+            return 0
+        except pipeline.Unreadable as exc:
+            # A malformed archive is unreadable rather than absent -- that is
+            # what load_reference raises for -- so this refuses instead of
+            # guessing whether it is safe to replace something it cannot show.
             print(f"ERROR: {exc}")
             print("Fix or remove reference.yml before researching again.")
             return 1
-        if existing is not None:
-            print(f"An archived dossier already exists: {existing.title or '(unidentified)'}")
-            if input("Replace it with a fresh search? [y/N] ").strip().casefold() != "y":
-                print("Left unchanged.")
-                return 0
-
-        client, model = _openai_client_and_model()
-        print(f"Researching with {model}; this searches the web and calls the OpenAI API.")
-        researcher = ResponsesReferenceResearcher(client, model=model)
-        # The OpenAI SDK parses the model's JSON into GameReference itself, so
-        # a response that satisfies the JSON schema but violates a cross-field
-        # rule -- an "identified" dossier with no sources, a source missing
-        # its retrieved_at -- raises pydantic.ValidationError from inside the
-        # SDK's post-parser, before Studio code ever sees the object. That
-        # subclasses ValueError, so it is caught here alongside the explicit
-        # ValueError research_reference raises when parsing yields nothing.
-        # A network or API failure (a connection drop, a bad key, a rate
-        # limit) is a different kind of problem with a different remedy and
-        # is not a ValueError, so it is deliberately left to propagate rather
-        # than folded into the same message.
-        try:
-            dossier = service.research_reference(project, directory, researcher)
         except ValueError as exc:
             print(f"ERROR: {exc}")
             print(
@@ -273,14 +269,24 @@ def _project_command(arguments: list[str]) -> int:
         print(directory / "reference.yml")
         return 0
     if arguments[0] == "adapt":
-        from llmz80.studio.reference_design import ResponsesReferenceDesigner
+        from llmz80.studio import pipeline
 
-        client, model = _openai_client_and_model()
-        designer = ResponsesReferenceDesigner(client, model=model)
+        def apply_diff(diff: str) -> bool:
+            # Nothing is saved until this says yes: the diff is the whole
+            # point of this command existing beside `llmz80 make`, which
+            # applies the same proposal with nobody to show it to.
+            print(diff)
+            return input("\nApply these changes? [y/N] ").strip().casefold() == "y"
+
         try:
-            proposal, diff, updated, refusals = service.propose_from_reference(
-                project, directory, designer
-            )
+            # A repair happens silently to the model, and `pipeline.adapt`
+            # says each one through `say` -- the only sign a user watching
+            # the command sees that it made more than one API call, so a
+            # silent wait does not read as a hang.
+            pipeline.adapt(service, project, directory, say=print, confirm=apply_diff)
+        except pipeline.Declined:
+            print("Left unchanged.")
+            return 0
         except ValueError as exc:
             # `propose_from_reference` already repaired what it could; a
             # ValueError reaching here is either the "no dossier" guard, or
@@ -295,24 +301,12 @@ def _project_command(arguments: list[str]) -> int:
             if str(exc) == "there is no researched game for this project yet":
                 print("Run `llmz80 project reference PATH` first.")
             return 1
-        # A repair happens silently to the model -- these lines are the only
-        # sign a user watching the command sees that it made more than one
-        # API call, so a silent wait does not read as a hang.
-        for number, reason in enumerate(refusals, start=1):
-            print(f"Attempt {number} was refused, repairing: {reason}")
-        print(diff)
-        if input("\nApply these changes? [y/N] ").strip().casefold() != "y":
-            print("Left unchanged.")
-            return 0
-        service.save_project(updated, directory)
         print(directory / "game.yml")
         return 0
     if arguments[0] == "write":
-        from llmz80.studio.generator import ResponsesProgramWriter
+        from llmz80.studio import pipeline
         from llmz80.studio.reference import load_reference
 
-        client, model = _openai_client_and_model()
-        print(f"Writing the program with {model}; this calls the OpenAI API.")
         dossier = load_reference(directory)
         if dossier is not None and dossier.identified:
             # The publisher is not guaranteed -- magazine type-ins and
@@ -320,8 +314,7 @@ def _project_command(arguments: list[str]) -> int:
             # parenthetical is dropped rather than printed as "()".
             on_publisher = f" ({dossier.publisher})" if dossier.publisher else ""
             print(f"Writing as {dossier.title}{on_publisher}.")
-        writer = ResponsesProgramWriter(client, model=model, reference=dossier)
-        report = service.write_program(project, directory, writer)
+        report = pipeline.write(service, project, directory, dossier=dossier, say=print)
         for attempt in report["attempts"]:
             print(
                 f"  attempt {attempt['number']}: build={attempt['build_passed']} "
@@ -330,46 +323,28 @@ def _project_command(arguments: list[str]) -> int:
         print(directory / "write_report.json")
         return 0 if report["accepted"] else 1
     if arguments[0] == "sprites":
-        from llmz80.studio.sprite_artist import SpriteArtist
+        from llmz80.studio import pipeline
 
-        # `draw_sprites` only ever fills a gap -- it never touches an id that
-        # already has a sprite-kind asset (see its docstring). So the one
-        # place this command can ever overwrite hand-picked or previously
-        # generated art is here, by choosing to evict it first; asking before
-        # doing that is the same courtesy `reference` extends a hand-corrected
-        # dossier, for the same reason.
-        have = {asset.id for asset in project.assets if asset.kind == "sprite"}
-        needed = sorted({entity.sprite for entity in project.entities})
-        existing = [sprite_id for sprite_id in needed if sprite_id in have]
-        if existing:
-            print("Sprite art already exists for: " + ", ".join(existing))
-            if input("Redraw it, overwriting the existing art? [y/N] ").strip().casefold() != "y":
-                print("Left unchanged.")
-                return 0
-            for sprite_id in existing:
-                asset = next(a for a in project.assets if a.kind == "sprite" and a.id == sprite_id)
-                (directory / asset.source).unlink(missing_ok=True)
-            remaining = [a for a in project.assets if not (a.kind == "sprite" and a.id in existing)]
-            # Not GameProject.model_validate(...): between evicting the old
-            # asset and draw_sprites registering its replacement, an entity
-            # legitimately names a sprite id no asset declares yet -- exactly
-            # what structure.py's reference check refuses (see services.py's
-            # draw_sprites docstring on the same point) -- so this step must
-            # not re-run whole-document validation. model_copy skips it, the
-            # same way draw_sprites' own atomic add_asset call resolves the
-            # transient state a moment later.
-            project = project.model_copy(update={"assets": remaining})
-            service.save_project(project, directory)
+        def redraw(existing: str) -> bool:
+            # `draw_sprites` only ever fills a gap -- it never touches an id
+            # that already has a sprite-kind asset -- so the one place this
+            # command can overwrite hand-picked or previously generated art
+            # is by evicting it first, which `pipeline.sprites` does only
+            # once this says yes. The same courtesy `reference` extends a
+            # hand-corrected dossier, for the same reason.
+            print("Sprite art already exists for: " + existing)
+            return (
+                input("Redraw it, overwriting the existing art? [y/N] ").strip().casefold() == "y"
+            )
 
-        client, _ = _openai_client_and_model()
+        # Said before anything is constructed, let alone spent: the image API
+        # is the most expensive call in this file.
         print("Drawing sprites with OpenAI's image API; this calls the OpenAI API.")
-        from generators.openai_generator import OpenAIImageGenerator
-
-        artist = SpriteArtist(
-            OpenAIImageGenerator(api_key=client.api_key, model=_openai_image_model())
-        )
         try:
-            drawn = service.draw_sprites(project, directory, artist)
+            drawn = pipeline.sprites(service, project, directory, say=print, confirm=redraw)
+        except pipeline.Declined:
+            print("Left unchanged.")
+            return 0
         except ValueError as exc:
             print(f"ERROR: {exc}")
             return 1
@@ -402,8 +377,10 @@ def _project_command(arguments: list[str]) -> int:
         print(result.artifact or result.output_dir / "build_report.json")
         return 0 if result.success else 1
     if arguments[0] == "test":
+        from llmz80.studio import pipeline
+
         try:
-            report = service.runtime_test(project, directory)
+            report = pipeline.test(service, project, directory, say=print)
         except (RuntimeError, FileNotFoundError) as exc:
             print(f"ERROR: {exc}")
             return 1
