@@ -676,11 +676,14 @@ async def test_the_workspace_picker_lists_and_opens_a_project(tmp_path: Path):
 
         assert app.active_panel == "open"
         listing = app.query_one("#workspace-list")
-        assert listing.option_count == 1
+        # Two entries: starting a project, and the one project there is --
+        # with the highlight already on the latter, which is what someone
+        # who came here to open something is aiming at.
+        assert listing.option_count == 2
+        assert str(listing.get_option_at_index(1).prompt) == created_dir.name
 
         listing.focus()
-        listing.highlighted = 0
-        await pilot.pause()
+        assert listing.highlighted == 1
         await pilot.press("enter")
         await pilot.pause()
 
@@ -1572,4 +1575,75 @@ async def test_the_creation_panel_says_which_key_leaves_it(tmp_path: Path):
         await pilot.pause()
 
         assert app.active_panel == "create"
+        assert "Esc" in str(app.query_one("#create-help").render())
+
+
+@pytest.mark.asyncio
+async def test_a_second_project_can_be_started_from_a_populated_workspace(tmp_path: Path):
+    """Creating a project hung off `ctrl+n`, and when the shortcuts went it
+    survived only as the panel step 0 opens *instead of* the picker when the
+    workspace is empty -- so from the second project onwards there was no way
+    to start one without leaving for the command line. The picker's own first
+    entry is that way back."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.service.create_project("Already There", TargetPlatform.SPECTRUM)
+
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.active_panel == "open"
+
+        listing = app.query_one("#workspace-list")
+        # The existing project is what the highlight lands on; creating is
+        # the entry above it.
+        assert listing.highlighted == 1
+        await pilot.press("up")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.active_panel == "create"
+
+        app.query_one("#f-title").value = "The Second One"
+        await pilot.click("#create-confirm")
+        await pilot.pause()
+
+        assert (tmp_path / "the-second-one" / "game.yml").is_file()
+        assert app.project.metadata.title == "The Second One"
+        assert "proyecto" in app.passed
+        assert app.active_panel is None
+
+
+@pytest.mark.asyncio
+async def test_an_empty_workspace_still_lists_creating_when_the_picker_is_opened(tmp_path: Path):
+    """The empty case stops being a rule of its own: the same list, with one
+    entry. The straight-to-creation shortcut stays a courtesy, not the only
+    road."""
+    from llmz80.studio.tui import StudioApp
+    from llmz80.studio.tui import NEW_PROJECT_ID, NEW_PROJECT_LABEL
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._set_panel("open")
+        await pilot.pause()
+
+        listing = app.query_one("#workspace-list")
+        first = listing.get_option_at_index(0)
+        assert first.id == NEW_PROJECT_ID
+        assert str(first.prompt) == NEW_PROJECT_LABEL
+
+
+@pytest.mark.asyncio
+async def test_the_panels_name_the_key_that_leaves_them(tmp_path: Path):
+    """The map editor's hint enumerated four keys that paint and moved past
+    the one that saves."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+
+        assert "esc" in str(app.query_one("#map-hint").render())
+        assert "Esc" in str(app.query_one("#open-help").render())
         assert "Esc" in str(app.query_one("#create-help").render())

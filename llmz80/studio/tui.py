@@ -107,6 +107,16 @@ PANEL_IDS = {
     "open": "panel-open",
 }
 
+#: The workspace picker's own first entry, and the id it answers to.
+#: Creating a project used to hang off `ctrl+n`, and when the ten shortcuts
+#: went it survived only as the panel `_open_project_step` opens *instead of*
+#: the picker when the workspace is empty -- which meant that from the second
+#: project onwards there was no way to start one at all without leaving for
+#: the command line. A lost feature, not a lost key. It lives here now, where
+#: choosing a project already lives.
+NEW_PROJECT_ID = "new"
+NEW_PROJECT_LABEL = "＋ nuevo proyecto…"
+
 #: Rich markup tags, stripped when a screen message is written to the diary:
 #: the file is read in a pager, where `[green]` is noise rather than colour.
 _MARKUP = re.compile(r"\[/?[a-z ]+\]")
@@ -438,7 +448,10 @@ class StudioApp(App[None]):
             yield create_brief_box
             yield Button("Create", id="create-confirm", variant="primary")
         with Vertical(id="panel-open", classes="panel"):
-            yield Static("Open a project from the workspace.")
+            yield Static(
+                "Open a project from the workspace, or start a new one. " "Esc closes this panel.",
+                id="open-help",
+            )
             yield OptionList(id="workspace-list")
         with Vertical(id="panel-map", classes="panel"):
             with Horizontal():
@@ -482,8 +495,11 @@ class StudioApp(App[None]):
     def on_mount(self) -> None:
         table = self.query_one("#entity-table", DataTable)
         table.add_columns("entity", "kind", "count")
+        # `esc` is named alongside the editing keys because it is the one
+        # that now does something worth knowing about: it saves what was
+        # drawn here and returns to the wizard.
         self.query_one("#map-hint", Static).update(
-            "wasd move · space wall · m move spawn · +/- count"
+            "wasd move · space wall · m move spawn · +/- count · esc saves and returns"
         )
         self._set_panel(None)
         found = len(self.service.store.list_projects())
@@ -632,15 +648,26 @@ class StudioApp(App[None]):
         self._refresh_wizard()
 
     def _refresh_workspace_list(self) -> None:
+        """Everything step 0 can do, in one list: start a project, or open one.
+
+        `＋ nuevo proyecto…` comes first and is always there, so an empty
+        workspace is the same list with one entry rather than a rule of its
+        own, and a workspace with projects in it can still start another.
+        The highlight starts on the first *project* where there is one --
+        opening what already exists is the likelier answer, and creating is
+        one key away either way.
+        """
         listing = self.query_one("#workspace-list", OptionList)
         listing.clear_options()
         projects = self.service.store.list_projects()
         self._workspace_paths = {str(index): path for index, path in enumerate(projects)}
+        listing.add_option(Option(NEW_PROJECT_LABEL, id=NEW_PROJECT_ID))
         if not projects:
             listing.add_option(Option("(no projects in this workspace yet)", id="none"))
             return
         for index, path in enumerate(projects):
             listing.add_option(Option(path.name, id=str(index)))
+        listing.highlighted = 1
 
     def _apply(self, operation) -> None:
         """Run an editing operation, reporting refusals instead of crashing."""
@@ -778,6 +805,9 @@ class StudioApp(App[None]):
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option_list.id != "workspace-list":
+            return
+        if event.option_id == NEW_PROJECT_ID:
+            self._set_panel("create")
             return
         path = self._workspace_paths.get(event.option_id or "")
         if path is None:
@@ -972,11 +1002,13 @@ class StudioApp(App[None]):
     def _open_project_step(self) -> None:
         """Step 0: pick a project out of the workspace, or start one.
 
-        A workspace with projects in it shows the picker; an empty one shows
-        the creation panel straight away, because an empty list is no answer
-        to "choose a project" and making someone press one more key to be
-        told so wastes the time of exactly the person who has least idea
-        what to press.
+        A workspace with projects in it shows the picker, whose first entry
+        starts a new project; an empty one shows the creation panel straight
+        away, because there is only one sensible thing to do in an empty
+        workspace and making someone press one more key to be told so wastes
+        the time of exactly the person who has least idea what to press.
+        That shortcut is a courtesy and not the only road: the picker offers
+        creating too, or the second project would be unreachable from here.
 
         Both paths end in `action_open`/`action_create`, which point the
         diary at the project's own directory, write `ABRIR` in it, and put
