@@ -79,6 +79,18 @@ class _FixtureArtist:
         return self.frames
 
 
+class _StubArtist:
+    """A minimal fake artist: one solid frame, no raw sheet, no attempt
+    history -- the same bare `list[Image.Image]` several fakes across the
+    test suite return from `draw_frames` (only the real `SpriteArtist`
+    carries `.sheet`/`.sheets`/`.attempts`/`.repairs`). Used wherever a test
+    needs *an* artist but not a particular drawing.
+    """
+
+    def draw_frames(self, project, entity, dossier=None):
+        return [Image.new("RGBA", (SPRITE_SIZE, SPRITE_SIZE), (200, 40, 40, 255))]
+
+
 def test_draw_sprites_round_trip_through_disk_keeps_a_recognisable_silhouette(tmp_path: Path):
     """`draw_sprites` tiles `_FixtureArtist`'s real frames into one sheet,
     saves it as a PNG under the project's `assets/`, and registers it. Then,
@@ -203,14 +215,10 @@ def test_draw_sprites_tolerates_an_artist_that_carries_no_raw_sheet(tmp_path: Pa
     the asset must not depend on it being there.
     """
 
-    class _BareArtist:
-        def draw_frames(self, project, entity, dossier=None):
-            return [Image.new("RGBA", (SPRITE_SIZE, SPRITE_SIZE), (200, 40, 40, 255))]
-
     service = StudioService.at(tmp_path)
     project, directory = _create_sprited_project(service, "Bare Artist")
 
-    drawn = service.draw_sprites(project, directory, _BareArtist())
+    drawn = service.draw_sprites(project, directory, _StubArtist())
 
     asset = drawn[0]
     asset_path = directory / asset.source
@@ -230,3 +238,25 @@ def test_a_v3_document_is_refused_with_a_message_that_says_what_to_do(tmp_path):
     message = str(error.value)
     assert "schema version 3" in message
     assert "v4" in message
+
+
+def test_draw_sprites_narrates_each_sheet_it_packs(tmp_path):
+    """Without this the screen can say nothing for the eighty seconds the
+    artist takes, because the report only exists once it is over."""
+    from llmz80.studio.services import StudioService
+
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Narrated", TargetPlatform.SPECTRUM)
+    said: list[str] = []
+    service.draw_sprites(project, directory, _StubArtist(), on_progress=said.append)
+    assert said, "the artist packed a sheet and said nothing about it"
+    assert any("actor" in line for line in said), said
+
+
+def test_on_progress_is_optional(tmp_path):
+    """Every existing caller passes nothing and must keep working."""
+    from llmz80.studio.services import StudioService
+
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Quiet", TargetPlatform.SPECTRUM)
+    service.draw_sprites(project, directory, _StubArtist())

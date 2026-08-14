@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 import re
 import shutil
 import tempfile
@@ -27,6 +27,50 @@ from .acceptance import runtime_script
 from .generator import write_program
 from .release import export_release
 import json
+
+#: Told what is happening while it happens. The three long jobs below take
+#: minutes and two of them spend money, and their reports only exist once they
+#: are over -- so without this there is nothing to say during the wait, and a
+#: screen that says nothing for eighty seconds reads as one that hung.
+Progress = Callable[[str], None] | None
+
+
+def _say(on_progress: Progress, text: str) -> None:
+    """Report `text` if anyone is listening, so callers stay free of the check."""
+    if on_progress is not None:
+        on_progress(text)
+
+
+def _reason_summary(reason: str) -> str:
+    """`sprite_artist._judge_frames` writes a judged rejection as several
+    paragraphs of redraw instructions for the model -- a heading, the
+    per-frame evidence, and an explanation of the check and the fix. A
+    progress line needs only the evidence: the "frame N: blank/solid block
+    -- count of total pixels opaque" lines the block opens with, read out on
+    one line instead of buried in a block meant for the next prompt.
+    """
+    frames = [line.strip() for line in reason.splitlines() if line.strip().startswith("frame ")]
+    return "; ".join(frames) if frames else reason.strip().splitlines()[0]
+
+
+def _gate_verdict(passed: bool | None) -> str:
+    """`True`/`False`/`None` (a gate that abstained -- no adapter, or nothing
+    to judge) read out the way a person, not a parser, would ask for them."""
+    if passed is None:
+        return "sin observar"
+    return "aprobada" if passed else "rechazada"
+
+
+def _attempt_line(attempt: dict[str, Any]) -> str:
+    """One `write_program` attempt, as `Attempt.as_dict` already recorded
+    it: its number, whether the build compiled, and each gate's verdict."""
+    build = "compiló" if attempt["build_passed"] else "no compiló"
+    acceptance = _gate_verdict(attempt["acceptance_passed"])
+    animation = _gate_verdict(attempt["animation_passed"])
+    return (
+        f"intento {attempt['number']}: build {build}, "
+        f"aceptación {acceptance}, animación {animation}"
+    )
 
 
 @dataclass
@@ -111,6 +155,8 @@ class StudioService:
         directory: Path,
         artist: SpriteArtist,
         dossier: GameReference | None = None,
+        *,
+        on_progress: Progress = None,
     ) -> list[AssetSpec]:
         """Draw the sheet each entity's sprite id is missing, and register it.
 
@@ -194,7 +240,9 @@ class StudioService:
                 # what keeps this a transparent pass-through rather than a
                 # second place that decides whether a draw failure is fatal.
                 self._save_raw_sheets(directory, sprite_id, getattr(exc, "sheets", None))
+                self._narrate_retries(on_progress, sprite_id, getattr(exc, "reasons", None))
                 raise
+            self._narrate_retries(on_progress, sprite_id, getattr(frames, "repairs", None))
             packed_sheet = Image.new("RGBA", (SPRITE_SIZE * len(frames), SPRITE_SIZE))
             for index, frame in enumerate(frames):
                 packed_sheet.paste(frame, (index * SPRITE_SIZE, 0))
@@ -208,9 +256,33 @@ class StudioService:
                 getattr(frames, "sheets", None),
                 winner=getattr(frames, "sheet", None),
             )
+            packed_bytes = (directory / asset.source).stat().st_size
+            _say(
+                on_progress,
+                f"{entity.id}: {len(frames)} poses empaquetadas, {packed_bytes} B",
+            )
             have.add(sprite_id)
             drawn.append(asset)
         return drawn
+
+    @staticmethod
+    def _narrate_retries(on_progress: Progress, sprite_id: str, reasons: list[str] | None) -> None:
+        """Say what `_judge_frames` (`sprite_artist.py`) reproached each
+        earlier, rejected attempt for -- one line per entry of `reasons`,
+        oldest first.
+
+        `reasons` is `DrawnFrames.repairs` on a successful draw or
+        `SpriteDrawFailure.reasons` on an exhausted one -- both are already
+        exactly this list, so the judged motive does reach this far for the
+        real `SpriteArtist`; this only has to say it. A caller's own fake
+        artist that returns a bare `list[Image.Image]` (several exist across
+        the test suite) carries neither attribute, so `reasons` is `None`
+        and there is nothing to report -- not because the motive is being
+        withheld, but because a fake that skips `DrawnFrames` never had a
+        judged attempt to report in the first place.
+        """
+        for number, reason in enumerate(reasons or [], start=1):
+            _say(on_progress, f"{sprite_id}: intento {number} rechazado, {_reason_summary(reason)}")
 
     @staticmethod
     def _save_raw_sheets(
@@ -397,11 +469,25 @@ class StudioService:
         }
 
     def runtime_test(
-        self, project: GameProject, directory: Path, *, seconds: int = 3
+        self,
+        project: GameProject,
+        directory: Path,
+        *,
+        seconds: int = 3,
+        on_progress: Progress = None,
     ) -> dict[str, Any]:
+        """Build the project, then watch it run in the emulator.
+
+        These are the two long waits this method spends: compiling the
+        sources, then launching and driving the emulator for `seconds`. Today
+        they are lived as one silent wait, so `on_progress` is told when each
+        one starts.
+        """
+        _say(on_progress, "compilando el programa")
         build = self.build(project, directory)
         if not build.success:
             raise RuntimeError("runtime test requires a quality-passing build")
+        _say(on_progress, "arrancando el emulador")
         report = smoke_test(
             build.output_dir,
             project.target.platform.value,
@@ -464,10 +550,21 @@ class StudioService:
         writer: Any,
         *,
         attempts: int = 5,
+        on_progress: Progress = None,
     ) -> dict[str, Any]:
-        """Have a program written into the project and repaired until it passes."""
+        """Have a program written into the project and repaired until it passes.
+
+        `generator.write_program` runs every attempt itself, so its own
+        report only exists once the whole repair loop is over -- there is no
+        earlier point to call out from here. Once it returns, `on_progress`
+        is told about each attempt in turn (the report already carries the
+        number, whether the build passed and each gate's verdict), so the
+        wait is at least explained after the fact instead of never.
+        """
         result = write_program(project, directory, writer, self.verify_program, attempts=attempts)
         report = result.as_dict()
+        for attempt in report["attempts"]:
+            _say(on_progress, _attempt_line(attempt))
         (directory / "write_report.json").write_text(
             json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
