@@ -50,9 +50,65 @@ from .models import GameProject, TargetPlatform
 from .screen import Stage
 from .services import StudioService
 
-#: Cell glyphs used by the map editor, keyed by what occupies the cell.
+#: The one glyph the map editor does not take from the design itself: the
+#: filled block it has always drawn a wall with.
 GLYPH_WALL = "▓"
-GLYPH_FLOOR = "·"
+
+#: What the legend puts in front of the tile `space` is about to paint.
+TILE_CURSOR = "▸"
+
+
+def tile_glyphs(project: GameProject) -> dict[str, str]:
+    """Which glyph draws each tile character this design declared.
+
+    The rule, and it is a legibility decision rather than a forced one:
+
+    * the design's *solid* tile -- the one `editing.solid_char` picks, the
+      first carrying the `solid` trait -- is drawn as `▓`. A filled block
+      reads as a wall from across the room, which a `#` does not, and it is
+      the glyph this editor has always used for it;
+    * every other declared tile is drawn as the very character the design
+      declared for it. Nothing else Studio could invent would be as easy to
+      check against `game.yml`: the grid on screen and the rows in the file
+      are then the same characters, and the legend needs no second table
+      mapping invented glyphs back onto tiles.
+
+    That every tile ends up distinguishable is not luck. `structure.py`
+    refuses a design where two tiles share a character, and `▓` can never
+    collide with a declared one because `TileSpec.char` is printable ASCII
+    only -- so the map draws exactly as many different glyphs as the design
+    declares tiles.
+
+    What this replaces: a two-way test (`is this the solid character?`) that
+    drew every other tile as the same floor dot, so a design declaring three
+    tiles showed two, and a ladder could be neither seen nor painted.
+    """
+    solid = editing.solid_char(project)
+    return {tile.char: (GLYPH_WALL if tile.char == solid else tile.char) for tile in project.tiles}
+
+
+def render_tile_legend(project: GameProject, selected: str = "") -> str:
+    """The map's own key: which glyph is which tile, named by its `id`.
+
+    A glyph a person can see but not name is only half the fix -- the point
+    is to edit the map, and editing means knowing that `H` is the ladder this
+    design calls `escalera` before painting with it. `selected` marks the tile
+    `space` paints, so the legend answers "what will this key do" as well as
+    "what am I looking at", which is why it is one line and not two.
+    """
+    glyphs = tile_glyphs(project)
+    parts = []
+    for tile in project.tiles:
+        chosen = tile.char == selected
+        # Marked twice, on purpose: reverse video is what a person sees on a
+        # terminal, and `▸` is what survives being read as plain text -- by a
+        # test, by a screen reader, or by a terminal that renders reverse
+        # video as nothing much.
+        entry = f"{TILE_CURSOR if chosen else ' '}{glyphs[tile.char]} {tile.id}"
+        if chosen:
+            entry = f"[reverse]{entry}[/reverse]"
+        parts.append(entry)
+    return " ".join(parts)
 
 
 def _entity_glyph(kind: str) -> str:
@@ -157,15 +213,17 @@ def render_map(project: GameProject, screen_index: int, cursor: tuple[int, int])
         (spawn.col, spawn.row): _entity_glyph(kinds.get(spawn.entity, ""))
         for spawn in screen.spawns
     }
-    solid = editing.solid_char(project)
+    glyphs = tile_glyphs(project)
     lines = []
     for row in range(screen.height):
         cells = []
         for col in range(screen.width):
-            glyph = occupants.get(
-                (col, row),
-                GLYPH_WALL if screen.tiles[row][col] == solid else GLYPH_FLOOR,
-            )
+            char = screen.tiles[row][col]
+            # `glyphs.get(char, char)` rather than `glyphs[char]`: a saved
+            # design cannot hold a character it never declared (`structure.py`
+            # refuses one), and drawing it as itself is a cheaper answer than
+            # a KeyError for a project someone hand-edited badly.
+            glyph = occupants.get((col, row), glyphs.get(char, char))
             if (col, row) == cursor:
                 glyph = f"[reverse]{glyph}[/reverse]"
             cells.append(glyph)
@@ -340,6 +398,15 @@ class StudioApp(App[None]):
     #panel-map Vertical { height: auto; }
     #design-help { height: auto; padding: 0 0 1 0; }
     #map-hint { height: auto; padding: 0 0 1 0; }
+    /* Wraps rather than growing the panel sideways: a design may declare up
+       to 32 tiles, and the legend is the one line here whose length is the
+       design's business rather than Studio's. */
+    #tile-legend { height: auto; }
+    /* The grid and its legend get the room; the two selects need a fixed,
+       small column and were taking half the panel -- which on an 80-column
+       terminal wrapped the legend of a three-tile design onto three rows. */
+    #panel-map #map-column { width: 1fr; }
+    #panel-map #map-side { width: 24; }
     #wizard-head { height: 1; padding: 0 1; }
     #stage-line { height: 1; padding: 0 1; }
     /* The one line that must never be cut: it is where the keys are named.
@@ -402,6 +469,11 @@ class StudioApp(App[None]):
         self.project_dir: Path | None = None
         self.screen_index = 0
         self.cursor: tuple[int, int] = (0, 0)
+        #: The character `space` paints with, one of the tiles the open design
+        #: declares. Empty until a project is loaded; `_refresh` picks the
+        #: design's solid tile then, and puts it back if a project is opened
+        #: (or adapted) whose alphabet no longer contains what was selected.
+        self.tile_char = ""
         #: `None` at rest; otherwise one of `PANEL_IDS`'s keys, the single
         #: panel currently shown over the resting screen.
         self.active_panel: str | None = None
@@ -545,14 +617,17 @@ class StudioApp(App[None]):
             yield OptionList(id="workspace-list")
         with Vertical(id="panel-map", classes="panel"):
             with Horizontal():
-                with Vertical():
+                with Vertical(id="map-column"):
                     # Above the grid, not below it. Under a 14-row map the
                     # hint fell off the bottom of an 80x24 screen and the
                     # editor opened saying nothing at all about how to work
                     # it or how to get out of it.
                     yield Static("", id="map-hint", markup=False)
+                    # The legend, between the keys and the grid: a glyph is
+                    # only editable if you can name the tile it stands for.
+                    yield Static("", id="tile-legend", markup=True)
                     yield Static("No project loaded.", id="map-grid", markup=True)
-                with Vertical():
+                with Vertical(id="map-side"):
                     yield Select([("screen 1", 0)], value=0, allow_blank=False, id="f-screen")
                     yield Select([("none", -1)], value=-1, allow_blank=False, id="f-spawn")
         with Vertical(id="panel-entities", classes="panel"):
@@ -593,8 +668,8 @@ class StudioApp(App[None]):
         # that now does something worth knowing about: it saves what was
         # drawn here and returns to the wizard.
         self.query_one("#map-hint", Static).update(
-            "flechas o wasd mueven · space muro · m mueve el spawn · "
-            "+/- cantidad · [Esc] guarda y vuelve"
+            "flechas o wasd mueven · [t] elige tile · space pinta · "
+            "m mueve el spawn · +/- cantidad · [Esc] guarda y vuelve"
         )
         self.query_one("#design-help", Static).update(
             "Título, brief y estilo. El brief es lo primero que leen la "
@@ -772,9 +847,16 @@ class StudioApp(App[None]):
             min(self.cursor[0], screen.width - 1),
             min(self.cursor[1], screen.height - 1),
         )
+        # The paint selection belongs to the design that declared it: a
+        # project opened (or adapted) into a different alphabet must not leave
+        # `space` painting a character this design does not have, which
+        # `editing.set_tile` would refuse on every press.
+        if self.tile_char not in {tile.char for tile in project.tiles}:
+            self.tile_char = editing.solid_char(project)
         self.query_one("#map-grid", Static).update(
             render_map(project, self.screen_index, self.cursor)
         )
+        self.query_one("#tile-legend", Static).update(render_tile_legend(project, self.tile_char))
         screens = self.query_one("#f-screen", Select)
         screens.set_options([(item.name, index) for index, item in enumerate(project.screens)])
         screens.value = self.screen_index
@@ -940,6 +1022,20 @@ class StudioApp(App[None]):
         self.query_one("#sprites-view", Static).update(Group(*blocks))
         self._set_panel("sprites")
 
+    def _cycle_tile(self) -> None:
+        """`t`: select the next tile the design declares, wrapping round.
+
+        In declaration order, which is the order the legend prints and the
+        order `game.yml` holds -- so the key and the line above the grid agree
+        about what "next" means.
+        """
+        if self.project is None:
+            return
+        chars = [tile.char for tile in self.project.tiles]
+        here = chars.index(self.tile_char) if self.tile_char in chars else -1
+        self.tile_char = chars[(here + 1) % len(chars)]
+        self._refresh()
+
     def _selected_entity(self) -> str | None:
         table = self.query_one("#entity-table", DataTable)
         if not table.row_count:
@@ -1035,8 +1131,21 @@ class StudioApp(App[None]):
                 self._refresh()
                 event.stop()
                 return
+            if key == "t":
+                self._cycle_tile()
+                event.stop()
+                return
             if key == "space":
-                self._apply(lambda: editing.toggle_tile(self.project, self.screen_index, col, row))
+                # Paints the selected tile, rather than flipping the cell
+                # between solid and open as it used to: a design declares its
+                # own tiles, and a key that could only reach two of them left
+                # every other one unpaintable. Which one is selected is on the
+                # legend above the grid, and `t` walks through them.
+                self._apply(
+                    lambda: editing.set_tile(
+                        self.project, self.screen_index, col, row, self.tile_char
+                    )
+                )
                 event.stop()
                 return
             if key == "m":

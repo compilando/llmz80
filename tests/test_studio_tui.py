@@ -18,6 +18,7 @@ from llmz80.studio.tui import (
     render_stage_marks,
     render_step_head,
     render_step_summary,
+    render_tile_legend,
 )
 
 
@@ -97,6 +98,75 @@ def test_render_map_draws_terrain_spawns_and_cursor():
     # is the first letter of the entity's own `kind`, uppercased; the blank
     # project's one entity has kind="actor".
     assert plain[actor.row][actor.col] == "A"
+
+
+def _with_a_ladder(project):
+    """`project` plus a third tile it declares for itself, and uses.
+
+    The case the editor could not draw: a wall, a floor and a ladder the
+    design coined for itself, like `fase-uno`'s. `H` goes down a column of
+    the interior that no spawn stands on, so the design still validates.
+    Returns the project and the column the ladder occupies.
+    """
+    from llmz80.studio.models import TileSpec
+
+    screen = project.screens[0]
+    taken = {(spawn.col, spawn.row) for spawn in screen.spawns}
+    column = next(
+        col
+        for col in range(1, screen.width - 1)
+        if all((col, row) not in taken for row in range(1, screen.height - 1))
+    )
+    rows = list(screen.tiles)
+    for row in range(1, screen.height - 1):
+        rows[row] = rows[row][:column] + "H" + rows[row][column + 1 :]
+    document = project.model_dump(mode="json")
+    document["tiles"].append(
+        TileSpec(id="escalera", char="H", traits=["climbable"]).model_dump(mode="json")
+    )
+    document["screens"][0]["tiles"] = rows
+    return type(project).model_validate(document), column
+
+
+def _three_tile_project(title: str = "Ladders"):
+    return _with_a_ladder(blank_project(title, TargetPlatform.SPECTRUM))
+
+
+def test_render_map_draws_every_tile_the_design_declares():
+    """A design with three tiles used to show two: everything that was not the
+    solid character was painted with the same floor dot, so the ladder this
+    design declares could be neither seen nor told apart from the floor."""
+    project, column = _three_tile_project()
+    screen = project.screens[0]
+
+    plain = [
+        line.replace("[reverse]", "").replace("[/reverse]", "")
+        for line in render_map(project, 0, (0, 0)).splitlines()
+    ]
+
+    # Three declared tiles, three different glyphs on the grid.
+    drawn = {char for line in plain for char in line}
+    assert {"▓", ".", "H"} <= drawn
+    # And the ladder is where `game.yml` says it is, row for row.
+    for row in range(1, screen.height - 1):
+        assert plain[row][column] == "H", row
+
+
+def test_render_tile_legend_names_every_declared_tile_by_its_id():
+    """A glyph nobody can name is visible, not identifiable -- and the point
+    is to edit the map, not to look at it."""
+    project, _column = _three_tile_project()
+
+    legend = render_tile_legend(project, selected="H")
+
+    for tile in project.tiles:
+        assert tile.id in legend, tile.id
+    assert "▓ wall" in legend
+    assert ". floor" in legend
+    # The selected tile -- the one `space` paints -- is marked twice: reverse
+    # video for the eye, and `▸` for anything reading the line as text.
+    assert "[reverse]▸H escalera[/reverse]" in legend
+    assert "▸. floor" not in legend
 
 
 def test_render_map_marks_the_cursor_wherever_it_sits():
@@ -2124,3 +2194,77 @@ async def test_looking_at_the_design_panel_is_not_an_event(tmp_path: Path):
         await pilot.pause()
         assert diary.read_text(encoding="utf-8").count("GUARDAR") == before + 1
         assert app.service.open_project(tmp_path / "untouched").metadata.brief == "Four ghosts."
+
+
+@pytest.mark.asyncio
+async def test_the_map_editor_paints_any_tile_the_design_declares(tmp_path: Path):
+    """`space` used to flip a cell between the solid and the open character,
+    which meant a design's third tile could be drawn on screen and still not
+    be paintable. `t` walks the declared tiles, `space` paints the selected
+    one, and the legend says which that is."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        app.query_one("#f-create-title").value = "Painter"
+        app.action_create()
+        await pilot.pause()
+        laddered, _column = _with_a_ladder(app.project)
+        app._apply(lambda: laddered)
+        await pilot.pause()
+
+        app._set_panel("map")
+        await pilot.pause()
+        # The selection starts on the design's own solid tile, so `space`
+        # goes on painting a wall for anyone who never presses `t`.
+        assert app.tile_char == "#"
+
+        # Walk the tiles: wall, floor, ladder -- in the order the design
+        # declares them, which is the order the legend prints.
+        await pilot.press("t")
+        await pilot.pause()
+        assert app.tile_char == "."
+        await pilot.press("t")
+        await pilot.pause()
+        assert app.tile_char == "H"
+
+        # An interior cell that is floor and holds no spawn.
+        await pilot.press("d", "d", "s", "s")
+        await pilot.pause()
+        assert app.cursor == (2, 2)
+        assert app.project.screens[0].tiles[2][2] == "."
+
+        await pilot.press("space")
+        await pilot.pause()
+
+        assert app.project.screens[0].tiles[2][2] == "H"
+        # And it went to disk with everything else the editor saves.
+        assert app.service.open_project(app.project_dir).screens[0].tiles[2][2] == "H"
+
+
+@pytest.mark.asyncio
+async def test_the_map_legend_names_the_tiles_on_an_eighty_column_screen(tmp_path: Path):
+    """Checked on what the compositor actually drew, not on what the widget
+    would render: this panel has twice been fixed for saying things that were
+    off the edge or below the fold of the smallest terminal anybody uses."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        app.query_one("#f-create-title").value = "Narrow Map"
+        app.action_create()
+        await pilot.pause()
+        laddered, _column = _with_a_ladder(app.project)
+        app._apply(lambda: laddered)
+        await pilot.pause()
+        app._set_panel("map")
+        await pilot.pause()
+
+        shown = _on_screen(app)
+        # Every declared tile is named, by the id its own design gave it.
+        for tile in app.project.tiles:
+            assert tile.id in shown, tile.id
+        # The whole grid is on screen too, all twenty columns of it -- a
+        # legend that fits by pushing the map off the edge is no fix.
+        assert "▓" * app.project.screens[0].width in shown
+        # And the panel keeps its own keys visible while saying all of it.
+        for word in ("wasd", "space", "[t]", "[Esc]"):
+            assert word in shown, word
+        # Nothing is drawn wider than the terminal.
+        assert all(strip.cell_length <= 80 for strip in app.screen._compositor.render_strips())
