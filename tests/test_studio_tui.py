@@ -13,10 +13,11 @@ from llmz80.studio.spriting import SPRITE_SIZE
 from llmz80.studio.tui import (
     StudioApp,
     brief_preview,
-    next_step_hint,
     pick_stage_detail,
     render_map,
     render_stage_marks,
+    render_step_head,
+    render_step_summary,
 )
 
 
@@ -120,10 +121,10 @@ async def test_a_slow_operation_leaves_the_interface_usable(tmp_path: Path):
 
         started, release = threading.Event(), threading.Event()
 
-        def slow() -> str:
+        def slow() -> tuple[bool, str]:
             started.set()
             release.wait(5)
-            return "done"
+            return True, "done"
 
         app._run("Working", slow)
         # Wait by yielding to the loop: blocking here would stop the very
@@ -214,23 +215,48 @@ def test_pick_stage_detail_is_empty_with_nothing_to_report():
     assert pick_stage_detail([Stage("referencia", "pending")]) == ""
 
 
-def test_next_step_hint_names_the_key_of_the_first_pending_stage():
-    stages = [
-        Stage("referencia", "done", "found it"),
-        Stage("diseño", "done"),
-        Stage("sprites", "pending"),
-    ]
+def test_render_step_head_says_where_in_the_pipeline_you_are():
+    from llmz80.studio.wizard import current
 
-    hint = next_step_hint(stages)
+    project = blank_project("Placed", TargetPlatform.SPECTRUM)
+    step = current(project, None, passed={"proyecto"})
 
-    assert "ctrl+d" in hint
-    assert "sprite" in hint
+    assert render_step_head(step) == "Paso 1 de 6: referencia"
 
 
-def test_next_step_hint_is_empty_once_every_stage_is_done():
-    stages = [Stage("referencia", "done", "found it"), Stage("release", "done", "game.zip")]
+def test_render_step_summary_names_the_key_and_warns_about_the_bill():
+    from llmz80.studio.wizard import current
 
-    assert next_step_hint(stages) == ""
+    project = blank_project("Costly", TargetPlatform.SPECTRUM)
+    summary = render_step_summary(current(project, None, passed={"proyecto"}))
+
+    assert "[Enter] investigar" in summary
+    assert "gasta dinero" in summary
+    # Research is optional to the pipeline, so the key that walks past it is
+    # offered too -- and only where it would actually be allowed.
+    assert "[→] omitir" in summary
+
+
+def test_render_step_summary_never_offers_to_skip_what_cannot_be_skipped():
+    from llmz80.studio.wizard import current
+
+    project = blank_project("Needed", TargetPlatform.SPECTRUM)
+    step = current(project, None, passed={"proyecto", "referencia", "diseño", "sprites"})
+
+    assert step.name == "programa"
+    assert "[→] omitir" not in render_step_summary(step)
+
+
+def test_render_step_summary_of_a_finished_step_offers_to_repeat_it():
+    from llmz80.studio.wizard import current
+
+    project = blank_project("Done", TargetPlatform.SPECTRUM)
+    step = current(project, None, passed={"proyecto", "referencia"})
+
+    assert step.name == "diseño" and step.state == "done"
+    summary = render_step_summary(step)
+    assert "[R] repetir" in summary
+    assert "[Enter]" not in summary
 
 
 @pytest.mark.asyncio
@@ -263,12 +289,13 @@ async def test_a_panel_key_opens_its_panel_and_hides_the_resting_screen(tmp_path
 
 @pytest.mark.asyncio
 async def test_typing_in_the_title_field_never_opens_a_panel(tmp_path: Path):
-    """Panel-toggle keys share letters with ordinary text (m, e, s, d, l);
-    while a text field owns focus, Textual's own `Input` consumes those
-    keystrokes as characters before `on_key` ever sees them, so typing a
-    project title can never be mistaken for "open the map/entities/sprites/
-    diff/log panel". This is the property that made this task's map-editing
-    keys (wasd, space, +/-) safe in the original screen too."""
+    """Panel-toggle keys share letters with ordinary text (g, m, e, s, d), and
+    so do the wizard's own `r` and `q`; while a text field owns focus,
+    Textual's own `Input` consumes those keystrokes as characters before
+    `on_key` or any binding ever sees them, so typing a project title can
+    never be mistaken for "open the map/entities/sprites/diff panel" -- or for
+    quitting. This is the property that makes the map-editing keys (wasd,
+    space, +/-) safe on this screen too."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
         title = app.query_one("#f-title")
@@ -276,11 +303,12 @@ async def test_typing_in_the_title_field_never_opens_a_panel(tmp_path: Path):
         title.focus()
         await pilot.pause()
 
-        await pilot.press("m", "e", "l", "d", "s")
+        await pilot.press("g", "m", "e", "d", "s", "r", "q")
         await pilot.pause()
 
-        assert title.value == "melds"
+        assert title.value == "gmedsrq"
         assert app.active_panel is None
+        assert app.is_running
 
 
 @pytest.mark.asyncio
@@ -327,27 +355,32 @@ async def test_map_editing_keys_still_toggle_a_wall(tmp_path: Path):
 
 
 def _resting_content_height(app: StudioApp) -> int:
-    """Header + brief-box + stage-line + stage-detail + shortcuts, in rows.
+    """Header + brief-box + the wizard's three lines + detail + shortcuts.
 
-    Everything the resting screen shows, excluding the docked `Footer` (which
-    Textual pins to the last row regardless of how little content sits above
-    it, so it says nothing about whether the resting screen itself grew).
+    Everything the resting screen shows above the diary, excluding the docked
+    `Footer` (which Textual pins to the last row regardless of how little
+    content sits above it, so it says nothing about whether the resting
+    screen itself grew) and the diary itself, which fills whatever is left.
     """
     return (
         app.query_one("Header").size.height
         + app.query_one("#brief").size.height
+        + app.query_one("#wizard-head").size.height
         + app.query_one("#stage-line").size.height
+        + app.query_one("#wizard-summary").size.height
         + app.query_one("#stage-detail").size.height
         + app.query_one("#shortcuts").size.height
     )
 
 
-#: header(1) + brief-box(3, with its border) + stage-line(1) + stage-detail(1)
-#: + shortcuts(1) -- the mock's own seven lines, measured with
-#: `run_test(size=(120, 40))` via `Widget.size.height` on each. Editing
-#: (title, style, and the brief itself) moved into its own panel precisely so
-#: none of it adds a row here.
-RESTING_CONTENT_HEIGHT = 7
+#: header(1) + brief-box(3, with its border) + wizard-head(1) + stage-line(1)
+#: + wizard-summary(1) + stage-detail(1) + shortcuts(1) -- nine lines,
+#: measured with `run_test(size=(120, 40))` via `Widget.size.height` on each.
+#: Two more than before this screen became a wizard, and both of them are the
+#: guidance that replaced ten shortcuts nobody could remember; everything
+#: else (title, style, the brief itself) still lives in a panel precisely so
+#: it adds no row here.
+RESTING_CONTENT_HEIGHT = 9
 
 
 @pytest.mark.asyncio
@@ -367,11 +400,14 @@ async def test_the_resting_screen_has_a_fixed_height(tmp_path: Path):
         await pilot.pause()
         assert _resting_content_height(app) == RESTING_CONTENT_HEIGHT
 
+        # A panel opens over the resting screen -- and the diary stays
+        # visible underneath it, since it is no longer a panel of its own.
         app.query_one("#entity-table").focus()
         await pilot.pause()
-        await pilot.press("l")
+        await pilot.press("e")
         await pilot.pause()
         assert app.query_one("#brief").display is False
+        assert app.query_one("#log-view").display is True
 
 
 @pytest.mark.asyncio
@@ -386,7 +422,7 @@ async def test_a_long_brief_does_not_make_the_resting_screen_taller(tmp_path: Pa
         await pilot.pause()
 
         app.project.metadata.brief = "A very long brief. " * 40
-        app._refresh_stage()
+        app._refresh_wizard()
         await pilot.pause()
 
         assert _resting_content_height(app) == RESTING_CONTENT_HEIGHT
@@ -394,34 +430,38 @@ async def test_a_long_brief_does_not_make_the_resting_screen_taller(tmp_path: Pa
 
 
 @pytest.mark.asyncio
-async def test_the_stage_detail_line_names_the_key_that_advances_the_pipeline(tmp_path: Path):
-    """`#stage-detail` doubles as a "what to press next" line: it names the
-    key for whichever stage `screen.next_step` judges most worth doing, and
-    that key changes as the project moves through the pipeline -- checked
-    at two distinct points, not just the first."""
+async def test_the_wizard_names_the_step_and_moves_on_once_it_is_done(tmp_path: Path):
+    """What replaced "press ctrl+f": the screen says which step it is standing
+    on and what Enter would do there, and moves on to the next one by itself
+    once the step succeeds -- checked at two distinct points, not just the
+    first."""
     app = StudioApp(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
         app.query_one("#f-title").value = "Guided"
         app.action_create()
         await pilot.pause()
 
-        # A brand new project: nothing has been researched yet.
-        assert "ctrl+f" in app.query_one("#stage-detail").content
+        # A brand new project: research is where the wizard stands, and the
+        # screen says so in words rather than naming a key to memorise.
+        assert "Paso 1 de 6: referencia" in app.query_one("#wizard-head").content
+        summary = app.query_one("#wizard-summary").content
+        assert "[Enter] investigar" in summary
+        assert "gasta dinero" in summary
 
         fake = _FakeResearcher(title="Real Game")
         app.researcher = fake
-        app.action_research()
+        app.action_do()
         for _ in range(100):
             await pilot.pause()
             if "Real Game" in app.status_text:
                 break
 
-        # Researched, and diseño already reads done for a fresh default
-        # project -- the existing detail (the game found) survives, and the
-        # hint has moved on to the next stage, sprites.
-        detail = app.query_one("#stage-detail").content
-        assert "Real Game" in detail
-        assert "ctrl+d" in detail
+        # Researched: the step it just did is behind it, and the wizard has
+        # moved on to the next one on its own.
+        assert "referencia" in app.passed
+        assert "Paso 2 de 6: diseño" in app.query_one("#wizard-head").content
+        # The dossier it found still names itself on the detail line.
+        assert "Real Game" in app.query_one("#stage-detail").content
 
 
 @pytest.mark.asyncio
@@ -490,7 +530,7 @@ async def test_a_fully_done_project_shows_no_dangling_hint(tmp_path: Path):
         ]
         app.project.assets = sprites
 
-        app._refresh_stage()
+        app._refresh_wizard()
         await pilot.pause()
 
         detail = app.query_one("#stage-detail").content
@@ -577,9 +617,14 @@ async def test_the_design_panel_holds_title_style_and_the_editable_brief(tmp_pat
         assert app.query_one("#f-style") is not None
         assert app.query_one("#f-brief") is not None
 
+        # Closing it saves what was typed: `ctrl+s` is gone, and an edit that
+        # vanished when the panel closed would be worse than no key at all.
+        app.query_one("#f-brief").text = "Four ghosts. A big dot makes them edible."
         await pilot.press("g")
         await pilot.pause()
         assert app.active_panel is None
+        assert "ghosts" in app.project.metadata.brief
+        assert "ghosts" in app.service.open_project(app.project_dir).metadata.brief
 
 
 @pytest.mark.asyncio
@@ -592,9 +637,13 @@ async def test_the_workspace_picker_lists_and_opens_a_project(tmp_path: Path):
         created_dir = app.project_dir
         app.project = None
         app.project_dir = None
-        app._refresh_stage()
+        app.passed = set()
+        app._refresh_wizard()
 
-        app.action_open_dialog()
+        # No project open, so the wizard stands on step 0, and doing it is
+        # what opens the picker -- there is no ctrl+o any more.
+        assert "Paso 0 de 6: proyecto" in app.status_text
+        app.action_do()
         await pilot.pause()
 
         assert app.active_panel == "open"
@@ -616,9 +665,9 @@ async def test_the_workspace_picker_lists_and_opens_a_project(tmp_path: Path):
 #
 # `research_reference`, `propose_from_reference` and `draw_sprites` all take
 # their researcher/designer/artist as a parameter -- exactly so a caller can
-# hand them something other than the OpenAI-backed default `action_research`/
-# `action_adapt`/`action_draw_sprites` build. These fakes are that something:
-# no test in this section makes a network call or generates an image.
+# hand them something other than the OpenAI-backed default `_research`/
+# `_adapt`/`_draw_sprites` build. These fakes are that something: no test in
+# this section makes a network call or generates an image.
 
 
 class _FakeResearcher:
@@ -724,7 +773,8 @@ async def test_research_reaches_the_service_and_the_stage_line_shows_it(tmp_path
 
         fake = _FakeResearcher(title="Zampa Bolas", publisher="System 4", year=1988)
         app.researcher = fake
-        app.action_research()
+        # A freshly created project stands on step 1; Enter does it.
+        app.action_do()
 
         for _ in range(100):
             await pilot.pause()
@@ -751,7 +801,7 @@ async def test_research_asks_before_overwriting_an_existing_dossier(tmp_path: Pa
 
         first = _FakeResearcher(title="First Game")
         app.researcher = first
-        app.action_research()
+        app.action_do()
         for _ in range(100):
             await pilot.pause()
             if "First Game" in app.status_text:
@@ -759,17 +809,23 @@ async def test_research_asks_before_overwriting_an_existing_dossier(tmp_path: Pa
         assert first.calls == 1
         archived = (app.project_dir / "reference.yml").read_text()
 
+        # The wizard moved on once it succeeded; Esc steps back onto the
+        # step that already has a dossier.
+        app.action_back()
+        await pilot.pause()
+        assert "referencia" not in app.passed
+
         # Declining (only pressing once) changes nothing on disk.
         second = _FakeResearcher(title="Second Game")
         app.researcher = second
-        app.action_research()
+        app.action_do()
         await pilot.pause()
 
         assert second.calls == 0
         assert (app.project_dir / "reference.yml").read_text() == archived
 
-        # Confirming (the same action again) replaces it.
-        app.action_research()
+        # Confirming (the same step again) replaces it.
+        app.action_do()
         for _ in range(100):
             await pilot.pause()
             if "Second Game" in app.status_text:
@@ -777,6 +833,88 @@ async def test_research_asks_before_overwriting_an_existing_dossier(tmp_path: Pa
 
         assert second.calls == 1
         assert (app.project_dir / "reference.yml").read_text() != archived
+
+
+@pytest.mark.asyncio
+async def test_a_finished_step_is_redone_only_after_asking(tmp_path: Path):
+    """`R` on a step that is already done: once to ask, once to mean it. The
+    second press is also the answer to the step's own "this would overwrite
+    the archived dossier" question -- one decision, one confirmation, not
+    two."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Redone"
+        app.action_create()
+        await pilot.pause()
+
+        first = _FakeResearcher(title="First Game")
+        app.researcher = first
+        app.action_do()
+        for _ in range(100):
+            await pilot.pause()
+            if "First Game" in app.status_text:
+                break
+        assert first.calls == 1
+
+        # Step back onto it: done, and standing on it again.
+        app.action_back()
+        await pilot.pause()
+        second = _FakeResearcher(title="Second Game")
+        app.researcher = second
+
+        # Asking once only warns.
+        app.action_repeat()
+        await pilot.pause()
+        assert second.calls == 0
+
+        # Meaning it does the step over, without a third press.
+        app.action_repeat()
+        for _ in range(100):
+            await pilot.pause()
+            if "Second Game" in app.status_text:
+                break
+        assert second.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_a_step_that_is_not_done_cannot_be_repeated(tmp_path: Path):
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Unfinished"
+        app.action_create()
+        await pilot.pause()
+
+        app.researcher = _FakeResearcher()
+        app.action_repeat()
+        await pilot.pause()
+
+        assert app.researcher.calls == 0
+        assert any(n.severity == "warning" for n in app._notifications)
+
+
+@pytest.mark.asyncio
+async def test_a_step_that_failed_leaves_the_wizard_standing_on_it(tmp_path: Path):
+    """The difference between stopping where the problem is and walking past
+    it: a job that raised does not put its step behind you."""
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.query_one("#f-title").value = "Stuck"
+        app.action_create()
+        await pilot.pause()
+
+        # `propose_from_reference` raises with no dossier archived, which is
+        # the same failure path every step's job shares.
+        app.designer = _FakeDesigner()
+        app._adapt()
+        for _ in range(100):
+            await pilot.pause()
+            if any(n.severity == "error" for n in app._notifications):
+                break
+
+        assert "referencia" not in app.passed
+        diary = (app.project_dir / "studio.log").read_text(encoding="utf-8")
+        assert "FALLÓ" in diary
+        assert "ERROR" in diary
 
 
 @pytest.mark.asyncio
@@ -791,7 +929,7 @@ async def test_a_malformed_dossier_is_reported_not_crashed_on(tmp_path: Path):
 
         fake = _FakeResearcher()
         app.researcher = fake
-        app.action_research()
+        app.action_do()
         await pilot.pause()
 
         # Reported, not crashed: no API call was ever made, and a warning
@@ -811,7 +949,7 @@ async def test_adapt_shows_the_diff_and_its_refusals_before_applying_anything(tm
         await pilot.pause()
 
         app.researcher = _FakeResearcher(title="Real Game")
-        app.action_research()
+        app.action_do()
         for _ in range(100):
             await pilot.pause()
             if "Real Game" in app.status_text:
@@ -820,7 +958,7 @@ async def test_adapt_shows_the_diff_and_its_refusals_before_applying_anything(tm
         designer = _FakeDesigner()
         app.designer = designer
         original_style = app.project.presentation.style
-        app.action_adapt()
+        app._adapt()
         for _ in range(100):
             await pilot.pause()
             if app.active_panel == "diff":
@@ -855,7 +993,7 @@ async def test_declining_the_proposal_leaves_the_project_unchanged(tmp_path: Pat
         await pilot.pause()
 
         app.researcher = _FakeResearcher(title="Real Game")
-        app.action_research()
+        app.action_do()
         for _ in range(100):
             await pilot.pause()
             if "Real Game" in app.status_text:
@@ -863,7 +1001,7 @@ async def test_declining_the_proposal_leaves_the_project_unchanged(tmp_path: Pat
 
         app.designer = _FakeDesigner()
         original_style = app.project.presentation.style
-        app.action_adapt()
+        app._adapt()
         for _ in range(100):
             await pilot.pause()
             if app.active_panel == "diff":
@@ -889,7 +1027,7 @@ async def test_a_failing_adapt_notifies_instead_of_crashing(tmp_path: Path):
         await pilot.pause()
 
         app.designer = _FakeDesigner()
-        app.action_adapt()
+        app._adapt()
 
         for _ in range(100):
             await pilot.pause()
@@ -918,7 +1056,11 @@ async def test_draw_sprites_reaches_the_service_and_registers_assets(tmp_path: P
 
         artist = _FakeArtist()
         app.artist = artist
-        app.action_draw_sprites()
+        # Research and the design review are behind this project; the wizard
+        # is standing on sprites, and Enter draws them.
+        app.passed = {"proyecto", "referencia", "diseño"}
+        app._refresh_wizard()
+        app.action_do()
 
         for _ in range(100):
             await pilot.pause()
@@ -945,7 +1087,9 @@ async def test_draw_sprites_asks_before_overwriting_existing_art(tmp_path: Path)
 
         first_artist = _FakeArtist()
         app.artist = first_artist
-        app.action_draw_sprites()
+        app.passed = {"proyecto", "referencia", "diseño"}
+        app._refresh_wizard()
+        app.action_do()
         for _ in range(100):
             await pilot.pause()
             if app.active_panel == "sprites":
@@ -957,10 +1101,18 @@ async def test_draw_sprites_asks_before_overwriting_existing_art(tmp_path: Path)
         }
         assert before
 
+        # Drawing succeeded, so the wizard moved on. Esc closes the panel
+        # showing what was drawn; Esc again steps back onto the sprites step,
+        # which now has art a redraw would overwrite.
+        app.action_back()
+        app.action_back()
+        await pilot.pause()
+        assert "sprites" not in app.passed
+
         # Declining (only pressing once) changes nothing on disk.
         second_artist = _FakeArtist()
         app.artist = second_artist
-        app.action_draw_sprites()
+        app.action_do()
         await pilot.pause()
 
         assert second_artist.calls == []
@@ -968,11 +1120,82 @@ async def test_draw_sprites_asks_before_overwriting_existing_art(tmp_path: Path)
             asset = next(a for a in app.project.assets if a.id == asset_id)
             assert (app.project_dir / asset.source).read_bytes() == data
 
-        # Confirming (the same action again) redraws it.
-        app.action_draw_sprites()
+        # Confirming (the same step again) redraws it.
+        app.action_do()
         for _ in range(100):
             await pilot.pause()
             if second_artist.calls:
                 break
 
         assert sorted(second_artist.calls) == sorted(before.keys())
+
+
+# --- the wizard replaces the ten shortcuts ---------------------------------
+
+
+def test_none_of_the_ten_shortcuts_survive():
+    """The decision this whole change exists to make, written as a test."""
+    from llmz80.studio.tui import StudioApp
+
+    bound = {binding[0] for binding in StudioApp.BINDINGS}
+    for gone in (
+        "ctrl+n",
+        "ctrl+o",
+        "ctrl+s",
+        "ctrl+f",
+        "ctrl+a",
+        "ctrl+d",
+        "ctrl+w",
+        "ctrl+b",
+        "ctrl+t",
+        "ctrl+r",
+    ):
+        assert gone not in bound, f"{gone} survives"
+
+
+@pytest.mark.asyncio
+async def test_enter_does_the_current_step(tmp_path):
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test() as pilot:
+        app.project, app.project_dir = app.service.create_project("Wizard", TargetPlatform.SPECTRUM)
+        app.passed = {"proyecto", "referencia"}
+        app._refresh_wizard()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.active_panel == "map"  # el paso 2 abre el editor
+
+
+@pytest.mark.asyncio
+async def test_the_right_arrow_leaves_a_step_behind(tmp_path):
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test() as pilot:
+        app.project, app.project_dir = app.service.create_project("Onward", TargetPlatform.SPECTRUM)
+        app.passed = {"proyecto"}
+        app._refresh_wizard()
+        await pilot.press("right")
+        await pilot.pause()
+        assert "referencia" in app.passed
+        diary = (app.project_dir / "studio.log").read_text(encoding="utf-8")
+        assert "OMITIR" in diary
+
+
+@pytest.mark.asyncio
+async def test_a_step_the_pipeline_needs_cannot_be_left_behind(tmp_path):
+    """Skipping research is fine -- a game need not be based on a real one.
+    Skipping the program is not: there would be nothing to release."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test() as pilot:
+        app.project, app.project_dir = app.service.create_project(
+            "Required", TargetPlatform.SPECTRUM
+        )
+        app.passed = {"proyecto", "referencia", "diseño", "sprites"}
+        app._refresh_wizard()
+        await pilot.press("right")
+        await pilot.pause()
+        assert "programa" not in app.passed

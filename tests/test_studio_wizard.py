@@ -2,7 +2,7 @@
 
 from llmz80.studio.models import GameProject, TargetPlatform
 from llmz80.studio.samples import blank_project
-from llmz80.studio.wizard import current, steps
+from llmz80.studio.wizard import can_leave_behind, current, steps
 
 
 def test_without_a_project_the_first_step_is_choosing_one():
@@ -81,3 +81,56 @@ def test_every_step_carries_words_a_person_can_read(tmp_path):
     for step in steps(project, tmp_path):
         assert step.summary
         assert step.action_label
+
+
+# --- who may be left behind ------------------------------------------------
+
+
+def test_a_resolved_step_is_behind_you_once_you_say_so(tmp_path):
+    """`diseño` is not skippable, but a design that validates is *done*: there
+    is nothing left to make it wait for."""
+    project = blank_project("Resolved", TargetPlatform.SPECTRUM)
+    step = current(project, tmp_path, passed={"proyecto", "referencia"})
+    assert step.name == "diseño"
+    assert step.state == "done"
+    assert can_leave_behind(step)
+
+
+def test_a_pending_step_the_pipeline_can_spare_may_be_left_behind(tmp_path):
+    project = blank_project("Optional", TargetPlatform.SPECTRUM)
+    step = current(project, tmp_path, passed={"proyecto"})
+    assert step.name == "referencia"
+    assert step.state == "pending"
+    assert can_leave_behind(step)
+
+
+def test_a_pending_step_the_pipeline_needs_may_not(tmp_path):
+    """Without a program there is nothing to gate and nothing to release."""
+    project = blank_project("Required", TargetPlatform.SPECTRUM)
+    step = current(project, tmp_path, passed={"proyecto", "referencia", "diseño", "sprites"})
+    assert step.name == "programa"
+    assert step.state == "pending"
+    assert not can_leave_behind(step)
+
+
+def test_a_step_already_skipped_stays_behind_you(tmp_path):
+    project = blank_project("Skipped", TargetPlatform.SPECTRUM)
+    step = next(
+        s
+        for s in steps(project, tmp_path, passed={"proyecto", "referencia"})
+        if s.name == "referencia"
+    )
+    assert step.state == "skipped"
+    assert can_leave_behind(step)
+
+
+def test_a_failed_step_may_not_be_walked_past(tmp_path):
+    """A broken design is the one thing worth being dragged back to."""
+    project = blank_project("Broken", TargetPlatform.SPECTRUM)
+    wide = project.screens[0].model_copy(
+        update={"width": 40, "tiles": [row.ljust(40, row[-1]) for row in project.screens[0].tiles]}
+    )
+    broken = project.model_copy(update={"screens": [wide]})
+    step = current(broken, tmp_path, passed={"proyecto", "referencia"})
+    assert step.state == "failed"
+    assert not can_leave_behind(step)

@@ -151,3 +151,17 @@ def current(
     left_behind = set(passed)
     ahead = next((step for step in walked if step.name not in left_behind), None)
     return ahead if ahead is not None else walked[-1]
+
+
+def can_leave_behind(step: Step) -> bool:
+    """Whether the person may walk past this step right now.
+
+    A resolved step is always behind you once you say so. A pending one is
+    only skippable where the pipeline can spare it: it does not need
+    `referencia` or `sprites` -- a game need not be based on a real one, and
+    one without sprite art is drawn with characters -- but without `programa`
+    or `gates` there is nothing to release.
+    """
+    if step.state in {"done", "skipped"}:
+        return True
+    return step.skippable
