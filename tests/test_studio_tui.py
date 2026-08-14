@@ -1446,3 +1446,47 @@ async def test_adapting_is_offered_in_no_other_step(tmp_path: Path):
         await pilot.press("a")
         await pilot.pause()
         assert reached == []
+
+
+@pytest.mark.asyncio
+async def test_escaping_out_of_the_editor_does_not_also_step_back(tmp_path: Path):
+    """One press, one action. `Esc` is bound to `action_back`, and
+    `event.stop()` in `on_key` does not keep this screen's own bindings from
+    firing afterwards -- so handling it in both places made a single press
+    close the editor *and* step the wizard back onto the step before it, as
+    if the work just done had come undone."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.project, app.project_dir = app.service.create_project(
+            "OneStep", TargetPlatform.SPECTRUM
+        )
+        app.passed = {"proyecto", "referencia"}
+        app._refresh_wizard()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.active_panel == "map"
+
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert app.active_panel is None
+        assert app.passed == {"proyecto", "referencia"}
+
+        # And with a field focused -- the case `on_key`'s text-entry branch
+        # was written for -- it is still exactly one action.
+        app._set_panel("design")
+        app.query_one("#f-title").focus()
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert app.active_panel is None
+        assert app.passed == {"proyecto", "referencia"}
+
+        # At rest, the same key steps back, once.
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert app.passed == {"proyecto"}

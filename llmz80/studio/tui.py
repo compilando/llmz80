@@ -778,19 +778,13 @@ class StudioApp(App[None]):
 
     def on_key(self, event) -> None:
         key = event.key
-        # `Esc` goes through `action_back` from wherever it is pressed, panel
-        # or resting screen, focused field or not: closing a panel is where
-        # the work done in it is saved, and a second way out of one would be
-        # a way out that did not save.
+        # `Esc` is deliberately absent from here: it is bound to
+        # `action_back`, and `event.stop()` does not keep this screen's own
+        # bindings from firing afterwards -- handling it here as well made
+        # one press do the action twice, closing the editor *and* stepping
+        # the wizard back a step. Bound once, it happens once, whether a
+        # field has focus or not.
         if isinstance(self.focused, self._TEXT_ENTRY):
-            if key == "escape" and self.active_panel is not None:
-                self.action_back()
-                event.stop()
-            return
-        if key == "escape":
-            if self.active_panel is not None:
-                self.action_back()
-                event.stop()
             return
         if self.active_panel == "map" and self.project is not None:
             screen = self.project.screens[self.screen_index]
