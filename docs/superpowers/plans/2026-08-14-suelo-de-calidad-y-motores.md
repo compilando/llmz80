@@ -745,6 +745,15 @@ git commit -m "feat(studio): refuse a build whose state cannot be read"
 
 `plat_wait_frame` ya devuelve cuántos frames se perdió el bucle (`resources/studio_lib/spectrum/platform.c:47-58`). El contrato ya nombra el símbolo donde vive el peor caso. Nadie lo lee. Esta tarea convierte una medición que ya existe en una puerta.
 
+**Añadido tras la tarea 5.** En Amstrad CPC esa medición no existe: `resources/studio_lib/cpc/platform.c:59-62` es `cpct_waitVSYNC(); return 0;`, sin contador de frames. Un programa de CPC leerá `g_worst_frame_cost` como 0 por muy mal que vaya, así que una puerta que se limite a comparar contra un techo aprobaría la plataforma entera sin haber medido nada — el mismo error de fondo que este plan existe para eliminar, en su forma más pura: un cero que no es una medición.
+
+El codebase ya sabe distinguirlo. `codegen.render_config_header` emite `#define HAS_FRAME_CLOCK 1` en Spectrum y `0` en CPC, con el comentario "Only targets with a free-running frame clock report overruns". La puerta debe abstenerse (`quality_pass: None`) cuando el target no tiene reloj de frames, en lugar de leer el cero como aprobado. Escribir un contador de frames para CPC es trabajo real y no es de esta tarea: abstenerse es la lectura honesta hasta que exista.
+
+Dos cosas más que la tarea 5 dejó vistas y que esta puerta tiene que sobrevivir:
+
+- `studio-projects/fase-uno/program/main.c:69` hace `g_worst_frame_cost = plat_wait_frame()`, que guarda el coste de la *última* iteración, no el peor. La puerta no puede distinguirlo desde fuera y no debe intentarlo; lo que sí puede es que su diagnóstico diga qué se espera del símbolo, para que la reparación corrija el programa y no el número.
+- `my-retro-game` leyó `g_worst_frame_cost = 30` en los once pasos del guion. Si eso es real, ese juego se pasa 30 frames de su presupuesto y la puerta lo rechazará; si es basura de arranque, el programa no está reinicializando el símbolo al empezar la partida. Averiguar cuál de las dos cosas es forma parte de esta tarea, y la respuesta decide si `MAX_MISSED_FRAMES` está bien puesto.
+
 **Files:**
 - Create: `llmz80/studio/pacing.py`
 - Modify: `llmz80/studio/services.py` (`runtime_test`, `verify_program`), `llmz80/studio/generator.py` (`Attempt`, `repair_prompt`, `write_program`)
