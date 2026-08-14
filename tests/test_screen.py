@@ -9,7 +9,7 @@ import pytest
 from llmz80.studio.models import AssetSpec, TargetPlatform
 from llmz80.studio.reference import GameReference, save_reference
 from llmz80.studio.samples import blank_project
-from llmz80.studio.screen import STAGE_KEY, STAGE_NAMES, Stage, next_step, stage_line
+from llmz80.studio.screen import STAGE_NAMES, Stage, next_step, stage_line
 
 
 @pytest.fixture
@@ -368,10 +368,17 @@ def test_release_is_pending_with_no_directory(project):
 # --- next_step: what advances the pipeline right now ------------------------
 
 
-def test_stage_key_names_every_stage_exactly_once():
-    assert set(STAGE_KEY) == set(STAGE_NAMES)
-    for key, verb in STAGE_KEY.values():
-        assert key and verb
+def test_the_stage_line_no_longer_names_keys():
+    """The keys it named are gone; the wizard decides what Enter does."""
+    import llmz80.studio.screen as screen
+
+    assert not hasattr(screen, "STAGE_KEY")
+
+
+def test_the_stage_line_still_names_every_stage_of_the_pipeline(project):
+    """What outlived the key map: the order the pipeline runs in, which is
+    what `wizard` reads to know which step follows which."""
+    assert [stage.name for stage in stage_line(project, None)] == list(STAGE_NAMES)
 
 
 def test_next_step_is_none_with_no_project():
@@ -385,7 +392,6 @@ def test_next_step_picks_the_earliest_pending_stage_absent_any_failure(project, 
 
     assert stage is not None
     assert stage.name == "referencia"
-    assert STAGE_KEY[stage.name] == ("ctrl+f", "research the game")
 
 
 def test_next_step_moves_on_as_earlier_stages_complete(project, tmp_path):
@@ -413,7 +419,6 @@ def test_next_step_prefers_an_earlier_failure_over_a_later_pending_stage(project
 
     assert stage is not None
     assert stage.name == "diseño"
-    assert STAGE_KEY[stage.name] == ("g", "review the design")
 
 
 def test_next_step_is_none_once_every_stage_is_done(project, tmp_path):
