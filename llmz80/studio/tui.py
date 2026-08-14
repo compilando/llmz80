@@ -319,6 +319,14 @@ class StudioApp(App[None]):
         #: Assets `_draw_sprites`'s job just registered, read by
         #: `_show_drawn_sprites` once the job finishes.
         self._drawn_sprites: list = []
+        #: Whether the design has changed since the diary last recorded a
+        #: save. `_apply` is the one path that changes it, so `_apply` is
+        #: what sets this; `_save_and_log` clears it. Asked before saving
+        #: rather than after, because `store.save` stamps `updated_at` on
+        #: every write: once a save has happened the file always differs
+        #: from the one before it, and "did anything actually change?" can
+        #: no longer be answered by comparing the two.
+        self._edited = False
 
     # --- layout ---------------------------------------------------------
 
@@ -589,6 +597,7 @@ class StudioApp(App[None]):
         """Run an editing operation, reporting refusals instead of crashing."""
         try:
             self.project = operation()
+            self._edited = True
             if self.project_dir is not None:
                 self.service.save_project(self.project, self.project_dir)
             self._refresh()
@@ -734,14 +743,18 @@ class StudioApp(App[None]):
 
     def on_key(self, event) -> None:
         key = event.key
+        # `Esc` goes through `action_back` from wherever it is pressed, panel
+        # or resting screen, focused field or not: closing a panel is where
+        # the work done in it is saved, and a second way out of one would be
+        # a way out that did not save.
         if isinstance(self.focused, self._TEXT_ENTRY):
             if key == "escape" and self.active_panel is not None:
-                self._set_panel(None)
+                self.action_back()
                 event.stop()
             return
         if key == "escape":
             if self.active_panel is not None:
-                self._set_panel(None)
+                self.action_back()
                 event.stop()
             return
         if self.active_panel == "map" and self.project is not None:
@@ -813,20 +826,54 @@ class StudioApp(App[None]):
             return
         if step.state == "pending" and self.journal is not None:
             self._log(self.journal.write("OMITIR", f"{step.number} {step.name}"))
+        # Whatever this step changed is committed before it is left behind:
+        # walking on must never be the thing that loses an edit, and the
+        # diary says so where there was anything to say.
+        self._save_and_log()
         self.passed.add(step.name)
         self._refresh_wizard()
 
     def action_back(self) -> None:
-        """Esc: close the open panel, or step back to the step before this one.
+        """Leave the editor, saving; or step back to look at an earlier step."""
+        if self.active_panel is not None:
+            self._save_and_log()
+            self._set_panel(None)
+            self._refresh_wizard()
+            return
+        self._step_back()
 
-        Going back is removing the previous step from `passed` rather than
-        undoing anything: the work it did is on disk and stays there, and
+    def _save_and_log(self) -> None:
+        """Commit what the open project holds, and write it down if it changed.
+
+        `store.save` archives the previous revision only where the text
+        changed, and the diary follows the same rule: a save that saved
+        nothing is not an event, and a diary that recorded one every time a
+        panel closed would bury the ones that matter.
+
+        The question is asked of `_edited` -- set by `_apply`, the one path
+        that changes a design -- rather than by comparing the file with what
+        is in memory, because `store.save` stamps `metadata.updated_at` on
+        every write: after any save the two agree, and before it they differ
+        by a timestamp nobody edited. `_edited` is also what keeps an
+        untouched project from being rewritten (and a revision of identical
+        content archived) each time a step is left behind.
+        """
+        if self.project is None or self.project_dir is None or not self._edited:
+            return
+        self._ensure_journal()
+        self.service.save_project(self.project, self.project_dir)
+        self._edited = False
+        if self.journal is not None:
+            self._log(self.journal.write("GUARDAR", f"{self.project.metadata.slug}/game.yml"))
+
+    def _step_back(self) -> None:
+        """Move the wizard's cursor back onto the step before this one.
+
+        Going back is removing that step from `passed` rather than undoing
+        anything: the work it did is on disk and stays there, and
         `wizard.steps` will read it again and still call it done. What comes
         back is the chance to look at it, and to press `R` to do it over.
         """
-        if self.active_panel is not None:
-            self._set_panel(None)
-            return
         walked = wizard.steps(self.project, self.project_dir, self.passed)
         here = wizard.current(self.project, self.project_dir, self.passed)
         behind = [step for step in walked[: here.number] if step.name in self.passed]
@@ -874,16 +921,30 @@ class StudioApp(App[None]):
     def _open_project_step(self) -> None:
         """Step 0: pick a project out of the workspace, or start one.
 
-        A stand-in until the project step is built properly: the workspace
-        picker is what there is to show when the workspace has something in
-        it, and the creation panel when it has nothing -- an empty list is no
-        answer to "choose a project".
+        A workspace with projects in it shows the picker; an empty one shows
+        the creation panel straight away, because an empty list is no answer
+        to "choose a project" and making someone press one more key to be
+        told so wastes the time of exactly the person who has least idea
+        what to press.
+
+        Both paths end in `action_open`/`action_create`, which point the
+        diary at the project's own directory, write `ABRIR` in it, and put
+        `proyecto` in `passed`. That last part is what actually lets the
+        wizard move: `wizard.current` returns the first step *not left
+        behind*, so a project that is open but whose step nobody marked
+        would leave the wizard standing on step 0 forever.
         """
         self._set_panel("open" if self.service.store.list_projects() else "create")
 
     def _edit_design(self) -> None:
-        """Step 2: review and adjust the design. A stand-in that opens the map
-        editor, the largest part of what reviewing a design means."""
+        """Step 2: review and adjust the design, in the map editor.
+
+        The map is the largest part of what reviewing a design means by
+        hand, and it is the panel `Esc` now saves out of (`action_back`), so
+        a wall painted here is on disk before the wizard moves on. The two
+        smaller parts have their own letters on the shortcuts line: `e` for
+        the entity roster, `g` for title, brief and style.
+        """
         self._set_panel("map")
         if self.project is not None:
             self._refresh()
@@ -907,7 +968,13 @@ class StudioApp(App[None]):
                 self.project = editing.rename_project(self.project, title, brief=brief)
                 self.service.save_project(self.project, self.project_dir)
             self.screen_index, self.cursor = 0, (0, 0)
+            # Step 0 is behind us the moment a project exists: `current` is
+            # the first step *not left behind*, so without this the wizard
+            # would go on offering "choose a project" to someone who just
+            # made one.
             self.passed = {"proyecto"}
+            self.journal = Journal.for_project(self.project_dir)
+            self._edited = False
             self._refresh()
             self._log(self.journal.write("ABRIR", f"creado {self.project_dir}"))
             self._log(f"[green]Created[/green] {self.project_dir / 'game.yml'}")
@@ -920,7 +987,12 @@ class StudioApp(App[None]):
             self.project = self.service.open_project(location)
             self.project_dir = location.parent if location.name == "game.yml" else location
             self.screen_index, self.cursor = 0, (0, 0)
+            #: Same as `action_create`: having a project *is* step 0, and the
+            #: diary belongs to the project just opened, not to the one
+            #: before it.
             self.passed = {"proyecto"}
+            self.journal = Journal.for_project(self.project_dir)
+            self._edited = False
             self._refresh()
             self._log(self.journal.write("ABRIR", f"abierto {self.project_dir}"))
             self._log(f"[green]Opened[/green] {self.project_dir}")

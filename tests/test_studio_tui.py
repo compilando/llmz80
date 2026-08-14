@@ -1199,3 +1199,155 @@ async def test_a_step_the_pipeline_needs_cannot_be_left_behind(tmp_path):
         await pilot.press("right")
         await pilot.pause()
         assert "programa" not in app.passed
+
+
+@pytest.mark.asyncio
+async def test_without_a_project_the_wizard_offers_the_chooser(tmp_path):
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.active_panel in {"open", "create"}
+
+
+@pytest.mark.asyncio
+async def test_an_empty_workspace_opens_the_creation_panel_directly(tmp_path):
+    """There is nothing to choose from in an empty workspace, and making a
+    person press one more key to be told so wastes the time of exactly the
+    person who has least idea what to press."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.active_panel == "create"
+
+
+@pytest.mark.asyncio
+async def test_a_populated_workspace_offers_the_picker(tmp_path):
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test() as pilot:
+        app.service.create_project("Already There", TargetPlatform.SPECTRUM)
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.active_panel == "open"
+
+
+@pytest.mark.asyncio
+async def test_opening_a_project_leaves_step_zero_behind(tmp_path):
+    """`current` is the first step not left behind, so step 0 must be marked
+    as soon as there is a project -- otherwise the wizard never moves off it."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test() as pilot:
+        project, directory = app.service.create_project("Opened", TargetPlatform.SPECTRUM)
+        app.action_open(str(directory))
+        await pilot.pause()
+        assert "proyecto" in app.passed
+
+
+@pytest.mark.asyncio
+async def test_opening_a_project_points_the_diary_at_it(tmp_path):
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test() as pilot:
+        _project, directory = app.service.create_project("Diaried", TargetPlatform.SPECTRUM)
+        app.action_open(str(directory))
+        await pilot.pause()
+        assert app.journal is not None and app.journal.path.parent == directory
+        assert "ABRIR" in (directory / "studio.log").read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_leaving_the_editor_saves_and_says_so(tmp_path):
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test() as pilot:
+        app.project, app.project_dir = app.service.create_project("Saved", TargetPlatform.SPECTRUM)
+        app.passed = {"proyecto", "referencia"}
+        app._refresh_wizard()
+        await pilot.press("enter")  # entra al editor
+        await pilot.press("space")  # pinta una celda
+        await pilot.press("escape")  # sale, y al salir guarda
+        await pilot.pause()
+        assert app.active_panel is None
+        diary = (app.project_dir / "studio.log").read_text(encoding="utf-8")
+        assert "GUARDAR" in diary
+
+
+@pytest.mark.asyncio
+async def test_leaving_the_editor_untouched_writes_no_save_down(tmp_path):
+    """`store.save` archives the previous revision only where the text
+    changed; the diary follows the same rule rather than filling up with
+    saves that saved nothing."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test() as pilot:
+        app.project, app.project_dir = app.service.create_project(
+            "Untouched", TargetPlatform.SPECTRUM
+        )
+        app.passed = {"proyecto", "referencia"}
+        app._refresh_wizard()
+        await pilot.press("enter")
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.active_panel is None
+        log = app.project_dir / "studio.log"
+        diary = log.read_text(encoding="utf-8") if log.is_file() else ""
+        assert "GUARDAR" not in diary
+
+
+@pytest.mark.asyncio
+async def test_leaving_a_step_behind_saves_what_was_edited(tmp_path):
+    """The other half of "there is no unsaved state to lose": walking on
+    with `→` commits whatever the step changed, and says so once."""
+    from llmz80.studio.tui import StudioApp
+
+    app = StudioApp(tmp_path)
+    async with app.run_test() as pilot:
+        app.project, app.project_dir = app.service.create_project(
+            "Committed", TargetPlatform.SPECTRUM
+        )
+        app.passed = {"proyecto", "referencia"}
+        app._refresh_wizard()
+        await pilot.press("enter")  # el editor del paso diseño
+        await pilot.press("space")  # una celda pintada
+        app._set_panel(None)  # cerrado sin pasar por Esc
+        await pilot.press("right")  # deja atrás el paso
+        await pilot.pause()
+
+        assert "diseño" in app.passed
+        diary = (app.project_dir / "studio.log").read_text(encoding="utf-8")
+        assert "GUARDAR" in diary
+
+
+@pytest.mark.asyncio
+async def test_stepping_back_from_the_first_step_lands_on_the_project_step(tmp_path):
+    from llmz80.studio.tui import StudioApp
+    from llmz80.studio import wizard
+
+    app = StudioApp(tmp_path)
+    async with app.run_test() as pilot:
+        app.project, app.project_dir = app.service.create_project(
+            "Backwards", TargetPlatform.SPECTRUM
+        )
+        app.passed = {"proyecto"}
+        app._refresh_wizard()
+        await pilot.press("escape")
+        await pilot.pause()
+
+        step = wizard.current(app.project, app.project_dir, app.passed)
+        assert step.name == "proyecto" and step.state == "done"
+        # And no further back than that: there is no step before the first.
+        await pilot.press("escape")
+        await pilot.pause()
+        assert wizard.current(app.project, app.project_dir, app.passed).name == "proyecto"
