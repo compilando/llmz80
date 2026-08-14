@@ -1,17 +1,14 @@
+import ast
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from llmz80.studio import editing
+from llmz80.studio import editing, render
 from llmz80.studio.models import TargetPlatform
 from llmz80.studio.planner import ProjectChange, ProjectProposal
 from llmz80.studio.reference import GameReference, ReferenceSource
-from llmz80.studio.samples import blank_project
-from llmz80.studio.screen import Stage
-from llmz80.studio.spriting import SPRITE_SIZE
-from llmz80.studio.tui import (
-    StudioApp,
+from llmz80.studio.render import (
     brief_preview,
     pick_stage_detail,
     render_map,
@@ -20,6 +17,10 @@ from llmz80.studio.tui import (
     render_step_summary,
     render_tile_legend,
 )
+from llmz80.studio.samples import blank_project
+from llmz80.studio.screen import Stage
+from llmz80.studio.spriting import SPRITE_SIZE
+from llmz80.studio.tui import StudioApp
 
 
 @pytest.mark.asyncio
@@ -79,6 +80,23 @@ async def test_a_refused_edit_warns_instead_of_crashing(tmp_path: Path):
         await pilot.pause()
 
         assert app.project.metadata.title == before
+
+
+def test_render_composes_the_screen_without_importing_textual():
+    """The property that makes `render.py` worth having as its own module.
+
+    Every function in it is text over plain data, so none of them may reach
+    for a widget: that is what lets the map, the wizard's summary and the
+    brief preview be tested by calling them, with no application running.
+    Read off the module's own import statements rather than off
+    `sys.modules`, which any other test importing Textual would pollute.
+    """
+    tree = ast.parse(Path(render.__file__).read_text())
+    imported = [
+        name.name for node in ast.walk(tree) if isinstance(node, ast.Import) for name in node.names
+    ] + [node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
+
+    assert not [module for module in imported if module.split(".")[0] == "textual"]
 
 
 def test_render_map_draws_terrain_spawns_and_cursor():
@@ -2011,7 +2029,7 @@ async def test_the_diary_panel_and_studio_log_hold_the_same_lines(tmp_path: Path
         # (which is where a several-line result belongs: a diary is read by
         # scanning its left margin). The one exception is the workspace
         # banner, which belongs to no project and so to no project's diary.
-        from llmz80.studio.tui import _summary
+        from llmz80.studio.render import _summary
 
         kept = "\n".join(written)
         extra = [message for message in said if _summary(message) not in kept]
