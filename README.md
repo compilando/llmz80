@@ -32,17 +32,20 @@ El trabajo y la evidencia de mejora se registran en
 [Generation quality roadmap](docs/GENERATION_QUALITY_ROADMAP.md).
 La renovación del editor y sus criterios de aceptación se mantienen en
 [LLMZ80 Studio roadmap](docs/STUDIO_ROADMAP.md).
-Las interfaces para añadir géneros, plataformas, capacidades y exportadores se
+Las interfaces para añadir plataformas, capacidades y exportadores se
 documentan en [Extending LLMZ80 Studio](docs/STUDIO_EXTENSIONS.md).
 
 ## ✨ Características Principales
 
 - 🤖 **Generación de código con IA**: Usa modelos OpenAI configurables para crear código C orientado a Z80
 - 🔍 **RAG fiable**: catálogo local determinista de programas compilables, ampliable con Qdrant
-- 🧭 **Jugabilidad contractual**: peticiones como `comecocos`/`Pac-Man` se
-  convierten en un contrato de laberinto interactivo con controles, colisiones,
-  objetos, marcador, ritmo de 50 Hz y estado final; no pueden degradarse a una
-  imagen estática
+- 🧭 **Vocabulario declarado por el diseño**: `game.yml` no elige entre juegos
+  previstos, los describe. Los tiles llevan su carácter y sus rasgos, las
+  entidades el `kind` que el diseño acuña (`perseguidor`, `puerta`, `interruptor`),
+  las teclas los nombres que quiera (`jump`, `fire`, `pump`) y las pantallas se
+  conectan por `exits`; las mecánicas son prosa que leen el escritor y el
+  examinador. Studio comprueba que el diseño cabe en la máquina, no que se
+  parezca a un género
 - 📖 **Referencias reales**: cuando el brief nombra un juego de la época, Studio
   lo busca en la web, archiva una ficha citada en `reference.yml` y la usa para
   proponer un diseño y para decirle al escritor qué juego está haciendo; una
@@ -64,15 +67,12 @@ documentan en [Extending LLMZ80 Studio](docs/STUDIO_EXTENSIONS.md).
 - 🕹️ **Sprites de Studio**: dibuja los sprites de un diseño al estilo del juego
   investigado, los empaqueta para cada máquina objetivo y los blitea con
   máscara; `llmz80 project sprites PATH` los genera y muestra una previsualización
-- 🎚️ **Dificultad progresiva verificada**: los niveles generados alargan la ruta
-  o ajustan el límite de tiempo según la curva declarada
-  (`flat`/`linear`/`stepped`); un diseño que la incumple se rechaza, probado en
-  las dieciocho tipologías y ambos objetivos
-- 🎞️ **Sensación de juego leída en memoria**: entre los pasos guionizados de
-  aceptación, el emulador comprueba que `g_anim_frame` (cuando el programa lo
-  declara) avanza al moverse y se detiene en reposo, y que un enemigo
-  perseguidor guionizado hace perder exactamente una vida sin acabar la
-  partida; con enemigos que solo patrullan sigue siendo texto sin comprobar
+- 🎞️ **Sensación de juego leída en memoria**: el emulador comprueba que
+  `g_anim_frame` (cuando el programa lo declara) avanza al moverse y se detiene
+  en reposo. El resto del comportamiento se lee y se registra, pero no se
+  juzga: derivar la expectativa de las mecánicas del propio diseño es trabajo
+  del examinador de la fase 2, y hasta que exista la puerta se abstiene en vez
+  de adivinar
 - 📚 **Base de conocimiento**: Aprende de ejemplos de código existentes
 - 🚀 **Dos plataformas**: ZX Spectrum 48K y Amstrad CPC 464/6128
 
