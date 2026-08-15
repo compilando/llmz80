@@ -8,14 +8,11 @@ diff, the protected paths and the playability refusal for free.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any, Protocol
-
-from pydantic import ValidationError
 
 from .design_exam import DesignExaminer, coverage_errors
 from .models import GameProject
-from .planner import ProjectProposal, apply_proposal
+from .planner import AppliedProposal, ProjectProposal, propose_apply_repair
 from .reference import GameReference
 from .typologies import typology_hints
 
@@ -124,50 +121,6 @@ class ResponsesReferenceDesigner:
         return parsed
 
 
-def repair_feedback(error: ValueError) -> str:
-    """Turn a refusal from `apply_proposal` into an instruction the model can
-    act on, the way `generator.repair_prompt` turns a failed build or a wrong
-    reading into one.
-
-    The two shapes `apply_proposal` raises deserve different handling. A
-    `pydantic.ValidationError` names the exact fields that ended up outside
-    their bounds once the changes were applied -- `presentation.style` too
-    long, `entities.1.count` below its minimum -- so it is unpacked field by
-    field rather than passed through as one opaque message. Everything else
-    -- a protected path, a bad JSON pointer, the playability gate's refusal --
-    already reads as a sentence a person wrote, so it is quoted whole and
-    paired with what to do about it.
-    """
-    if isinstance(error, ValidationError):
-        lines = [
-            "THE PROPOSAL WAS REFUSED: THESE FIELDS ENDED UP OUTSIDE THEIR BOUNDS",
-            "",
-        ]
-        for item in error.errors():
-            path = "/" + "/".join(str(part) for part in item["loc"])
-            lines.append(f"  {path}: {item['msg']}")
-        lines.append("")
-        lines.append(
-            "Rewrite only the changes that set these fields so the result stays inside "
-            "each bound. Leave every other change exactly as it was."
-        )
-        return "\n".join(lines)
-    message = str(error)
-    if message.startswith("this proposal would leave the game unplayable"):
-        return (
-            "THE PROPOSAL WAS REFUSED: IT WOULD LEAVE THE GAME UNPLAYABLE\n\n"
-            + message
-            + "\n\nPropose a screen that fits the target's playable grid instead -- a "
-            "smaller width or height, or terrain that still fits the one already "
-            "declared. Do not repeat the change that caused this."
-        )
-    return (
-        "THE PROPOSAL WAS REFUSED\n\n"
-        + message
-        + "\n\nRemove or rework whichever change is responsible and propose again."
-    )
-
-
 def coverage_feedback(errors: list[str]) -> str:
     """Turn the examiner's gaps into an instruction the designer can act on.
 
@@ -211,17 +164,6 @@ def _coverage_gaps(project: GameProject, examiner: DesignExaminer | None) -> lis
     return coverage_errors(examiner.examine(project))
 
 
-@dataclass
-class ReferenceAdaptation:
-    """What the repair loop produced: the proposal that finally applied, the
-    project `apply_proposal` already built while checking it, and the refusal
-    each earlier attempt drew, oldest first."""
-
-    proposal: ProjectProposal
-    project: GameProject
-    refusals: list[str] = field(default_factory=list)
-
-
 def propose_and_apply(
     project: GameProject,
     dossier: GameReference,
@@ -231,27 +173,23 @@ def propose_and_apply(
     allow_budget_changes: bool = False,
     allow_unplayable: bool = False,
     examiner: DesignExaminer | None = None,
-) -> ReferenceAdaptation:
+) -> AppliedProposal:
     """Propose a design adaptation and validate it through `apply_proposal`,
     repairing a mechanically refused proposal instead of discarding the whole
-    thing -- the way `generator.write_program` repairs a program that failed
-    to build rather than giving up on the first rejection.
+    thing.
 
-    `apply_proposal` never mutates `project` or touches disk; it only builds
-    and validates a candidate `GameProject` in memory. That means the loop can
-    run to a validated result before anyone has agreed to anything, and the
-    project this returns is exactly the one a caller would get by calling
-    `apply_proposal` again with the same inputs -- so a caller who wants
-    consent first can show the diff, ask, and on "yes" use the project already
-    computed here instead of redoing the work.
+    The loop itself is `planner.propose_apply_repair`, shared with `drafting`
+    since that stage grew one of the same shape. What is this stage's own is
+    the two things below: the designer is handed the dossier, and a proposal
+    is only accepted once the design answers its brief.
 
     An `examiner` adds a second reason to try again, and the one that matters
     most: a proposal can apply cleanly and still leave a design that says
-    nothing about what its brief asked for. Both v4 projects in this
-    repository reached the writer with `mechanics: []` -- one of them from a
-    dossier that had correctly identified Harrier Attack! -- so the stage that
-    is supposed to turn research into a design had never once produced a
-    design with mechanics. A refusal alone would only have closed a door in
+    nothing about what its brief asked for. `studio-projects/zampabolas` and
+    `studio-projects/my-retro-game` both reached the writer with
+    `mechanics: []` -- the second of them from a dossier that had correctly
+    identified Harrier Attack! -- so the stage that is supposed to turn
+    research into a design had never once produced a design with mechanics. A refusal alone would only have closed a door in
     front of that; feeding the gaps back as feedback is what gives the
     designer the chance to state them.
 
@@ -259,30 +197,21 @@ def propose_and_apply(
     out, so a user who burned several model calls learns what finally went
     wrong rather than getting a generic failure.
     """
-    refusals: list[str] = []
-    feedback: str | None = None
-    for _ in range(max(1, attempts)):
-        proposal = designer.propose(project, dossier, feedback)
-        try:
-            updated = apply_proposal(
-                project,
-                proposal,
-                allow_budget_changes=allow_budget_changes,
-                allow_unplayable=allow_unplayable,
-            )
-        except ValueError as exc:
-            refusals.append(str(exc))
-            feedback = repair_feedback(exc)
-            continue
+
+    def review(updated: GameProject) -> tuple[str, str] | None:
         gaps = _coverage_gaps(updated, examiner)
-        if gaps:
-            refusals.append(
-                "the design still does not state what the brief asks for: " + "; ".join(gaps)
-            )
-            feedback = coverage_feedback(gaps)
-            continue
-        return ReferenceAdaptation(proposal=proposal, project=updated, refusals=refusals)
-    raise ValueError(
-        f"the proposal could not be repaired in {attempts} attempt"
-        f"{'s' if attempts != 1 else ''}; the last refusal was: " + refusals[-1]
+        if not gaps:
+            return None
+        return (
+            "the design still does not state what the brief asks for: " + "; ".join(gaps),
+            coverage_feedback(gaps),
+        )
+
+    return propose_apply_repair(
+        project,
+        lambda feedback: designer.propose(project, dossier, feedback),
+        review,
+        attempts=attempts,
+        allow_budget_changes=allow_budget_changes,
+        allow_unplayable=allow_unplayable,
     )

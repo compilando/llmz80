@@ -741,9 +741,9 @@ def _reason_summary(reason: str) -> str:
 def _judge_frames(frames: list[Image.Image]) -> str | None:
     """Whether `frames` are demonstrably not a sprite, and if so, feedback
     naming what was wrong and what to do about it -- the register
-    `reference_design.repair_feedback` already uses for a refused design
-    proposal: a heading naming the failure, the specific evidence, and an
-    instruction for the next attempt.
+    `planner.repair_feedback` already uses for a refused design proposal: a
+    heading naming the failure, the specific evidence, and an instruction
+    for the next attempt.
 
     One failure is checked, and it is real: a frame that packs to 0 or
     `SPRITE_SIZE * SPRITE_SIZE` set pixels is a blank or a solid block, not a

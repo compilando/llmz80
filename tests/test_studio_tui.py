@@ -245,7 +245,7 @@ async def test_an_empty_workspace_says_so_rather_than_crashing(tmp_path: Path):
         # The strip is still drawn, with nothing done in it: an empty
         # workspace is a run that has not started, not a broken screen.
         assert app.status_text == (
-            "Project —  Reference —  Design —  Sprites —  Program —  Gates —"
+            "Project —  Reference —  Drafting —  Design —  Sprites —  Program —  Gates —"
         )
         assert str(app.query_one("#brief-preview").content) == "no project yet"
 

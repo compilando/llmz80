@@ -85,6 +85,16 @@ class _FakeStages:
         say("searching the web")
         return self.dossier
 
+    def draft(self, project, directory, dossier, say):
+        """States rules the way the real stage does, and saves them, so a test
+        can read the design `programa` would have refused off disk."""
+        self._record("draft")
+        updated = project.model_copy(
+            update={"mechanics": ["el minero salta entre cornisas", "caer desde alto le mata"]}
+        )
+        self.real.service.save_project(updated, directory)
+        return updated
+
     def adapt(self, project, directory, dossier, say):
         self._record("adapt")
         return project
@@ -130,7 +140,7 @@ def test_the_whole_sequence_runs_in_order(tmp_path: Path):
 
     result, stages = _run(tmp_path, printed)
 
-    assert stages.calls == ["create", "research", "adapt", "sprites", "write", "test"]
+    assert stages.calls == ["create", "research", "draft", "adapt", "sprites", "write", "test"]
     assert result.ok
     assert result.project_dir is not None and (result.project_dir / "game.yml").is_file()
 
@@ -141,7 +151,7 @@ def test_the_money_is_announced_before_anything_is_spent(tmp_path: Path):
 
     _run(tmp_path, printed)
 
-    assert "OpenAI API in 4 stages" in printed[0]
+    assert "OpenAI API in 5 stages" in printed[0]
     assert "referencia" in printed[0] and "programa" in printed[0]
 
 
@@ -150,29 +160,40 @@ def test_an_unidentified_game_skips_the_adaptation_and_carries_on(tmp_path: Path
 
     result, stages = _run(tmp_path, printed, dossier=_dossier(identified=False))
 
-    assert stages.calls == ["create", "research", "sprites", "write", "test"]
+    assert stages.calls == ["create", "research", "draft", "sprites", "write", "test"]
     assert result.ok
     assert any("SKIP" in line and "diseño" in line for line in printed)
 
 
-def test_skipping_the_design_stage_warns_that_the_design_will_state_no_mechanics(tmp_path: Path):
-    """`diseño` is the only stage that writes mechanics, so skipping it leaves
-    a brief with nothing to implement -- which `programa`'s design gate then
-    refuses, three stages and one paid round of art later. The order used to
-    say nothing here and stop at `programa`, naming the stage where the
-    consequence surfaced rather than the one where the cause was.
+def test_the_order_drafts_before_it_adapts():
+    """Drafting decides what the game is; adapting decides what it looks like.
+    A dossier can only dress a design that already states something."""
+    from llmz80.studio.make import PAID_STAGES
+
+    assert PAID_STAGES.index("redacción") < PAID_STAGES.index("diseño")
+    assert PAID_STAGES.index("referencia") < PAID_STAGES.index("redacción")
+
+
+def test_an_unidentified_game_no_longer_dead_ends_the_order(tmp_path: Path):
+    """Research finding nothing used to mean `diseño` was skipped, `mechanics`
+    stayed empty, and `programa` refused three stages later while the order
+    warned about it here. Drafting runs from the brief alone, so the design
+    that reaches `programa` states its rules and the gate that used to refuse
+    it passes -- which is why the warning that named that road is gone.
     """
+    from llmz80.studio.quality import design_quality_report
+
     printed: list[str] = []
 
-    result, _stages = _run(tmp_path, printed, dossier=_dossier(identified=False))
+    result, stages = _run(tmp_path, printed, dossier=_dossier(identified=False))
 
+    assert result.ok
+    assert stages.calls == ["create", "research", "draft", "sprites", "write", "test"]
+    assert not [line for line in printed if "WARN" in line]
     assert result.project_dir is not None
-    warned = [line for line in printed if "WARN" in line]
-    assert warned, "skipping the design stage said nothing about its consequence"
-    assert "states no mechanics" in warned[0]
-    assert "4 programa" in warned[0]
-    assert str(result.project_dir / "game.yml") in warned[0]
-    assert "mechanics" in warned[0]
+    saved = StudioService.at(tmp_path).open_project(result.project_dir)
+    assert saved.mechanics
+    assert design_quality_report(saved)["quality_pass"]
 
 
 def test_a_design_gate_refusal_names_the_file_to_edit_not_a_command_that_cannot_work(
@@ -190,6 +211,14 @@ def test_a_design_gate_refusal_names_the_file_to_edit_not_a_command_that_cannot_
     from llmz80.studio import pipeline
 
     class _RealDesignGate(_FakeStages):
+        def draft(self, project, directory, dossier, say):
+            # The one road left to `programa` with no mechanics: a drafting
+            # stage that came back with nothing. The real one raises instead,
+            # which stops the order two stages earlier -- so this is the gate
+            # being driven deliberately, not a route `make` can take.
+            self._record("draft")
+            return project
+
         def write(self, project, directory, dossier, say):
             self._record("write")
             return pipeline.write(self.real.service, project, directory, _NeverCalled())
@@ -210,7 +239,7 @@ def test_a_design_gate_refusal_names_the_file_to_edit_not_a_command_that_cannot_
     assert result.failed == "programa"
     assert result.project_dir is not None
     hint = printed[-1]
-    assert "llmz80 project write" in hint
+    assert "llmz80 project draft" in hint
     assert str(result.project_dir / "game.yml") in hint
     assert "mechanics" in hint
     assert not hint.startswith("Nothing is lost")
@@ -234,11 +263,11 @@ def test_a_failed_stage_stops_the_order_and_says_which(tmp_path: Path):
 
     result, stages = _run(tmp_path, printed, refuse_at="sprites")
 
-    assert stages.calls == ["create", "research", "adapt", "sprites"]
+    assert stages.calls == ["create", "research", "draft", "adapt", "sprites"]
     assert not result.ok
     assert result.failed == "sprites"
     assert "sprites refused on purpose" in result.error
-    assert any(line.startswith("STOPPED at 3 sprites:") for line in printed)
+    assert any(line.startswith("STOPPED at 4 sprites:") for line in printed)
 
 
 def test_a_program_the_compiler_never_accepted_stops_the_order(tmp_path: Path):
@@ -283,7 +312,14 @@ def test_the_diary_records_every_stage_and_survives_the_run(tmp_path: Path):
     # The kind column is eight characters wide (`journal.Kind`), which is what
     # makes the left margin of a diary scannable; these are the lines as they
     # are actually written, padding included.
-    for stage in ("1 referencia", "2 diseño", "3 sprites", "4 programa", "5 gates"):
+    for stage in (
+        "1 referencia",
+        "2 redacción",
+        "3 diseño",
+        "4 sprites",
+        "5 programa",
+        "6 gates",
+    ):
         assert f"START   {stage}" in diary
         assert f"END     {stage}" in diary
     assert "OPEN" in diary

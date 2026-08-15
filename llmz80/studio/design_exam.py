@@ -75,7 +75,7 @@ def _entities_line(project: GameProject) -> str:
     return "\n".join(["Entities:", *described])
 
 
-def _design_summary(project: GameProject) -> str:
+def design_summary(project: GameProject) -> str:
     """What the design actually states, in the form the examiner must judge.
 
     Everything a brief can ask for and this document can answer, and nothing
@@ -83,6 +83,11 @@ def _design_summary(project: GameProject) -> str:
     the machine imposes, not what anybody asked for, and observables are the
     symbols the runtime examiner reads. Showing either would invite a verdict
     about a field no brief was ever written about.
+
+    Public, and named without an underscore, because `drafting` renders the
+    same document for the drafter that has to make it answer its brief. One
+    question from two sides deserves one rendering: two would drift until the
+    drafter was told something the examiner never judged.
     """
     presentation = project.presentation
     audio = project.audio
@@ -113,10 +118,11 @@ def _design_summary(project: GameProject) -> str:
         lines.append("Mechanics:")
         lines.extend(f"  - {sentence}" for sentence in project.mechanics)
     else:
-        # Said out loud rather than left as a bare heading. Both v4 projects in
-        # this repository reached the writer with `mechanics: []`, and an empty
-        # heading reads as a list that was cut off, not as a design that
-        # declares nothing about what it does.
+        # Said out loud rather than left as a bare heading.
+        # `studio-projects/zampabolas` and `studio-projects/my-retro-game`
+        # both reached the writer with `mechanics: []`, and an empty heading
+        # reads as a list that was cut off, not as a design that declares
+        # nothing about what it does.
         lines.append("Mechanics: none stated")
     return "\n".join(lines)
 
@@ -140,7 +146,7 @@ THE BRIEF
 
 WHAT THE DESIGN STATES
 
-{_design_summary(project)}
+{design_summary(project)}
 
 Answer with covered=true only if every concrete claim in the brief is stated
 somewhere in the design. Otherwise list each gap in `missing` as one sentence

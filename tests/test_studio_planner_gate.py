@@ -91,3 +91,81 @@ def test_a_proposal_can_change_mechanics_and_a_screens_tiles(project):
 
     assert applied.mechanics == ["the player explores the screen and avoids obstacles"]
     assert applied.screens[0].tiles == edited_tiles
+
+
+def test_a_change_can_carry_a_whole_entity():
+    """A design that states nothing has no entity to edit a field of: the
+    drafting stage has to add one, and `value_text` cannot hold an object."""
+    from llmz80.studio.planner import EntityValue
+
+    change = ProjectChange(
+        path="/entities/-",
+        operation="add",
+        reason="the brief asks for enemy fighters and the design has none",
+        value_entity=EntityValue(id="caza", kind="enemigo", notes="cruza la pantalla disparando"),
+    )
+
+    assert change.value == {
+        "id": "caza",
+        "kind": "enemigo",
+        "sprite": None,
+        "poses": [],
+        "count": 1,
+        "colour": None,
+        "notes": "cruza la pantalla disparando",
+    }
+
+
+def test_a_change_can_carry_a_whole_tile():
+    from llmz80.studio.planner import TileValue
+
+    change = ProjectChange(
+        path="/tiles/-",
+        operation="add",
+        reason="the brief asks for water the player cannot cross",
+        value_tile=TileValue(id="agua", char="~", traits=["solid"]),
+    )
+
+    assert change.value["id"] == "agua"
+    assert change.value["char"] == "~"
+    assert change.value["traits"] == ["solid"]
+
+
+def test_an_entity_and_a_tile_are_still_only_one_value_each():
+    """The one-value-per-change rule is what keeps `value` unambiguous, and a
+    new shape must not become an exception to it."""
+    from llmz80.studio.planner import EntityValue, TileValue
+
+    with pytest.raises(ValueError, match="exactly one value_"):
+        ProjectChange(
+            path="/entities/-",
+            operation="add",
+            reason="two shapes at once",
+            value_entity=EntityValue(id="uno", kind="actor"),
+            value_tile=TileValue(id="dos", char="#"),
+        )
+
+
+def test_a_whole_entity_a_proposal_added_becomes_one_the_design_declares(project):
+    """`/entities/-` is the first path a proposal ever *added* to rather than
+    edited a field of, so what matters is not that the change validates but
+    that `apply_proposal` lands it in the document as a real `EntitySpec`."""
+    from llmz80.studio.planner import EntityValue
+
+    proposal = ProjectProposal(
+        summary="give the design the enemy its brief asks for",
+        changes=[
+            ProjectChange(
+                path="/entities/-",
+                operation="add",
+                reason="the brief asks for enemy fighters and the design has none",
+                value_entity=EntityValue(id="caza", kind="enemigo", count=3),
+            )
+        ],
+    )
+
+    applied = apply_proposal(project, proposal)
+
+    assert [entity.id for entity in applied.entities] == ["actor", "caza"]
+    assert applied.entities[1].kind == "enemigo"
+    assert applied.entities[1].count == 3

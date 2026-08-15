@@ -442,16 +442,20 @@ def _run_zesarux(
         for index in range(0, len(raw), chunk_size)
     ] if raw else []
     raw_frame_change = len(set(raw_chunks)) > 1
+    # A reading taken from the program's own symbols can only have come from
+    # the program: the tape loader does not define g_score. So once any step
+    # reported one, a change in the raw stream is the program drawing, and the
+    # reason this used to insist on settled screenshots is gone.
+    probed = any(reading.get("read") for reading in step_readings)
     if len(observations) >= 2:
-        # Judge against the last frame captured: it is the one taken after the
-        # scripted inputs, and so the only one that can show the program itself.
-        screenshot_change = observations[0]["sha256"] != observations[-1]["sha256"]
-        # A raw-stream difference is not evidence of drawing: a tape loader
-        # changes the screen too. Only a settled frame that differs from the
-        # first one shows that the program itself put something there.
-        visual_change = screenshot_change if len(observations) >= 3 else (
-            screenshot_change or raw_frame_change
-        )
+        # Every pair, not the first against the last. A game that starts at its
+        # title screen, is played, and returns to that title screen ends where
+        # it began -- and the first real game this pipeline finished did
+        # exactly that, winning on the way (g_state reached 3, the score
+        # reached 525) while three identical captures said nothing had
+        # happened.
+        screenshot_change = len({observation["sha256"] for observation in observations}) > 1
+        visual_change = screenshot_change or (raw_frame_change and probed)
         non_blank = observations[-1]["non_blank"]
     else:
         screenshot_change = False

@@ -26,6 +26,15 @@ class StateSymbol:
     width: int
     required: bool
     meaning: str
+    #: Defined by the platform library rather than by the program. The linker
+    #: map carries it either way, so the probe gate is unaffected -- what
+    #: changes is who is told to write it. A game that keeps its own frame
+    #: cost gets it wrong in ways a gate reading one number cannot see: one
+    #: program latched the maximum from before it drew its first screen, and
+    #: another stored the last cost rather than the worst. Neither could be
+    #: repaired by telling the writer more clearly, because neither ever
+    #: failed the gate.
+    provided_by_library: bool = False
 
 
 #: Three symbols are required, but not on the same grounds. `g_score` and
@@ -75,8 +84,9 @@ STATE_CONTRACT: tuple[StateSymbol, ...] = (
         "g_worst_frame_cost",
         1,
         True,
-        "worst number of display frames a single game iteration missed since the "
-        "game began; zero is ideal, and plat_wait_frame returns the count for you",
+        "worst number of display frames a single game iteration missed; the "
+        "platform library defines it and keeps it, so your program must not",
+        provided_by_library=True,
     ),
     StateSymbol(
         "g_anim_frame",
@@ -120,7 +130,12 @@ def contract_prompt() -> str:
     "name this variable X" will rename it while refactoring, whereas one told
     that memory is read at that symbol tends to leave it alone.
     """
-    required = "\n".join(_declaration(s) for s in STATE_CONTRACT if s.required)
+    required = "\n".join(
+        _declaration(s) for s in STATE_CONTRACT if s.required and not s.provided_by_library
+    )
+    library = "\n".join(
+        _declaration(s) for s in STATE_CONTRACT if s.provided_by_library
+    )
     optional = "\n".join(_declaration(s) for s in STATE_CONTRACT if not s.required)
     return f"""OBSERVABLE STATE CONTRACT
 
@@ -134,6 +149,11 @@ Declare these too, and only these, when the game has the corresponding
 concept. A design with no such notion must not declare the symbol at all:
 
 {optional}
+
+The platform library already defines these, and keeps them accurate itself.
+Do not declare or assign them; just call the library:
+
+{library}
 
 Rules that make the contract work:
   * Do not mark them static, const or register: a static symbol is absent from

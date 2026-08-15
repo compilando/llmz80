@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 from copy import deepcopy
+from dataclasses import dataclass, field
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from .editing import editing_status
 from .models import GameProject
@@ -19,6 +20,49 @@ class SpawnValue(BaseModel):
     entity: str = Field(pattern=r"^[a-z][a-z0-9_]{1,31}$")
     col: int = Field(ge=0, le=39)
     row: int = Field(ge=0, le=24)
+
+
+class EntityValue(BaseModel):
+    """One whole entity, in the shape `EntitySpec` validates.
+
+    Flat and with every field concrete, for the reason `ProjectChange`'s own
+    docstring gives: structured outputs reject a property with no JSON type,
+    which is why there is no generic `value` and why `SpawnValue` exists. An
+    entity is the first thing a proposal ever needed to *add* rather than
+    edit -- the designer only ever touched `/entities/N/notes` of an entity
+    that was already there -- and a design that states nothing has none.
+
+    The defaults mirror `EntitySpec`'s own, so a drafter that names only an id
+    and a kind gets exactly what a designer writing the same two fields by
+    hand would get.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    kind: str
+    sprite: str | None = None
+    poses: list[str] = Field(default_factory=list)
+    count: int = 1
+    colour: str | None = None
+    notes: str = ""
+
+
+class TileValue(BaseModel):
+    """One whole tile, in the shape `TileSpec` validates.
+
+    Here for the same reason as `EntityValue`: a design that states nothing
+    has two tiles, and terrain the brief asks for -- water, lava, a ladder --
+    is a tile the design has to grow, not a field of one it already declares.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    char: str
+    art: str | None = None
+    colour: str | None = None
+    traits: list[str] = Field(default_factory=list)
 
 
 class ProjectChange(BaseModel):
@@ -39,12 +83,21 @@ class ProjectChange(BaseModel):
     value_number: int | None = None
     value_rows: list[str] | None = None  # a screen's tiles
     value_spawns: list[SpawnValue] | None = None  # a screen's spawns
+    value_entity: EntityValue | None = None  # a whole entity
+    value_tile: TileValue | None = None  # a whole tile
 
     @model_validator(mode="after")
     def validate_value_shape(self) -> "ProjectChange":
         variants = [
             v
-            for v in (self.value_text, self.value_number, self.value_rows, self.value_spawns)
+            for v in (
+                self.value_text,
+                self.value_number,
+                self.value_rows,
+                self.value_spawns,
+                self.value_entity,
+                self.value_tile,
+            )
             if v is not None
         ]
         if self.operation == "remove":
@@ -67,6 +120,10 @@ class ProjectChange(BaseModel):
             return self.value_rows
         if self.value_spawns is not None:
             return [spawn.model_dump(mode="json") for spawn in self.value_spawns]
+        if self.value_entity is not None:
+            return self.value_entity.model_dump(mode="json")
+        if self.value_tile is not None:
+            return self.value_tile.model_dump(mode="json")
         return None
 
 
@@ -215,3 +272,129 @@ def _list_index(token: str, length: int, *, allow_end: bool) -> int:
     if index < 0 or index > maximum:
         raise ValueError(f"list index out of range: {token}")
     return index
+
+
+def repair_feedback(error: ValueError) -> str:
+    """Turn a refusal from `apply_proposal` into an instruction the model can
+    act on, the way `generator.repair_prompt` turns a failed build or a wrong
+    reading into one.
+
+    The two shapes `apply_proposal` raises deserve different handling. A
+    `pydantic.ValidationError` names the exact fields that ended up outside
+    their bounds once the changes were applied -- `presentation.style` too
+    long, `entities.1.count` below its minimum -- so it is unpacked field by
+    field rather than passed through as one opaque message. Everything else
+    -- a protected path, a bad JSON pointer, the playability gate's refusal --
+    already reads as a sentence a person wrote, so it is quoted whole and
+    paired with what to do about it.
+
+    Lives here, beside the function whose refusals it translates, rather than
+    in `reference_design` where it was written: `drafting` needs the same
+    translation, and neither stage should have to import the other to get it.
+    """
+    if isinstance(error, ValidationError):
+        lines = [
+            "THE PROPOSAL WAS REFUSED: THESE FIELDS ENDED UP OUTSIDE THEIR BOUNDS",
+            "",
+        ]
+        for item in error.errors():
+            path = "/" + "/".join(str(part) for part in item["loc"])
+            lines.append(f"  {path}: {item['msg']}")
+        lines.append("")
+        lines.append(
+            "Rewrite only the changes that set these fields so the result stays inside "
+            "each bound. Leave every other change exactly as it was."
+        )
+        return "\n".join(lines)
+    message = str(error)
+    if message.startswith("this proposal would leave the game unplayable"):
+        return (
+            "THE PROPOSAL WAS REFUSED: IT WOULD LEAVE THE GAME UNPLAYABLE\n\n"
+            + message
+            + "\n\nPropose a screen that fits the target's playable grid instead -- a "
+            "smaller width or height, or terrain that still fits the one already "
+            "declared. Do not repeat the change that caused this."
+        )
+    return (
+        "THE PROPOSAL WAS REFUSED\n\n"
+        + message
+        + "\n\nRemove or rework whichever change is responsible and propose again."
+    )
+
+
+@dataclass
+class AppliedProposal:
+    """What a repair loop produced: the proposal that finally applied, the
+    project `apply_proposal` already built while checking it, and the refusal
+    each earlier attempt drew, oldest first."""
+
+    proposal: ProjectProposal
+    project: GameProject
+    refusals: list[str] = field(default_factory=list)
+
+
+def propose_apply_repair(
+    project: GameProject,
+    propose: Callable[[str | None], ProjectProposal],
+    review: Callable[[GameProject], tuple[str, str] | None],
+    *,
+    attempts: int = 3,
+    allow_budget_changes: bool = False,
+    allow_unplayable: bool = False,
+    refusal: type[ValueError] = ValueError,
+) -> AppliedProposal:
+    """Ask for a proposal, apply it, and feed back whatever refused it.
+
+    A mechanically refused proposal is repaired rather than discarded whole --
+    the way `generator.write_program` repairs a program that failed to build
+    rather than giving up on the first rejection.
+
+    `apply_proposal` never mutates `project` or touches disk; it only builds
+    and validates a candidate `GameProject` in memory. That means the loop can
+    run to a validated result before anyone has agreed to anything, and the
+    project this returns is exactly the one a caller would get by calling
+    `apply_proposal` again with the same inputs -- so a caller who wants
+    consent first can show the diff, ask, and on "yes" use the project already
+    computed here instead of redoing the work.
+
+    Applying cleanly is not the same as being any good, which is why `review`
+    exists and is the second reason to try again. It sees the candidate and
+    answers with the refusal to record and the feedback to send back, or None
+    to accept. Both stages that run this loop -- `reference_design` adapting a
+    design to a dossier, `drafting` writing one from a brief -- differ in
+    exactly two things: what they hand their collaborator (hence `propose`
+    being a closure over it rather than a fixed argument list) and what they
+    will accept (hence `review`). Sharing the rest is what keeps a fix to the
+    repair behaviour from having to be made twice.
+
+    Raises `refusal` carrying the last refusal reason once attempts run out,
+    so a user who burned several model calls learns what finally went wrong
+    rather than getting a generic failure. Callers pass their own subclass of
+    `ValueError` when they need it told apart from every other refusal a
+    stage can raise.
+    """
+    refusals: list[str] = []
+    feedback: str | None = None
+    for _ in range(max(1, attempts)):
+        proposal = propose(feedback)
+        try:
+            updated = apply_proposal(
+                project,
+                proposal,
+                allow_budget_changes=allow_budget_changes,
+                allow_unplayable=allow_unplayable,
+            )
+        except ValueError as exc:
+            refusals.append(str(exc))
+            feedback = repair_feedback(exc)
+            continue
+        verdict = review(updated)
+        if verdict is not None:
+            recorded, feedback = verdict
+            refusals.append(recorded)
+            continue
+        return AppliedProposal(proposal=proposal, project=updated, refusals=refusals)
+    raise refusal(
+        f"the proposal could not be repaired in {attempts} attempt"
+        f"{'s' if attempts != 1 else ''}; the last refusal was: " + refusals[-1]
+    )

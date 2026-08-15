@@ -54,7 +54,7 @@ class Stage:
 #: is, `llmz80 project release`. A strip carrying a stage the order never
 #: performs would read `Release —` forever on every game ever made, which
 #: teaches people not to read the strip.
-STAGE_NAMES = ("referencia", "diseño", "sprites", "programa", "gates")
+STAGE_NAMES = ("referencia", "redacción", "diseño", "sprites", "programa", "gates")
 
 
 def stage_line(project: GameProject | None, directory: Path | None) -> list[Stage]:
@@ -75,6 +75,7 @@ def stage_line(project: GameProject | None, directory: Path | None) -> list[Stag
         return []
     return [
         _reference_stage(directory),
+        _drafting_stage(project),
         _design_stage(project),
         _sprite_stage(project),
         _program_stage(project, directory),
@@ -118,6 +119,27 @@ def _reference_stage(directory: Path | None) -> Stage:
         "done",
         f"{dossier.title} · {len(dossier.sources)} sources",
     )
+
+
+def _drafting_stage(project: GameProject) -> Stage:
+    """redacción -- whether this design states any rules of its own.
+
+    `mechanics` is the evidence, and it is the whole of it: it is what the
+    drafting stage exists to fill, what `quality.design_quality_report`
+    refuses a briefed design for lacking, and what the writer implements.
+
+    The question of whether the stage *wants* to run is `needs_drafting`'s and
+    is not re-decided here -- a design with no brief has nothing to draft
+    from, which is `pending` with the reason said rather than a failure:
+    nothing was attempted and nothing went wrong.
+    """
+    from .drafting import needs_drafting
+
+    if project.mechanics:
+        return Stage("redacción", "done", f"{len(project.mechanics)} rules stated")
+    if needs_drafting(project):
+        return Stage("redacción", "pending")
+    return Stage("redacción", "pending", "no brief to draft from")
 
 
 def _design_stage(project: GameProject) -> Stage:

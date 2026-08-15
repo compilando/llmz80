@@ -67,6 +67,7 @@ class Step:
 #: continued in another is a log nobody can read.
 _PIPELINE: tuple[tuple[str, str], ...] = (
     ("referencia", "Reference"),
+    ("redacción", "Drafting"),
     ("diseño", "Design"),
     ("sprites", "Sprites"),
     ("programa", "Program"),

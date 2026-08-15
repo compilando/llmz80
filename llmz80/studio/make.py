@@ -58,7 +58,7 @@ MAX_SAME_TITLE = 99
 #: of paid API calls. `diseño` costs money *here* (it adapts the design to the
 #: researched game) even though `wizard` marks it free -- there the stage is a
 #: person editing a map by hand.
-PAID_STAGES = ("referencia", "diseño", "sprites", "programa")
+PAID_STAGES = ("referencia", "redacción", "diseño", "sprites", "programa")
 
 #: The `llmz80 project` subcommand that redoes each stage, for the one line a
 #: stopped run owes the person reading it: everything before the failure is on
@@ -66,6 +66,7 @@ PAID_STAGES = ("referencia", "diseño", "sprites", "programa")
 #: project, not to run the whole order again and pay for all of it twice.
 RESUMES = {
     "referencia": "reference",
+    "redacción": "draft",
     "diseño": "adapt",
     "sprites": "sprites",
     "programa": "write",
@@ -87,6 +88,10 @@ class Stages(Protocol):
     ) -> tuple[GameProject, Path]: ...
 
     def research(self, project: GameProject, directory: Path, say: Say) -> GameReference: ...
+
+    def draft(
+        self, project: GameProject, directory: Path, dossier: GameReference | None, say: Say
+    ) -> GameProject: ...
 
     def adapt(
         self, project: GameProject, directory: Path, dossier: GameReference, say: Say
@@ -228,6 +233,18 @@ class ServiceStages:
     def research(self, project: GameProject, directory: Path, say: Say) -> GameReference:
         return pipeline.research(self.service, project, directory, say=say)
 
+    def draft(
+        self, project: GameProject, directory: Path, dossier: GameReference | None, say: Say
+    ) -> GameProject:
+        """Decide what this game is and save it.
+
+        No `confirm`, for the same reason `adapt` passes none: there is nobody
+        at the keyboard, the proposal is already validated through
+        `apply_proposal`, and `ProjectStore.save` keeps the previous revision
+        as it does for every save.
+        """
+        return pipeline.draft(self.service, project, directory, dossier=dossier, say=say)
+
     def adapt(
         self, project: GameProject, directory: Path, dossier: GameReference, say: Say
     ) -> GameProject:
@@ -330,6 +347,11 @@ def make_game(
             "searching for a real game like this",
             lambda: _research(stages, project, directory, diary),
         )
+        project = diary.stage(
+            steps["redacción"],
+            "deciding what this game is",
+            lambda: _draft(stages, project, directory, dossier, diary),
+        )
         if dossier is not None and dossier.identified:
             project = diary.stage(
                 steps["diseño"],
@@ -341,7 +363,6 @@ def make_game(
             # need not be based on a real one, and the design simply keeps
             # the typology it was created with.
             diary.skip(steps["diseño"], "no researched game to adapt to")
-            _warn_the_design_will_state_nothing(project, directory, diary, steps)
         diary.stage(
             steps["sprites"],
             "drawing the missing art",
@@ -391,58 +412,25 @@ def make_game(
     return MakeResult(project_dir=directory, artifact=artifact)
 
 
-def _warn_the_design_will_state_nothing(
-    project: GameProject,
-    directory: Path,
-    diary: _Diary,
-    steps: dict[str, wizard.Step],
-) -> None:
-    """Say, where the cause is, that the design has been left with no mechanics.
-
-    `diseño` is the only stage that ever writes any: a project is created with
-    `mechanics: []` (`samples.blank_project`) and nothing else in Studio fills
-    the list. So skipping it over a brief means `programa`'s design gate will
-    refuse, three stages and one paid round of art later.
-
-    Before this the order said nothing here: it went on to pay for the art and
-    stopped three stages later at `programa`, naming the stage where the
-    consequence surfaced rather than the one where the cause was. The
-    condition is asked of `design_quality_report` rather than restated as
-    `not project.mechanics`, so this warns exactly when the gate would refuse
-    and not one case wider.
-    """
-    from .quality import MECHANICS_CHECK, design_quality_report
-
-    if MECHANICS_CHECK not in design_quality_report(project)["failures"]:
-        return
-    diary.warn(
-        "this design therefore states no mechanics, and a brief with none is "
-        f"refused at {steps['programa'].number} {steps['programa'].name}: write one "
-        f"sentence per rule into `mechanics` in {directory / 'game.yml'} for the "
-        "order to get past it"
-    )
-
-
 def _retry_hint(stop: _Stopped, directory: Path) -> str:
     """The last line a stopped order prints: what to do, not what happened.
 
     `llmz80 project <stage>` is the right answer for every failure that a
     second run could go differently on -- a compiler that gave up, a model
     that returned nothing, a dropped connection. It is a lie for the design
-    gate, which refuses because the design states no mechanics and will refuse
-    identically forever: nothing in the CLI or the interface writes mechanics,
-    only the designer's proposal in `diseño` does, and that is the stage that
-    was skipped. This branch's own review traced that road to its end -- the
-    hint sent the reader to `llmz80 project write`, which refuses the same way
-    however often it is run, and `llmz80 project adapt` refuses too because no
-    game was identified. So this names the file and the field instead, and
-    only then the command that will run.
+    gate, which refuses because the design states no mechanics: retrying
+    `llmz80 project write` refuses identically however often it is run. What
+    changed is that there is now a stage whose whole job is to state them and
+    a command that runs it on its own, so the hint names that instead of
+    sending somebody to edit YAML by hand -- and still names the file, since
+    a drafter that already spent its attempts is one a person may prefer to
+    answer themselves.
     """
     if isinstance(stop.cause, pipeline.DesignRefused):
         return (
             f"This design needs mechanics before a program can be written for it: "
-            f"add them to `mechanics` in {directory / 'game.yml'}, one sentence per "
-            f"rule, and then `llmz80 project write {directory}` will run."
+            f"run `llmz80 project draft {directory}`, or write them into "
+            f"`mechanics` in {directory / 'game.yml'} by hand, one sentence per rule."
         )
     return (
         f"Nothing is lost: retry this stage with `llmz80 project {RESUMES[stop.step]} {directory}`."
@@ -463,6 +451,29 @@ def _research(stages: Stages, project: GameProject, directory: Path, diary: _Dia
     known = [part for part in (dossier.publisher, str(dossier.year or "")) if part]
     on_publisher = f" ({', '.join(known)})" if known else ""
     return dossier, f"{dossier.title}{on_publisher}, {len(dossier.sources)} source(s)"
+
+
+def _draft(
+    stages: Stages,
+    project: GameProject,
+    directory: Path,
+    dossier: GameReference | None,
+    diary: _Diary,
+):
+    """Decide what the game is, before anything dresses it or draws it.
+
+    No SKIP branch, unlike `diseño`. `pipeline.draft` does abstain when a
+    design is already somebody's -- but `make_game` has just created this
+    project from an idea it required to be non-empty, so through this order
+    `needs_drafting` is always true and a SKIP here could never be printed.
+    A strip promising a stage the order never runs is what the previous
+    branch removed from the screen; a diary line nothing can reach is the
+    same defect written in a different place.
+    """
+    updated = stages.draft(project, directory, dossier, diary.say)
+    return updated, (
+        f"{len(updated.mechanics)} rule(s) stated over {len(updated.entities)} entities"
+    )
 
 
 def _adapt(

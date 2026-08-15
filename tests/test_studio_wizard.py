@@ -19,6 +19,7 @@ def test_with_a_project_step_zero_is_done_and_the_walk_begins():
     assert walked[0].state == "done"
     assert [step.name for step in walked[1:]] == [
         "referencia",
+        "redacción",
         "diseño",
         "sprites",
         "programa",
@@ -69,6 +70,7 @@ def test_a_step_keeps_its_id_and_carries_a_label_of_its_own(tmp_path):
     assert [step.name for step in walked] == [
         "proyecto",
         "referencia",
+        "redacción",
         "diseño",
         "sprites",
         "programa",
@@ -77,6 +79,7 @@ def test_a_step_keeps_its_id_and_carries_a_label_of_its_own(tmp_path):
     assert [step.title for step in walked] == [
         "Project",
         "Reference",
+        "Drafting",
         "Design",
         "Sprites",
         "Program",
