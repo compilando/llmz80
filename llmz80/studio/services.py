@@ -14,6 +14,7 @@ from PIL import Image
 
 from .compiler import BuildResult, SourceResult, build_project, render_project
 from .design_exam import DesignExaminer
+from .attributes import attribute_report
 from .feel import animation_report
 from .models import AssetSpec, EntitySpec, GameProject, TargetPlatform
 from .observation import observation_script
@@ -467,11 +468,14 @@ class StudioService:
         report["animation"] = animation
         pacing = pacing_report(report)
         report["pacing"] = pacing
+        attributes = attribute_report(report)
+        report["attributes"] = attributes
         if (
             probes["quality_pass"] is False
             or acceptance["quality_pass"] is False
             or animation["quality_pass"] is False
             or pacing["quality_pass"] is False
+            or attributes["quality_pass"] is False
         ):
             report["quality_pass"] = False
         write_smoke_report(report, build.output_dir / "emulator_report.json")
@@ -507,13 +511,15 @@ class StudioService:
             "probes": None,
             "animation": None,
             "pacing": None,
+            "attributes": None,
         }
         build = self.build(project, directory)
         evidence["build"] = build.report
         evidence["probes"] = build.report.get("probes")
         if not build.success:
-            # No emulator has run yet, so there is no animation or pacing verdict
-            # -- a build failure is refused on the build diagnostics alone.
+            # No emulator has run yet, so there is no animation, pacing or
+            # attribute verdict -- a build failure is refused on the build
+            # diagnostics alone.
             return evidence
         try:
             runtime = self.runtime_test(project, directory, on_progress=on_progress)
@@ -524,6 +530,7 @@ class StudioService:
         evidence["acceptance"] = runtime.get("acceptance")
         evidence["animation"] = runtime.get("animation")
         evidence["pacing"] = runtime.get("pacing")
+        evidence["attributes"] = runtime.get("attributes")
         return evidence
 
     def write_program(
