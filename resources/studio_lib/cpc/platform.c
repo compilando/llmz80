@@ -56,6 +56,13 @@ void plat_border(unsigned char colour) {
 /* With the firmware disabled the CPC has no free-running frame counter, so a
  * missed frame is indistinguishable from a met one here. HAS_FRAME_CLOCK is 0
  * on this target and the engine hides the overrun readout accordingly. */
+/* Defined here, as on the Spectrum, so the linker map carries the contract
+ * symbol on both machines and no program has to keep the number itself. It
+ * never moves: this target has no free-running frame counter to subtract, so
+ * `HAS_FRAME_CLOCK` is 0 and `pacing.pacing_report` abstains rather than
+ * reading this zero as a game that kept perfect time. */
+unsigned char g_worst_frame_cost;
+
 unsigned char plat_wait_frame(void) {
     cpct_waitVSYNC();
     return 0;

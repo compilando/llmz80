@@ -27,7 +27,17 @@
  * out-of-band gap. File scope so plat_init can seed the first and clear the
  * second; a function-local static could not be seeded before the first call. */
 static unsigned int frame_mark;
-static unsigned char resyncing;
+static unsigned char out_of_band;
+
+/* Owned here, not by the program. The contract asks a game to expose the
+ * worst it ever missed, and a game that keeps that number itself gets it
+ * wrong in ways nothing can see from outside: the run this rule comes from
+ * had a program storing the maximum from *before* it drew its first screen,
+ * and a sibling project stored the last cost rather than the worst. Neither
+ * is visible to a gate reading one number. Keeping the maximum in here
+ * leaves the program nothing to get wrong, and the linker map carries the
+ * symbol either way. */
+unsigned char g_worst_frame_cost;
 
 static void put_glyph(unsigned char col, unsigned char row, const unsigned char *glyph,
                       unsigned char attribute) {
@@ -50,7 +60,8 @@ void plat_init(void) {
      * roughly one run in fifteen used to report a frame cost it never paid,
      * which condemned the whole run, since g_worst_frame_cost is a maximum. */
     frame_mark = FRAME_CLOCK;
-    resyncing = 0;
+    out_of_band = 0;
+    g_worst_frame_cost = 0;
     zx_border(INK_BLACK);
     zx_cls(PAPER_BLACK | INK_WHITE);
 }
@@ -86,13 +97,15 @@ void plat_border(unsigned char colour) {
  * 5 Hz loop animate, emulator_smoke's visual_change only catches a frozen
  * screen, and no person watches this pipeline at all.
  *
- * The residual blind spot is wider than "one stutter goes unseen", and it is
- * not only stutters that never repeat. `resyncing` is cleared by any in-band
- * iteration, so what is forgiven is every out-of-band gap that has an in-band
- * one before it -- and a loop that overruns out of band on alternating
- * iterations always does. Such a loop never reports worse than its fast
- * iterations cost -- zero, while those keep pace -- however long it runs and
- * however badly the others drag: the gap says "the loop was not running", the
+ * The residual blind spot, stated as narrowly as it can honestly be put: a
+ * loop that overruns out of band for fewer than SLOW_RUN iterations and
+ * then keeps pace reports nothing. That is the price of telling a startup
+ * gap from a slow loop by how many times it repeats, and it is a smaller
+ * price than the two rules this replaced -- a magnitude bound that
+ * approved every program at or below 5 Hz, and a twice-in-a-row rule that
+ * failed a correct program five times because building its first level
+ * between the resynchronisation and the loop's first wait counted as the
+ * second gap. Neither of those was visible until a real game was drawn: however badly the others drag: the gap says "the loop was not running", the
  * fast iteration after it says "carry on", and nothing between them remembers
  * that this is the tenth time. Two out-of-band iterations in a row are the
  * only thing that is ever reported. Nothing else in the pipeline sees the difference
@@ -107,6 +120,21 @@ void plat_border(unsigned char colour) {
  * engine, and the library is in every build; that is the gap this closes. */
 #define RESYNC_FRAMES 8
 
+/* Out-of-band gaps in a row before the counter believes the loop itself is
+ * slow. Startup produces them in ones and twos -- a title screen polling
+ * without pacing itself is one, and the level being built between that
+ * resynchronisation and the loop's first wait is a second -- while a loop
+ * that genuinely does not fit in its frame produces one every iteration,
+ * for hundreds. Recurrence *count* separates those cleanly where neither
+ * magnitude nor "twice in a row" could: the first end-to-end run of the
+ * drafting pipeline was failed five times over by a correctly written
+ * program whose two startup gaps were read as a slow loop.
+ *
+ * The residual blind spot, and it is smaller than what it replaces: a loop
+ * slow for two or three iterations and then fast again reports nothing. */
+#define SLOW_RUN 4
+
+
 /* Waits for the next frame off the ROM counter, with a guard so a stopped
  * interrupt cannot hang, and returns what the previous iteration cost. */
 unsigned char plat_wait_frame(void) {
@@ -118,17 +146,21 @@ unsigned char plat_wait_frame(void) {
     unsigned int guard = 0;
     unsigned char cost;
     if (missed > RESYNC_FRAMES) {
-        /* An isolated gap is a loop that was not running. A second one in a
-         * row is a loop that is simply this slow, and must not be forgiven: it
-         * is reported as one frame past the bound, the smallest value that
-         * cannot be mistaken for keeping pace. The true magnitude is not
-         * reported, because after a gap this large it is not known to be one
-         * iteration's worth of anything. */
-        cost = resyncing ? (unsigned char)(RESYNC_FRAMES + 1) : 0;
-        resyncing = 1;
+        /* A gap this large is not one iteration running long, and the counter
+         * cannot tell an absent loop from a slow one by size. It waits to see
+         * whether it repeats: below SLOW_RUN it is forgiven as a
+         * resynchronisation, at SLOW_RUN it is reported as one frame past the
+         * bound -- the smallest value that cannot be mistaken for keeping
+         * pace. The true magnitude is never reported, because after a gap this
+         * large it is not known to be one iteration's worth of anything. */
+        if (out_of_band < 255) ++out_of_band;
+        cost = out_of_band >= SLOW_RUN ? (unsigned char)(RESYNC_FRAMES + 1) : 0;
     } else {
+        out_of_band = 0;
         cost = (unsigned char)missed;
-        resyncing = 0;
+    }
+    if (cost > g_worst_frame_cost) {
+        g_worst_frame_cost = cost;
     }
     while (FRAME_CLOCK == start && ++guard < 12000) {
     }

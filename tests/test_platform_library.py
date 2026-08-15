@@ -54,7 +54,8 @@ def test_the_spectrum_wait_declines_an_isolated_gap_and_reports_a_repeated_one()
     """
     source = (LIB / "spectrum" / "platform.c").read_text(encoding="utf-8")
     assert "#define RESYNC_FRAMES 8" in source
-    assert "cost = resyncing ? (unsigned char)(RESYNC_FRAMES + 1) : 0;" in source
+    assert "#define SLOW_RUN 4" in source
+    assert "cost = out_of_band >= SLOW_RUN ? (unsigned char)(RESYNC_FRAMES + 1) : 0;" in source
 
 
 def _wait_frame_harness() -> str:
@@ -66,11 +67,13 @@ def _wait_frame_harness() -> str:
     judged below is therefore the code that ships.
     """
     source = (LIB / "spectrum" / "platform.c").read_text(encoding="utf-8")
-    bound = re.search(r"^#define RESYNC_FRAMES .*$", source, re.M)
-    statics = re.search(
-        r"^static unsigned int frame_mark;\nstatic unsigned char resyncing;$", source, re.M
+    bound = re.search(
+        r"^#define RESYNC_FRAMES [^\n]*.*?^#define SLOW_RUN [^\n]*", source, re.M | re.S
     )
-    wait = re.search(r"^unsigned char plat_wait_frame\(void\) \{.*?^\}$", source, re.M | re.S)
+    statics = re.search(
+        r"^static unsigned int frame_mark;\nstatic unsigned char out_of_band;$", source, re.M
+    )
+    wait = re.search(r"^unsigned char plat_wait_frame\(void\) \{.*?\n\}\n", source, re.M | re.S)
     assert bound and statics and wait, "the Spectrum wait no longer has the shape this test lifts"
     return f"""#include <stdio.h>
 
@@ -78,6 +81,7 @@ static volatile unsigned int fake_clock;
 #define FRAME_CLOCK fake_clock
 
 {statics.group(0)}
+unsigned char g_worst_frame_cost;
 {bound.group(0)}
 
 {wait.group(0)}
@@ -90,7 +94,7 @@ static unsigned int trace(unsigned int step, int count, char *out) {{
     unsigned int now = 1000;
     int i;
     frame_mark = now;
-    resyncing = 0;
+    out_of_band = 0;
     for (i = 0; i < count; ++i) {{
         now += step;
         fake_clock = now;
@@ -114,7 +118,7 @@ int main(void) {{
      * gameplay. Nothing here may be reported. */
     now = 1000;
     frame_mark = now;
-    resyncing = 0;
+    out_of_band = 0;
     line[0] = 0;
     {{
         char *out = line;
@@ -177,4 +181,4 @@ def test_a_loop_that_is_out_of_band_every_iteration_is_not_forgiven_twice():
     and so certified every program at or below 5 Hz -- a 5 Hz loop passing while
     a 5.6 Hz loop failed. Recurrence separates them, and the repeat is reported
     as one frame past the bound, which fails the gate."""
-    assert _wait_frame_traces()["absent_every_time"] == [0, 9, 9, 9]
+    assert _wait_frame_traces()["absent_every_time"] == [0, 0, 0, 9]
