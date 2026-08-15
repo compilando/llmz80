@@ -305,6 +305,28 @@ class StudioService:
     def reference(self, directory: Path) -> GameReference | None:
         return load_reference(directory)
 
+    def identified_reference(
+        self, directory: Path, dossier: GameReference | None = None
+    ) -> GameReference:
+        """The archived dossier, only when it named a game to adapt to.
+
+        Split out of `propose_from_reference` so a caller can ask the question
+        before it does anything expensive. `pipeline.adapt` does exactly that:
+        it used to announce "this calls the OpenAI API" and build the client,
+        and only then hit these two guards, so a project with no dossier was
+        told money was about to go out and then handed an error -- which reads
+        as a charge that failed rather than one that never happened. The
+        alternative, copying the two conditions into the pipeline, would have
+        left two sets of wording to drift apart; `cli.py` matches the first
+        message exactly to decide whether to print its fix-it hint.
+        """
+        dossier = dossier or load_reference(directory)
+        if dossier is None:
+            raise ValueError("there is no researched game for this project yet")
+        if not dossier.identified:
+            raise ValueError("no researched game was identified, so there is nothing to adapt to")
+        return dossier
+
     def propose_from_reference(
         self,
         project: GameProject,
@@ -332,11 +354,7 @@ class StudioService:
         same way and reported in the same list -- so a caller already saying
         each repair aloud needs no new code to say these.
         """
-        dossier = dossier or load_reference(directory)
-        if dossier is None:
-            raise ValueError("there is no researched game for this project yet")
-        if not dossier.identified:
-            raise ValueError("no researched game was identified, so there is nothing to adapt to")
+        dossier = self.identified_reference(directory, dossier)
         adaptation = propose_and_apply(
             project, dossier, designer, attempts=attempts, examiner=examiner
         )
