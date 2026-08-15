@@ -197,6 +197,12 @@ Hazards, every one of them a reading recorded from a real run of this system:
     it is not the state the game begins in: whatever a mechanic says about
     the moment a game starts, by then the program has already run for fifty
     frames with a key held down.
+  * A counter counts what the program decided it counts, not what you would
+    have counted. A mining design naming one objective -- rescue the trapped
+    miner -- read g_remaining 147 at its first step, because that program
+    counts cells of dirt left to dig. Both readings honour the contract.
+    Never assert an exact value for g_remaining, g_score or g_hiscore: bound
+    them instead, which is true whatever the program is counting in.
   * A binding may do nothing where the player happens to stand. A frog game
     held all four directions and its score stayed 0 for the entire run, which
     was correct: its score only rises on reaching the far side of the road,
@@ -214,6 +220,14 @@ WHAT YOU MAY SAY. Each assertion names one step, one symbol, and one of:
 Use `baseline` for a comparison against an earlier step of this same run, and
 `value` for a comparison against a number. A baseline must be a step that runs
 strictly before the step being judged. Set exactly one of the two.
+
+THE CLAIM THIS RUN IS BEST AT. The action key is held for the first two
+steps of the script. If the design's mechanics name the events that end a
+game, and none of them can plausibly happen while one key is held blindly for
+the first two seconds, then the game must still be in play at the end of the
+second action step -- and that is worth asserting, because a program that
+ends its game on a keypress, or that never leaves its title screen at all, is
+precisely what this run can catch and what it was built to catch.
 
 Prefer a bound to an exact value, and an early step to a late one. Give each
 assertion the number of the mechanic it comes from, or 0 if it comes from the
