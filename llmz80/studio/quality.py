@@ -66,21 +66,57 @@ def verification_level(runtime: dict[str, Any] | None) -> str:
     return VERIFICATION_BUILT
 
 
+#: Why each design check refuses, in words the person who wrote the design can
+#: act on. `failures` carries check *names* -- slugs, which are what a report
+#: reader and a test want, and which say nothing to somebody told their game
+#: will not be written -- so anything that puts a refusal in front of a person
+#: looks the sentence up here. Kept beside `checks` so a check added without a
+#: sentence is visibly missing one.
+DESIGN_REFUSALS = {
+    "audio_is_supported_by_target": (
+        "this design asks for sound the target machine cannot produce; see "
+        "audio_gaps for which effects, and drop or replace them"
+    ),
+    "budget_fits_target": (
+        "this design reserves more binary or static data than the target "
+        "machine has; lower the budgets until they fit"
+    ),
+    "design_states_the_mechanics_its_brief_asks_for": (
+        "this design carries a brief but states no mechanics, so nothing tells "
+        "the writer how the game is won, lost or played and the program would "
+        "be whatever the model infers; state the mechanics the brief asks for"
+    ),
+}
+
+
+def design_refusals(report: dict[str, Any]) -> list[str]:
+    """A design report's failures as sentences, in the order it lists them.
+
+    A refusal is only worth raising if the person who reads it can act on
+    it, and a check name is a variable, not a sentence: telling the designer
+    of `studio-projects/zampabolas` that his design failed
+    `design_states_the_mechanics_its_brief_asks_for` would have left him no
+    better off than the silence that let it through did.
+    """
+    return [DESIGN_REFUSALS.get(name, name) for name in report["failures"]]
+
+
 def design_notices(project: GameProject) -> list[str]:
     """Advice for the designer. Never a refusal.
 
-    A design with no stated mechanics still builds and still runs; what it
-    cannot do is tell the writer what the game is, so the program that comes
-    back is whatever the model guessed. Saying so is useful. Refusing would be
-    Studio deciding a game must have rules it can read, which is the kind of
-    judgement v4 exists to stop making.
+    A design with a brief and no mechanics is refused outright by
+    `design_quality_report`, not noticed here: the brief is a statement that
+    this game is meant to be something in particular, and writing it with
+    nothing to implement produced `studio-projects/zampabolas`. A design with
+    neither is a different case -- nobody has said what it should be yet --
+    and that is what this notice is for.
     """
     notices = []
-    if not project.mechanics:
+    if not project.mechanics and not project.metadata.brief.strip():
         notices.append(
-            "this design states no mechanics, so nothing tells the writer how the "
-            "game is won, lost or played; the program will be whatever the model "
-            "infers from the screens and the brief"
+            "this design states no mechanics and carries no brief, so nothing "
+            "tells the writer how the game is won, lost or played; the program "
+            "will be whatever the model infers from the screens alone"
         )
     return notices
 
@@ -94,10 +130,12 @@ def design_quality_report(project: GameProject) -> dict[str, Any]:
             project.budgets.binary_bytes <= pack.binary_budget
             and project.budgets.static_data_bytes <= pack.data_budget
         ),
+        "design_states_the_mechanics_its_brief_asks_for": bool(project.mechanics)
+        or not project.metadata.brief.strip(),
     }
     failures = [name for name, passed in checks.items() if not passed]
     return {
-        "schema_version": 6,
+        "schema_version": 7,
         "checks": checks,
         "failures": failures,
         "notices": design_notices(project),

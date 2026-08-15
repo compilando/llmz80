@@ -365,3 +365,21 @@ def test_test_forwards_its_commentary_to_whoever_is_listening(opened):
 
     assert report["quality_pass"] is True
     assert said == ["building"]
+
+
+def test_writing_refuses_a_design_that_does_not_pass_its_own_gate(tmp_path):
+    """The writer is not asked for a program the design gate already refused:
+    an API call costs money and ninety seconds, and the answer is known."""
+    from llmz80.studio.editing import rename_project
+
+    service = StudioService.at(tmp_path)
+    project, directory = service.create_project("Refused", TargetPlatform.SPECTRUM)
+    project = rename_project(project, "Refused", brief="un juego como la abadía del crimen")
+    service.save_project(project, directory)
+
+    class NeverCalled:
+        def write(self, project, feedback=None):
+            raise AssertionError("the writer must not be asked")
+
+    with pytest.raises(ValueError, match="not ready to be written"):
+        pipeline.write(service, project, directory, NeverCalled())

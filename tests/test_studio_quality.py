@@ -122,3 +122,38 @@ def test_the_quality_report_carries_the_level():
     )
 
     assert report["verification"] == VERIFICATION_OBSERVED
+
+
+def test_a_brief_with_no_mechanics_is_refused_not_merely_noticed():
+    """The zampabolas case: a brief naming a real game, a dossier with five
+    mechanics researched, and a design that states none of them. The program
+    that came out invented its own losing condition."""
+    from llmz80.studio.editing import rename_project
+
+    project = rename_project(
+        blank_project("Zampabolas", TargetPlatform.SPECTRUM),
+        "Zampabolas",
+        brief="Un juego como el zampabolas",
+    )
+
+    report = design_quality_report(project)
+
+    assert report["quality_pass"] is False
+    assert "design_states_the_mechanics_its_brief_asks_for" in report["failures"]
+
+
+def test_a_design_with_no_brief_at_all_still_passes():
+    """A fresh project has neither, and must stay buildable while its designer
+    decides what it is."""
+    assert design_quality_report(blank_project("Blank", TargetPlatform.SPECTRUM))["quality_pass"]
+
+
+def test_every_design_check_has_a_sentence_to_refuse_in():
+    """`failures` holds check names, which are variables, not language. What
+    puts a refusal in front of a person reads `DESIGN_REFUSALS` instead, so a
+    check added without a sentence there would refuse in slug."""
+    from llmz80.studio.quality import DESIGN_REFUSALS
+
+    report = design_quality_report(blank_project("Sentences", TargetPlatform.SPECTRUM))
+
+    assert set(report["checks"]) == set(DESIGN_REFUSALS)

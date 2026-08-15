@@ -263,7 +263,21 @@ def write(
     whether the compiler ever accepted one -- what to do about a `False` is
     the caller's decision, and the two callers make different ones (`llmz80
     project write` exits 1, `llmz80 make` stops the order).
+
+    A design its own gate refuses is not sent to the writer at all. Asking
+    costs money and a minute and a half, and the answer is already known: a
+    design that states no mechanics is `studio-projects/zampabolas`, whose
+    program invented a losing condition nobody had asked for and was accepted
+    on its first attempt. The refusal carries the gate's sentences rather than
+    its check names, because a caller prints what it is given.
     """
+    from .quality import design_quality_report, design_refusals
+
+    design = design_quality_report(project)
+    if not design["quality_pass"]:
+        raise ValueError(
+            "this design is not ready to be written:\n  " + "\n  ".join(design_refusals(design))
+        )
     if writer is None:
         from ..cli import _openai_client_and_model
         from .generator import ResponsesProgramWriter

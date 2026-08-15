@@ -595,3 +595,18 @@ def test_sprites_prints_the_money_warning_before_constructing_a_generator(
 
     assert printed_before_construction, "the generator was never constructed"
     assert "OpenAI API" in printed_before_construction[0]
+
+
+def test_write_reports_a_refused_design_instead_of_tracebacking(tmp_path: Path, capsys):
+    """A design the gate refuses stops here as a printed verdict and exit 1.
+    No API key is read and no OpenAI call is made: `pipeline.write` refuses
+    before it builds a writer, which is the point of refusing there."""
+    main(["project", "new", str(tmp_path), "Refused", "spectrum", "un juego como el zampabolas"])
+    capsys.readouterr()
+
+    code = main(["project", "write", str(tmp_path / "refused" / "game.yml")])
+
+    printed = capsys.readouterr().out
+    assert code == 1
+    assert "not ready to be written" in printed
+    assert "states no mechanics" in printed

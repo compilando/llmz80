@@ -345,7 +345,16 @@ def _project_command(arguments: list[str]) -> int:
             # parenthetical is dropped rather than printed as "()".
             on_publisher = f" ({dossier.publisher})" if dossier.publisher else ""
             print(f"Writing as {dossier.title}{on_publisher}.")
-        report = pipeline.write(service, project, directory, dossier=dossier, say=print)
+        try:
+            report = pipeline.write(service, project, directory, dossier=dossier, say=print)
+        except ValueError as exc:
+            # The design gate refusing to have this written is a verdict about
+            # the design, not a crash, and reaches here before a penny is spent
+            # on the API. Reported the way every other refusal in this file is,
+            # because a traceback would read as a bug in Studio rather than as
+            # an answer about the game.
+            print(f"ERROR: {exc}")
+            return 1
         for attempt in report["attempts"]:
             print(
                 f"  attempt {attempt['number']}: build={attempt['build_passed']} "
