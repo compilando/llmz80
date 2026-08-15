@@ -404,7 +404,7 @@ def write(
     if writer is None:
         from ..cli import _openai_client_and_model
         from .generator import ResponsesProgramWriter
-        from .runtime_exam import ResponsesRuntimeExaminer
+        from .runtime_exam import RepeatedExaminer, ResponsesRuntimeExaminer
 
         client, model = _openai_client_and_model()
         say(f"writing the program with {model}; this calls the OpenAI API")
@@ -414,7 +414,16 @@ def write(
         # -- gets no examiner either and makes no call it did not ask for, and
         # the acceptance gate goes on abstaining as it did before phase 2.
         if examiner is None:
-            examiner = ResponsesRuntimeExaminer(client, model=model)
+            # Sat several times and merged, because one sitting is not
+            # reproducible: examinations of the same design and the same prompt
+            # left 5, 5, 5 and 6 of its seven mechanics unchecked, and four of
+            # twenty examinations across the five finished designs in
+            # `studio-projects/` asserted nothing usable at all -- the gate
+            # abstaining on a run it had watched. The passes run concurrently,
+            # so what this costs the write is one examination's wait and four
+            # examinations' tokens, next to nothing beside the five
+            # program-writing attempts it guards.
+            examiner = RepeatedExaminer(ResponsesRuntimeExaminer(client, model=model))
     return service.write_program(project, directory, writer, on_progress=say, examiner=examiner)
 
 

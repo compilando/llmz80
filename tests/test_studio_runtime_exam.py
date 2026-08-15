@@ -10,9 +10,11 @@ from __future__ import annotations
 
 from typing import Any, get_args
 
+from llmz80.core.state_contract import STATE_TITLE
 from llmz80.studio.acceptance import (
     AT_LEAST,
     AT_MOST,
+    CHANGED,
     COMPARISONS,
     EQUALS,
     runtime_examination,
@@ -21,9 +23,11 @@ from llmz80.studio.acceptance import (
 from llmz80.studio.models import GameProject, TargetPlatform
 from llmz80.studio.observation import observation_script
 from llmz80.studio.runtime_exam import (
+    RepeatedExaminer,
     RuntimeAssertion,
     RuntimeExam,
     UncheckableMechanic,
+    merge_exams,
     usable_assertions,
 )
 from llmz80.studio.samples import blank_project
@@ -211,13 +215,16 @@ def test_a_symbol_that_was_expected_and_never_read_fails_its_step():
     assert mismatches == ["g_state: expected exactly 1, read nothing"]
 
 
-def test_the_gate_abstains_when_the_examiner_finds_nothing_it_can_check():
+def test_the_gate_abstains_when_neither_the_examiner_nor_the_design_offers_anything():
     """An examination that asserts nothing is not an examination that passed.
     Reading it as a pass is what let a program that draws one glyph and quits
-    on a keypress be accepted on its first attempt."""
+    on a keypress be accepted on its first attempt. Nothing is derivable here
+    either: this run never read `g_state`, so not even the title claim can be
+    made."""
+    stateless = [(step, {"g_score": read["g_score"]}) for step, read in FROG_READINGS]
     report = _service().acceptance_report(
         _project("Ganas al llegar a la meta."),
-        _runtime(FROG_READINGS),
+        _runtime(stateless),
         ScriptedExaminer(
             _exam(unverifiable=[UncheckableMechanic(mechanic=1, why="nobody reaches the goal")])
         ),
@@ -226,6 +233,32 @@ def test_the_gate_abstains_when_the_examiner_finds_nothing_it_can_check():
     assert report["quality_pass"] is None
     assert report["observed"] is False
     assert report["reason"] == "the examiner found nothing this run could check"
+
+
+def test_an_examiner_that_finds_nothing_still_leaves_the_title_claim_behind():
+    """Three examinations in twenty of the five finished designs came back with
+    no usable assertion at all, and the gate abstained on a run it had watched.
+    The one claim two press-and-release cycles of the action key always prove
+    is derived rather than asked for, so the run is judged even then."""
+    report = _service().acceptance_report(
+        _project("Ganas al llegar a la meta."),
+        _runtime(FROG_READINGS),
+        ScriptedExaminer(
+            _exam(unverifiable=[UncheckableMechanic(mechanic=1, why="nobody reaches the goal")])
+        ),
+    )
+
+    assert report["quality_pass"] is True
+    judged = {step["id"]: step for step in report["scenarios"]}
+    assert judged["hold_action_b"]["expect"]["g_state"] == {
+        "compare": CHANGED,
+        "value": STATE_TITLE,
+        "why": judged["hold_action_b"]["expect"]["g_state"]["why"],
+    }
+    # Still nobody's mechanic: which sentence a symbol witnesses is a reading
+    # of prose, and a derivation that guessed it would be the hardcoded gate
+    # coming back through the door this module closed.
+    assert report["unchecked_mechanics"] == ["Ganas al llegar a la meta."]
 
 
 def test_an_examiner_that_breaks_leaves_the_gate_abstaining():
@@ -324,6 +357,156 @@ def test_the_examiner_is_offered_the_designs_own_symbols_in_the_designs_own_word
     assert "g_dug: celdas de tierra excavadas; solo sube (declared by this design)" in prompt
     assert "declared by this design" in prompt
     assert "g_score: current score" in prompt
+
+
+#: `studio-projects/minero-observable/build/emulator_report.json`, the first
+#: run in which a design's own observables were located and read: `g_dug`
+#: counts dirt cells removed and `g_bat_turns` the times a bat turned round,
+#: and the design's own words say each only ever rises.
+OBSERVABLE_MINER_READINGS: list[tuple[str, dict[str, int]]] = [
+    ("hold_action_a", {"g_bat_turns": 2, "g_dug": 0, "g_lives": 3, "g_score": 0, "g_state": 1}),
+    ("hold_action_b", {"g_bat_turns": 11, "g_dug": 0, "g_lives": 3, "g_score": 0, "g_state": 1}),
+    ("hold_left_a", {"g_bat_turns": 20, "g_dug": 0, "g_lives": 3, "g_score": 0, "g_state": 1}),
+    ("hold_right_a", {"g_bat_turns": 27, "g_dug": 6, "g_lives": 3, "g_score": 10, "g_state": 1}),
+    ("hold_up_a", {"g_bat_turns": 35, "g_dug": 15, "g_lives": 3, "g_score": 15, "g_state": 1}),
+    ("hold_down_a", {"g_bat_turns": 45, "g_dug": 21, "g_lives": 2, "g_score": 24, "g_state": 1}),
+    ("hold_left_b", {"g_bat_turns": 54, "g_dug": 28, "g_lives": 2, "g_score": 28, "g_state": 1}),
+    ("hold_right_b", {"g_bat_turns": 62, "g_dug": 37, "g_lives": 2, "g_score": 41, "g_state": 3}),
+    ("hold_up_b", {"g_bat_turns": 64, "g_dug": 41, "g_lives": 2, "g_score": 91, "g_state": 3}),
+    ("hold_down_b", {"g_bat_turns": 64, "g_dug": 41, "g_lives": 2, "g_score": 91, "g_state": 3}),
+    ("idle", {"g_bat_turns": 64, "g_dug": 41, "g_lives": 2, "g_score": 91, "g_state": 3}),
+]
+
+
+def _digger(*mechanics: str) -> GameProject:
+    """`minero-observable`'s design, down to the sentence it wrote for `g_dug`."""
+    document = _project(*mechanics).model_dump(mode="json")
+    document["observables"] = [
+        {
+            "symbol": "g_dug",
+            "width": 2,
+            "meaning": "celdas de tierra excavadas desde el comienzo de la partida; solo sube",
+        }
+    ]
+    return GameProject.model_validate(document)
+
+
+def _assertion(step: str, symbol: str, compare: str, mechanic: int = 0, **target: Any):
+    return RuntimeAssertion(
+        step=step, symbol=symbol, compare=compare, mechanic=mechanic, why="x", **target
+    )
+
+
+def test_a_claim_only_one_of_the_passes_made_is_still_kept_by_the_merge():
+    """The union is the whole mechanism. Four examinations of one design left
+    5, 5, 5 and 6 of its seven mechanics unchecked, so the pass that found a
+    rule must not be outvoted by the two that did not think of it."""
+    merged = merge_exams(
+        [
+            _exam(_assertion("hold_down_a", "g_score", AT_LEAST, 3, baseline="hold_left_a")),
+            _exam(),
+            _exam(_assertion("hold_action_b", "g_lives", AT_MOST, 4, baseline="hold_action_a")),
+        ]
+    )
+
+    assert {(a.symbol, a.mechanic) for a in merged.assertions} == {("g_score", 3), ("g_lives", 4)}
+
+
+def test_a_literal_number_about_a_counter_is_judged_only_when_two_passes_agree_on_it():
+    """The union multiplies the chance of a single pass's bad claim being
+    judged, and the one shape that can fail a correct program is a guess about
+    how far the run got: `g_score at_least 1` fails the frog, whose score
+    correctly never moves because nobody can walk it to the far kerb. A claim
+    about `g_state` is not that shape -- its four values are the four screens
+    -- and it is the claim this blind run is best at, so it stands alone."""
+    lonely = _assertion("hold_left_a", "g_score", AT_LEAST, 1, value=1)
+    shared = _assertion("hold_action_a", "g_state", EQUALS, 2, value=1)
+
+    merged = merge_exams([_exam(lonely, shared), _exam(shared), _exam()])
+
+    assert [(a.symbol, a.value) for a in merged.assertions] == [("g_state", 1)]
+
+
+def test_a_counter_the_design_says_only_rises_is_asserted_without_asking_a_model():
+    """`minero-observable` declares `g_dug` "solo sube" in its own words, which
+    is a checkable claim the design has already made. Deriving it stops the
+    coverage of a design's own observables depending on whether the examiner
+    remembered the paragraph telling it to say so."""
+    report = _service().acceptance_report(
+        _digger("Cavar tierra la convierte en suelo."),
+        _runtime(OBSERVABLE_MINER_READINGS),
+        ScriptedExaminer(_exam()),
+    )
+
+    judged = {step["id"]: step for step in report["scenarios"]}
+    assert judged["hold_action_b"]["expect"]["g_dug"]["compare"] == AT_LEAST
+    assert judged["hold_action_b"]["expect"]["g_dug"]["baseline"] == "hold_action_a"
+    assert report["quality_pass"] is True
+
+
+def test_the_examiners_attribution_survives_a_derived_claim_that_says_the_same_thing():
+    """Both the examiner and the derivation assert that `g_dug` has not fallen
+    between the first two steps, but only the examiner can say which of the
+    design's sentences that witnesses. Keeping the derived copy instead would
+    take `minero-observable` from two of its seven mechanics checked back to
+    none -- the coverage this whole change exists to hold steady."""
+    digging = "Moverse contra la tierra la excava y la convierte en suelo."
+    report = _service().acceptance_report(
+        _digger(digging),
+        _runtime(OBSERVABLE_MINER_READINGS),
+        ScriptedExaminer(
+            _exam(_assertion("hold_action_b", "g_dug", AT_LEAST, 1, baseline="hold_action_a"))
+        ),
+    )
+
+    assert report["unchecked_mechanics"] == []
+    assert report["quality_pass"] is True
+
+
+def test_a_pass_that_declines_a_mechanic_it_also_asserted_loses_only_the_attribution():
+    """`fase-uno-cpc`'s first examination declared a mechanic unverifiable and
+    bound an assertion to it in the same answer, and the honest reading of a
+    contradiction is the one claiming less. Across separate sittings there is
+    no contradiction to resolve, so the pass that had no such doubt still
+    attributes the claim -- and the claim itself is judged either way."""
+    contradicted = _exam(
+        _assertion("hold_action_a", "g_state", EQUALS, 1, value=1),
+        unverifiable=[UncheckableMechanic(mechanic=1, why="nothing reads where the explorer is")],
+    )
+    confident = _exam(_assertion("hold_action_b", "g_state", EQUALS, 1, value=1))
+
+    alone = merge_exams([contradicted, contradicted])
+    together = merge_exams([contradicted, confident])
+
+    assert [a.mechanic for a in alone.assertions] == [0]
+    assert [item.mechanic for item in alone.unverifiable] == [1]
+    assert sorted(a.mechanic for a in together.assertions) == [0, 1]
+    assert together.unverifiable == []
+
+
+def test_one_pass_surviving_is_enough_and_none_surviving_leaves_the_gate_abstaining():
+    """A model having a bad day must cost an unobserved run rather than the
+    write attempt it was called from, and that promise cannot be weakened by
+    asking it three times: two failures out of three still leave an exam."""
+
+    class Flaky:
+        def __init__(self, answers):
+            self.answers = list(answers)
+
+        def examine(self, project, steps, symbols):
+            answer = self.answers.pop()
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+    good = _exam(_assertion("hold_action_a", "g_state", EQUALS, 1, value=1))
+    survived = RepeatedExaminer(Flaky([RuntimeError("no"), good, RuntimeError("no")]), passes=3)
+    doomed = RepeatedExaminer(Flaky([RuntimeError("every pass failed")] * 2), passes=2)
+
+    assert survived.examine(_project(), observation_script(_project()), ["g_state"]) == good
+    examination = runtime_examination(_project("Algo."), doomed, symbols=["g_state"])
+    assert examination.asserted is False
+    assert "every pass failed" in examination.reasons[0]
 
 
 def test_the_step_menu_names_a_step_by_the_id_an_assertion_must_use():

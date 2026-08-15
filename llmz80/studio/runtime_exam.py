@@ -23,19 +23,40 @@ makes no such claim is reported as unchecked, and that list is the honest
 measure of how much of the design nobody verified -- `services.acceptance_report`
 publishes it for exactly that reason.
 
+What it says varies, and that was the third thing wrong with this gate. Four
+examinations of one design, same prompt, left 5, 5, 5 and 6 of its seven
+mechanics unchecked; across the five finished designs in `studio-projects/`,
+four examinations in twenty produced no usable assertion at all and the gate
+abstained on a run it had watched. It never over-claimed -- no correct game
+was ever failed -- so what was wrong was the floor, not the ceiling. Two
+things raise it, and neither touches the prompt, which has been iterated
+twice already:
+
+  * `RepeatedExaminer` sits the same exam four times concurrently and
+    `merge_exams` reads the answers as one. A design where two rules are
+    checkable now gets them checked whenever *any* pass finds them, instead
+    of when the one pass that ran happened to.
+  * `derived_assertions` states the two claims that follow from the design
+    without asking anybody: that a program which has had its action key
+    pressed and released twice is no longer on its title screen, and that a
+    counter the design's own words describe as only ever rising has not
+    fallen between the first two steps.
+
 The examiner is injected and defaults to `None` everywhere, so tests and
 offline runs make no API call and the gate goes on abstaining.
 """
 
 from __future__ import annotations
 
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-from llmz80.core.state_contract import SYMBOLS_BY_NAME
+from llmz80.core.state_contract import STATE_TITLE, SYMBOLS_BY_NAME
 
-from .models import GameProject
+from .models import HOLD_ACTION, GameProject
 
 
 class RuntimeAssertion(BaseModel):
@@ -372,6 +393,278 @@ def usable_assertions(
             continue
         kept.append(assertion)
     return kept, discarded
+
+
+#: Phrases in an observable's own `meaning` that say the count only ever
+#: rises. Matched against the design's sentence in either language Studio
+#: writes designs in, because `minero-observable` says "solo sube" and the
+#: prompt above says "only ever rises" -- the two halves of the same claim.
+#:
+#: Deliberately whole phrases rather than words like "total" or "acumulado":
+#: a false positive here is an assertion nobody authored being judged against
+#: a program that was right to reset its counter, which is the one outcome
+#: this whole module is built to avoid. A phrase this list misses costs
+#: nothing but the derivation -- the examiner is still asked the same
+#: question and still free to say it.
+ONLY_RISES = (
+    "solo sube",
+    "sólo sube",
+    "solo aumenta",
+    "sólo aumenta",
+    "nunca baja",
+    "nunca decrece",
+    "no decrece",
+    "only rises",
+    "only goes up",
+    "only increases",
+    "never decreases",
+    "never falls",
+    "never goes down",
+    "monotonic",
+)
+
+
+def _only_rises(meaning: str) -> bool:
+    return any(phrase in meaning.casefold() for phrase in ONLY_RISES)
+
+
+def derived_assertions(
+    project: GameProject, steps: list[dict[str, Any]], symbols: list[str]
+) -> list[RuntimeAssertion]:
+    """The claims that follow from the design and need no model at all.
+
+    Both of these were already in the prompt as instructions, and instructions
+    are what the examiner keeps declining to follow reproducibly: over four
+    examinations of each of the five finished designs, the title claim appeared
+    in some sittings and not others, and four of those twenty examinations
+    produced no usable assertion whatsoever -- the gate abstained on a run it
+    had watched. Nine further sittings per design said the same: eighteen of
+    the forty-five asserted nothing. A claim that can be derived should not be bought again every
+    time at a price that includes forgetting it.
+
+    Both carry `mechanic=0`, so neither improves the coverage count on its
+    own. That is not modesty for its own sake: which of the design's sentences
+    a symbol witnesses is a reading of prose, the one part of this the model
+    is genuinely better at, and a derivation that guessed it would be the
+    hardcoded gate returning by the back door. What these buy is the floor --
+    the gate is awake, and the design's own counters are watched, on every run
+    rather than on most of them.
+
+    The title claim is `changed 0` rather than `equals 1` for the same reason
+    the module prefers a bound to an exact value: "the program is no longer on
+    its title screen" is what two press-and-release cycles of the action key
+    prove, and a game that has already been won in two seconds is a different
+    complaint. It is bound to the last action step, and only when the design
+    binds an action key at all -- with only directions declared, nothing has
+    pressed the key a title screen waits for, and every finished game in
+    `studio-projects/` leaves its title on exactly that key
+    (`INPUT_ACTION`/`INPUT_JUMP`, held by `observation_script`'s action steps).
+    """
+    derived: list[RuntimeAssertion] = []
+    action_steps = [step for step in steps if step.get("hold") == HOLD_ACTION]
+    if action_steps and "g_state" in symbols:
+        derived.append(
+            RuntimeAssertion(
+                step=action_steps[-1]["id"],
+                symbol="g_state",
+                compare="changed",
+                value=STATE_TITLE,
+                mechanic=0,
+                why=(
+                    "the action key has been pressed and released twice by now, so a "
+                    "program still showing its title screen never started at all"
+                ),
+            )
+        )
+    if len(steps) >= 2:
+        for observable in project.observables:
+            if observable.symbol in symbols and _only_rises(observable.meaning):
+                derived.append(
+                    RuntimeAssertion(
+                        step=steps[1]["id"],
+                        symbol=observable.symbol,
+                        compare="at_least",
+                        baseline=steps[0]["id"],
+                        mechanic=0,
+                        why=(
+                            f"the design says {observable.symbol} only rises, and these "
+                            "are the two earliest steps of the run, before anything can "
+                            "have ended the game and zeroed it"
+                        ),
+                    )
+                )
+    return derived
+
+
+def _shape(assertion: RuntimeAssertion) -> tuple[Any, ...]:
+    """What makes two assertions the same claim. `mechanic` and `why` are left
+    out: they are what the claim is *for*, not what it says, and two passes
+    that make the same claim for different reasons must not both be judged."""
+    return (
+        assertion.step,
+        assertion.symbol,
+        assertion.compare,
+        assertion.value,
+        assertion.baseline,
+    )
+
+
+def dedupe(assertions: list[RuntimeAssertion]) -> list[RuntimeAssertion]:
+    """One assertion per distinct claim, preferring the one that names a mechanic.
+
+    The preference is the whole reason this is not a plain `set`. A derived
+    assertion carries `mechanic=0` and an examiner's identical one carries the
+    number of the rule it witnesses; keeping the derived one would silently
+    delete that design's coverage -- `minero-observable`'s two declared
+    observables are asserted by both, and dropping the examiner's attribution
+    would take it from 2 of 7 mechanics checked back to 0.
+    """
+    kept: dict[tuple[Any, ...], RuntimeAssertion] = {}
+    for assertion in assertions:
+        seen = kept.get(_shape(assertion))
+        if seen is None or (seen.mechanic == 0 and assertion.mechanic != 0):
+            kept[_shape(assertion)] = assertion
+    return list(kept.values())
+
+
+def _predicts_a_reading(assertion: RuntimeAssertion) -> bool:
+    """Whether this claim is a guess about how far the program got.
+
+    A comparison against a literal number on anything but `g_state` is one: it
+    says the score, the count of dug cells or the objectives left will have
+    reached some particular number by some particular step, and nobody is
+    playing. `g_state` is exempt because its four values are the four screens
+    a game can be showing rather than a distance travelled, and
+    `usable_assertions` already confines a claim about it to the steps before
+    the first direction is held.
+
+    Everything else compares one reading of this run against another reading
+    of the same run -- "it did not fall", "it did not change" -- which
+    predicts a direction rather than an outcome.
+    """
+    return assertion.baseline is None and assertion.symbol != "g_state"
+
+
+def merge_exams(exams: list[RuntimeExam]) -> RuntimeExam:
+    """Several sittings of the same exam, read as one.
+
+    The union, not the intersection, and the reason is the measurement that
+    prompted this: four examinations of the same design and the same prompt
+    left 5, 5, 5 and 6 of its seven mechanics unchecked, and four of twenty
+    examinations across the five finished designs asserted nothing at all. The
+    worst sitting is what a single call is, and a design where two rules are
+    checkable should have them checked every time rather than sometimes.
+
+    Union is safe here because every assertion is filtered afterwards by
+    `usable_assertions` and because of what these assertions are: a comparison
+    against another reading of the same run cannot be made true or false by
+    how far a player got. The one shape that can is a literal number about a
+    counter, and that is the shape three finished games were rejected over, so
+    it is the one shape that must be *agreed* -- two passes have to make the
+    same claim before it is judged. That is stricter than the single call it
+    replaces, where one pass saying `g_score at_least 1` was enough to fail a
+    frog whose score correctly never moved.
+
+    A mechanic a pass declared unverifiable loses that pass's attribution --
+    the contradiction rule `runtime_examination` applies, moved here so it is
+    applied per sitting -- but the assertion itself is kept and still judged,
+    and another pass that had no such doubt may still attribute it. Only a
+    mechanic *every* pass declined is reported as unverifiable, because
+    between separate sittings there is no contradiction to resolve, only two
+    opinions, and the union of opinions is the mechanism.
+    """
+    honest: list[list[RuntimeAssertion]] = []
+    for exam in exams:
+        declined = {item.mechanic for item in exam.unverifiable}
+        honest.append(
+            [
+                (
+                    assertion.model_copy(update={"mechanic": 0})
+                    if assertion.mechanic in declined
+                    else assertion
+                )
+                for assertion in exam.assertions
+            ]
+        )
+    votes: Counter[tuple[Any, ...]] = Counter()
+    for assertions in honest:
+        votes.update({_shape(a) for a in assertions if _predicts_a_reading(a)})
+    merged = [
+        assertion
+        for assertions in honest
+        for assertion in assertions
+        if not _predicts_a_reading(assertion) or votes[_shape(assertion)] > 1
+    ]
+    unanimous: set[int] = (
+        set.intersection(*({item.mechanic for item in exam.unverifiable} for exam in exams))
+        if exams
+        else set()
+    )
+    reasons: dict[int, UncheckableMechanic] = {}
+    for exam in exams:
+        for item in exam.unverifiable:
+            if item.mechanic in unanimous:
+                reasons.setdefault(item.mechanic, item)
+    return RuntimeExam(assertions=dedupe(merged), unverifiable=list(reasons.values()))
+
+
+#: How many times one design is examined before its answers are merged.
+#:
+#: Four is measured, not chosen. Nine sittings were recorded for each of the
+#: five finished designs in `studio-projects/` and every subset of them scored
+#: offline against the same recorded readings, so that a change in the merge
+#: could not be read as a change in the model's mood. For
+#: `minero-observable` -- the design whose coverage prompted this, two of its
+#: seven mechanics checked on a good day -- three sittings in nine checked
+#: nothing at all. Of the 126 four-subsets of those nine, every single one
+#: checks both mechanics; of the 84 three-subsets, one does not. Two sittings
+#: still leave three in thirty-six checking nothing.
+#:
+#: A fifth pass was scored too and buys nothing there; it lifts the two
+#: designs that declare no observables of their own from 44% to 55% of runs
+#: finding their one thin `g_state` attribution, which is a checkbox better
+#: won by declaring an observable than by paying for another opinion.
+EXAMINATION_PASSES = 4
+
+
+class RepeatedExaminer:
+    """Sits one examiner's exam several times and merges the answers.
+
+    A wrapper rather than a loop inside `runtime_examination` so that what
+    calls the API decides how often, and every offline caller -- every test,
+    every injected fake -- goes on getting exactly one call to exactly one
+    examiner.
+
+    The passes run concurrently: this sits inside `write_program`'s attempt
+    loop, where the alternative is three sequential reasoning calls added to
+    the wait before a line of C is written. A pass that raises is dropped and
+    the rest are merged; only when every pass fails does this raise, so
+    `runtime_examination` goes on treating a model having a bad day as no
+    examiner at all rather than as a failed program.
+    """
+
+    def __init__(self, examiner: RuntimeExaminer, passes: int = EXAMINATION_PASSES) -> None:
+        self.examiner = examiner
+        self.passes = max(1, passes)
+
+    def examine(
+        self, project: GameProject, steps: list[dict[str, Any]], symbols: list[str]
+    ) -> RuntimeExam:
+        exams: list[RuntimeExam] = []
+        failures: list[Exception] = []
+        with ThreadPoolExecutor(max_workers=self.passes) as pool:
+            futures = [
+                pool.submit(self.examiner.examine, project, steps, symbols)
+                for _ in range(self.passes)
+            ]
+            for future in futures:
+                try:
+                    exams.append(future.result())
+                except Exception as exc:  # noqa: BLE001 -- see docstring
+                    failures.append(exc)
+        if not exams:
+            raise failures[0]
+        return merge_exams(exams)
 
 
 class ResponsesRuntimeExaminer:

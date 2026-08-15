@@ -33,6 +33,8 @@ from .runtime_exam import (
     RuntimeExam,
     RuntimeExaminer,
     UncheckableMechanic,
+    dedupe,
+    derived_assertions,
     examinable_symbols,
     usable_assertions,
 )
@@ -224,6 +226,20 @@ def runtime_examination(
         exam: RuntimeExam = examiner.examine(project, steps, available)
     except Exception as exc:  # noqa: BLE001 -- see docstring
         return RuntimeExamination(reasons=[f"the examiner failed and was ignored: {exc}"])
+    # The claims nobody had to be asked for, added to whatever was answered.
+    # They go through `usable_assertions` beside the examiner's own, because a
+    # derivation is not exempt from the rules that make an assertion judgeable
+    # -- and they go in *after* the examiner's, so that `dedupe` keeps the
+    # attribution the examiner gave a claim they both make (see its docstring:
+    # keeping the derived copy would cost `minero-observable` both its checked
+    # mechanics). Only when an examiner ran at all: without one this function
+    # returned nothing before now, the gate abstained, and turning that
+    # abstention into a judged run is a decision for whoever supplies an
+    # examiner, not a side effect of this module learning to derive.
+    exam = RuntimeExam(
+        assertions=dedupe(exam.assertions + derived_assertions(project, steps, available)),
+        unverifiable=exam.unverifiable,
+    )
     kept, discarded = usable_assertions(exam, steps, available)
     by_step: dict[str, dict[str, Any]] = {}
     for assertion in kept:
