@@ -57,7 +57,7 @@ from llm_z80 import resolve_cpct_path
 from llmz80.quality.emulator_smoke import smoke_test
 from llmz80.studio import compiler as compiler_module
 from llmz80.studio.models import AssetSpec, TargetPlatform
-from llmz80.core.state_contract import REQUIRED_SYMBOLS, required_declarations
+from llmz80.core.state_contract import SYMBOLS_BY_NAME, REQUIRED_SYMBOLS, required_declarations
 from llmz80.studio.services import StudioService
 from llmz80.studio.spriting import pack_spectrum
 
@@ -98,7 +98,15 @@ BACKGROUND_BYTE = 0xAA
 #: added to it does not break these seven real-toolchain tests with a linker
 #: diagnostic that points at the toolchain instead of at the stale fixture.
 CONTRACT_STATE = required_declarations()
-CONTRACT_INIT = "".join(f"    {name} = 0;\n" for name in REQUIRED_SYMBOLS)
+#: Assignments for the symbols this fixture defines, which is not every
+#: required one: the platform library defines and keeps `g_worst_frame_cost`
+#: itself, so a program that assigns it would be writing over the library's
+#: own measurement even where the linker allowed the definition.
+CONTRACT_INIT = "".join(
+    f"    {name} = 0;\n"
+    for name in REQUIRED_SYMBOLS
+    if not SYMBOLS_BY_NAME[name].provided_by_library
+)
 
 
 def _sprite_image() -> Image.Image:

@@ -119,8 +119,18 @@ def required_declarations() -> str:
     written out by hand in different test modules; adding a fourth required
     symbol would have broken them with a linker diagnostic pointing at the
     toolchain rather than at the stale fixture.
+
+    A symbol the platform library defines is left out: a program defining it
+    too gets `duplicate definition` from the linker, which is exactly the
+    diagnostic-pointing-at-the-toolchain this function exists to prevent. That
+    is not hypothetical either -- moving `g_worst_frame_cost` into the library
+    broke every fixture built from this list until the filter was added.
     """
-    return "".join(f"{_ctype(SYMBOLS_BY_NAME[name])} {name};\n" for name in REQUIRED_SYMBOLS)
+    return "".join(
+        f"{_ctype(SYMBOLS_BY_NAME[name])} {name};\n"
+        for name in REQUIRED_SYMBOLS
+        if not SYMBOLS_BY_NAME[name].provided_by_library
+    )
 
 
 def contract_prompt() -> str:
