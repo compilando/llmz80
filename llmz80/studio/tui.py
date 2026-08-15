@@ -182,7 +182,21 @@ class StudioViewer(App[None]):
 
         Cheap enough to run twice a second: two `stat` calls, the tail of one
         file, and a YAML parse only when `game.yml` has actually been written.
+
+        A tick that lands after the app has stopped draws nothing. The
+        interval `on_mount` starts outlives the widgets it writes into: when
+        the app comes down -- `q`, Ctrl-C, or a test leaving `run_test` --
+        Textual clears `is_running` first and takes the screen's children away
+        afterwards, and a `poll` in between reaches `query_one("#stage-line")`
+        and raises `NoMatches` out of the timer, which stops the app on an
+        error rather than on somebody's say-so. Measured at the moment of that
+        crash, `is_running` was already false every time, which is what makes
+        it the guard rather than a `try`/`except NoMatches`: catching the query
+        would hide the same tick still reading the disk and updating
+        `status_text` for a screen nobody can see.
         """
+        if not self.is_running:
+            return
         directory = self._watched()
         if directory != self.project_dir:
             self._follow(directory)
