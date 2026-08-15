@@ -252,9 +252,17 @@ second action step -- and that is worth asserting, because a program that
 ends its game on a keypress, or that never leaves its title screen at all, is
 precisely what this run can catch and what it was built to catch.
 
+`at_least 0` on a counter is not a claim about anything, and neither is
+`at_most 3` on a symbol whose four values are the only ones there are. Do not
+spend an assertion on either: an assertion no program can fail is the same as
+no assertion, and this gate reports how much of the design nobody checked.
+
 Prefer a bound to an exact value, and an early step to a late one. Give each
 assertion the number of the mechanic it comes from, or 0 if it comes from the
-meaning of the symbol itself rather than from any mechanic.
+meaning of the symbol itself rather than from any mechanic. A mechanic you
+bind an assertion to must not also appear in `unverifiable`: the two answers
+contradict each other, the honest reading is the one claiming less, and a
+rule this run witnesses part of is reported as unchecked when you say both.
 
 THE SYMBOLS THIS PROGRAM EXPOSES. These, and nothing else, will be read:
 
@@ -263,13 +271,25 @@ THE SYMBOLS THIS PROGRAM EXPOSES. These, and nothing else, will be read:
 Any symbol above marked "declared by this design" is this design's own
 vocabulary, and the meaning shown is the sentence the design wrote for it.
 The design declared it precisely so that one of its own rules could be
-witnessed from outside, which the fixed contract symbols cannot do -- so
-those are the symbols to reach for when a mechanic below looks uncheckable,
-and an assertion bound to one is worth more than another claim about
-g_score. What a design's own symbol counts is only what its own sentence
-says: it is subject to every hazard above, so bound it rather than
-predicting an exact value, and say it is unverifiable when this blind run
-cannot make the rule happen at all.
+witnessed from outside, which the six fixed contract symbols cannot do.
+
+Use them. For every symbol declared by this design whose stated meaning says
+it only ever rises -- a count of things that have happened -- assert that it
+is `at_least` its own reading at an earlier step, `baseline` and `step` both
+among the earliest steps of the script, and give that assertion the number of
+the mechanic the count belongs to. Do this even though the run cannot force
+the counted event to happen: the claim is not that it rose, it is that it did
+not fall, and it holds for every correct program while the game is still in
+the same play. It is the strongest claim about a design's own rule that this
+blind run can carry, and a program that resets that counter every frame,
+decrements it, or wires it to nothing at all fails it -- none of which any
+contract symbol could catch.
+
+What such a symbol counts is only what its own sentence says. Bound it, never
+predict an exact value, keep away from the late steps where a finished game
+may have restarted and zeroed its counters, and say plainly in `unverifiable`
+whichever part of the rule this run cannot witness -- but not the rule itself,
+if you bound an assertion to it.
 
 THE STEPS, in the order they run. Name one in `step` or `baseline` by its
 id exactly as written here -- `hold_action_a`, not a number and not a
