@@ -285,6 +285,38 @@ async def test_no_key_changes_anything_it_is_watching(tmp_path: Path):
         } == before
 
 
+@pytest.mark.asyncio
+async def test_a_poll_that_lands_while_the_screen_is_coming_down_draws_nothing(
+    tmp_path: Path,
+):
+    """The interval outlives the widgets it draws into.
+
+    Shutting down -- `q`, Ctrl-C, or a test leaving `run_test` -- clears
+    `is_running` first and takes the screen's children away afterwards, and a
+    tick in between used to reach `query_one("#stage-line")` and raise
+    `NoMatches` out of the timer. That is the app stopping on an error rather
+    than on somebody's say-so, and the reason `test_no_key_changes_anything_it
+    _is_watching` above can lose `assert app.is_running` in a loaded suite and
+    win it on its own: at half a second the window is only as wide as the
+    shutdown, and it takes a busy machine to land in it.
+
+    A thousandth of a second is the same window opened wide enough to hit
+    every time -- without the guard this failed 25 runs out of 25 -- and the
+    poll interval is injectable for exactly this sort of reason.
+    """
+    directory = _project(tmp_path)
+    Journal.for_project(directory).write("OPEN", "made game.yml")
+
+    app = StudioViewer(tmp_path, poll_seconds=0.001)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("enter")
+        assert app.is_running
+
+    # Leaving the context is the shutdown, and it must come back quietly:
+    # `run_test` re-raises whatever the timer raised while it was closing.
+    assert not app.is_running
+
+
 # --- playing what the run produced -----------------------------------------
 
 

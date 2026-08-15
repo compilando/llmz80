@@ -395,7 +395,24 @@ def test_cpc_blitter_visibly_draws_where_the_control_build_does_not(tmp_path: Pa
     # control's flat cleared screen -- not merely differ by some incidental
     # emulator artifact.
     assert sprite_after_boot["sha256"] != control_after_boot["sha256"]
-    assert control_after_boot["dominant_fraction"] > 0.98
+    # This reading is bimodal, and 0.98 sits in the empty gap between its two
+    # modes rather than being a tolerance around one of them. Measured over 18
+    # runs of this same command: every run whose program actually got as far
+    # as `plat_clear` read exactly 1.0 -- a genuinely flat screen has one
+    # colour and no spread to allow for -- and every run whose program never
+    # ran read 0.950 to 0.972, because the screen was still Caprice32's BASIC
+    # text with `Bad command` on it after the autotyped `run"program.bin"`
+    # arrived corrupted (see `emulator_smoke._run_caprice32` on the host
+    # gamepad). So a failure here does not mean the ceiling is too tight; it
+    # means the emulated machine never ran the program, and the comparison
+    # below is about to be between two BASIC screens. Lowering the number to
+    # accept 0.95 would make this test pass without either build having drawn
+    # anything, which is the one outcome it exists to rule out.
+    assert control_after_boot["dominant_fraction"] > 0.98, (
+        f"the control screen is not flat ({control_after_boot['dominant_fraction']}), so the "
+        f"program never ran and nothing below is comparing drawn screens: "
+        f"{control_after_boot['path']}"
+    )
     assert sprite_after_boot["non_dominant_pixels"] > control_after_boot["non_dominant_pixels"] + 30
 
 

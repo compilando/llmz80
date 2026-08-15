@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from llmz80 import cli
 from llmz80.studio import pipeline
 from llmz80.studio.models import TargetPlatform
 from llmz80.studio.planner import ProjectChange, ProjectProposal
@@ -254,6 +255,39 @@ def test_adapt_without_a_dossier_says_so(opened):
 
     with pytest.raises(ValueError, match="no researched game"):
         pipeline.adapt(service, project, directory, _FakeDesigner())
+
+
+def test_adapt_refuses_before_it_announces_that_it_is_about_to_spend_money(opened, monkeypatch):
+    """`adapt` says "this calls the OpenAI API" and builds the client, and it
+    used to do both before finding out there was nothing to adapt to. No call
+    was ever made -- the guard was one line further down -- but a user who is
+    told money is about to go out and is then handed an error has no way to
+    know that, and reads it as a charge that failed.
+
+    `research` already gets this order right and its docstring says why, so
+    the fix is to match it: settle the question first, build the client after.
+    Both refusals are checked, because both used to come too late.
+    """
+    service, project, directory = opened
+    unidentified = GameReference(identified=False, confidence="low")
+
+    for state, archive in (("absent", False), ("unidentified", True)):
+        if archive:
+            save_reference(unidentified, directory)
+        built: list[str] = []
+        said: list[str] = []
+
+        def _refuse_to_be_built():
+            built.append("client")
+            raise AssertionError("the OpenAI client was built before the guard fired")
+
+        monkeypatch.setattr(cli, "_openai_client_and_model", _refuse_to_be_built)
+
+        with pytest.raises(ValueError, match="no researched game"):
+            pipeline.adapt(service, project, directory, say=said.append)
+
+        assert built == [], state
+        assert said == [], state
 
 
 # --- sprites ---------------------------------------------------------------

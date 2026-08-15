@@ -185,7 +185,17 @@ def adapt(
     `apply_proposal`, and `game.yml`'s previous revision is kept by
     `ProjectStore.save` as it is for every save -- so nothing is lost, it is
     only unreviewed.
+
+    Whether there is a game to adapt to at all is settled before the OpenAI
+    client is built, for the same reason `research` puts its `confirm`
+    question first: this stage announces "this calls the OpenAI API" out loud,
+    and a project with no dossier used to hear that and then get an error --
+    no call was ever made, but being told money was about to go out and then
+    handed a failure reads as a charge that went wrong. The check is
+    `service.identified_reference` rather than a copy of its two conditions,
+    so the message `cli.py` matches on has one home.
     """
+    dossier = service.identified_reference(directory, dossier)
     if designer is None:
         from ..cli import _openai_client_and_model
         from .design_exam import ResponsesDesignExaminer
