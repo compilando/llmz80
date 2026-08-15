@@ -86,9 +86,19 @@ void plat_border(unsigned char colour) {
  * 5 Hz loop animate, emulator_smoke's visual_change only catches a frozen
  * screen, and no person watches this pipeline at all.
  *
- * The residual blind spot, stated exactly: a single slow iteration bracketed by
- * fast ones reports zero. A stutter that never repeats is invisible here, and
- * nothing else in the pipeline sees it either. That is a gap, not a backstop.
+ * The residual blind spot is wider than "one stutter goes unseen", and it is
+ * not only stutters that never repeat. `resyncing` is cleared by any in-band
+ * iteration, so what is forgiven is every out-of-band gap that has an in-band
+ * one before it -- and a loop that overruns out of band on alternating
+ * iterations always does. Such a loop never reports worse than its fast
+ * iterations cost -- zero, while those keep pace -- however long it runs and
+ * however badly the others drag: the gap says "the loop was not running", the
+ * fast iteration after it says "carry on", and nothing between them remembers
+ * that this is the tenth time. Two out-of-band iterations in a row are the
+ * only thing that is ever reported. Nothing else in the pipeline sees the difference
+ * either. That is a gap, not a backstop; closing it needs a counter of gaps
+ * rather than a flag, and this library has no room to spare for one it has
+ * not yet seen a program need.
  *
  * resources/studio_reference/spectrum/src/engine.c already carries this idea as
  * frame_cost_primed, with the same diagnosis in its comment -- "the first

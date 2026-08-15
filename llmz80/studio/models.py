@@ -69,8 +69,13 @@ MAX_BINDINGS = 8
 #: The vocabulary a scripted step's `hold` may state, and the only thing that
 #: says whether the player was moving while the emulator read memory.
 #: `observation.observation_script` writes it and `feel.animation_report`
-#: reads it, so it lives here rather than in either of them: a copy in each
-#: drifted apart once already, and drift means a moving step judged as though
+#: reads it, so it lives here rather than in either of them. The two copies
+#: never disagreed about the four words; what rotted was the prose around
+#: them. `feel.py`'s docstring sent the reader to a `ScenarioHold` in this
+#: module, a class deleted before this branch began, so the one written
+#: explanation of what a hold means pointed at nothing -- and a vocabulary
+#: two modules must agree on is worth no more than the sentence that says
+#: what agreeing on it buys, which is a moving step never judged as though
 #: the player stood still. A design coins its own binding names (`jump`,
 #: `fire`, `pump`), so a name outside `HOLD_DIRECTIONS` says nothing about
 #: movement and is held as `HOLD_ACTION`, which the gate leaves out of its

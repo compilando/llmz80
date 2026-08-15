@@ -23,9 +23,13 @@ def export_release(project: GameProject, directory: Path, destination: Path | No
     # `quality.verification_level` for why None is not True and which incident
     # proved it. A release is a claim about a program someone watched run, so
     # the claim is checked here, at the last door out, rather than trusted to
-    # whoever assembled the reports. Until the observation script lands this
-    # closes the door entirely: a door that opens for nothing beats one that
-    # opens for anything.
+    # whoever assembled the reports. The door is passable: `observation.py`
+    # gives the emulator steps to drive, and studio-projects/fase-uno reaches
+    # `observed` on its animation gate. What it stays shut against is a game
+    # whose every witness abstained -- which today means a program that never
+    # declared `g_anim_frame`, since `acceptance` and `state_probe` cannot
+    # approve anything until the phase 2 examiner derives what a design should
+    # do. `quality.WITNESS_GATES` says why that asymmetry is deliberate.
     if quality.get("verification") != VERIFICATION_OBSERVED:
         raise RuntimeError(
             f"studio_quality_report.json records verification "

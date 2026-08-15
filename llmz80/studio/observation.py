@@ -77,9 +77,14 @@ def observation_script(project: GameProject) -> list[dict[str, Any]]:
     satisfy, and `generator.py` feeds it to `repair_prompt` and burns an
     attempt on it.
 
-    Empty for any target the harness cannot drive. `_run_caprice32` ignores
-    its `script` argument entirely, so a CPC script would promise readings
-    that never arrive and make every gate look broken rather than absent.
+    Empty for any target the harness cannot drive. `emulator_smoke.smoke_test`
+    hands its `script` to `_run_zesarux` and to nothing else: the CPC branch
+    calls `_run_caprice32(adapter, artifact, output_dir, source, seconds)`,
+    which has no `script` parameter to be given one. It presses a single key
+    guessed from the sources and reads no memory at all, so a CPC script would
+    promise readings that never arrive and make every gate look broken rather
+    than absent.
+
     Empty, too, when no binding is named for a direction: `hold` comes from
     the name the *design* coined, and a design that calls them `izquierda` and
     `saltar` -- the default project language is Spanish -- yields only action
