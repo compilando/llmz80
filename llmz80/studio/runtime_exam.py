@@ -152,9 +152,19 @@ def _symbol_menu(project: GameProject, symbols: list[str]) -> str:
 
 
 def _step_menu(steps: list[dict[str, Any]]) -> str:
+    """The run, one step per line, each named by the id an assertion must use.
+
+    Unnumbered, and that is the whole point. The menu used to number the steps
+    `1. hold_action_a`, and the first examination of a design that declared
+    its own observables came back naming every step `"1. hold_action_a"` --
+    the menu line, not the id. `usable_assertions` discarded all five
+    assertions as naming steps that do not run, so a design with two working
+    observables in memory was judged by nothing at all and the gate abstained.
+    Numbering a list whose items are identifiers invites exactly that, and the
+    order is already stated by the sentence that introduces it.
+    """
     return "\n".join(
-        f"  {number}. {step['id']} -- holds {step['hold']} for {step['frames']} frames"
-        for number, step in enumerate(steps, start=1)
+        f"  {step['id']} -- holds {step['hold']} for {step['frames']} frames" for step in steps
     )
 
 
@@ -261,7 +271,9 @@ says: it is subject to every hazard above, so bound it rather than
 predicting an exact value, and say it is unverifiable when this blind run
 cannot make the rule happen at all.
 
-THE STEPS, in the order they run:
+THE STEPS, in the order they run. Name one in `step` or `baseline` by its
+id exactly as written here -- `hold_action_a`, not a number and not a
+description:
 
 {_step_menu(steps)}
 

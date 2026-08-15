@@ -168,13 +168,17 @@ def test_a_sprites_frame_count_of_one_reads_as_singular():
     assert "1 frames" not in prompt
 
 
-def test_the_design_prompt_shows_observables():
+def test_the_design_prompt_makes_an_observable_the_programs_obligation():
+    """game_state.h declares a design's observables `extern` and nothing else
+    in this prompt ever said who defines them, which reads as "Studio provides
+    these". A program that leaves one undefined now fails its build."""
     project = blank_project("State", TargetPlatform.SPECTRUM)
     document = project.model_dump(mode="json")
     document["observables"] = [{"symbol": "g_keys", "meaning": "keys collected so far"}]
     prompt = design_prompt(GameProject.model_validate(document))
 
-    assert "g_keys: keys collected so far" in prompt
+    assert "unsigned char g_keys;  keys collected so far" in prompt
+    assert "your program must define it exactly once at file scope" in prompt
 
 
 def test_the_design_prompt_shows_audio_effects():

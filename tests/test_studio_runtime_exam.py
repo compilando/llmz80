@@ -324,3 +324,17 @@ def test_the_examiner_is_offered_the_designs_own_symbols_in_the_designs_own_word
     assert "g_dug: celdas de tierra excavadas; solo sube (declared by this design)" in prompt
     assert "declared by this design" in prompt
     assert "g_score: current score" in prompt
+
+
+def test_the_step_menu_names_a_step_by_the_id_an_assertion_must_use():
+    """The menu used to number its lines, and the first examination of a design
+    with observables of its own answered with `step="1. hold_action_a"` for
+    every assertion it made. All five were discarded as naming steps that do
+    not run, and a program whose two declared observables were being read
+    correctly out of memory was judged by nothing at all."""
+    from llmz80.studio.runtime_exam import _step_menu
+
+    lines = _step_menu(observation_script(_project())).splitlines()
+
+    assert lines[0].strip().startswith("hold_action_a --")
+    assert not any(line.strip()[0].isdigit() for line in lines)

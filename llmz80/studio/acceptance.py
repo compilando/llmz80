@@ -340,9 +340,22 @@ def design_prompt(project: GameProject) -> str:
     lines.append("")
 
     if project.observables:
-        lines.append("Extra state this design exposes, declared in game_state.h:")
+        # Said as an obligation, not as an inventory. game_state.h declares
+        # these `extern` and nothing else in this prompt told the writer it
+        # had to define them, so the sentence a writer could reasonably read
+        # as "Studio provides these" is now the one that says the opposite --
+        # and a program that leaves one undefined no longer links quietly:
+        # `probes.contract_failures` fails the build on it, exactly as it does
+        # for a missing required contract symbol.
+        lines.append(
+            "Extra state this design declares. game_state.h declares each of these "
+            "extern; your program must define it exactly once at file scope and keep "
+            "it accurate as the rule it names happens, because it is read straight "
+            "out of memory to check that rule:"
+        )
         for observable in project.observables:
-            lines.append(f"  {observable.symbol}: {observable.meaning}")
+            ctype = "unsigned int" if observable.width == 2 else "unsigned char"
+            lines.append(f"  {ctype} {observable.symbol};  {observable.meaning}")
         lines.append("")
 
     # blitter_sprites(), not project.assets: only what it returns gets a real
