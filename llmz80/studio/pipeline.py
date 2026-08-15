@@ -159,6 +159,79 @@ def research(
     return service.research_reference(project, directory, researcher)
 
 
+def draft(
+    service: StudioService,
+    project: GameProject,
+    directory: Path,
+    drafter: Any = None,
+    dossier: GameReference | None = None,
+    *,
+    say: Say = _quiet,
+    confirm: Ask | None = None,
+) -> GameProject:
+    """Decide what this game is, and save what the draft came to.
+
+    The stage nothing used to do. `adapt` dresses a design whose identity its
+    own prompt forbids it to touch, and `samples.blank_project` has no
+    authority over anything, so a brief reached the writer as one actor, two
+    tiles and no rules -- which is `studio-projects/zampabolas` and
+    `studio-projects/my-retro-game`, both written from designs that stated
+    nothing.
+
+    A design that does not want drafting is an ordinary outcome, not a
+    failure: the project comes back untouched and `say` gets the reason.
+    `needs_drafting` is asked before anything at all is built, for the reason
+    `research`'s docstring gives about putting the question before the money
+    -- this stage announces "this calls the OpenAI API" out loud, and a design
+    that already states its rules must never hear it. The reason is worded
+    here while the decision stays in `needs_drafting`, so there is still one
+    place that decides and one that phrases.
+
+    The dossier is read when it is not handed over, and drafting goes ahead
+    without one: that is the whole point of the stage sitting after research
+    rather than depending on it, and it is what unblocks a brief whose game
+    nobody recognised. A dossier that is archived and unreadable is a
+    different matter and stops the stage as `Unreadable`, exactly as it does
+    in `research` -- drafting past a dossier somebody paid for because a line
+    of YAML is malformed would spend a second call to ignore the first.
+
+    `confirm` is handed the diff and decides whether it is applied, as in
+    `adapt`, and for the same reason it is safe to go ahead without one.
+    """
+    from .drafting import draft_and_apply, needs_drafting
+    from .planner import proposal_diff
+
+    if not needs_drafting(project):
+        say(
+            "nothing to draft: "
+            + (
+                "this design already states what it does"
+                if project.mechanics
+                else "this design carries no brief to draft from"
+            )
+        )
+        return project
+    if dossier is None:
+        try:
+            dossier = service.reference(directory)
+        except ValueError as exc:
+            raise Unreadable(str(exc)) from exc
+    if drafter is None:
+        from ..cli import _openai_client_and_model
+        from .drafting import ResponsesDesignDrafter
+
+        client, model = _openai_client_and_model()
+        say(f"drafting the design with {model}; this calls the OpenAI API")
+        drafter = ResponsesDesignDrafter(client, model=model)
+    drafted = draft_and_apply(project, drafter, dossier)
+    for number, reason in enumerate(drafted.refusals, start=1):
+        say(f"Attempt {number} was refused, repairing: {reason}")
+    if confirm is not None and not confirm(proposal_diff(drafted.proposal)):
+        raise Declined("the design was left undrafted")
+    service.save_project(drafted.project, directory)
+    return drafted.project
+
+
 def adapt(
     service: StudioService,
     project: GameProject,

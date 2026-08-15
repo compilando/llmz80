@@ -216,6 +216,150 @@ def test_an_unreadable_archive_is_told_apart_from_an_absent_one(opened):
     assert researcher.calls == 0
 
 
+# --- draft -----------------------------------------------------------------
+
+
+class _FakeDrafter:
+    """States the rules its brief asks for, recording what it was handed."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.dossiers: list[GameReference | None] = []
+
+    def draft(self, project, dossier=None, feedback=None):
+        self.calls += 1
+        self.dossiers.append(dossier)
+        return ProjectProposal(
+            summary="state the rules",
+            changes=[
+                ProjectChange(
+                    path="/mechanics",
+                    operation="replace",
+                    reason="the brief says what this is",
+                    value_rows=[
+                        "el minero cava hacia abajo",
+                        "un murcielago le quita una vida",
+                    ],
+                )
+            ],
+        )
+
+
+def test_drafting_saves_what_it_came_to(tmp_path: Path):
+    service = StudioService.at(tmp_path)
+    project, directory = pipeline.create(
+        service, "Drafted", TargetPlatform.SPECTRUM, "un minero cava y esquiva murcielagos"
+    )
+
+    updated = pipeline.draft(service, project, directory, _FakeDrafter())
+
+    assert updated.mechanics[0] == "el minero cava hacia abajo"
+    assert service.open_project(directory).mechanics == updated.mechanics
+
+
+def test_drafting_hands_the_drafter_the_dossier_that_was_archived(tmp_path: Path):
+    """The stage runs after research precisely so a draft can read one. The
+    dossier is optional here where `adapt` requires it -- drafting from the
+    brief alone is the case that unblocks a game nobody recognised -- so both
+    are proved."""
+    service = StudioService.at(tmp_path)
+    project, directory = pipeline.create(
+        service, "Researched", TargetPlatform.SPECTRUM, "un minero cava y esquiva murcielagos"
+    )
+    save_reference(_dossier("Manic Miner"), directory)
+    drafter = _FakeDrafter()
+
+    pipeline.draft(service, project, directory, drafter)
+
+    assert drafter.dossiers[0] is not None
+    assert drafter.dossiers[0].title == "Manic Miner"
+
+    unresearched, elsewhere = pipeline.create(
+        service, "Alone", TargetPlatform.SPECTRUM, "un minero cava y esquiva murcielagos"
+    )
+    alone = _FakeDrafter()
+
+    pipeline.draft(service, unresearched, elsewhere, alone)
+
+    assert alone.dossiers == [None]
+
+
+def test_drafting_a_design_that_already_states_its_rules_changes_nothing(tmp_path: Path):
+    """`needs_drafting` is asked before the drafter is used, so a design that
+    is already somebody's costs nothing and is left exactly as it was."""
+    service = StudioService.at(tmp_path)
+    project, directory = pipeline.create(
+        service, "Stated", TargetPlatform.SPECTRUM, "un minero cava y esquiva murcielagos"
+    )
+    project = project.model_copy(update={"mechanics": ["ya lo dice"]})
+    service.save_project(project, directory)
+    said: list[str] = []
+
+    class NeverCalled:
+        def draft(self, project, dossier=None, feedback=None):
+            raise AssertionError("the drafter must not be asked")
+
+    updated = pipeline.draft(service, project, directory, NeverCalled(), say=said.append)
+
+    assert updated.mechanics == ["ya lo dice"]
+    assert any("already states" in line for line in said)
+
+
+def test_drafting_shows_the_diff_before_saving_anything(tmp_path: Path):
+    service = StudioService.at(tmp_path)
+    project, directory = pipeline.create(
+        service, "Reviewed", TargetPlatform.SPECTRUM, "un minero cava y esquiva murcielagos"
+    )
+    before = (directory / "game.yml").read_text(encoding="utf-8")
+    shown: list[str] = []
+
+    def refuse(diff: str) -> bool:
+        shown.append(diff)
+        return False
+
+    with pytest.raises(pipeline.Declined):
+        pipeline.draft(service, project, directory, _FakeDrafter(), confirm=refuse)
+
+    assert shown and "mechanics" in shown[0]
+    assert (directory / "game.yml").read_text(encoding="utf-8") == before
+
+
+def test_drafting_settles_whether_it_is_wanted_before_it_spends_anything(
+    tmp_path: Path, monkeypatch
+):
+    """The same order `research` and `adapt` both keep, and for the same
+    reason: this stage says "this calls the OpenAI API" out loud, so a design
+    that does not want drafting must never hear it. Proved by making the
+    client's own constructor an error -- if the guard ever moves below it, the
+    test fails rather than quietly costing somebody a call.
+
+    Both halves of `needs_drafting` are checked, because either one arriving
+    late would spend the same money: a design that already states its rules,
+    and one nobody wrote a brief for.
+    """
+    service = StudioService.at(tmp_path)
+    stated, stated_directory = pipeline.create(
+        service, "Stated", TargetPlatform.SPECTRUM, "un minero cava y esquiva murcielagos"
+    )
+    stated = stated.model_copy(update={"mechanics": ["ya lo dice"]})
+    service.save_project(stated, stated_directory)
+    briefless, briefless_directory = pipeline.create(service, "Briefless", TargetPlatform.SPECTRUM)
+
+    def _refuse_to_be_built():
+        raise AssertionError("the OpenAI client was built before the guard fired")
+
+    monkeypatch.setattr(cli, "_openai_client_and_model", _refuse_to_be_built)
+
+    for project, directory, state in (
+        (stated, stated_directory, "stated"),
+        (briefless, briefless_directory, "briefless"),
+    ):
+        said: list[str] = []
+
+        assert pipeline.draft(service, project, directory, say=said.append) is project, state
+        assert not any("OpenAI" in line for line in said), state
+
+
 # --- adapt -----------------------------------------------------------------
 
 

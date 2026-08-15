@@ -194,3 +194,74 @@ def test_a_draft_the_document_refuses_is_repaired_rather_than_abandoned(blank):
     assert len(result.refusals) == 1
     assert "entities" in result.refusals[0]
     assert "REFUSED" in (drafter.feedback_seen[1] or "")
+
+
+class _FakeResponses:
+    def __init__(self, parsed):
+        self.parsed = parsed
+        self.calls = []
+
+    def parse(self, **kwargs):
+        self.calls.append(kwargs)
+        return type("Response", (), {"output_parsed": self.parsed})()
+
+
+class _FakeClient:
+    def __init__(self, parsed):
+        self.responses = _FakeResponses(parsed)
+
+
+def test_the_request_carries_the_brief_the_design_and_what_kinds_of_game_exist(blank):
+    from llmz80.studio.drafting import DRAFT_SYSTEM_PROMPT, ResponsesDesignDrafter
+
+    client = _FakeClient(_mechanics("el avión dispara misiles"))
+
+    ResponsesDesignDrafter(client).draft(blank)
+
+    sent = client.responses.calls[0]["input"]
+    assert sent[0]["content"] == DRAFT_SYSTEM_PROMPT
+    assert "avión de combate" in sent[1]["content"]
+    assert "Mechanics: none stated" in sent[1]["content"]
+    assert "KINDS OF GAME THAT EXIST" in sent[1]["content"]
+
+
+def test_a_rejected_draft_is_sent_back_with_what_rejected_it(blank):
+    """Without this the repair loop would ask the same question three times
+    and pay for the same answer three times."""
+    from llmz80.studio.drafting import ResponsesDesignDrafter
+
+    client = _FakeClient(_mechanics("el avión dispara misiles"))
+
+    ResponsesDesignDrafter(client).draft(blank, None, "THE DRAFT APPLIED BUT ...")
+
+    assert "THE DRAFT APPLIED BUT ..." in client.responses.calls[0]["input"][1]["content"]
+
+
+def test_a_project_with_no_brief_is_not_drafted_from_even_here(blank):
+    """`needs_drafting` already keeps the stage from calling this, so reaching
+    it means a caller went round the stage -- and inventing the brief is the
+    one thing this pipeline must not do, whichever door it is asked through."""
+    from llmz80.studio.drafting import ResponsesDesignDrafter
+
+    briefless = blank.model_copy(
+        update={"metadata": blank.metadata.model_copy(update={"brief": ""})}
+    )
+    client = _FakeClient(_mechanics("lo que sea"))
+
+    with pytest.raises(ValueError, match="no brief"):
+        ResponsesDesignDrafter(client).draft(briefless)
+
+    assert client.responses.calls == []
+
+
+def test_a_call_that_returns_nothing_parsed_is_not_silently_accepted(blank):
+    """The API contract allows a response with no structured output; a draft
+    must not hand that back as if it were a design."""
+    from llmz80.studio.drafting import ResponsesDesignDrafter
+
+    client = _FakeClient(None)
+
+    with pytest.raises(ValueError, match="did not return a structured project proposal"):
+        ResponsesDesignDrafter(client).draft(blank)
+
+    assert len(client.responses.calls) == 1

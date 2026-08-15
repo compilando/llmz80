@@ -23,13 +23,14 @@ transactional validation of `apply_proposal` without writing any of them.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from .design_exam import design_summary
 from .models import GameProject
 from .planner import AppliedProposal, ProjectProposal, propose_apply_repair
 from .quality import design_quality_report, design_refusals
 from .reference import GameReference
+from .typologies import typology_hints
 
 #: Everything the drafter is told. It is the mirror image of
 #: `reference_design.DESIGN_SYSTEM_PROMPT`: that one is warned off the fields
@@ -168,6 +169,55 @@ def drafting_prompt(project: GameProject, dossier: GameReference | None) -> str:
             "brief already asked for, and nothing else.\n\n" + dossier.model_dump_json(indent=2)
         )
     return "\n\n".join(sections)
+
+
+class ResponsesDesignDrafter:
+    """Drafts a design through the OpenAI Responses API.
+
+    The same shape as `reference_design.ResponsesReferenceDesigner`, including
+    the guard it opens with: that one refuses to adapt to a game nobody
+    identified, and this one refuses to draft from a brief nobody wrote. Both
+    are the one input their stage cannot invent, and both are refused here as
+    well as in `needs_drafting` -- the stage's guard is what keeps the call
+    from being made, and this one is what keeps a caller that reached past the
+    stage from getting a design out of nothing.
+
+    `typology_hints` travels with the request rather than inside
+    `drafting_prompt`, for two reasons: it is what `ResponsesReferenceDesigner`
+    does with the same block, and it reads `resources/genres.yml` off disk --
+    a prompt builder that touches the filesystem is one a test cannot call
+    without one.
+    """
+
+    def __init__(self, client: Any, model: str = "gpt-5") -> None:
+        self.client = client
+        self.model = model
+
+    def draft(
+        self,
+        project: GameProject,
+        dossier: GameReference | None = None,
+        feedback: str | None = None,
+    ) -> ProjectProposal:
+        if not project.metadata.brief.strip():
+            raise ValueError(
+                "this project carries no brief, so there is nothing to draft a design from"
+            )
+        content = "\n\n".join([typology_hints(), drafting_prompt(project, dossier)])
+        if feedback:
+            content += "\n\nYOUR PREVIOUS DRAFT WAS REJECTED\n\n" + feedback
+        response = self.client.responses.parse(
+            model=self.model,
+            input=[
+                {"role": "system", "content": DRAFT_SYSTEM_PROMPT},
+                {"role": "user", "content": content},
+            ],
+            text_format=ProjectProposal,
+        )
+        parsed = response.output_parsed
+        if parsed is None:
+            raise ValueError("the model did not return a structured project proposal")
+        return parsed
 
 
 class DraftRefused(ValueError):
