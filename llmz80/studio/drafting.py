@@ -91,9 +91,21 @@ the number means, and the program is then required to define it and a gate
 reads it out of memory.
 
   * Declare one only where it makes a rule you have just written checkable
-    from outside. A count of what has happened -- cells dug, cars wrapped,
-    bats turned round, enemies asleep -- is worth far more than a copy of
-    something already on screen.
+    from outside. The test is whether somebody who cannot see the screen
+    could predict how the number behaves: "cells dug rises while a direction
+    is held, and never falls" witnesses "digging happens by moving", and a
+    symbol nobody can predict the behaviour of witnesses nothing. A count of
+    what has happened -- cells dug, cars wrapped, bats turned round, enemies
+    woken -- is worth far more than a copy of something already on screen.
+  * Say which way the number moves, in the `meaning` itself, whenever it is
+    true. "veces que un murcielago ha dado la vuelta; solo sube" can be
+    judged on any run: a reading is compared with an earlier reading of the
+    same run and the direction either held or it did not. A free-form
+    description can only be judged by guessing how far the run got, and
+    nobody is playing -- the harness holds one key down at a time -- so those
+    guesses are thrown away. Only claim it of a number that really never
+    falls: a counter the program resets between lives or screens must not say
+    it only rises, and a flag that goes up and down must say so plainly.
   * Never declare one for something the six fixed symbols already carry: no
     observable for the score, the state, lives, the level, objectives
     remaining or the high score. Such a design is refused outright.
@@ -104,7 +116,16 @@ reads it out of memory.
     which way it moves.
   * Declaring none is a perfectly good answer. Two or three is plenty; a
     design that declares one per rule is inventing bookkeeping the game does
-    not need.
+    not need, and a symbol invented to satisfy this paragraph is worse than
+    no symbol at all.
+
+Say what you decided, in `observability`. Whatever you conclude, that field
+carries it: name the rules you made checkable and the symbol that witnesses
+each, and for the rules you left uncheckable say why no number the program
+keeps could witness them. "None: every rule here is about where things are
+on the screen, and none of them leaves a count behind" is a complete and
+acceptable answer. Deciding to declare none is allowed; not having asked the
+question is not, and a draft that leaves the field empty is sent back.
 
 Out of bounds. Never propose a change to any of these:
   * /schema_version, /metadata/slug, /target/platform and /acceptance are
@@ -327,6 +348,53 @@ def coherence_feedback(gaps: list[str]) -> str:
     )
 
 
+def observability_feedback() -> str:
+    """Ask a draft that declared no observables to say why it declared none.
+
+    The rule this serves is deliberately *not* "every design must declare an
+    observable". A design may honestly have none, and a gate that demanded one
+    would be answered with a symbol invented to satisfy it -- the failure this
+    apparatus keeps rediscovering. Nothing downstream can tell such a symbol
+    from a real one: `structure._reference_errors` refuses only an observable
+    that reuses a contract symbol's name, and a `g_pasos` nobody can predict
+    compiles, is located in the map and is read out of memory exactly like
+    `g_dug`. What is demanded here is the answer to the question, which is why
+    the feedback below offers both outcomes and asks for one sentence either
+    way.
+
+    The measurement that motivates it: over four sittings of the phase-2 exam
+    across the finished designs in `studio-projects/`, `minero-observable` --
+    the one design that declared observables, `g_dug` and `g_bat_turns`,
+    unprompted -- was the only one whose own mechanics were checked at all
+    (2 of 7). Every other design was judged on `g_state` alone however many
+    times the examiner was asked, because the six contract symbols cannot
+    witness digging, patrolling or wrapping. The supply of observables, not
+    the chain that reads them, is what caps that coverage.
+
+    No model call and no verdict on the prose. Judging whether the sentence is
+    a *good* reason would be a second examiner, worse than the two this stage
+    already runs, and it would fail exactly the design whose honest answer is
+    the short one.
+    """
+    return "\n".join(
+        [
+            "THE DRAFT APPLIED BUT NOTHING SAYS WHETHER THIS GAME CAN BE WATCHED",
+            "",
+            "  it declares no observables and `observability` is empty, so nothing "
+            "records whether a rule of this design could be made checkable from "
+            "outside or whether none could.",
+            "",
+            "Propose again, keeping the design you have just written. Either add "
+            "one or two observables under `/observables/-` for rules a number the "
+            "program keeps could witness -- a count of what has happened, whose "
+            "`meaning` says which way it moves -- or declare none and write in "
+            "`observability` which rules you considered and why no number could "
+            "witness them. Declaring none is an acceptable answer; do not invent a "
+            "symbol to fill this in.",
+        ]
+    )
+
+
 def _coherence_gaps(project: GameProject, examiner: DesignCoherenceExaminer | None) -> list[str]:
     """What the examiner says this design assumes and never declares, or
     nothing.
@@ -385,11 +453,34 @@ def draft_and_apply(
     drafter wrote them, so the design certified itself. Feeding the gaps back
     is what makes the finding buy another attempt rather than a refusal.
 
+    The third acceptance test is the observability nudge, and it is the only
+    one here that gives up rather than insisting. See `observability_feedback`
+    for what it asks and why it does not ask for a symbol; what belongs here
+    is why it fires at most once per draft. A design may legitimately declare
+    no observables, so a drafter that keeps leaving the field empty is not
+    producing a bad design -- and spending this stage's whole attempt budget
+    on a missing sentence would cost a correct game its draft, the exact shape
+    of false failure this apparatus was rebuilt to prevent. One prompt, then
+    the design stands on the two gates that really can refuse it.
+
     Raises `DraftRefused` once attempts run out, carrying what the design was
     still missing.
     """
+    # The proposal, not only the design it produced, because the observability
+    # note lives on the proposal and `propose_apply_repair`'s `review` is
+    # handed the candidate project alone. Capturing it here keeps that
+    # signature -- shared with the adaptation stage, which has no such note --
+    # unchanged for the stage that does not need it.
+    drafted: list[ProjectProposal] = []
+    nudged = False
+
+    def propose(feedback: str | None) -> ProjectProposal:
+        proposal = drafter.draft(project, dossier, feedback)
+        drafted.append(proposal)
+        return proposal
 
     def review(updated: GameProject) -> tuple[str, str] | None:
+        nonlocal nudged
         refusals = design_refusals(design_quality_report(updated))
         if refusals:
             return (
@@ -408,11 +499,29 @@ def draft_and_apply(
                 + "; ".join(gaps),
                 coherence_feedback(gaps),
             )
+        # Asked last, never twice, and never on the last attempt left. A
+        # design with observables has answered the question by declaring them;
+        # one with neither observables nor a word about why is the only case
+        # this sends back -- and it is sent back only while there is an
+        # attempt to spare, so this nudge can never be the refusal that ends
+        # the stage.
+        if (
+            not nudged
+            and len(drafted) < attempts
+            and not updated.observables
+            and not drafted[-1].observability.strip()
+        ):
+            nudged = True
+            return (
+                "the draft applied but says nothing about whether any of its rules "
+                "could be watched from outside",
+                observability_feedback(),
+            )
         return None
 
     return propose_apply_repair(
         project,
-        lambda feedback: drafter.draft(project, dossier, feedback),
+        propose,
         review,
         attempts=attempts,
         refusal=DraftRefused,

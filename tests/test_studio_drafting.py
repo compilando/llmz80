@@ -40,6 +40,11 @@ class ScriptedDrafter:
 
 
 def _mechanics(*sentences: str) -> ProjectProposal:
+    """A draft that states its rules and has answered the observability
+    question, which is what every accepted draft looks like: one that declares
+    no observables and says nothing about why is sent back once, so a helper
+    that left the note empty would put a repair into every test that uses
+    it."""
     return ProjectProposal(
         summary="state what the game does",
         changes=[
@@ -51,6 +56,8 @@ def _mechanics(*sentences: str) -> ProjectProposal:
             )
         ],
         risks=[],
+        observability="none: these rules are about where things are on screen, "
+        "and none of them leaves a count behind",
     )
 
 
@@ -136,6 +143,47 @@ def test_a_drafter_that_never_states_anything_is_refused_with_what_it_kept_missi
 
     with pytest.raises(DraftRefused, match="mechanics"):
         draft_and_apply(blank, drafter, attempts=2)
+
+
+def _mechanics_without_the_observability_note(*sentences: str) -> ProjectProposal:
+    """The draft this nudge exists for: rules stated, observables none, and
+    nothing recorded about whether any rule could be watched from outside."""
+    proposal = _mechanics(*sentences)
+    return proposal.model_copy(update={"observability": ""})
+
+
+def test_a_draft_that_never_considered_whether_this_game_can_be_watched_is_asked_once(blank):
+    """Declaring no observables is a legitimate answer, so the second draft is
+    accepted with none -- what the nudge buys is that the question was asked.
+    Demanding a symbol instead would be answered with one invented to satisfy
+    the gate, which is why `minero-observable`'s two useful observables and
+    `una-rana-que-cruza-una`'s missing car are different problems."""
+    drafter = ScriptedDrafter(
+        _mechanics_without_the_observability_note("el avión dispara misiles hacia delante"),
+        _mechanics("el avión dispara misiles hacia delante"),
+    )
+
+    result = draft_and_apply(blank, drafter, attempts=3)
+
+    assert result.project.observables == []
+    assert len(result.refusals) == 1
+    assert "watched from outside" in result.refusals[0]
+    assert "/observables/-" in (drafter.feedback_seen[1] or "")
+
+
+def test_the_observability_nudge_never_spends_the_last_attempt_a_draft_has(blank):
+    """A drafter that keeps leaving the note empty has still written a design
+    the two real gates accept, and losing it over a missing sentence would
+    cost a correct game its draft -- the false failure this stage is built to
+    avoid. With one attempt the question is not even asked."""
+    drafter = ScriptedDrafter(
+        _mechanics_without_the_observability_note("el avión dispara misiles hacia delante")
+    )
+
+    result = draft_and_apply(blank, drafter, attempts=1)
+
+    assert result.project.mechanics == ["el avión dispara misiles hacia delante"]
+    assert result.refusals == []
 
 
 def test_a_draft_that_adds_the_cast_the_brief_asks_for_is_applied(blank):

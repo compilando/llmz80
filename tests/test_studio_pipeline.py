@@ -242,6 +242,11 @@ class _FakeDrafter:
                     ],
                 )
             ],
+            # The note every real draft carries now: `draft_and_apply` sends a
+            # draft that declares no observables and says nothing about why
+            # back for one more attempt, so a fake that stayed silent would
+            # make every stage test here cost two drafts instead of one.
+            observability="none: nothing this design does leaves a count behind",
         )
 
 

@@ -165,6 +165,23 @@ class ProjectProposal(BaseModel):
     changes: list[ProjectChange] = Field(max_length=20)
     risks: list[str] = Field(default_factory=list, max_length=10)
     acceptance_updates: list[str] = Field(default_factory=list, max_length=10)
+    #: Which of this design's own rules the proposal made checkable from
+    #: outside, and why the rest were left uncheckable.
+    #:
+    #: On the proposal rather than in `game.yml`, because it is a sentence
+    #: about a decision, not part of the design: a person reading the finished
+    #: document should find the observables, not the deliberation that chose
+    #: them. It is here rather than folded into `summary` because `drafting`
+    #: reads it as a gate -- a draft that declares no observables and says
+    #: nothing about why is sent back once -- and a gate cannot find its
+    #: subject inside a free-form paragraph about everything else.
+    #:
+    #: Defaulted, so the two other producers of a `ProjectProposal` -- the
+    #: designer adapting to a dossier, and the TUI's ad-hoc planner -- are not
+    #: made to answer a question nobody asked them; strict structured output
+    #: still puts the field in front of every one of them, which is the point
+    #: for the one that is asked.
+    observability: str = Field(default="", max_length=600)
 
 
 class ResponsesProjectPlanner:
@@ -213,6 +230,13 @@ def proposal_diff(proposal: ProjectProposal) -> str:
     for change in proposal.changes:
         value = "" if change.operation == "remove" else f" = {change.value!r}"
         lines.append(f"{change.operation.upper():7} {change.path}{value}\n         {change.reason}")
+    if proposal.observability.strip():
+        # Shown to whoever approves the diff, because "this design declares no
+        # observables and here is why" is a decision a person may disagree
+        # with, and the changes list cannot show a symbol that was considered
+        # and not declared.
+        lines.append("OBSERVABILITY")
+        lines.append(proposal.observability.strip())
     if proposal.risks:
         lines.append("RISKS")
         lines.extend(f"- {risk}" for risk in proposal.risks)
