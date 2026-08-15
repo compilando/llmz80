@@ -4,9 +4,10 @@ The pipeline had a hole where this stage now is. `adapt` dresses a design in a
 researched game's clothes and says so in its own prompt -- what the game *is*
 is "settled and not yours to change" -- and `samples.blank_project` is one
 actor, two tiles and no mechanics, with a docstring saying it has no
-authority. Between the two, nobody ever decided what the game was: both v4
-projects in this repository reached the writer with `mechanics: []`, one of
-them from a dossier that had correctly identified *Harrier Attack!*.
+authority. Between the two, nobody ever decided what the game was:
+`studio-projects/zampabolas` and `studio-projects/my-retro-game` both reached
+the writer with `mechanics: []`, the second of them from a dossier that had
+correctly identified *Harrier Attack!* from eight cited sources.
 
 Drafting decides what the game is; adaptation decides what it looks like.
 Keeping them apart is what leaves `adapt`'s prompt intact, and it is why this
@@ -74,16 +75,24 @@ one row, cell or spawn at a time:
 Each change carries its value in exactly one of those value_* fields --
 never more than one, and none at all for a remove.
 
-Out of bounds, and refused if you try:
-  * /budgets -- the machine imposes those, not the design.
-  * /target, /schema_version, /metadata/slug and /acceptance -- protected.
-  * /metadata -- a person wrote the brief and the title; they are not yours
-    to edit, and the brief least of all.
+Out of bounds. Never propose a change to any of these:
+  * /schema_version, /metadata/slug, /target/platform and /acceptance are
+    protected and refused on apply; so is anything under /budgets, which the
+    machine imposes and the design does not get to raise.
+  * /metadata/title, /metadata/brief and the rest of /target are not refused
+    for you, and are still not yours. A person wrote the title and the brief
+    -- the brief is what this draft is measured against, so editing it would
+    be marking your own exam -- and the video mode and frame rate were
+    decided when the project was created.
 
 Rules:
   * Every id -- an entity's, a tile's -- is lower case, starts with a letter
     and holds only letters, digits and underscores: `caza_enemigo`, never
     `Caza Enemigo`.
+  * A binding's name follows that same rule, and the key it names must be one
+    the machine can read: a single letter or digit, or SPACE, ENTER, UP,
+    DOWN, LEFT or RIGHT. A design has at most eight bindings, and no two may
+    share a key.
   * A tile's `char` is one printable character, and no two tiles may share
     one. It is what the screen rows are written in.
   * A screen's terrain rows must all match its declared width and height
@@ -115,9 +124,10 @@ def needs_drafting(project: GameProject) -> bool:
     dossier's behalf, and refusing it there while doing it here would be a
     rule that only binds the stage that did not need it.
 
-    A design with neither is left alone by both halves at once, and that is
-    correct: `quality.design_notices` already tells whoever created it that
-    nothing says what the game does, and the remedy is a brief, not a draft.
+    A design with neither -- no brief and no mechanics -- is held back by the
+    first half alone, and that is right: `quality.design_notices` already
+    tells whoever created it that nothing says what the game does, and the
+    remedy for that is a brief, not a draft.
     """
     return bool(project.metadata.brief.strip()) and not project.mechanics
 
@@ -146,10 +156,11 @@ def drafting_prompt(project: GameProject, dossier: GameReference | None) -> str:
         "THE BRIEF\n\n" + project.metadata.brief.strip(),
         "WHAT THE DESIGN STATES TODAY\n\n" + _design_summary(project),
     ]
-    # An unidentified dossier is empty by its own contract -- `reference.py`
-    # refuses to let a researcher half-fill one -- so there is nothing in it
-    # to read, and showing a model a document of blank fields invites it to
-    # treat the blanks as facts.
+    # An unidentified dossier has nothing in it to read: `reference.py` tells
+    # the researcher to leave every other field at its default rather than
+    # describe a game it is not sure of. Nothing validates that, so this is
+    # not a guarantee -- it is a reason not to show a model a document of
+    # blank fields, which invites it to treat the blanks as facts.
     if dossier is not None and dossier.identified:
         sections.append(
             "A REAL GAME WAS RESEARCHED FOR THIS BRIEF\n\n"
