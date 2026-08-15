@@ -2191,3 +2191,41 @@ El detalle se escribirá cuando E1 exista, porque E1 va a cambiar los supuestos 
 **Consistencia de tipos.** `verification_level(runtime)` lee `BEHAVIOUR_GATES`, que nombra `pacing` y `attributes` antes de que las tareas 6 y 10 las conecten; `.get()` devuelve `None` y cuentan como abstención hasta entonces — deliberado, y por eso la tarea 1 no hay que tocarla después. `pacing_report` y `attribute_report` devuelven la misma forma que `animation_report` (`observed`/`failures`/`quality_pass` con `None` para abstención), que es lo que hace que la tarea 1 funcione sin cambios. `contract_failures` toma el dict de `write_probe_report`, no un `Path`. El `hold` que emite `observation_script` usa exactamente los valores que `feel._classify` reconoce (`none`, las cuatro direcciones, `action`).
 
 **Riesgos verificados dentro del propio plan, no diferidos:** la puerta de símbolos requeridos puede romper CPC (tarea 5, paso 5), el volcado ZRCP de 13 KB puede llegar truncado (tarea 9, paso 5), y el umbral de celdas invisibles se calibra contra los dos juegos existentes antes de fiarse de él (tarea 10, paso 5).
+
+---
+
+# Estado al cierre de la sesión del 2026-08-15
+
+## Horizonte 1: completo y fusionado
+
+Las doce tareas están en `main`. Criterio de cierre cumplido: `animation`, `pacing` y `attributes` observan y aprueban, y un proyecto llega a `verification: observed`.
+
+## Lo que se hizo además, y no estaba en el plan
+
+- **M10 — la etapa de redacción.** Plan propio: `docs/superpowers/plans/2026-08-15-redactar-el-diseno.md`. Cerró el hueco que este plan destapó: nadie convertía un brief en diseño.
+- **M7 — la biblioteca es dueña de `g_worst_frame_cost`**, y el juicio pasó de magnitud a **recurrencia** (`SLOW_RUN = 4`). Las dos reglas anteriores fallaban: el recorte por magnitud aprobaba todo programa a 5 Hz o menos, y la regla de «dos seguidas» tumbó cinco veces un programa correcto cuyo montaje de nivel contaba como segundo hueco.
+- **M9 — un solo `has_frame_clock(platform)`**, leído por `codegen` y por `pacing`.
+- **M1 — el examinador de fase 2** (`llmz80/studio/runtime_exam.py`). `acceptance` ya juzga. Predicados: `equals`, `at_least`, `at_most`, `changed`, `unchanged`, contra un literal o contra la lectura del mismo símbolo en un paso anterior.
+- **Observables declarados, de punta a punta.** El eslabón roto era `probes.py`: sólo buscaba símbolos del contrato en el mapa del linker, así que un observable del diseño nunca se localizaba ni se leía. Por eso el campo llevaba desde v4 sin usarse.
+- **El CPC se observa.** ZEsarUX lo emula (`--machine CPC6128`) y habla el mismo ZRCP, así que la segunda plataforma tiene sondas de memoria, entrada guionizada y puerta de animación. Primer juego de CPC en llegar a `observed` y publicarse.
+- **Dos flakes con causa**, no con umbral bajado: Caprice32 tenía abierto el gamepad USB del anfitrión y sus ejes tecleaban glifos en el prompt de BASIC; y el temporizador de refresco del TUI sobrevivía a los widgets en los que dibuja.
+
+## M8: resuelto a la baja
+
+`pacing` y `attributes` **no** promueven a `observed`. Sólo las puertas que presencian comportamiento (`acceptance`, `animation`, `state_probe`) certifican que alguien vio jugar. Consecuencia aceptada: un programa sin `g_anim_frame` no se puede publicar.
+
+## Lo que queda, reordenado por lo medido
+
+El examinador reveló la cifra que faltaba: **de 24 mecánicas en cuatro juegos, comprobaba 0**. Con observables declarados, ese diseño pasó a 2/7. El cuello de botella ya no son las puertas — es cuánto expone el programa y cuánto puede dirigir el guion.
+
+| | Qué | Por qué |
+|---|---|---|
+| **Fiabilidad del examinador** | Cuatro exámenes del mismo diseño dieron 5/7, 5/7, 5/7 y 6/7 sin comprobar. Nunca afirmó de más, pero la ganancia no es reproducible | Es el eslabón inmediato: la infraestructura ya está |
+| **M2 — agente jugador** | Sin ejecución dirigida nadie lleva la rana a la meta. El guion actual barre teclas a ciegas | Lo que hace comprobables las condiciones de victoria |
+| **M6 — testigo de movimiento** | La puerta de animación juzga teclas, no movimiento. Hoy lo tapa una heurística | Ya no es urgente: los observables permiten al diseño declarar su propio testigo |
+| **E3 — motor con DSL** | Donde la LLM deja de escribir C | El premio de la vía de motores |
+| **E1/E2** | `EnginePack` enrutando el build | Menos urgente: CPCtelera ya se usa como biblioteca y el CPC ya se observa |
+| Reloj de frames en CPC | Daría `pacing` en la segunda plataforma | `has_frame_clock` ya está cableado para notarlo |
+| `attributes` para CPC | Otro formato de pantalla | Hoy se abstiene honestamente |
+
+**Sueltos con causa conocida:** `pipeline.test` no construye examinador, así que los observables sólo llegan a la puerta dentro de `write` o `make`; `_cpc_input` busca teclas en ficheros que los proyectos Studio no usan; 372 MB de framebuffer crudo por ejecución de CPC, con `raw_frame_change` ya casi redundante; y el segundo modo de cuelgue de cap32 sigue sin explicar — el gamepad era el otro.

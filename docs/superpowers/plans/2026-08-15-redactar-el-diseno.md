@@ -553,3 +553,20 @@ Esto es lo que decide si el plan sirvió. Todo lo anterior se puede verificar co
    **Este plan decía que engancharlo aquí saldría gratis al compartir el bucle. No sale gratis, y se comprobó al escribir la tarea 2.** El bucle sí se comparte (`planner.propose_apply_repair`), pero lo que el examinador devuelve hay que traducirlo a feedback, y `reference_design.coverage_feedback` — la traducción que existe — le dice al modelo que añadir entidades está prohibido y que trabaje con los actores que ya tiene. Eso es cierto del diseñador y **es mentira para el redactor**, cuya razón de existir es que `/entities/-` está abierto para él. Enganchar el examinador cuesta, por tanto, una segunda función de feedback escrita para esta etapa; la aceptación que la tarea 2 sí implementa es la puerta de diseño (`quality.design_quality_report`), que es la que detiene el pipeline más adelante. Quien quiera la defensa completa, que empiece por ahí y no por reutilizar `coverage_feedback`.
 2. **Coste.** Una llamada más por juego, y hasta tres con reparaciones. `adapt` ya cuesta hasta seis desde el plan anterior.
 3. **`/entities/-` es la primera ruta que *añade* algo.** El diseñador sólo editaba campos de entidades que ya existían. `apply_proposal` es transaccional y revalida el documento entero, así que el riesgo no es corromper nada — es que `structure.py` rechace combinaciones que el redactor produzca a menudo (una entidad que nombra un sprite que no existe, por ejemplo). Si eso pasa repetidamente, el arreglo es el prompt, no relajar `structure.py`.
+
+---
+
+# Estado al cierre de la sesión del 2026-08-15
+
+**Las seis tareas están hechas y fusionadas.** La etapa `redacción` vive entre `referencia` y `diseño`, emite el mismo `ProjectProposal` que el diseñador y hereda su diff, sus rutas protegidas y su validación transaccional.
+
+Lo que se añadió sobre el plan, y por qué:
+
+- **Tres formas de valor, no dos.** `EntityValue` y `TileValue` estaban previstas; `ObservableValue` no. Salió al medir la cobertura del examinador (ver abajo).
+- **El bucle de reparación se extrajo.** Resultó ser copia de `propose_and_apply`, así que ambos usan `planner.propose_apply_repair`. La corrección al plan sigue en pie: `generator.write_program` **no** era un tercer caso de la misma forma.
+- **Enganchar el examinador de brief a la redacción no salía gratis**, contra lo que decía el Riesgo 1. `coverage_feedback` le dice al modelo que añadir entidades está prohibido — cierto del diseñador, mentira del redactor. La mitigación cuesta un segundo texto de feedback, y ese texto existe ahora como `coherence_feedback`.
+- **Puerta de coherencia**, que el plan no preveía. Un diseño puede prometer coches y no declararlos: el brief de la rana produjo cinco mecánicas que nombran coches sobre una entidad `actor` y dos tiles. El examinador de brief no lo ve porque lee las mecánicas como prueba de cobertura, y las mecánicas las escribió el redactor — el diseño se certifica a sí mismo. La pregunta que faltaba es ciega al brief: *¿declara el diseño todo lo que sus propias mecánicas dan por existente?*
+
+**Evidencia extremo a extremo:** tres juegos de Spectrum y uno de CPC, verificados leyendo memoria emulada. El minero (`un-minero-que-cava-tuneles-y-2`) fue **jugado y ganado por el emulador** — `g_state` 1→3, score 525. La rana (`rana-recheck`) corre nueve actores en dos sentidos con `worst: 0`.
+
+**Lo que el plan predijo mal:** `/screens/N/width` cerrado no impidió nada — el redactor reescribe `/screens/0/tiles` entero y construye carriles dentro de la habitación de 20×14. La limitación es real pero no es la que bloquea.
