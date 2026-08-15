@@ -20,7 +20,10 @@ Both machines, learned from real failures:
     for a few hundred milliseconds and photographs the screen while it is still
     held; a program that waits for release shows a menu and looks broken.
   * Poll menus in a tight loop rather than once per frame. A frame-gated poll
-    can miss a short scripted keypress entirely.
+    can miss a short scripted keypress entirely. Call plat_wait_frame once as
+    you leave such a loop and ignore what it returns: the frame cost is
+    measured between consecutive calls, so without that the time a person spent
+    on the menu is charged to the first iteration of the gameplay loop.
   * Keep the work inside one 50 Hz frame. Redrawing the whole playfield every
     frame will not fit; redraw only the cells that changed.
 """

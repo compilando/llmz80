@@ -203,11 +203,12 @@ def repair_prompt(
         lines.append("")
         lines.append(
             "plat_wait_frame returns how many whole frames the previous iteration "
-            "overran by; keep the worst you ever see in g_worst_frame_cost. Call it "
-            "in every loop you write -- title, menu, game over, not only gameplay: "
-            "the cost is measured between consecutive calls, so a loop that never "
-            "waits charges its whole duration to the next iteration that does. "
-            "Memory was read directly, so these are facts about your program."
+            "overran by; keep the worst you ever see in g_worst_frame_cost. The cost "
+            "is measured between consecutive calls, so a loop that never waits -- a "
+            "menu polling tightly for a key, which the platform notes require -- "
+            "charges its whole duration to whoever calls next: call plat_wait_frame "
+            "once as you leave such a loop and discard the result. Memory was read "
+            "directly, so these are facts about your program."
         )
         sections.append("\n".join(lines))
     return "\n\n".join(sections)
