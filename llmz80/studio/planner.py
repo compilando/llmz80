@@ -21,6 +21,49 @@ class SpawnValue(BaseModel):
     row: int = Field(ge=0, le=24)
 
 
+class EntityValue(BaseModel):
+    """One whole entity, in the shape `EntitySpec` validates.
+
+    Flat and with every field concrete, for the reason `ProjectChange`'s own
+    docstring gives: structured outputs reject a property with no JSON type,
+    which is why there is no generic `value` and why `SpawnValue` exists. An
+    entity is the first thing a proposal ever needed to *add* rather than
+    edit -- the designer only ever touched `/entities/N/notes` of an entity
+    that was already there -- and a design that states nothing has none.
+
+    The defaults mirror `EntitySpec`'s own, so a drafter that names only an id
+    and a kind gets exactly what a designer writing the same two fields by
+    hand would get.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    kind: str
+    sprite: str | None = None
+    poses: list[str] = Field(default_factory=list)
+    count: int = 1
+    colour: str | None = None
+    notes: str = ""
+
+
+class TileValue(BaseModel):
+    """One whole tile, in the shape `TileSpec` validates.
+
+    Here for the same reason as `EntityValue`: a design that states nothing
+    has two tiles, and terrain the brief asks for -- water, lava, a ladder --
+    is a tile the design has to grow, not a field of one it already declares.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    char: str
+    art: str | None = None
+    colour: str | None = None
+    traits: list[str] = Field(default_factory=list)
+
+
 class ProjectChange(BaseModel):
     """One JSON-pointer edit.
 
@@ -39,12 +82,21 @@ class ProjectChange(BaseModel):
     value_number: int | None = None
     value_rows: list[str] | None = None  # a screen's tiles
     value_spawns: list[SpawnValue] | None = None  # a screen's spawns
+    value_entity: EntityValue | None = None  # a whole entity
+    value_tile: TileValue | None = None  # a whole tile
 
     @model_validator(mode="after")
     def validate_value_shape(self) -> "ProjectChange":
         variants = [
             v
-            for v in (self.value_text, self.value_number, self.value_rows, self.value_spawns)
+            for v in (
+                self.value_text,
+                self.value_number,
+                self.value_rows,
+                self.value_spawns,
+                self.value_entity,
+                self.value_tile,
+            )
             if v is not None
         ]
         if self.operation == "remove":
@@ -67,6 +119,10 @@ class ProjectChange(BaseModel):
             return self.value_rows
         if self.value_spawns is not None:
             return [spawn.model_dump(mode="json") for spawn in self.value_spawns]
+        if self.value_entity is not None:
+            return self.value_entity.model_dump(mode="json")
+        if self.value_tile is not None:
+            return self.value_tile.model_dump(mode="json")
         return None
 
 
