@@ -36,10 +36,45 @@ VERIFICATION_BUILT = "built"
 #: what it saw.
 VERIFICATION_OBSERVED = "observed"
 
-#: The gates whose verdict says something was watched. Read by name off the
-#: runtime report so a gate added later (see `pacing`, `attributes`) counts
-#: the moment it is wired in, without this function learning about it.
-BEHAVIOUR_GATES = ("acceptance", "animation", "state_probe", "pacing", "attributes")
+#: Every gate `runtime_test` folds into its verdict: one definite `False` from
+#: any of them fails the run. Read by name off the report `runtime_test` has
+#: just written, so the set of gates that can refuse a run is stated once
+#: rather than once here and once as a chain of `or`s over there -- a gate
+#: wired into one of the two and not the other is exactly the defect that let
+#: the runtime `state_probe` verdict fail a run the repair loop was accepting.
+#: A gate named here and never written into the report is a `KeyError` on the
+#: first run, which is what it should be.
+RUNTIME_GATES = ("acceptance", "animation", "state_probe", "pacing", "attributes")
+
+#: The gates that may promote a run to `observed`, which is fewer than the
+#: gates that may refuse one. A witness is a gate that watched the program
+#: *behave*: `acceptance` checks memory against what the design says should
+#: happen, `animation` watches an actor move, `state_probe` reads the state
+#: contract back out of the running machine.
+#:
+#: `pacing` and `attributes` are left out deliberately. They judge *how* a
+#: program ran and not that it did anything at all: "the loop fitted inside
+#: its frame" and "the pixels somebody drew are legible" are both true of a
+#: program that paints one screen and then sits there forever. Both still
+#: refuse a run they dislike -- they are in `RUNTIME_GATES` -- they simply
+#: cannot certify that anyone saw the game played. Until this split they
+#: could, and it mattered: `acceptance` and `state_probe` are structurally
+#: unable to return `True` until the phase 2 examiner lands, and
+#: `g_anim_frame` is optional in the state contract, so a program that never
+#: declared it was promoted to `observed` on pacing and attributes alone --
+#: on "it was fast" and "some drawn pixels are legible", neither of which
+#: witnesses behaviour.
+#:
+#: The consequence is accepted rather than worked around: a program that
+#: declares no `g_anim_frame` can no longer reach `observed`, and `release.py`
+#: refuses to package anything below that level, so the symbol is now
+#: effectively required for release while remaining optional in the contract.
+#: That asymmetry is the point, not an oversight. The contract says what a
+#: program *may* declare; this says what somebody must have watched before
+#: Studio claims the game works. A program with no animation frame is one
+#: nothing in the pipeline ever saw doing anything, and refusing to release it
+#: is the honest reading of that -- it is what this floor exists for.
+WITNESS_GATES = ("acceptance", "animation", "state_probe")
 
 
 def verification_level(runtime: dict[str, Any] | None) -> str:
@@ -55,10 +90,18 @@ def verification_level(runtime: dict[str, Any] | None) -> str:
     A single definite `True` is enough. Demanding all of them would make the
     level unreachable until the phase 2 examiner lands, and an unreachable
     level teaches people to pass `--force`.
+
+    It is `WITNESS_GATES` that is read here and not `RUNTIME_GATES`, and the
+    difference is the whole question this function answers. Refusing a run is
+    something any gate may do; certifying that a person could have watched
+    this game being played is not, and `pacing` and `attributes` -- which
+    judge how a program ran, not that it did anything -- were promoting runs
+    nobody had witnessed. A refusal from either of those still fails the run,
+    in `services.runtime_test`, which reads the wider set.
     """
     if not runtime:
         return VERIFICATION_BUILT
-    verdicts = [(runtime.get(name) or {}).get("quality_pass") for name in BEHAVIOUR_GATES]
+    verdicts = [(runtime.get(name) or {}).get("quality_pass") for name in WITNESS_GATES]
     if any(verdict is False for verdict in verdicts):
         return VERIFICATION_BUILT
     if any(verdict is True for verdict in verdicts):

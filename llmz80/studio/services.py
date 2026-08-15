@@ -26,7 +26,7 @@ from .reference_design import ReferenceDesigner, propose_and_apply
 from .sprite_artist import SpriteArtist
 from .spriting import SPRITE_SIZE
 from .store import ProjectStore
-from .quality import studio_quality_report
+from .quality import RUNTIME_GATES, studio_quality_report
 from .acceptance import runtime_script
 from .generator import write_program
 from .release import export_release
@@ -470,13 +470,14 @@ class StudioService:
         report["pacing"] = pacing
         attributes = attribute_report(report)
         report["attributes"] = attributes
-        if (
-            probes["quality_pass"] is False
-            or acceptance["quality_pass"] is False
-            or animation["quality_pass"] is False
-            or pacing["quality_pass"] is False
-            or attributes["quality_pass"] is False
-        ):
+        # Every gate in `RUNTIME_GATES`, read back off the report just written
+        # rather than from the locals above: the set of gates that can refuse a
+        # run is one list in `quality.py`, and a chain of `or`s here is a second
+        # copy of it that drifts silently. Wider than `WITNESS_GATES`, which is
+        # what `verification_level` reads: pacing and attributes cannot promote
+        # a run to `observed`, but a definite refusal from either still fails
+        # it.
+        if any(report[name]["quality_pass"] is False for name in RUNTIME_GATES):
             report["quality_pass"] = False
         write_smoke_report(report, build.output_dir / "emulator_report.json")
         combined = studio_quality_report(project, build=build.report, runtime=report)
