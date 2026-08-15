@@ -229,7 +229,7 @@ def test_write_program_narrates_before_a_slow_attempt_returns(tmp_path: Path, pr
     assert messages[0] == "intento 1: escribiendo..."
     assert messages[1] == (
         "intento 1: build compiló, aceptación aprobada, animación sin observar, "
-        "ritmo sin observar"
+        "ritmo sin observar, atributos sin observar"
     )
 
 
@@ -513,6 +513,45 @@ def test_repair_prompt_names_a_failing_pacing_gate():
     assert "DID NOT FIT INSIDE ITS DISPLAY FRAME" in prompt
     assert "g_worst_frame_cost reached 7 at step hold_right_b" in prompt
     assert "plat_wait_frame returns how many whole frames" in prompt
+
+
+def test_repair_prompt_names_a_failing_attributes_gate():
+    prompt = repair_prompt(
+        {"quality_pass": True},
+        {"quality_pass": True},
+        None,
+        {"quality_pass": True},
+        {"quality_pass": True},
+        {
+            "quality_pass": False,
+            "failures": [
+                "3 character cell(s) hold drawn pixels whose ink is the same colour "
+                "as their paper, so nothing in them reaches the player: (4,9), "
+                "(5,9), (6,9)."
+            ],
+        },
+    )
+
+    assert "WHERE NO PLAYER CAN SEE THEM" in prompt
+    assert "(4,9), (5,9), (6,9)" in prompt
+    assert "BRIGHT lifts both halves" in prompt
+
+
+def test_repair_prompt_says_nothing_about_attributes_when_the_gate_abstained():
+    # The CPC harness reads no memory and so dumps no display file at all, and
+    # a Spectrum run whose screen read came back short keeps none either. Both
+    # abstain, and an abstention leaking a section here would spend a whole
+    # repair attempt on a screen nobody ever looked at.
+    prompt = repair_prompt(
+        {"quality_pass": True},
+        {"quality_pass": True},
+        None,
+        {"quality_pass": True},
+        {"quality_pass": True},
+        {"quality_pass": None, "invisible_cells": [], "failures": []},
+    )
+
+    assert prompt == ""
 
 
 def test_repair_prompt_says_nothing_about_pacing_when_the_gate_abstained():

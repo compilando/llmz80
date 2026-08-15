@@ -148,6 +148,7 @@ def repair_prompt(
     probes: dict[str, Any] | None,
     animation: dict[str, Any] | None = None,
     pacing: dict[str, Any] | None = None,
+    attributes: dict[str, Any] | None = None,
 ) -> str:
     """Turn gate output into the most specific instruction the evidence allows."""
     sections: list[str] = []
@@ -211,6 +212,20 @@ def repair_prompt(
             "directly, so these are facts about your program."
         )
         sections.append("\n".join(lines))
+    if attributes and attributes.get("quality_pass") is False:
+        lines = ["YOU DREW PIXELS WHERE NO PLAYER CAN SEE THEM", ""]
+        for reason in attributes.get("failures") or []:
+            lines.append(f"  {reason}")
+        lines.append("")
+        lines.append(
+            "A cell whose ink is the same colour as its paper shows nothing, however "
+            "carefully the pixels in it were drawn. Set the attribute of every cell "
+            "you draw into before you draw, and pick an ink that differs from that "
+            "cell's paper -- BRIGHT lifts both halves and FLASH swaps them, so "
+            "neither can separate a colour from itself. The display file was read "
+            "directly out of the machine, so these are facts about your program."
+        )
+        sections.append("\n".join(lines))
     return "\n\n".join(sections)
 
 
@@ -267,6 +282,12 @@ class Attempt:
     #: frame at all (the CPC returns a literal zero). Non-fatal for the same
     #: reason as the two above: a number nobody measured is not a pass.
     pacing_passed: bool | None = None
+    #: `None` means the attribute gate abstained -- the run kept no display
+    #: file, because the target has no way to read emulated memory (the CPC
+    #: harness dumps no screen at all) or the screen read came back short.
+    #: Non-fatal for the same reason as the three above: a screen nobody read
+    #: is not a screen anybody approved.
+    attributes_passed: bool | None = None
     feedback: str = ""
 
 
@@ -298,9 +319,11 @@ def _attempt_line(attempt: Attempt) -> str:
     acceptance = _gate_verdict(attempt.acceptance_passed)
     animation = _gate_verdict(attempt.animation_passed)
     pacing = _gate_verdict(attempt.pacing_passed)
+    attributes = _gate_verdict(attempt.attributes_passed)
     return (
         f"intento {attempt.number}: build {build}, "
-        f"aceptación {acceptance}, animación {animation}, ritmo {pacing}"
+        f"aceptación {acceptance}, animación {animation}, ritmo {pacing}, "
+        f"atributos {attributes}"
     )
 
 
@@ -378,19 +401,22 @@ def write_program(
         probes = evidence.get("probes")
         animation = evidence.get("animation")
         pacing = evidence.get("pacing")
+        attributes = evidence.get("attributes")
         attempt.build_passed = bool(build and build.get("quality_pass"))
         attempt.acceptance_passed = (acceptance or {}).get("quality_pass")
         attempt.animation_passed = (animation or {}).get("quality_pass")
         attempt.pacing_passed = (pacing or {}).get("quality_pass")
+        attempt.attributes_passed = (attributes or {}).get("quality_pass")
         _say(on_progress, _attempt_line(attempt))
 
         # An unobservable target cannot confirm behaviour, so a clean build is
         # as far as the evidence goes; it is recorded as such, not as a pass.
         # `is not False` treats an abstaining gate (`quality_pass: None`,
         # which the CPC always produces since it has no memory probe adapter)
-        # the same way for acceptance, animation and pacing -- and pacing
-        # abstains on the CPC twice over, since that target's plat_wait_frame
-        # returns zero without ever counting a frame: not a pass earned,
+        # the same way for acceptance, animation, pacing and attributes -- and
+        # both pacing and attributes abstain on the CPC twice over, since that
+        # target's plat_wait_frame returns zero without ever counting a frame
+        # and its harness dumps no display file at all: not a pass earned,
         # but not a refusal either. Only a definite `False` -- a gate that
         # actually watched and found something wrong -- blocks acceptance.
         if (
@@ -398,10 +424,11 @@ def write_program(
             and attempt.acceptance_passed is not False
             and attempt.animation_passed is not False
             and attempt.pacing_passed is not False
+            and attempt.attributes_passed is not False
         ):
             result.accepted = True
             return result
-        feedback = repair_prompt(build, acceptance, probes, animation, pacing)
+        feedback = repair_prompt(build, acceptance, probes, animation, pacing, attributes)
         attempt.feedback = feedback
         if not feedback:
             result.last_error = "the program was rejected without any diagnostic to act on"
