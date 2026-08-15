@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from .design_exam import _design_summary
+from .design_exam import design_summary
 from .models import GameProject
 from .planner import AppliedProposal, ProjectProposal, propose_apply_repair
 from .quality import design_quality_report, design_refusals
@@ -144,7 +144,7 @@ class DesignDrafter(Protocol):
 def drafting_prompt(project: GameProject, dossier: GameReference | None) -> str:
     """Everything the drafter is owed before it decides what this game is.
 
-    What the design states today comes from `design_exam._design_summary`
+    What the design states today comes from `design_exam.design_summary`
     rather than a second summary written here. The examiner asks whether the
     design answers its brief and this stage has to make it answer it: that is
     one question from two sides, and two renderings of the same document
@@ -154,7 +154,7 @@ def drafting_prompt(project: GameProject, dossier: GameReference | None) -> str:
     sections = [
         "WRITE THE DESIGN THIS BRIEF ASKS FOR",
         "THE BRIEF\n\n" + project.metadata.brief.strip(),
-        "WHAT THE DESIGN STATES TODAY\n\n" + _design_summary(project),
+        "WHAT THE DESIGN STATES TODAY\n\n" + design_summary(project),
     ]
     # An unidentified dossier has nothing in it to read: `reference.py` tells
     # the researcher to leave every other field at its default rather than

@@ -4,8 +4,8 @@ import pytest
 
 from llmz80.studio.design_exam import (
     BriefCoverage,
-    _design_summary,
     coverage_errors,
+    design_summary,
     examination_prompt,
 )
 from llmz80.studio.editing import rename_project
@@ -278,23 +278,24 @@ def test_the_summary_shows_what_an_entity_notes_field_already_states(flying_proj
     document["entities"][0]["notes"] = "Combustible limitado; debe aterrizar en el portaaviones."
     with_notes = type(flying_project).model_validate(document)
 
-    summary = _design_summary(with_notes)
+    summary = design_summary(with_notes)
 
     assert "portaaviones" in summary
     assert "x1" in summary
 
 
 def test_the_summary_says_out_loud_that_a_design_states_no_mechanics(flying_project):
-    """Both v4 projects in this repository reached the writer with
-    `mechanics: []`. An empty heading reads as a list that was cut off."""
-    assert "Mechanics: none stated" in _design_summary(flying_project)
+    """`studio-projects/zampabolas` and `studio-projects/my-retro-game` both
+    reached the writer with `mechanics: []`. An empty heading reads as a list
+    that was cut off."""
+    assert "Mechanics: none stated" in design_summary(flying_project)
 
 
 def test_the_summary_carries_presentation_and_audio_but_not_the_machine_budgets(flying_project):
     """A brief can ask for music or a look; nobody ever wrote a brief asking
     for 24576 bytes of binary, and showing budgets invites a verdict about a
     field the machine imposed."""
-    summary = _design_summary(flying_project)
+    summary = design_summary(flying_project)
 
     assert "classic arcade" in summary
     assert "no music" in summary

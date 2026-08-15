@@ -185,11 +185,11 @@ def propose_and_apply(
 
     An `examiner` adds a second reason to try again, and the one that matters
     most: a proposal can apply cleanly and still leave a design that says
-    nothing about what its brief asked for. Both v4 projects in this
-    repository reached the writer with `mechanics: []` -- one of them from a
-    dossier that had correctly identified Harrier Attack! -- so the stage that
-    is supposed to turn research into a design had never once produced a
-    design with mechanics. A refusal alone would only have closed a door in
+    nothing about what its brief asked for. `studio-projects/zampabolas` and
+    `studio-projects/my-retro-game` both reached the writer with
+    `mechanics: []` -- the second of them from a dossier that had correctly
+    identified Harrier Attack! -- so the stage that is supposed to turn
+    research into a design had never once produced a design with mechanics. A refusal alone would only have closed a door in
     front of that; feeding the gaps back as feedback is what gives the
     designer the chance to state them.
 
