@@ -23,6 +23,7 @@ def _print_help() -> None:
         "  llmz80 project validate PATH\n"
         "  llmz80 project contract PATH\n"
         "  llmz80 project reference PATH    (searches the web, calls the OpenAI API)\n"
+        "  llmz80 project draft PATH        (writes the design the brief asks for)\n"
         "  llmz80 project adapt PATH        (adapts the design to the researched game)\n"
         "  llmz80 project write PATH        (calls the OpenAI API)\n"
         "  llmz80 project sprites PATH      (calls the OpenAI API)\n"
@@ -210,6 +211,7 @@ def _project_command(arguments: list[str]) -> int:
         "validate",
         "contract",
         "reference",
+        "draft",
         "adapt",
         "write",
         "sprites",
@@ -298,6 +300,39 @@ def _project_command(arguments: list[str]) -> int:
         for source in dossier.sources:
             print(f"  {source.url}")
         print(directory / "reference.yml")
+        return 0
+    if arguments[0] == "draft":
+        from llmz80.studio import pipeline
+
+        def apply_draft(diff: str) -> bool:
+            # The same question `adapt` asks, and for the same reason: this
+            # command exists beside `llmz80 make`, which applies the same
+            # proposal with nobody to show it to.
+            print(diff)
+            return input("\nApply these changes? [y/N] ").strip().casefold() == "y"
+
+        try:
+            pipeline.draft(service, project, directory, say=print, confirm=apply_draft)
+        except pipeline.Declined:
+            print("Left unchanged.")
+            return 0
+        except pipeline.Unreadable as exc:
+            # A dossier that is archived and cannot be read stops this the way
+            # it stops `reference`: drafting past research somebody paid for
+            # because a line of YAML is malformed would spend a call to
+            # ignore the first one.
+            print(f"ERROR: {exc}")
+            print("Fix or remove reference.yml before drafting again.")
+            return 1
+        except ValueError as exc:
+            # `DraftRefused` is a `ValueError`, so it lands here with every
+            # other refusal instead of needing a handler of its own -- the
+            # drafter having spent its attempts without ever stating a rule
+            # is an ordinary outcome, and it arrives carrying what the design
+            # kept missing.
+            print(f"ERROR: {exc}")
+            return 1
+        print(directory / "game.yml")
         return 0
     if arguments[0] == "adapt":
         from llmz80.studio import pipeline

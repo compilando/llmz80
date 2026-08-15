@@ -406,6 +406,141 @@ def test_reference_reports_rather_than_crashes_on_a_malformed_model_response(
     assert "Traceback" not in printed
 
 
+# --- project draft -----------------------------------------------------
+
+
+def _stub_draft_dependencies(monkeypatch, drafter):
+    """Route the `draft` command's OpenAI-backed collaborator to a fake.
+
+    Same reasoning as `_stub_adapt_dependencies`: the branch resolves
+    `openai.OpenAI` and `ResponsesDesignDrafter` through local imports, so
+    the modules they come from are patched rather than any name already
+    bound in `llmz80.cli`.
+    """
+    import llmz80.studio.drafting as drafting_module
+    import llmz80.utils.config as config_module
+    import openai
+
+    monkeypatch.setattr(openai, "OpenAI", lambda **_: object())
+    monkeypatch.setattr(config_module, "load_api_key", lambda: "test-key")
+    monkeypatch.setattr(config_module, "load_config", lambda *_: {})
+    monkeypatch.setattr(drafting_module, "ResponsesDesignDrafter", lambda *_a, **_k: drafter)
+
+
+class _FakeDrafter:
+    def __init__(self, proposal):
+        self._proposal = proposal
+
+    def draft(self, project, dossier=None, feedback=None):
+        return self._proposal
+
+
+def _mechanics_proposal():
+    from llmz80.studio.planner import ProjectChange, ProjectProposal
+
+    return ProjectProposal(
+        summary="state what this game does",
+        changes=[
+            ProjectChange(
+                path="/mechanics",
+                operation="replace",
+                value_rows=["el minero cava hacia abajo", "un murcielago le quita una vida"],
+                reason="the brief says what this is",
+            )
+        ],
+    )
+
+
+def _drafted(tmp_path: Path, name: str) -> Path:
+    main(
+        ["project", "new", str(tmp_path), name, "spectrum", "un minero cava y esquiva murcielagos"]
+    )
+    return tmp_path / name.lower().replace(" ", "-") / "game.yml"
+
+
+def test_draft_accepted_states_the_rules_and_saves_them(tmp_path: Path, capsys, monkeypatch):
+    game_path = _drafted(tmp_path, "Draft Accept")
+    capsys.readouterr()
+    before = game_path.read_text()
+
+    _stub_draft_dependencies(monkeypatch, _FakeDrafter(_mechanics_proposal()))
+    monkeypatch.setattr("builtins.input", lambda *_: "y")
+    code = main(["project", "draft", str(game_path)])
+
+    printed = capsys.readouterr().out
+    assert code == 0
+    assert str(game_path) in printed
+    assert game_path.read_text() != before
+    assert ProjectStore(tmp_path).load(game_path).mechanics[0] == "el minero cava hacia abajo"
+
+
+def test_draft_declined_leaves_game_yml_byte_for_byte_unchanged(
+    tmp_path: Path, capsys, monkeypatch
+):
+    game_path = _drafted(tmp_path, "Draft Decline")
+    capsys.readouterr()
+    before = game_path.read_text()
+
+    _stub_draft_dependencies(monkeypatch, _FakeDrafter(_mechanics_proposal()))
+    monkeypatch.setattr("builtins.input", lambda *_: "n")
+    code = main(["project", "draft", str(game_path)])
+
+    printed = capsys.readouterr().out
+    assert code == 0
+    assert "Left unchanged." in printed
+    assert game_path.read_text() == before
+
+
+def test_draft_says_so_and_spends_nothing_on_a_design_that_is_already_somebodys(
+    tmp_path: Path, capsys, monkeypatch
+):
+    """The command a person reaches for after `programa` refused. Run against
+    a design that already states its rules it must cost nothing and say why --
+    proved by making the OpenAI client itself an error."""
+    import openai
+
+    game_path = _drafted(tmp_path, "Draft Stated")
+    capsys.readouterr()
+    store = ProjectStore(tmp_path)
+    project = store.load(game_path)
+    store.save(project.model_copy(update={"mechanics": ["ya lo dice"]}), game_path.parent)
+
+    def _refuse_to_be_built(**_kwargs):
+        raise AssertionError("the OpenAI client was built for a design nobody had to draft")
+
+    monkeypatch.setattr(openai, "OpenAI", _refuse_to_be_built)
+    code = main(["project", "draft", str(game_path)])
+
+    printed = capsys.readouterr().out
+    assert code == 0
+    assert "nothing to draft" in printed
+    assert "already states what it does" in printed
+
+
+def test_a_drafter_that_states_nothing_is_reported_as_an_error_not_a_traceback(
+    tmp_path: Path, capsys, monkeypatch
+):
+    """`DraftRefused` is a `ValueError`, so the handler `adapt` already has
+    reports it -- no second one was added for it. This is what proves that,
+    rather than the claim that it subclasses."""
+    from llmz80.studio.planner import ProjectProposal
+
+    game_path = _drafted(tmp_path, "Draft Refused")
+    capsys.readouterr()
+
+    _stub_draft_dependencies(
+        monkeypatch,
+        _FakeDrafter(ProjectProposal(summary="nothing at all", changes=[])),
+    )
+    code = main(["project", "draft", str(game_path)])
+
+    printed = capsys.readouterr().out
+    assert code == 1
+    assert "ERROR:" in printed
+    assert "mechanics" in printed
+    assert "Traceback" not in printed
+
+
 # --- project sprites ---------------------------------------------------
 
 
