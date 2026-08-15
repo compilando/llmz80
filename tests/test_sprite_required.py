@@ -33,6 +33,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from llmz80.core.state_contract import REQUIRED_SYMBOLS, required_declarations
 from llmz80.studio import compiler as compiler_module
 from llmz80.studio.compiler import build_project, render_project, sprite_usage_errors
 from llmz80.studio.generator import ProgramFile, ProgramSources, write_program
@@ -40,8 +41,18 @@ from llmz80.studio.models import AssetSpec, TargetPlatform
 from llmz80.studio.samples import blank_project
 from llmz80.studio.store import ProjectStore
 
+#: The required half of the observable state contract. Nothing here is
+#: compiled -- `_fake_toolchain` writes the map these declarations would have
+#: produced -- so this is realism, not what satisfies the gate: deleting it
+#: leaves every test in this module passing. It is here because the two
+#: programs below stand in for real ones, and a reader comparing them should
+#: find them differing in the one thing this module is about, whether they
+#: call `plat_sprite`, and not in whether they look like programs Studio
+#: would accept. Derived from the contract so it cannot fall behind it.
+CONTRACT_STATE = required_declarations()
+
 NO_SPRITE_MAIN = (
-    '#include "platform.h"\n\n'
+    '#include "platform.h"\n\n' + CONTRACT_STATE + "\n"
     "void main(void) {\n"
     "    plat_init();\n"
     "    plat_cell(0, 0, '#');\n"
@@ -51,7 +62,7 @@ NO_SPRITE_MAIN = (
 
 DRAWS_SPRITE_MAIN = (
     '#include "platform.h"\n'
-    '#include "sprites.h"\n\n'
+    '#include "sprites.h"\n\n' + CONTRACT_STATE + "\n"
     "void main(void) {\n"
     "    plat_init();\n"
     "    plat_sprite(0, 0, SPRITE_HERO, 0);\n"
@@ -161,12 +172,27 @@ def _fake_toolchain(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
     Recording every invocation lets a test prove the sprite check runs
     *before* the toolchain for a refusal (`calls == []`) and does not block
     it when the program is innocent (`len(calls) == 1`).
+
+    It writes `output.map` as well as `output.tap`, because a real zcc run
+    writes both and `build_project` now reads the map to check the state
+    contract. Leaving it out would make every program built here look like
+    one that declared its state static, and fail these tests for a reason
+    they are not about. The entries come from `REQUIRED_SYMBOLS` rather than
+    a hand-written list so the fiction cannot drift from the contract the
+    two programs above actually declare.
     """
     calls: list[list[str]] = []
 
     def fake_run(command, cwd, capture_output, text, check):
         calls.append(list(command))
         (Path(cwd) / "output.tap").write_bytes(b"\x00" * 64)
+        (Path(cwd) / "output.map").write_text(
+            "".join(
+                f"_{name}{' ' * 8}= ${0x9F00 + index:04X} ; addr, public, , main\n"
+                for index, name in enumerate(REQUIRED_SYMBOLS)
+            ),
+            encoding="utf-8",
+        )
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     monkeypatch.setattr(compiler_module.subprocess, "run", fake_run)

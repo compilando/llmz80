@@ -14,9 +14,16 @@ void plat_init(void);
 void plat_clear(void);
 /* Waits for the next display frame and returns how many whole display frames
  * elapsed while the previous iteration did its work. Zero means the work fitted
- * inside its frame; anything higher counts frames the loop missed. Targets with
- * no free-running frame clock always return zero, and game_config.h reports
- * which is which through HAS_FRAME_CLOCK. */
+ * inside its frame; anything higher counts frames the loop missed.
+ *
+ * The cost is measured between consecutive calls, so a loop that never calls
+ * this charges its whole duration to whoever calls next. Menus must still poll
+ * in a tight loop -- a frame-gated poll can miss a short scripted keypress --
+ * so the way to satisfy both is to call this once as you leave such a loop and
+ * ignore what it returns: that resynchronises the measurement before the
+ * gameplay loop takes its first reading, and costs one frame at a screen
+ * transition. Targets with no free-running frame clock always return zero, and
+ * game_config.h reports which is which through HAS_FRAME_CLOCK. */
 unsigned char plat_wait_frame(void);
 unsigned char plat_input(void);
 void plat_text(unsigned char col, unsigned char row, const char *text);

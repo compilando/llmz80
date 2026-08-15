@@ -57,6 +57,7 @@ from llm_z80 import resolve_cpct_path
 from llmz80.quality.emulator_smoke import smoke_test
 from llmz80.studio import compiler as compiler_module
 from llmz80.studio.models import AssetSpec, TargetPlatform
+from llmz80.core.state_contract import REQUIRED_SYMBOLS, required_declarations
 from llmz80.studio.services import StudioService
 from llmz80.studio.spriting import pack_spectrum
 
@@ -86,6 +87,19 @@ SPRITE_ROW = 7
 #: trivial (screen & mask) | data == data case a zero background gives.
 BACKGROUND_BYTE = 0xAA
 
+#: The required half of the observable state contract, which `build_project`
+#: now refuses a build for not carrying into the linker map. These programs
+#: exist to prove the sprite blitter links and draws, not to be games, but
+#: they are built through the real `StudioService.build`, so they have to
+#: honour the contract like anything else that goes through it. Assigned in
+#: `main` as well as defined, because a global no translation unit ever reads
+#: is exactly what the gate's diagnostic warns can be optimised away.
+#: Both are derived from the contract rather than spelled out, so a symbol
+#: added to it does not break these seven real-toolchain tests with a linker
+#: diagnostic that points at the toolchain instead of at the stale fixture.
+CONTRACT_STATE = required_declarations()
+CONTRACT_INIT = "".join(f"    {name} = 0;\n" for name in REQUIRED_SYMBOLS)
+
 
 def _sprite_image() -> Image.Image:
     """A 16x16 RGBA sprite that is neither all-opaque nor all-transparent."""
@@ -114,9 +128,11 @@ def _build_sprite_project(tmp_path: Path):
         f"""#include <arch/zx.h>
 #include "platform.h"
 
+{CONTRACT_STATE}
 void main(void) {{
     unsigned char half, line;
     plat_init();
+{CONTRACT_INIT}
     /* Pre-fill the sprite's cells with a known non-zero pattern so the
      * blitter's (screen & mask) | data formula is actually exercised. */
     for (half = 0; half < 2; ++half) {{
@@ -293,10 +309,11 @@ def _build_cpc_project(tmp_path: Path, *, draw_sprite: bool):
         f"""#include <cpctelera.h>
 #include "platform.h"
 
+{CONTRACT_STATE}
 void main(void) {{
     plat_init();
     plat_clear();
-{draw_call}    while (1) {{ }}
+{CONTRACT_INIT}{draw_call}    while (1) {{ }}
 }}
 """,
         encoding="utf-8",
@@ -439,9 +456,10 @@ def _build_multi_sprite_project(tmp_path: Path, platform: TargetPlatform):
         f"""{arch_include}#include "platform.h"
 #include "sprites.h"
 
+{CONTRACT_STATE}
 void main(void) {{
     plat_init();
-    plat_sprite(2, 7, SPRITE_HERO, 0);
+{CONTRACT_INIT}    plat_sprite(2, 7, SPRITE_HERO, 0);
     plat_sprite(4, 7, SPRITE_ENEMY, 0);
     plat_sprite(6, 7, SPRITE_PELLET, 0);
     while (1) {{ }}

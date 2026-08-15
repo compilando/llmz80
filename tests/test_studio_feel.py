@@ -36,15 +36,63 @@ def test_classification_reads_hold_not_the_step_id():
 
 
 def test_a_frame_that_never_moves_fails():
-    """A program that declares the symbol and never touches it is not animating."""
+    """A program that declares the symbol and never touches it is not animating.
+
+    The two moving steps hold *different* directions, which is what makes the
+    verdict definite: whichever wall the player was against, one of the two
+    pushed it away from that wall, so a frame that still never advanced is the
+    program's own doing.
+    """
     report = animation_report(_runtime([
         ("move_a", "right", {"g_anim_frame": 1}),
-        ("move_b", "right", {"g_anim_frame": 1}),
+        ("move_b", "left", {"g_anim_frame": 1}),
         ("idle", "none", {"g_anim_frame": 1}),
     ]))
 
     assert report["quality_pass"] is False
     assert "never advanced" in " ".join(report["failures"])
+
+
+def test_a_still_frame_under_one_repeated_direction_abstains_rather_than_blames():
+    """`hold` records the key that was *pressed*, not that the player *moved*.
+    Hold left twice against the left wall and a correct program -- one that
+    advances the frame only on a frame where the actor actually changed
+    position -- reports the same value twice, which is indistinguishable from a
+    program that never animates at all.
+
+    Blaming it was worse than a wasted verdict: `generator.repair_prompt` tells
+    the writer the frame must differ between consecutive moving readings, and
+    the only edit that satisfies that is to advance the frame whenever a
+    direction key is held -- which contradicts the state contract's own prose
+    and still passes the idle half. The gate would have taught the writer the
+    wrong invariant, over and over.
+    """
+    report = animation_report(_runtime([
+        ("move_a", "left", {"g_anim_frame": 2}),
+        ("move_b", "left", {"g_anim_frame": 2}),
+        ("idle", "none", {"g_anim_frame": 2}),
+    ]))
+
+    assert report["observed"] is False
+    assert report["quality_pass"] is None
+    assert report["failures"] == []
+    assert "clamped" in report["reason"]
+
+
+def test_an_idle_step_that_will_not_hold_still_fails_even_when_movement_is_unclear():
+    """The asymmetry is deliberate. "Advances while moving" needs evidence the
+    player moved, which a pressed key does not supply; "holds still while idle"
+    needs evidence the player did *not* move, and an idle step -- no key held at
+    all -- is exactly that. So the idle half stays a hard failure even when the
+    moving half has to abstain."""
+    report = animation_report(_runtime([
+        ("move_a", "left", {"g_anim_frame": 2}),
+        ("move_b", "left", {"g_anim_frame": 2}),
+        ("idle", "none", {"g_anim_frame": 3}),
+    ]))
+
+    assert report["quality_pass"] is False
+    assert "while idle" in " ".join(report["failures"])
 
 
 def test_a_frame_that_keeps_advancing_while_idle_fails():

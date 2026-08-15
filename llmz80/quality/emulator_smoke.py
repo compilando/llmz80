@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -159,12 +160,35 @@ def _free_local_port() -> int:
         return int(probe.getsockname()[1])
 
 
+#: What one ZRCP exchange costs, named once because four places encode it and
+#: only a comment used to connect them. `_zrcp_query` and `_zrcp_command` sleep
+#: `_ZRCP_SETTLE` outright and then drain the socket until `_ZRCP_DRAIN` -- the
+#: timeout `_connect_zrcp` sets -- expires, so every command and every probe
+#: read costs the sum. `scripted_run_seconds` budgets from these same names:
+#: editing one of the sleeps used to under-budget the run silently and bring
+#: back mid-script truncation, which surfaces only as an undiagnosable broken
+#: pipe.
+_ZRCP_SETTLE = 0.12
+_ZRCP_DRAIN = 0.2
+_ZRCP_ROUNDTRIP = _ZRCP_SETTLE + _ZRCP_DRAIN
+#: One cushion over the measured exchange, spelled once. The budget used to
+#: carry it twice, baked into a 0.35 and a 0.7 that were both quietly 1.1x of
+#: the real figure.
+_ZRCP_MARGIN = 1.1
+#: Everything in a run that is not a ZRCP exchange or a hold: `_connect_zrcp`
+#: waiting for the emulator to answer at all, and the three screen captures
+#: `_wait_for_file` blocks on. Their worst cases exceed this; their observed
+#: cost on a healthy run is about half of it, and inflating the budget to the
+#: worst case would keep a hung emulator alive for no benefit.
+_HARNESS_OVERHEAD = 5.0
+
+
 def _connect_zrcp(port: int, deadline: float) -> socket.socket:
     last_error: OSError | None = None
     while time.monotonic() < deadline:
         try:
             connection = socket.create_connection(("127.0.0.1", port), timeout=0.3)
-            connection.settimeout(0.2)
+            connection.settimeout(_ZRCP_DRAIN)
             return connection
         except OSError as exc:
             last_error = exc
@@ -175,7 +199,7 @@ def _connect_zrcp(port: int, deadline: float) -> socket.socket:
 def _zrcp_query(connection: socket.socket, command: str) -> str:
     """Send a command and return whatever ZEsarUX answered."""
     connection.sendall((command + "\n").encode("utf-8"))
-    time.sleep(0.12)
+    time.sleep(_ZRCP_SETTLE)
     chunks: list[bytes] = []
     try:
         while True:
@@ -188,9 +212,15 @@ def _zrcp_query(connection: socket.socket, command: str) -> str:
     return b"".join(chunks).decode("utf-8", errors="ignore")
 
 
+def _probe_addresses(probes: dict[str, Any] | None) -> dict[str, Any]:
+    """The symbols a probe map names, or none. Shared so the reader and the
+    budget cannot disagree about what counts as a probed symbol."""
+    return (probes or {}).get("addresses") or {}
+
+
 def _read_probes(connection: socket.socket, probes: dict[str, Any]) -> dict[str, int]:
     """Read each probed engine variable straight out of emulated memory."""
-    addresses = probes.get("addresses") or {}
+    addresses = _probe_addresses(probes)
     widths = probes.get("widths") or {}
     values: dict[str, int] = {}
     for name, address in sorted(addresses.items()):
@@ -208,9 +238,38 @@ def _read_probes(connection: socket.socket, probes: dict[str, Any]) -> dict[str,
     return values
 
 
+#: Bitmap plus attributes: 6144 + 768, the whole Spectrum display file.
+SCREEN_BYTES = 6912
+
+#: Where the display file starts on a 48K.
+SCREEN_ORIGIN = 16384
+
+
+def _screen_from_answer(answer: str) -> bytes:
+    """The display file out of one ZRCP `read-memory` answer.
+
+    Split on the prompt exactly as `_read_probes` does: ZRCP writes
+    "command@ ..." after its payload, and its hex digits would otherwise be
+    read as the last bytes of the screen.
+    """
+    digits = "".join(re.findall(r"[0-9A-Fa-f]{2}", answer.split("command@")[0]))[: SCREEN_BYTES * 2]
+    if len(digits) < SCREEN_BYTES * 2:
+        return b""
+    return bytes(int(digits[index : index + 2], 16) for index in range(0, SCREEN_BYTES * 2, 2))
+
+
+def _read_screen(connection: socket.socket) -> bytes:
+    """Ask for the whole display file. Empty when the answer arrived short."""
+    try:
+        answer = _zrcp_query(connection, f"read-memory {SCREEN_ORIGIN} {SCREEN_BYTES}")
+    except OSError:
+        return b""
+    return _screen_from_answer(answer)
+
+
 def _zrcp_command(connection: socket.socket, command: str) -> None:
     connection.sendall((command + "\n").encode("utf-8"))
-    time.sleep(0.12)
+    time.sleep(_ZRCP_SETTLE)
     try:
         while connection.recv(65536):
             pass
@@ -235,6 +294,61 @@ def _matrix_for_key(key: str) -> tuple[str, str]:
     return "".join(f"{value:02x}" for value in values) + "00", "1f" * 8 + "00"
 
 
+def _step_hold_seconds(step: dict[str, Any]) -> float:
+    """How long `_run_zesarux` will hold this step's key.
+
+    One definition for the harness and the budget both, so the floor cannot
+    drift into only one of them: the budget used to charge `frames / 50` flat
+    while the harness slept `max(0.1, ...)`, which under-counted every step
+    asking for fewer than five frames.
+    """
+    return max(0.1, int(step.get("frames", 50)) / 50.0)
+
+
+def scripted_run_seconds(
+    *, seconds: int, steps: list[dict[str, Any]], probes: dict[str, Any] | None
+) -> int:
+    """How long ZEsarUX must live to finish this script.
+
+    Every probe read and every hold costs wall-clock time inside the
+    emulator's bounded lifetime. Budget for them or the session is cut off
+    mid-read and the reason surfaces only as a broken pipe. Lives out here
+    rather than inside `_run_zesarux` because the arithmetic is the only part
+    of a scripted run that can be checked without starting an emulator --
+    `tests/test_emulator_smoke.py` pins it exactly and then walks the harness's
+    own sleep schedule to check the budget outlasts it.
+    """
+    exchange = _ZRCP_ROUNDTRIP * _ZRCP_MARGIN
+    reads = 1 + len(steps) if steps else 2
+    probe_cost = reads * len(_probe_addresses(probes)) * exchange
+    hold_cost = sum(_step_hold_seconds(step) for step in steps)
+    # Each step that presses a key also lets it go, and both are ZRCP commands.
+    # Counted per keyed step rather than per step: the trailing idle step holds
+    # nothing down and sends neither, exactly as the harness's own
+    # `key in _SPECTRUM_ROWS` guard decides.
+    keyed = sum(1 for step in steps if step.get("key") in _SPECTRUM_ROWS)
+    command_cost = keyed * 2 * exchange
+    # The one screen read, taken only when there are steps -- exactly the
+    # `if steps:` block in `_run_zesarux` that captures `played.bmp`. Charged
+    # as one ordinary exchange despite answering ~14 KB rather than two hex
+    # digits: measured against a booted ZEsarUX on this host, `read-memory
+    # 16384 6912` returns in 0.321s and a one-byte probe in the same 0.321s,
+    # because the whole answer lands inside `_ZRCP_SETTLE` and the rest of the
+    # wait is the drain timing out either way. Giving this query a longer drain
+    # of its own would buy nothing and cost a tenth of a second per run.
+    screen_cost = exchange if steps else 0.0
+    # Rounded up, not truncated: `int` shaved off up to a second from a figure
+    # whose entire purpose is not being short.
+    return math.ceil(
+        max(6, seconds)
+        + probe_cost
+        + hold_cost
+        + command_cost
+        + screen_cost
+        + _HARNESS_OVERHEAD
+    )
+
+
 def _run_zesarux(
     adapter: dict[str, Any], artifact: Path, output_dir: Path, source: str, seconds: int,
     probes: dict[str, Any] | None = None, script: list[dict[str, Any]] | None = None,
@@ -245,14 +359,8 @@ def _run_zesarux(
     after = capture_dir / "after.bmp"
     played = capture_dir / "played.bmp"
     port = _free_local_port()
-    # Every probe read and the sweep hold cost wall-clock time inside the
-    # emulator's bounded lifetime. Budget for them or the session is cut off
-    # mid-read and the reason surfaces only as a broken pipe.
     steps = list(script or [])
-    reads = 1 + len(steps) if steps else 2
-    probe_cost = reads * len(((probes or {}).get("addresses") or {})) * 0.2
-    hold_cost = sum(int(step.get("frames", 50)) / 50.0 for step in steps)
-    run_seconds = int(max(6, seconds) + probe_cost + hold_cost + 3)
+    run_seconds = scripted_run_seconds(seconds=seconds, steps=steps, probes=probes)
     command = [
         adapter["executable"], "--noconfigfile", "--machine", "48k",
         "--vo", "null", "--ao", "null", "--vofile", str(raw_frames),
@@ -260,6 +368,7 @@ def _run_zesarux(
         "--enable-remoteprotocol", "--remoteprotocol-port", str(port),
         "--exit-after", str(run_seconds), str(artifact),
     ]
+    launched = time.monotonic()
     process = subprocess.Popen(
         command, cwd=output_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
@@ -293,7 +402,7 @@ def _run_zesarux(
                 if key in _SPECTRUM_ROWS:
                     held, let_go = _matrix_for_key(key)
                     _zrcp_command(connection, f"set-ui-io-ports {held}")
-                time.sleep(max(0.1, int(step.get("frames", 50)) / 50.0))
+                time.sleep(_step_hold_seconds(step))
                 if probes:
                     reading["read"] = _read_probes(connection, probes)
                     probe_after = reading["read"] or probe_after
@@ -306,15 +415,23 @@ def _run_zesarux(
                 # show gameplay.
                 _zrcp_command(connection, f'save-screen "{played}"')
                 _wait_for_file(played)
+                screen = _read_screen(connection)
+                if screen:
+                    (capture_dir / "screen.bin").write_bytes(screen)
     except OSError as exc:
         remote_error = str(exc)
+    # Counted from launch, because `--exit-after` is: waiting `run_seconds`
+    # again here starts the clock after the ZRCP loop already spent most of it,
+    # and granted a hung emulator roughly twice the tolerance intended.
+    grace = max(5.0, run_seconds - (time.monotonic() - launched) + 5.0)
     try:
-        stdout, stderr = process.communicate(timeout=run_seconds + 5)
+        stdout, stderr = process.communicate(timeout=grace)
     except subprocess.TimeoutExpired:
         process.terminate()
         stdout, stderr = process.communicate(timeout=3)
         remote_error = remote_error or "ZEsarUX exceeded its bounded runtime"
 
+    screen_dump = capture_dir / "screen.bin"
     observations = [
         _image_observation(path) for path in (before, after, played) if path.is_file()
     ]
@@ -358,6 +475,10 @@ def _run_zesarux(
         "frames": observations,
         "frame_bytes": len(raw),
         "capture_dir": str(capture_dir),
+        # The display file as the machine held it, not as an emulator scaled it
+        # into a BMP: judging ink against paper needs the attribute bytes
+        # themselves, and no screenshot carries them.
+        "screen_dump": str(screen_dump) if screen_dump.is_file() else None,
         "stdout_tail": stdout[-1000:],
         "stderr_tail": stderr[-1000:],
     }

@@ -1,7 +1,15 @@
 """The design gate checks the machine's limits, not the shape of the game."""
 
 from llmz80.studio.models import GameProject, TargetPlatform
-from llmz80.studio.quality import design_quality_report, studio_quality_report
+from llmz80.studio.quality import (
+    RUNTIME_GATES,
+    VERIFICATION_BUILT,
+    VERIFICATION_OBSERVED,
+    WITNESS_GATES,
+    design_quality_report,
+    studio_quality_report,
+    verification_level,
+)
 from llmz80.studio.samples import blank_project
 
 
@@ -69,3 +77,107 @@ def test_the_retired_analyses_are_gone():
     ):
         with pytest.raises(ModuleNotFoundError):
             __import__(module)
+
+
+def test_a_run_where_every_behaviour_gate_abstained_is_only_built():
+    """Three gates that never watched cannot add up to a verified game: this is
+    the exact shape `runtime_test` produces today for a v4 project."""
+    runtime = {
+        "quality_pass": True,
+        "acceptance": {"quality_pass": None},
+        "animation": {"quality_pass": None},
+        "state_probe": {"quality_pass": None},
+    }
+
+    assert verification_level(runtime) == VERIFICATION_BUILT
+
+
+def test_one_gate_that_actually_watched_and_passed_makes_it_observed():
+    runtime = {
+        "quality_pass": True,
+        "acceptance": {"quality_pass": None},
+        "animation": {"quality_pass": True},
+        "state_probe": {"quality_pass": None},
+    }
+
+    assert verification_level(runtime) == VERIFICATION_OBSERVED
+
+
+def test_a_gate_that_watched_and_refused_is_not_observed():
+    """A refusal outranks a sibling's approval: one gate saying it watched and
+    disliked what it saw is not cancelled out by another that liked it."""
+    runtime = {"animation": {"quality_pass": False}, "acceptance": {"quality_pass": True}}
+
+    assert verification_level(runtime) == VERIFICATION_BUILT
+
+
+def test_only_a_gate_that_watched_behaviour_can_promote_a_run_to_observed():
+    """`pacing` and `attributes` judge how a program ran, not that it did
+    anything: a program that paints one screen and then sits there forever
+    passes both. They can refuse a run and they cannot certify one, so they
+    are not in `WITNESS_GATES` -- and this is not a spelling of the constant,
+    it is the run that used to reach `observed` on those two alone.
+    """
+    assert WITNESS_GATES == ("acceptance", "animation", "state_probe")
+    assert set(WITNESS_GATES) < set(RUNTIME_GATES)
+
+    runtime = {
+        "quality_pass": True,
+        "acceptance": {"quality_pass": None},
+        "animation": {"quality_pass": None},
+        "state_probe": {"quality_pass": None},
+        "pacing": {"quality_pass": True},
+        "attributes": {"quality_pass": True},
+    }
+
+    assert verification_level(runtime) == VERIFICATION_BUILT
+
+
+def test_no_runtime_at_all_is_only_built():
+    assert verification_level(None) == VERIFICATION_BUILT
+
+
+def test_the_quality_report_carries_the_level():
+    project = blank_project("Levelled", TargetPlatform.SPECTRUM)
+    report = studio_quality_report(
+        project,
+        build={"quality_pass": True},
+        runtime={"quality_pass": True, "animation": {"quality_pass": True}},
+    )
+
+    assert report["verification"] == VERIFICATION_OBSERVED
+
+
+def test_a_brief_with_no_mechanics_is_refused_not_merely_noticed():
+    """The zampabolas case: a brief naming a real game, a dossier with five
+    mechanics researched, and a design that states none of them. The program
+    that came out invented its own losing condition."""
+    from llmz80.studio.editing import rename_project
+
+    project = rename_project(
+        blank_project("Zampabolas", TargetPlatform.SPECTRUM),
+        "Zampabolas",
+        brief="Un juego como el zampabolas",
+    )
+
+    report = design_quality_report(project)
+
+    assert report["quality_pass"] is False
+    assert "design_states_the_mechanics_its_brief_asks_for" in report["failures"]
+
+
+def test_a_design_with_no_brief_at_all_still_passes():
+    """A fresh project has neither, and must stay buildable while its designer
+    decides what it is."""
+    assert design_quality_report(blank_project("Blank", TargetPlatform.SPECTRUM))["quality_pass"]
+
+
+def test_every_design_check_has_a_sentence_to_refuse_in():
+    """`failures` holds check names, which are variables, not language. What
+    puts a refusal in front of a person reads `DESIGN_REFUSALS` instead, so a
+    check added without a sentence there would refuse in slug."""
+    from llmz80.studio.quality import DESIGN_REFUSALS
+
+    report = design_quality_report(blank_project("Sentences", TargetPlatform.SPECTRUM))
+
+    assert set(report["checks"]) == set(DESIGN_REFUSALS)

@@ -13,8 +13,12 @@ from llmz80.quality.emulator_smoke import smoke_test, write_smoke_report
 from PIL import Image
 
 from .compiler import BuildResult, SourceResult, build_project, render_project
+from .design_exam import DesignExaminer
+from .attributes import attribute_report
 from .feel import animation_report
 from .models import AssetSpec, EntitySpec, GameProject, TargetPlatform
+from .observation import observation_script
+from .pacing import pacing_report
 from .samples import blank_project
 from .planner import ProjectProposal, proposal_diff
 from .reference import GameReference, ReferenceResearcher, load_reference, save_reference
@@ -22,7 +26,7 @@ from .reference_design import ReferenceDesigner, propose_and_apply
 from .sprite_artist import SpriteArtist
 from .spriting import SPRITE_SIZE
 from .store import ProjectStore
-from .quality import studio_quality_report
+from .quality import RUNTIME_GATES, studio_quality_report
 from .acceptance import runtime_script
 from .generator import write_program
 from .release import export_release
@@ -309,6 +313,7 @@ class StudioService:
         dossier: GameReference | None = None,
         *,
         attempts: int = 3,
+        examiner: DesignExaminer | None = None,
     ) -> tuple[ProjectProposal, str, GameProject, list[str]]:
         """Propose a design adaptation, repaired against `apply_proposal`
         until it is one a reviewer could accept as-is, returned with the diff
@@ -321,13 +326,20 @@ class StudioService:
         agreed. The fourth item is the refusal reason from each attempt that
         did not apply, oldest first, so a caller can report what repair
         happened without this layer printing anything itself.
+
+        With an `examiner`, an attempt that applies cleanly but leaves the
+        design saying nothing about what the brief asked for is refused the
+        same way and reported in the same list -- so a caller already saying
+        each repair aloud needs no new code to say these.
         """
         dossier = dossier or load_reference(directory)
         if dossier is None:
             raise ValueError("there is no researched game for this project yet")
         if not dossier.identified:
             raise ValueError("no researched game was identified, so there is nothing to adapt to")
-        adaptation = propose_and_apply(project, dossier, designer, attempts=attempts)
+        adaptation = propose_and_apply(
+            project, dossier, designer, attempts=attempts, examiner=examiner
+        )
         return (
             adaptation.proposal,
             proposal_diff(adaptation.proposal),
@@ -446,7 +458,7 @@ class StudioService:
             project.target.platform.value,
             full=True,
             seconds=seconds,
-            script=[],
+            script=observation_script(project),
         )
         probes = self.probe_report(project, report)
         report["state_probe"] = probes
@@ -454,11 +466,18 @@ class StudioService:
         report["acceptance"] = acceptance
         animation = animation_report(report)
         report["animation"] = animation
-        if (
-            probes["quality_pass"] is False
-            or acceptance["quality_pass"] is False
-            or animation["quality_pass"] is False
-        ):
+        pacing = pacing_report(report)
+        report["pacing"] = pacing
+        attributes = attribute_report(report)
+        report["attributes"] = attributes
+        # Every gate in `RUNTIME_GATES`, read back off the report just written
+        # rather than from the locals above: the set of gates that can refuse a
+        # run is one list in `quality.py`, and a chain of `or`s here is a second
+        # copy of it that drifts silently. Wider than `WITNESS_GATES`, which is
+        # what `verification_level` reads: pacing and attributes cannot promote
+        # a run to `observed`, but a definite refusal from either still fails
+        # it.
+        if any(report[name]["quality_pass"] is False for name in RUNTIME_GATES):
             report["quality_pass"] = False
         write_smoke_report(report, build.output_dir / "emulator_report.json")
         combined = studio_quality_report(project, build=build.report, runtime=report)
@@ -492,13 +511,23 @@ class StudioService:
             "acceptance": None,
             "probes": None,
             "animation": None,
+            "pacing": None,
+            "attributes": None,
+            "state_probe": None,
         }
         build = self.build(project, directory)
         evidence["build"] = build.report
+        # The build-time symbol map, which is what `repair_prompt`'s missing
+        # contract symbols are read from and stays under this name. The runtime
+        # state-probe gate is a different verdict about a different thing and
+        # goes in under `state_probe` below, so the two are never confused --
+        # confusing them is why the runtime gate could fail a run that the
+        # repair loop was accepting.
         evidence["probes"] = build.report.get("probes")
         if not build.success:
-            # No emulator has run yet, so there is no animation verdict either
-            # -- a build failure is refused on the build diagnostics alone.
+            # No emulator has run yet, so there is no animation, pacing or
+            # attribute verdict -- a build failure is refused on the build
+            # diagnostics alone.
             return evidence
         try:
             runtime = self.runtime_test(project, directory, on_progress=on_progress)
@@ -508,6 +537,9 @@ class StudioService:
         evidence["runtime"] = runtime
         evidence["acceptance"] = runtime.get("acceptance")
         evidence["animation"] = runtime.get("animation")
+        evidence["pacing"] = runtime.get("pacing")
+        evidence["attributes"] = runtime.get("attributes")
+        evidence["state_probe"] = runtime.get("state_probe")
         return evidence
 
     def write_program(

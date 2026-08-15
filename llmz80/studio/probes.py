@@ -84,3 +84,22 @@ def write_probe_report(output_dir: Path, platform: str) -> dict:
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     return report
+
+
+def contract_failures(report: dict) -> list[str]:
+    """Diagnostics for required symbols the linker map does not carry.
+
+    Separated from `write_probe_report` so the build can refuse on them
+    without the compiler having to be running to test the refusal. What used
+    to happen instead: the report recorded the absence, `repair_prompt` told
+    the writer about it, and the loop accepted the attempt anyway, because
+    `attempt.build_passed` only ever read `build.quality_pass`.
+    """
+    missing = report.get("missing_required") or []
+    if not missing:
+        return []
+    return [
+        "these required contract symbols are absent from the linker map, which "
+        "means they were declared static, declared inside a function, or "
+        "optimised away because nothing reads them: " + ", ".join(missing)
+    ]

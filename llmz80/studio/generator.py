@@ -147,11 +147,22 @@ def repair_prompt(
     acceptance: dict[str, Any] | None,
     probes: dict[str, Any] | None,
     animation: dict[str, Any] | None = None,
+    pacing: dict[str, Any] | None = None,
+    attributes: dict[str, Any] | None = None,
 ) -> str:
     """Turn gate output into the most specific instruction the evidence allows."""
     sections: list[str] = []
     if build and not build.get("quality_pass"):
-        diagnostics = (str(build.get("stderr") or "") + str(build.get("stdout") or ""))[-3000:]
+        # Each stream gets its own budget. Slicing the concatenation instead
+        # kept the tail of stdout and threw away all of stderr whenever the
+        # two together cleared the ceiling -- and stderr is where both the
+        # compiler's errors and `compiler.build_project`'s own contract
+        # diagnostic live. A CPCtelera build spamming SDCC warning 283 clears
+        # 3000 characters on its own, so the refusal the writer most needed to
+        # read was exactly the one a noisy toolchain buried.
+        diagnostics = (
+            str(build.get("stderr") or "")[-1500:] + str(build.get("stdout") or "")[-1500:]
+        )
         sections.append(
             "THE BUILD FAILED\n\nFix these diagnostics. Do not change the design.\n\n"
             + diagnostics.strip()
@@ -184,6 +195,35 @@ def repair_prompt(
             "while it is not. Update it whenever you redraw a moving actor, and "
             "leave it untouched on a step where no direction is held. Memory was "
             "read directly, so these are facts about your program."
+        )
+        sections.append("\n".join(lines))
+    if pacing and pacing.get("quality_pass") is False:
+        lines = ["THE GAME LOOP DID NOT FIT INSIDE ITS DISPLAY FRAME", ""]
+        for reason in pacing.get("failures") or []:
+            lines.append(f"  {reason}")
+        lines.append("")
+        lines.append(
+            "plat_wait_frame returns how many whole frames the previous iteration "
+            "overran by; keep the worst you ever see in g_worst_frame_cost. The cost "
+            "is measured between consecutive calls, so a loop that never waits -- a "
+            "menu polling tightly for a key, which the platform notes require -- "
+            "charges its whole duration to whoever calls next: call plat_wait_frame "
+            "once as you leave such a loop and discard the result. Memory was read "
+            "directly, so these are facts about your program."
+        )
+        sections.append("\n".join(lines))
+    if attributes and attributes.get("quality_pass") is False:
+        lines = ["YOU DREW PIXELS WHERE NO PLAYER CAN SEE THEM", ""]
+        for reason in attributes.get("failures") or []:
+            lines.append(f"  {reason}")
+        lines.append("")
+        lines.append(
+            "A cell whose ink is the same colour as its paper shows nothing, however "
+            "carefully the pixels in it were drawn. Set the attribute of every cell "
+            "you draw into before you draw, and pick an ink that differs from that "
+            "cell's paper -- BRIGHT lifts both halves and FLASH swaps them, so "
+            "neither can separate a colour from itself. The display file was read "
+            "directly out of the machine, so these are facts about your program."
         )
         sections.append("\n".join(lines))
     return "\n\n".join(sections)
@@ -237,6 +277,30 @@ class Attempt:
     #: never declared g_anim_frame) -- exactly as unobserved as `acceptance`'s
     #: own abstention, and just as non-fatal. See `write_program`.
     animation_passed: bool | None = None
+    #: `None` means the pacing gate abstained -- no adapter, no reading of
+    #: g_worst_frame_cost, or a target whose plat_wait_frame never counts a
+    #: frame at all (the CPC returns a literal zero). Non-fatal for the same
+    #: reason as the two above: a number nobody measured is not a pass.
+    pacing_passed: bool | None = None
+    #: `None` means the attribute gate abstained -- the run kept no display
+    #: file, because the target has no way to read emulated memory (the CPC
+    #: harness dumps no screen at all) or the screen read came back short.
+    #: Non-fatal for the same reason as the three above: a screen nobody read
+    #: is not a screen anybody approved.
+    attributes_passed: bool | None = None
+    #: The *runtime* state-probe gate -- `services.probe_report`, which reads
+    #: the contract back out of the running machine -- and not the build-time
+    #: symbol map, which the writer still gets as `evidence["probes"]`. It
+    #: abstains at every run today (no examiner has derived what a design
+    #: should read), and it is wired anyway: `runtime_test` has always folded
+    #: it into its verdict, so the day the phase 2 examiner makes it return
+    #: `False` this loop would have accepted the very program `release`
+    #: refused -- one program with two verdicts, which is the defect this
+    #: floor exists to remove. Until that examiner also gives the refusal a
+    #: sentence, a run failed by this gate alone ends the loop with "rejected
+    #: without any diagnostic to act on" rather than with a repair, which is
+    #: the honest order of those two problems.
+    state_probe_passed: bool | None = None
     feedback: str = ""
 
 
@@ -267,9 +331,13 @@ def _attempt_line(attempt: Attempt) -> str:
     build = "compiló" if attempt.build_passed else "no compiló"
     acceptance = _gate_verdict(attempt.acceptance_passed)
     animation = _gate_verdict(attempt.animation_passed)
+    pacing = _gate_verdict(attempt.pacing_passed)
+    attributes = _gate_verdict(attempt.attributes_passed)
+    state_probe = _gate_verdict(attempt.state_probe_passed)
     return (
         f"intento {attempt.number}: build {build}, "
-        f"aceptación {acceptance}, animación {animation}"
+        f"aceptación {acceptance}, animación {animation}, ritmo {pacing}, "
+        f"atributos {attributes}, estado {state_probe}"
     )
 
 
@@ -346,26 +414,46 @@ def write_program(
         acceptance = evidence.get("acceptance")
         probes = evidence.get("probes")
         animation = evidence.get("animation")
+        pacing = evidence.get("pacing")
+        attributes = evidence.get("attributes")
+        # The runtime gate, under its own key. `probes` above is the build-time
+        # symbol map, which `repair_prompt` legitimately wants for its missing
+        # contract symbols; reading the verdict off that map is what let the
+        # runtime one reach `runtime_test` and never reach this loop.
+        state_probe = evidence.get("state_probe")
         attempt.build_passed = bool(build and build.get("quality_pass"))
         attempt.acceptance_passed = (acceptance or {}).get("quality_pass")
         attempt.animation_passed = (animation or {}).get("quality_pass")
+        attempt.pacing_passed = (pacing or {}).get("quality_pass")
+        attempt.attributes_passed = (attributes or {}).get("quality_pass")
+        attempt.state_probe_passed = (state_probe or {}).get("quality_pass")
         _say(on_progress, _attempt_line(attempt))
 
         # An unobservable target cannot confirm behaviour, so a clean build is
         # as far as the evidence goes; it is recorded as such, not as a pass.
         # `is not False` treats an abstaining gate (`quality_pass: None`,
         # which the CPC always produces since it has no memory probe adapter)
-        # the same way for both acceptance and animation: not a pass earned,
+        # the same way for acceptance, animation, pacing and attributes -- and
+        # both pacing and attributes abstain on the CPC twice over, since that
+        # target's plat_wait_frame returns zero without ever counting a frame
+        # and its harness dumps no display file at all: not a pass earned,
         # but not a refusal either. Only a definite `False` -- a gate that
         # actually watched and found something wrong -- blocks acceptance.
+        # All five gates `services.runtime_test` folds into its own verdict
+        # are read here, and the same way: a gate that fails the run and not
+        # the attempt gives one program two verdicts, with `release` refusing
+        # what this loop accepted and never asked to have repaired.
         if (
             attempt.build_passed
             and attempt.acceptance_passed is not False
             and attempt.animation_passed is not False
+            and attempt.pacing_passed is not False
+            and attempt.attributes_passed is not False
+            and attempt.state_probe_passed is not False
         ):
             result.accepted = True
             return result
-        feedback = repair_prompt(build, acceptance, probes, animation)
+        feedback = repair_prompt(build, acceptance, probes, animation, pacing, attributes)
         attempt.feedback = feedback
         if not feedback:
             result.last_error = "the program was rejected without any diagnostic to act on"

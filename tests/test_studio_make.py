@@ -155,6 +155,80 @@ def test_an_unidentified_game_skips_the_adaptation_and_carries_on(tmp_path: Path
     assert any("SKIP" in line and "diseño" in line for line in printed)
 
 
+def test_skipping_the_design_stage_warns_that_the_design_will_state_no_mechanics(tmp_path: Path):
+    """`diseño` is the only stage that writes mechanics, so skipping it leaves
+    a brief with nothing to implement -- which `programa`'s design gate then
+    refuses, three stages and one paid round of art later. The order used to
+    say nothing here and stop at `programa`, naming the stage where the
+    consequence surfaced rather than the one where the cause was.
+    """
+    printed: list[str] = []
+
+    result, _stages = _run(tmp_path, printed, dossier=_dossier(identified=False))
+
+    assert result.project_dir is not None
+    warned = [line for line in printed if "WARN" in line]
+    assert warned, "skipping the design stage said nothing about its consequence"
+    assert "states no mechanics" in warned[0]
+    assert "4 programa" in warned[0]
+    assert str(result.project_dir / "game.yml") in warned[0]
+    assert "mechanics" in warned[0]
+
+
+def test_a_design_gate_refusal_names_the_file_to_edit_not_a_command_that_cannot_work(
+    tmp_path: Path,
+):
+    """The retry hint is `llmz80 project write PATH` for every failure a second
+    run could go differently on. The design gate is not one of those: nothing
+    in the CLI or the interface writes mechanics into a design, so that
+    command refuses identically forever and `llmz80 project adapt` refuses too
+    (no game was identified). The hint has to name the file and the field.
+
+    `write` here is the real `pipeline.write` over the real project, so the
+    refusal is the gate's own and no writer is ever built or called.
+    """
+    from llmz80.studio import pipeline
+
+    class _RealDesignGate(_FakeStages):
+        def write(self, project, directory, dossier, say):
+            self._record("write")
+            return pipeline.write(self.real.service, project, directory, _NeverCalled())
+
+    class _NeverCalled:
+        def write(self, project, feedback=None):
+            raise AssertionError("the writer must not be asked")
+
+    printed: list[str] = []
+    stages = _RealDesignGate(tmp_path, dossier=_dossier(identified=False))
+    result = make_game(
+        "un minero cruza cornisas de piedra saltando entre ellas",
+        workspace=tmp_path,
+        stages=stages,
+        out=printed.append,
+    )
+
+    assert result.failed == "programa"
+    assert result.project_dir is not None
+    hint = printed[-1]
+    assert "llmz80 project write" in hint
+    assert str(result.project_dir / "game.yml") in hint
+    assert "mechanics" in hint
+    assert not hint.startswith("Nothing is lost")
+
+
+def test_every_other_failure_still_says_to_retry_the_stage(tmp_path: Path):
+    """A stage that could go differently on a second run -- here the art -- is
+    still answered by the command that redoes it."""
+    printed: list[str] = []
+
+    result, _stages = _run(tmp_path, printed, refuse_at="sprites")
+
+    assert result.failed == "sprites"
+    assert printed[-1] == (
+        f"Nothing is lost: retry this stage with `llmz80 project sprites {result.project_dir}`."
+    )
+
+
 def test_a_failed_stage_stops_the_order_and_says_which(tmp_path: Path):
     printed: list[str] = []
 

@@ -69,6 +69,22 @@ class Declined(Exception):
     """
 
 
+class DesignRefused(ValueError):
+    """The design gate refused to have a program written for this design.
+
+    A `ValueError` like every other refusal a stage raises, so `llmz80 project
+    write`'s existing `except ValueError` keeps reporting it unchanged; a
+    distinct type only because the remedy is unlike any other stage failure's.
+    Every other way `write` can fail -- the compiler giving up, the model
+    returning nothing, a dropped connection -- is answered by running the
+    stage again. This one is not: nothing in the CLI or the interface writes
+    mechanics into a design, so `llmz80 project write` refuses identically
+    forever, and only a person editing `game.yml` moves it. `make.py` tells
+    the two apart on this type so it can say that instead of sending somebody
+    back to a command that cannot succeed.
+    """
+
+
 class Unreadable(ValueError):
     """A dossier is archived and cannot be read.
 
@@ -152,12 +168,16 @@ def adapt(
     *,
     say: Say = _quiet,
     confirm: Ask | None = None,
+    examiner: Any = None,
 ) -> GameProject:
     """Adapt the design to the researched game, and save what it comes to.
 
     `propose_from_reference` repairs its own refusals, and each one is said
     aloud: a repair is a second call to the model, and a silent wait reads as
-    a hang.
+    a hang. A design that applies cleanly but says nothing about what the
+    brief asked for is one of those refusals -- the examiner's gaps go back to
+    the designer as feedback, and only a design that still misses once its
+    attempts are spent comes back as a `ValueError`.
 
     `confirm` is handed the diff and decides whether it is applied. Without
     one the adaptation is saved, which is safe for the same reason it is safe
@@ -168,13 +188,20 @@ def adapt(
     """
     if designer is None:
         from ..cli import _openai_client_and_model
+        from .design_exam import ResponsesDesignExaminer
         from .reference_design import ResponsesReferenceDesigner
 
         client, model = _openai_client_and_model()
         say(f"adapting the design with {model}; this calls the OpenAI API")
         designer = ResponsesReferenceDesigner(client, model=model)
+        # Built here and not above the `if`, so a caller that injected its own
+        # designer -- every test, every offline run -- gets no examiner either
+        # and makes no API call it did not ask for. A caller that wants one
+        # without the other passes it.
+        if examiner is None:
+            examiner = ResponsesDesignExaminer(client, model=model)
     _proposal, diff, updated, refusals = service.propose_from_reference(
-        project, directory, designer, dossier
+        project, directory, designer, dossier, examiner=examiner
     )
     for number, reason in enumerate(refusals, start=1):
         say(f"Attempt {number} was refused, repairing: {reason}")
@@ -263,7 +290,21 @@ def write(
     whether the compiler ever accepted one -- what to do about a `False` is
     the caller's decision, and the two callers make different ones (`llmz80
     project write` exits 1, `llmz80 make` stops the order).
+
+    A design its own gate refuses is not sent to the writer at all. Asking
+    costs money and a minute and a half, and the answer is already known: a
+    design that states no mechanics is `studio-projects/zampabolas`, whose
+    program invented a losing condition nobody had asked for and was accepted
+    on its first attempt. The refusal carries the gate's sentences rather than
+    its check names, because a caller prints what it is given.
     """
+    from .quality import design_quality_report, design_refusals
+
+    design = design_quality_report(project)
+    if not design["quality_pass"]:
+        raise DesignRefused(
+            "this design is not ready to be written:\n  " + "\n  ".join(design_refusals(design))
+        )
     if writer is None:
         from ..cli import _openai_client_and_model
         from .generator import ResponsesProgramWriter

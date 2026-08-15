@@ -227,7 +227,10 @@ def test_write_program_narrates_before_a_slow_attempt_returns(tmp_path: Path, pr
         "precedes finishes, not only before write_program returns"
     )
     assert messages[0] == "intento 1: escribiendo..."
-    assert messages[1] == ("intento 1: build compiló, aceptación aprobada, animación sin observar")
+    assert messages[1] == (
+        "intento 1: build compiló, aceptación aprobada, animación sin observar, "
+        "ritmo sin observar, atributos sin observar, estado sin observar"
+    )
 
 
 def test_a_program_that_builds_but_misbehaves_is_repaired_from_memory_reads(
@@ -324,6 +327,124 @@ def test_an_abstaining_animation_gate_does_not_block_acceptance(tmp_path: Path, 
 
     assert result.accepted is True
     assert result.attempts[0].animation_passed is None
+
+
+def test_a_definite_pacing_refusal_blocks_the_attempt_and_reaches_the_next_writer(
+    tmp_path: Path, project
+):
+    """The pacing gate was wired into `write_program`'s acceptance condition
+    with no test on the wiring: deleting `and attempt.pacing_passed is not
+    False` left the whole suite green, so a program whose loop overran its
+    display frame would have been accepted on attempt one while
+    `runtime_test` failed the very same run. A definite `False` must reject
+    the attempt, and its reason must reach the writer that repairs it.
+    """
+    writer = ScriptedWriter(_sources("juddering"), _sources("paced"))
+    calls = {"n": 0}
+
+    def verify(_project, _directory):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {
+                "build": {"quality_pass": True},
+                "acceptance": {"quality_pass": None},
+                "pacing": {
+                    "quality_pass": False,
+                    "observed": True,
+                    "failures": ["g_worst_frame_cost reached 4 at step hold_left_a"],
+                },
+            }
+        return {
+            "build": {"quality_pass": True},
+            "acceptance": {"quality_pass": None},
+            "pacing": {"quality_pass": True, "observed": True, "failures": []},
+        }
+
+    result = write_program(project, tmp_path, writer, verify)
+
+    assert result.accepted is True
+    assert [attempt.pacing_passed for attempt in result.attempts] == [False, True]
+    assert "g_worst_frame_cost reached 4" in writer.feedback_seen[1]
+    assert "paced" in (tmp_path / project.program_dir / "main.c").read_text()
+
+
+def test_a_definite_attribute_refusal_blocks_the_attempt_and_reaches_the_next_writer(
+    tmp_path: Path, project
+):
+    """The same untested wiring as the pacing gate's: deleting `and
+    attempt.attributes_passed is not False` from the acceptance condition
+    left the suite green, so a program drawing pixels into cells whose ink
+    matches their paper -- a screen no player can read -- was accepted while
+    `runtime_test` refused it.
+    """
+    writer = ScriptedWriter(_sources("invisible"), _sources("legible"))
+    calls = {"n": 0}
+
+    def verify(_project, _directory):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {
+                "build": {"quality_pass": True},
+                "acceptance": {"quality_pass": None},
+                "attributes": {
+                    "quality_pass": False,
+                    "observed": True,
+                    "failures": ["3 character cell(s) hold drawn pixels: (0,0), (1,0), (2,0)"],
+                },
+            }
+        return {
+            "build": {"quality_pass": True},
+            "acceptance": {"quality_pass": None},
+            "attributes": {"quality_pass": True, "observed": True, "failures": []},
+        }
+
+    result = write_program(project, tmp_path, writer, verify)
+
+    assert result.accepted is True
+    assert [attempt.attributes_passed for attempt in result.attempts] == [False, True]
+    assert "3 character cell(s) hold drawn pixels" in writer.feedback_seen[1]
+    assert "legible" in (tmp_path / project.program_dir / "main.c").read_text()
+
+
+def test_a_definite_state_probe_refusal_blocks_the_attempt(tmp_path: Path, project):
+    """`runtime_test` has always folded the runtime state-probe verdict into
+    its own, but this loop read only `evidence["probes"]` -- the build-time
+    symbol map -- so the runtime gate reached one verdict path and not the
+    other. Harmless only while `probe_report` hardcodes `quality_pass: None`:
+    the day the phase 2 examiner makes it refuse, `runtime_test` would fail
+    the run and `release` would refuse the artifact while this loop accepted
+    the attempt and never asked for a repair. One program, two verdicts.
+
+    The refusal carries no sentence for `repair_prompt` yet -- that is the
+    examiner's to write with the expectation it derives -- so a run failed by
+    this gate alone stops the loop saying there was no diagnostic to act on.
+    That is the honest order: a program nobody can tell how to fix is not a
+    program to accept.
+    """
+    writer = ScriptedWriter(_sources("wrong_state"))
+
+    result = write_program(
+        project,
+        tmp_path,
+        writer,
+        lambda p, d: {
+            "build": {"quality_pass": True},
+            "acceptance": {"quality_pass": None},
+            # The build-time symbol map: every required symbol is in the
+            # linker map, which says nothing about what memory read back.
+            "probes": {"missing_required": []},
+            "state_probe": {
+                "quality_pass": False,
+                "observed": True,
+                "mismatches": ["g_lives: expected 3, read 0"],
+            },
+        },
+        attempts=1,
+    )
+
+    assert result.accepted is False
+    assert result.attempts[0].state_probe_passed is False
+    assert result.attempts[0].build_passed is True
 
 
 def test_a_design_with_no_animation_evidence_is_accepted_exactly_as_before(tmp_path: Path, project):
@@ -493,3 +614,74 @@ def test_a_missing_platform_header_is_not_silently_survivable():
     finally:
         missing.rename(header)
         importlib.reload(generator_module)
+
+
+def test_repair_prompt_names_a_failing_pacing_gate():
+    prompt = repair_prompt(
+        {"quality_pass": True},
+        {"quality_pass": True},
+        None,
+        {"quality_pass": True},
+        {
+            "quality_pass": False,
+            "failures": ["g_worst_frame_cost reached 7 at step hold_right_b"],
+        },
+    )
+
+    assert "DID NOT FIT INSIDE ITS DISPLAY FRAME" in prompt
+    assert "g_worst_frame_cost reached 7 at step hold_right_b" in prompt
+    assert "plat_wait_frame returns how many whole frames" in prompt
+
+
+def test_repair_prompt_names_a_failing_attributes_gate():
+    prompt = repair_prompt(
+        {"quality_pass": True},
+        {"quality_pass": True},
+        None,
+        {"quality_pass": True},
+        {"quality_pass": True},
+        {
+            "quality_pass": False,
+            "failures": [
+                "3 character cell(s) hold drawn pixels whose ink is the same colour "
+                "as their paper, so nothing in them reaches the player: (4,9), "
+                "(5,9), (6,9)."
+            ],
+        },
+    )
+
+    assert "WHERE NO PLAYER CAN SEE THEM" in prompt
+    assert "(4,9), (5,9), (6,9)" in prompt
+    assert "BRIGHT lifts both halves" in prompt
+
+
+def test_repair_prompt_says_nothing_about_attributes_when_the_gate_abstained():
+    # The CPC harness reads no memory and so dumps no display file at all, and
+    # a Spectrum run whose screen read came back short keeps none either. Both
+    # abstain, and an abstention leaking a section here would spend a whole
+    # repair attempt on a screen nobody ever looked at.
+    prompt = repair_prompt(
+        {"quality_pass": True},
+        {"quality_pass": True},
+        None,
+        {"quality_pass": True},
+        {"quality_pass": True},
+        {"quality_pass": None, "invisible_cells": [], "failures": []},
+    )
+
+    assert prompt == ""
+
+
+def test_repair_prompt_says_nothing_about_pacing_when_the_gate_abstained():
+    # The CPC's plat_wait_frame returns zero without counting anything, so the
+    # gate abstains there however good the number looks; abstention is not a
+    # bug to report back to the writer.
+    prompt = repair_prompt(
+        {"quality_pass": True},
+        {"quality_pass": True},
+        None,
+        {"quality_pass": True},
+        {"quality_pass": None},
+    )
+
+    assert prompt == ""

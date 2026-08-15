@@ -92,3 +92,6 @@ pip-delete-this-directory.txt
 
 # Studio workspaces hold generated projects, not source
 studio-projects/
+
+# Vendored engines: the manifest is committed, the checkout is not.
+vendor/*/src/

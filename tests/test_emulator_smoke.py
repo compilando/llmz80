@@ -1,3 +1,4 @@
+import math
 import subprocess
 
 from PIL import Image
@@ -175,6 +176,9 @@ def test_zesarux_step_reading_carries_the_step_hold(monkeypatch, tmp_path):
     monkeypatch.setattr(emulator_smoke, "_zrcp_command", lambda *args, **kwargs: None)
     monkeypatch.setattr(emulator_smoke, "_wait_for_file", lambda *args, **kwargs: True)
     monkeypatch.setattr(emulator_smoke, "_read_probes", lambda *args, **kwargs: {"g_anim_frame": 7})
+    # Patched for the same reason as `_read_probes`: the fake connection answers
+    # nothing, and a screen read is not what this test is about.
+    monkeypatch.setattr(emulator_smoke, "_read_screen", lambda connection: b"")
     monkeypatch.setattr(emulator_smoke.subprocess, "Popen", lambda *args, **kwargs: _FakeProcess())
     monkeypatch.setattr(emulator_smoke.time, "sleep", lambda *args, **kwargs: None)
 
@@ -191,3 +195,134 @@ def test_zesarux_step_reading_carries_the_step_hold(monkeypatch, tmp_path):
     assert report["step_readings"] == [
         {"id": "rest", "hold": "none", "read": {"g_anim_frame": 7}}
     ]
+
+
+def _observation_shaped_script() -> list[dict]:
+    """Eleven steps shaped like the one `studio.observation` really emits: ten
+    that press a key and a keyless idle step, which is the case the budget has
+    to cover and the one it used to be cut short by."""
+    directions = ("left", "right", "up", "down")
+    return (
+        [
+            {"id": "hold_action_a", "hold": "action", "key": "space", "frames": 50},
+            {"id": "hold_action_b", "hold": "action", "key": "space", "frames": 50},
+        ]
+        + [
+            {"id": f"hold_{name}_{repeat}", "hold": name, "key": "5", "frames": 50}
+            for repeat in ("a", "b")
+            for name in directions
+        ]
+        + [{"id": "idle", "hold": "none", "key": None, "frames": 50}]
+    )
+
+
+def test_the_emulator_lifetime_covers_a_scripted_run():
+    """A script whose steps outlive `--exit-after` loses its tail, and the tail
+    is where the idle step -- half of what the animation gate claims -- lives.
+
+    Pinned exactly rather than as a lower bound. A bound is satisfied by a
+    budget that dropped a whole term: the version of this test that asserted
+    `>=` stayed green with `command_cost` deleted outright, which is precisely
+    the omission that truncated scripted runs in the first place.
+    """
+    from llmz80.quality.emulator_smoke import scripted_run_seconds
+
+    script = _observation_shaped_script()
+    probes = {"addresses": {f"g_{index}": index for index in range(8)}}
+
+    budget = scripted_run_seconds(seconds=3, steps=script, probes=probes)
+
+    # 6s floor + 12 reads of 8 symbols + 11 holds of a second + 10 keyed steps
+    # pressing and releasing + the one screen read + the harness overhead,
+    # rounded up.
+    exchange = emulator_smoke._ZRCP_ROUNDTRIP * emulator_smoke._ZRCP_MARGIN
+    assert budget == math.ceil(
+        6
+        + 12 * 8 * exchange
+        + 11 * 1.0
+        + 10 * 2 * exchange
+        + exchange
+        + emulator_smoke._HARNESS_OVERHEAD
+    )
+    assert budget == 64
+
+
+def test_the_budget_outlasts_the_schedule_the_harness_actually_sleeps(monkeypatch, tmp_path):
+    """`scripted_run_seconds` claims to say how long ZEsarUX must live to finish
+    the script; the test above only pins that its arithmetic has not drifted.
+    This one checks the claim, by walking `_run_zesarux` itself with every sleep
+    and every socket drain accounted for and demanding the budget outlast the
+    total. Written against the harness rather than against a second copy of the
+    arithmetic: a re-derivation would agree with a wrong budget.
+    """
+    spent: list[float] = []
+
+    class _TimedConnection:
+        """Answers nothing, and charges for the wait like the real socket does."""
+
+        def sendall(self, payload):
+            return None
+
+        def recv(self, size):
+            # Every ZRCP exchange drains until the socket timeout expires; that
+            # wait is not a `sleep` and so is invisible to the patch below.
+            spent.append(emulator_smoke._ZRCP_DRAIN)
+            raise TimeoutError
+
+        def settimeout(self, value):
+            return None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+    class _FakeProcess:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return "", ""
+
+    monkeypatch.setattr(emulator_smoke, "_connect_zrcp", lambda port, deadline: _TimedConnection())
+    monkeypatch.setattr(emulator_smoke, "_wait_for_file", lambda *args, **kwargs: True)
+    monkeypatch.setattr(emulator_smoke.subprocess, "Popen", lambda *args, **kwargs: _FakeProcess())
+    monkeypatch.setattr(emulator_smoke.time, "sleep", lambda seconds: spent.append(seconds))
+
+    script = _observation_shaped_script()
+    probes = {
+        "addresses": {f"g_{index}": 32768 + index for index in range(8)},
+        "widths": {f"g_{index}": 1 for index in range(8)},
+    }
+
+    emulator_smoke._run_zesarux(
+        {"executable": "/usr/bin/zesarux"},
+        tmp_path / "output.tap",
+        tmp_path,
+        "",
+        3,
+        probes=probes,
+        script=script,
+    )
+
+    assert sum(spent) < emulator_smoke.scripted_run_seconds(seconds=3, steps=script, probes=probes)
+
+
+def test_a_screen_answer_becomes_the_bytes_the_machine_had():
+    """ZRCP answers `read-memory` in hex pairs and then its own prompt; the
+    prompt must not become pixels."""
+    from llmz80.quality.emulator_smoke import _screen_from_answer
+
+    answer = " ".join(f"{value % 256:02X}" for value in range(6912)) + "\ncommand@ deadbeef"
+
+    screen = _screen_from_answer(answer)
+
+    assert len(screen) == 6912
+    assert screen[0] == 0
+    assert screen[257] == 1
+
+
+def test_a_truncated_screen_answer_is_no_screen_at_all():
+    from llmz80.quality.emulator_smoke import _screen_from_answer
+
+    assert _screen_from_answer("00 01 02") == b""

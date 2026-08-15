@@ -13,7 +13,21 @@
 #include "sprites.h"
 
 #define ROM_FONT ((const unsigned char *)0x3D00)
-#define FRAMES ((volatile unsigned char *)23672)
+/* The ROM frame counter: three bytes at 23672, bumped by the 50 Hz interrupt.
+ * Sixteen of them are read at once, because `ld hl,(nn)` is a single
+ * uninterruptible instruction and so cannot catch the pair mid-increment. The
+ * byte-wide read this replaces wrapped every 256 frames, and that was not a
+ * footnote: a gap longer than a wrap landed back inside the plausible band and
+ * was reported as a real overrun. Sixteen bits move the horizon from five
+ * seconds to twenty-one minutes, which removes the ambiguity instead of
+ * filtering it. */
+#define FRAME_CLOCK (*(volatile unsigned int *)23672)
+
+/* The counter as the last wait left it, and whether that wait already saw an
+ * out-of-band gap. File scope so plat_init can seed the first and clear the
+ * second; a function-local static could not be seeded before the first call. */
+static unsigned int frame_mark;
+static unsigned char resyncing;
 
 static void put_glyph(unsigned char col, unsigned char row, const unsigned char *glyph,
                       unsigned char attribute) {
@@ -30,6 +44,13 @@ void plat_init(void) {
     /* Without this the ROM frame counter never advances, so plat_wait_frame
      * degenerates into a busy loop and reports a frame cost of zero forever. */
     intrinsic_ei();
+    /* Seeded here rather than left to zero-initialisation: the first wait of a
+     * run subtracts this from a counter the ROM has been advancing since
+     * power-on, and an unseeded mark made that first reading arbitrary --
+     * roughly one run in fifteen used to report a frame cost it never paid,
+     * which condemned the whole run, since g_worst_frame_cost is a maximum. */
+    frame_mark = FRAME_CLOCK;
+    resyncing = 0;
     zx_border(INK_BLACK);
     zx_cls(PAPER_BLACK | INK_WHITE);
 }
@@ -42,20 +63,76 @@ void plat_border(unsigned char colour) {
     zx_border(colour);
 }
 
-/* Uses the ROM frame counter, with a guard so a stopped interrupt cannot hang.
- * The counter also measures the work: the number of frames that elapsed since
- * the previous wait is exactly what the last iteration cost. */
+/* A reported cost of `c` means the iteration occupied `c + 1` frames and so ran
+ * at 50/(c + 1) Hz: 1 is 25 Hz and passes, 2 is 16.7 Hz and fails, 9 is 5 Hz.
+ * That mapping is what makes this constant and MAX_MISSED_FRAMES judgeable at
+ * all, so it is written down rather than left to be re-derived.
+ *
+ * What this bound exists for is not slowness. A loop that never calls the wait
+ * -- a title screen polling for a keypress, which llmz80/core/platform_notes.py
+ * requires, since a frame-gated poll can miss a short scripted press -- leaves
+ * the counter running, and the next caller would otherwise be charged for every
+ * frame of it. my-retro-game reported g_worst_frame_cost = 38 exactly that way,
+ * while its game loop was really finishing in about three frames.
+ *
+ * The test is recurrence, not magnitude. A loop that was absent produces one
+ * out-of-band gap per transition; a loop that is merely this slow produces one
+ * on every iteration. So an isolated gap is forgiven and the second in a row is
+ * reported. Clamping on magnitude alone was tried first and was worse than
+ * useless: it approved every program at or below 5 Hz while still failing one
+ * at 5.6 Hz, certifying the worst loops in the name of protecting the fast
+ * ones, and the three backstops that clamp claimed to rely on do not exist --
+ * feel.animation_report compares readings 50 frames apart and still sees a
+ * 5 Hz loop animate, emulator_smoke's visual_change only catches a frozen
+ * screen, and no person watches this pipeline at all.
+ *
+ * The residual blind spot is wider than "one stutter goes unseen", and it is
+ * not only stutters that never repeat. `resyncing` is cleared by any in-band
+ * iteration, so what is forgiven is every out-of-band gap that has an in-band
+ * one before it -- and a loop that overruns out of band on alternating
+ * iterations always does. Such a loop never reports worse than its fast
+ * iterations cost -- zero, while those keep pace -- however long it runs and
+ * however badly the others drag: the gap says "the loop was not running", the
+ * fast iteration after it says "carry on", and nothing between them remembers
+ * that this is the tenth time. Two out-of-band iterations in a row are the
+ * only thing that is ever reported. Nothing else in the pipeline sees the difference
+ * either. That is a gap, not a backstop; closing it needs a counter of gaps
+ * rather than a flag, and this library has no room to spare for one it has
+ * not yet seen a program need.
+ *
+ * resources/studio_reference/spectrum/src/engine.c already carries this idea as
+ * frame_cost_primed, with the same diagnosis in its comment -- "the first
+ * sample after a level starts measures how long someone took to press a key,
+ * not the work". But a free-written program never inherits the reference
+ * engine, and the library is in every build; that is the gap this closes. */
+#define RESYNC_FRAMES 8
+
+/* Waits for the next frame off the ROM counter, with a guard so a stopped
+ * interrupt cannot hang, and returns what the previous iteration cost. */
 unsigned char plat_wait_frame(void) {
-    static unsigned char previous;
-    unsigned char start = *FRAMES;
+    unsigned int start = FRAME_CLOCK;
     /* One frame between consecutive waits means the work kept pace, so the
      * frames actually lost is the elapsed count less that one. */
-    unsigned char elapsed = (unsigned char)(start - previous);
-    unsigned char cost = elapsed > 1 ? (unsigned char)(elapsed - 1) : 0;
+    unsigned int elapsed = (unsigned int)(start - frame_mark);
+    unsigned int missed = elapsed > 1 ? (unsigned int)(elapsed - 1) : 0;
     unsigned int guard = 0;
-    while (*FRAMES == start && ++guard < 12000) {
+    unsigned char cost;
+    if (missed > RESYNC_FRAMES) {
+        /* An isolated gap is a loop that was not running. A second one in a
+         * row is a loop that is simply this slow, and must not be forgiven: it
+         * is reported as one frame past the bound, the smallest value that
+         * cannot be mistaken for keeping pace. The true magnitude is not
+         * reported, because after a gap this large it is not known to be one
+         * iteration's worth of anything. */
+        cost = resyncing ? (unsigned char)(RESYNC_FRAMES + 1) : 0;
+        resyncing = 1;
+    } else {
+        cost = (unsigned char)missed;
+        resyncing = 0;
     }
-    previous = *FRAMES;
+    while (FRAME_CLOCK == start && ++guard < 12000) {
+    }
+    frame_mark = FRAME_CLOCK;
     return cost;
 }
 
