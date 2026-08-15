@@ -364,7 +364,11 @@ Expected: FAIL con `ModuleNotFoundError: No module named 'llmz80.studio.drafting
 - `DraftResult` dataclass con `proposal`, `project`, `refusals`.
 - `draft_and_apply(project, drafter, dossier=None, *, attempts=3)`: el bucle. Propone, aplica con `apply_proposal`, y si el resultado no pasa `quality.design_quality_report` lo devuelve como feedback y reintenta. Un `ValueError` de `apply_proposal` es feedback igual, vía `reference_design.repair_feedback`, que ya traduce esos rechazos.
 
-El bucle es el mismo de `propose_and_apply` (`reference_design.py:225-289`) con la aceptación cambiada. **Léelo antes de escribir el tuyo** y dime si conviene extraer el bucle compartido en vez de tener un tercero; si lo tuyo acaba siendo una copia con dos líneas distintas, extraerlo es mejor, y quiero saberlo antes de que existan tres.
+El bucle es el mismo de `propose_and_apply` (`reference_design.py:225-289`) con la aceptación cambiada. **Léelo antes de escribir el tuyo.**
+
+Y una corrección a lo que este plan decía antes, comprobada contra el código: `generator.write_program` **no** es un tercer bucle de la misma forma. Escribe ficheros, llama a un `verify` inyectado y lee seis claves de evidencia (`generator.py:406-425`); es otro animal y mirarlo lleva a concluir que no hay duplicación. Los que sí comparten forma son exactamente dos — `propose_and_apply` y el tuyo — y difieren en dos cosas concretas: con qué se llama al colaborador (ficha obligatoria frente a opcional) y cuál es la prueba de aceptación (huecos de cobertura frente a la puerta de diseño). Las dos son parametrizables.
+
+Si al escribirlo te sale una copia con esas dos líneas cambiadas, **extraer el bucle compartido es lo correcto y quiero que lo hagas**, con `propose_and_apply` pasando a usarlo. Si al intentarlo aparece una tercera diferencia que no habíamos visto, para y dímela: esa diferencia es la razón por la que serían dos funciones y no una, y merece estar escrita.
 
 - [ ] **Step 4: Run test to verify it passes**
 
