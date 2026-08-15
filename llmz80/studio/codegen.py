@@ -46,6 +46,35 @@ KEY_CODES: dict[TargetPlatform, dict[str, str]] = {
 }
 
 
+#: Targets whose `plat_wait_frame` actually counts the frames the previous
+#: iteration cost. `resources/studio_lib/spectrum/platform.c` reads the ROM
+#: frame counter at 23672 and returns the elapsed count less the one frame the
+#: wait itself is worth; `resources/studio_lib/cpc/platform.c` calls
+#: `cpct_waitVSYNC()` and returns a literal zero, because with the firmware
+#: disabled the CPC has no free-running counter to subtract.
+_FRAME_CLOCK_PLATFORMS = frozenset({TargetPlatform.SPECTRUM.value})
+
+
+def has_frame_clock(platform: TargetPlatform | str | None) -> bool:
+    """Whether this target can say how many frames an iteration overran by.
+
+    One predicate, two readers: `render_config_header` writes it into
+    game_config.h as `HAS_FRAME_CLOCK`, and `pacing.pacing_report` asks it
+    whether `g_worst_frame_cost` is a measurement or a placeholder zero. They
+    used to decide it separately, and the drift would have been silent and in
+    the bad direction: giving the CPC a frame counter means editing the C and
+    the define, after which the pacing gate would keep abstaining on a target
+    that had started measuring for real. Nothing would have failed to say so.
+
+    A `str` is accepted beside the enum because the gate reads its platform out
+    of a runtime report, where it has already been through YAML; the rejected
+    alternative was for the gate to re-parse that string into a `TargetPlatform`
+    first, which would have raised on an unrecognised target where abstaining is
+    the answer this floor wants. An unknown platform is not a frame clock.
+    """
+    return platform in _FRAME_CLOCK_PLATFORMS
+
+
 def audio_mask(project: GameProject) -> int:
     """Bitmask of the effects this design declared, one bit per slot.
 
@@ -102,8 +131,7 @@ def render_config_header(project: GameProject) -> str:
                 for index, name in enumerate(project.audio.effects)
             ],
             "/* Only targets with a free-running frame clock report overruns. */",
-            "#define HAS_FRAME_CLOCK "
-            f"{1 if project.target.platform is TargetPlatform.SPECTRUM else 0}",
+            f"#define HAS_FRAME_CLOCK {1 if has_frame_clock(project.target.platform) else 0}",
             "",
             "/* One bit per binding the design declared, in its own order. */",
             *bits,

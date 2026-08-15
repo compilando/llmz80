@@ -17,20 +17,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from .models import TargetPlatform
+from .codegen import has_frame_clock
 
 #: The one state-contract symbol this gate is about.
 _SYMBOL = "g_worst_frame_cost"
-
-#: Targets whose `plat_wait_frame` actually counts the frames the previous
-#: iteration cost. `resources/studio_lib/spectrum/platform.c` reads the ROM
-#: frame counter and returns the elapsed count less the one frame the wait
-#: itself is worth; `resources/studio_lib/cpc/platform.c` calls
-#: `cpct_waitVSYNC()` and returns a literal zero, because with the firmware
-#: disabled the CPC has no free-running counter to subtract. This mirrors the
-#: `HAS_FRAME_CLOCK` define that `codegen.render_config_header` writes into
-#: game_config.h -- the same fact, told to the gate instead of to the C.
-_FRAME_CLOCK_PLATFORMS = frozenset({TargetPlatform.SPECTRUM.value})
 
 #: Missed frames tolerated. One absorbs the cost of the first fully drawn
 #: frame and of the step where the harness writes its input; two or more is a
@@ -56,7 +46,7 @@ def pacing_report(runtime: dict[str, Any]) -> dict[str, Any]:
     work; until it exists, silence is the honest reading.
     """
     platform = runtime.get("platform")
-    if platform not in _FRAME_CLOCK_PLATFORMS:
+    if not has_frame_clock(platform):
         return {
             "schema_version": 1,
             "observed": False,
