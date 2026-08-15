@@ -152,12 +152,16 @@ def adapt(
     *,
     say: Say = _quiet,
     confirm: Ask | None = None,
+    examiner: Any = None,
 ) -> GameProject:
     """Adapt the design to the researched game, and save what it comes to.
 
     `propose_from_reference` repairs its own refusals, and each one is said
     aloud: a repair is a second call to the model, and a silent wait reads as
-    a hang.
+    a hang. A design that applies cleanly but says nothing about what the
+    brief asked for is one of those refusals -- the examiner's gaps go back to
+    the designer as feedback, and only a design that still misses once its
+    attempts are spent comes back as a `ValueError`.
 
     `confirm` is handed the diff and decides whether it is applied. Without
     one the adaptation is saved, which is safe for the same reason it is safe
@@ -168,13 +172,20 @@ def adapt(
     """
     if designer is None:
         from ..cli import _openai_client_and_model
+        from .design_exam import ResponsesDesignExaminer
         from .reference_design import ResponsesReferenceDesigner
 
         client, model = _openai_client_and_model()
         say(f"adapting the design with {model}; this calls the OpenAI API")
         designer = ResponsesReferenceDesigner(client, model=model)
+        # Built here and not above the `if`, so a caller that injected its own
+        # designer -- every test, every offline run -- gets no examiner either
+        # and makes no API call it did not ask for. A caller that wants one
+        # without the other passes it.
+        if examiner is None:
+            examiner = ResponsesDesignExaminer(client, model=model)
     _proposal, diff, updated, refusals = service.propose_from_reference(
-        project, directory, designer, dossier
+        project, directory, designer, dossier, examiner=examiner
     )
     for number, reason in enumerate(refusals, start=1):
         say(f"Attempt {number} was refused, repairing: {reason}")

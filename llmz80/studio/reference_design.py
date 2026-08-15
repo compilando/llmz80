@@ -13,6 +13,7 @@ from typing import Any, Protocol
 
 from pydantic import ValidationError
 
+from .design_exam import DesignExaminer, coverage_errors
 from .models import GameProject
 from .planner import ProjectProposal, apply_proposal
 from .reference import GameReference
@@ -167,6 +168,49 @@ def repair_feedback(error: ValueError) -> str:
     )
 
 
+def coverage_feedback(errors: list[str]) -> str:
+    """Turn the examiner's gaps into an instruction the designer can act on.
+
+    Pointed at the two fields where a missed brief is actually fixable from
+    here. The designer's allowed targets are the ones `DESIGN_SYSTEM_PROMPT`
+    lists, and the entity roster is not among them -- a design with no enemy
+    entity cannot grow one through a proposal, and a designer that tries burns
+    an attempt on a path `apply_proposal` refuses. So this says where to state
+    the missing thing, and says plainly what it must not try instead.
+    """
+    return "\n".join(
+        [
+            "THE PROPOSAL APPLIED BUT THE DESIGN STILL DOES NOT ANSWER ITS BRIEF",
+            "",
+            *(f"  {gap}" for gap in errors),
+            "",
+            "State each of these in the design. `/mechanics` is where what the "
+            "game does belongs -- one sentence per rule, in the design's own "
+            "words -- and `/entities/N/notes` is where what a particular actor "
+            "does belongs. Both are yours to propose.",
+            "",
+            "Do not try to add, remove or renumber entities, screens or scenes to "
+            "close a gap: those paths are refused, and the attempt is lost. Where "
+            "the design has no actor for something the brief asks for, say what "
+            "the actor it does have must do about it.",
+        ]
+    )
+
+
+def _coverage_gaps(project: GameProject, examiner: DesignExaminer | None) -> list[str]:
+    """What the examiner says this design fails to state, or nothing.
+
+    Nothing, and no model call, when there is no examiner (every offline
+    caller, and every test that injects only a designer) or when the project
+    carries no brief -- a design with nothing asked of it cannot fall short of
+    it, and asking a model to judge coverage of an empty brief spends a call
+    to be told something obvious.
+    """
+    if examiner is None or not project.metadata.brief.strip():
+        return []
+    return coverage_errors(examiner.examine(project))
+
+
 @dataclass
 class ReferenceAdaptation:
     """What the repair loop produced: the proposal that finally applied, the
@@ -186,6 +230,7 @@ def propose_and_apply(
     attempts: int = 3,
     allow_budget_changes: bool = False,
     allow_unplayable: bool = False,
+    examiner: DesignExaminer | None = None,
 ) -> ReferenceAdaptation:
     """Propose a design adaptation and validate it through `apply_proposal`,
     repairing a mechanically refused proposal instead of discarding the whole
@@ -199,6 +244,16 @@ def propose_and_apply(
     `apply_proposal` again with the same inputs -- so a caller who wants
     consent first can show the diff, ask, and on "yes" use the project already
     computed here instead of redoing the work.
+
+    An `examiner` adds a second reason to try again, and the one that matters
+    most: a proposal can apply cleanly and still leave a design that says
+    nothing about what its brief asked for. Both v4 projects in this
+    repository reached the writer with `mechanics: []` -- one of them from a
+    dossier that had correctly identified Harrier Attack! -- so the stage that
+    is supposed to turn research into a design had never once produced a
+    design with mechanics. A refusal alone would only have closed a door in
+    front of that; feeding the gaps back as feedback is what gives the
+    designer the chance to state them.
 
     Raises `ValueError` carrying the last refusal reason once attempts run
     out, so a user who burned several model calls learns what finally went
@@ -218,6 +273,13 @@ def propose_and_apply(
         except ValueError as exc:
             refusals.append(str(exc))
             feedback = repair_feedback(exc)
+            continue
+        gaps = _coverage_gaps(updated, examiner)
+        if gaps:
+            refusals.append(
+                "the design still does not state what the brief asks for: " + "; ".join(gaps)
+            )
+            feedback = coverage_feedback(gaps)
             continue
         return ReferenceAdaptation(proposal=proposal, project=updated, refusals=refusals)
     raise ValueError(

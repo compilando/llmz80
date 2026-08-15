@@ -13,6 +13,7 @@ from llmz80.quality.emulator_smoke import smoke_test, write_smoke_report
 from PIL import Image
 
 from .compiler import BuildResult, SourceResult, build_project, render_project
+from .design_exam import DesignExaminer
 from .feel import animation_report
 from .models import AssetSpec, EntitySpec, GameProject, TargetPlatform
 from .observation import observation_script
@@ -311,6 +312,7 @@ class StudioService:
         dossier: GameReference | None = None,
         *,
         attempts: int = 3,
+        examiner: DesignExaminer | None = None,
     ) -> tuple[ProjectProposal, str, GameProject, list[str]]:
         """Propose a design adaptation, repaired against `apply_proposal`
         until it is one a reviewer could accept as-is, returned with the diff
@@ -323,13 +325,20 @@ class StudioService:
         agreed. The fourth item is the refusal reason from each attempt that
         did not apply, oldest first, so a caller can report what repair
         happened without this layer printing anything itself.
+
+        With an `examiner`, an attempt that applies cleanly but leaves the
+        design saying nothing about what the brief asked for is refused the
+        same way and reported in the same list -- so a caller already saying
+        each repair aloud needs no new code to say these.
         """
         dossier = dossier or load_reference(directory)
         if dossier is None:
             raise ValueError("there is no researched game for this project yet")
         if not dossier.identified:
             raise ValueError("no researched game was identified, so there is nothing to adapt to")
-        adaptation = propose_and_apply(project, dossier, designer, attempts=attempts)
+        adaptation = propose_and_apply(
+            project, dossier, designer, attempts=attempts, examiner=examiner
+        )
         return (
             adaptation.proposal,
             proposal_diff(adaptation.proposal),
