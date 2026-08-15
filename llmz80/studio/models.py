@@ -12,13 +12,58 @@ consistently and whether the result fits the machine.
 
 from __future__ import annotations
 
+import re
 import string
 from collections import Counter
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
+
+#: Control characters no design ever means to contain. Tab, newline and
+#: carriage return are left out of it: prose may legitimately wrap.
+_CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _readable(value: str) -> str:
+    """Refuse a design string carrying characters nothing can render.
+
+    Not a hypothetical. The first end-to-end run after the drafting stage
+    landed came back from the adaptation stage with eight NUL bytes in
+    `mechanics`, one in each place an accented character belonged --
+    "pulsaci\\0n", "murci\\0lagos". Nothing noticed: identifiers are pattern
+    checked but the prose fields had no constraint on their contents at all,
+    so the corruption round-tripped through YAML as a `\\0` escape and reached
+    `design_prompt`, which puts those sentences in front of the model that
+    writes the program. A NUL that survives into a C comment or a string
+    literal stops being cosmetic.
+
+    Where the corruption comes from is still unknown -- it happens inside the
+    model call, and the same field written by the drafting stage was clean.
+    That is exactly why the guard is here rather than at the suspected
+    source: this catches it whatever produced it.
+    """
+    found = _CONTROL_CHARACTERS.search(value)
+    if found:
+        raise ValueError(
+            f"this text carries a control character (0x{ord(found.group()):02x}) at "
+            f"position {found.start()}, which no design means and nothing can draw: "
+            + repr(value[max(0, found.start() - 20) : found.start() + 20])
+        )
+    return value
+
+
+#: Prose a design writes for a person or for the model that reads the design.
+#: Length limits stay on the fields themselves, since each has its own.
+Prose = Annotated[str, AfterValidator(_readable)]
 
 
 class StrictModel(BaseModel):
@@ -89,7 +134,7 @@ class Metadata(StrictModel):
     slug: str = Field(pattern=SLUG_PATTERN)
     title: str = Field(min_length=1, max_length=32)
     #: What this game is, in the designer's own words.
-    brief: str = Field(default="", max_length=2000)
+    brief: Prose = Field(default="", max_length=2000)
     author: str = Field(default="LLMZ80 Studio", max_length=32)
     language: Literal["en", "es"] = "es"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -127,7 +172,7 @@ class PaletteEntry(StrictModel):
 
 
 class PresentationSpec(StrictModel):
-    style: str = Field(default="classic arcade", min_length=1, max_length=80)
+    style: Prose = Field(default="classic arcade", min_length=1, max_length=80)
     palette: list[PaletteEntry] = Field(default_factory=list, max_length=16)
     show_score: bool = True
     show_lives: bool = True
@@ -200,7 +245,7 @@ class EntitySpec(StrictModel):
     count: int = Field(default=1, ge=1, le=64)
     colour: str | None = Field(default=None, pattern=ID_PATTERN)
     #: What this actor does, for the writer and the examiner to read.
-    notes: str = Field(default="", max_length=240)
+    notes: Prose = Field(default="", max_length=240)
 
 
 class ObservableSpec(StrictModel):
@@ -209,7 +254,7 @@ class ObservableSpec(StrictModel):
 
     symbol: str = Field(pattern=SYMBOL_PATTERN)
     width: Literal[1, 2] = 1
-    meaning: str = Field(min_length=1, max_length=160)
+    meaning: Prose = Field(min_length=1, max_length=160)
 
 
 class SpawnSpec(StrictModel):
@@ -333,7 +378,7 @@ class GameProject(StrictModel):
     observables: list[ObservableSpec] = Field(default_factory=list, max_length=16)
     #: What the game does, in the designer's own sentences. The examiner derives
     #: its script from these, and the writer implements them.
-    mechanics: list[Annotated[str, StringConstraints(max_length=200)]] = Field(
+    mechanics: list[Annotated[Prose, StringConstraints(max_length=200)]] = Field(
         default_factory=list, max_length=32
     )
     screens: list[ScreenSpec] = Field(min_length=1, max_length=64)
