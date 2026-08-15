@@ -69,6 +69,22 @@ class Declined(Exception):
     """
 
 
+class DesignRefused(ValueError):
+    """The design gate refused to have a program written for this design.
+
+    A `ValueError` like every other refusal a stage raises, so `llmz80 project
+    write`'s existing `except ValueError` keeps reporting it unchanged; a
+    distinct type only because the remedy is unlike any other stage failure's.
+    Every other way `write` can fail -- the compiler giving up, the model
+    returning nothing, a dropped connection -- is answered by running the
+    stage again. This one is not: nothing in the CLI or the interface writes
+    mechanics into a design, so `llmz80 project write` refuses identically
+    forever, and only a person editing `game.yml` moves it. `make.py` tells
+    the two apart on this type so it can say that instead of sending somebody
+    back to a command that cannot succeed.
+    """
+
+
 class Unreadable(ValueError):
     """A dossier is archived and cannot be read.
 
@@ -286,7 +302,7 @@ def write(
 
     design = design_quality_report(project)
     if not design["quality_pass"]:
-        raise ValueError(
+        raise DesignRefused(
             "this design is not ready to be written:\n  " + "\n  ".join(design_refusals(design))
         )
     if writer is None:

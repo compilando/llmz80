@@ -126,10 +126,15 @@ class MakeResult:
 class _Stopped(Exception):
     """A stage refused or raised, so nothing after it runs."""
 
-    def __init__(self, step: str, reason: str) -> None:
+    def __init__(self, step: str, reason: str, cause: BaseException | None = None) -> None:
         super().__init__(reason)
         self.step = step
         self.reason = reason
+        #: What the stage actually raised, kept rather than flattened into
+        #: `reason`, because the last line this command prints is advice and
+        #: the right advice depends on the kind of failure, not on its words.
+        #: See `_retry_hint`.
+        self.cause = cause
 
 
 class StageRefused(Exception):
@@ -174,12 +179,16 @@ class _Diary:
         except Exception as exc:
             self.out(self.journal.finish(token, ok=False))
             self.out(self.journal.write("ERROR", f"{step.name}: {exc}"))
-            raise _Stopped(step.name, str(exc)) from exc
+            raise _Stopped(step.name, str(exc), exc) from exc
         self.out(self.journal.finish(token, ok=True, text=summary))
         return value
 
     def skip(self, step: wizard.Step, why: str) -> None:
         self.out(self.journal.write("SKIP", f"{step.number} {step.name} — {why}"))
+
+    def warn(self, text: str) -> None:
+        """Something that is not a failure yet and will become one."""
+        self.out(self.journal.write("WARN", text))
 
 
 @dataclass
@@ -332,6 +341,7 @@ def make_game(
             # need not be based on a real one, and the design simply keeps
             # the typology it was created with.
             diary.skip(steps["diseño"], "no researched game to adapt to")
+            _warn_the_design_will_state_nothing(project, directory, diary, steps)
         diary.stage(
             steps["sprites"],
             "drawing the missing art",
@@ -360,10 +370,7 @@ def make_game(
         if (directory / "build").is_dir():
             story += f", and what the toolchain said in {directory / 'build'}"
         out(story + ".")
-        out(
-            f"Nothing is lost: retry this stage with "
-            f"`llmz80 project {RESUMES[stop.step]} {directory}`."
-        )
+        out(_retry_hint(stop, directory))
         return MakeResult(project_dir=directory, failed=stop.step, error=stop.reason)
 
     artifact = artifact_path(project, directory)
@@ -382,6 +389,64 @@ def make_game(
     # opens it.
     out(f"Play it: {how_to_play(directory)}")
     return MakeResult(project_dir=directory, artifact=artifact)
+
+
+def _warn_the_design_will_state_nothing(
+    project: GameProject,
+    directory: Path,
+    diary: _Diary,
+    steps: dict[str, wizard.Step],
+) -> None:
+    """Say, where the cause is, that the design has been left with no mechanics.
+
+    `diseño` is the only stage that ever writes any: a project is created with
+    `mechanics: []` (`samples.blank_project`) and nothing else in Studio fills
+    the list. So skipping it over a brief means `programa`'s design gate will
+    refuse, three stages and one paid round of art later.
+
+    Before this the order said nothing here: it went on to pay for the art and
+    stopped three stages later at `programa`, naming the stage where the
+    consequence surfaced rather than the one where the cause was. The
+    condition is asked of `design_quality_report` rather than restated as
+    `not project.mechanics`, so this warns exactly when the gate would refuse
+    and not one case wider.
+    """
+    from .quality import MECHANICS_CHECK, design_quality_report
+
+    if MECHANICS_CHECK not in design_quality_report(project)["failures"]:
+        return
+    diary.warn(
+        "this design therefore states no mechanics, and a brief with none is "
+        f"refused at {steps['programa'].number} {steps['programa'].name}: write one "
+        f"sentence per rule into `mechanics` in {directory / 'game.yml'} for the "
+        "order to get past it"
+    )
+
+
+def _retry_hint(stop: _Stopped, directory: Path) -> str:
+    """The last line a stopped order prints: what to do, not what happened.
+
+    `llmz80 project <stage>` is the right answer for every failure that a
+    second run could go differently on -- a compiler that gave up, a model
+    that returned nothing, a dropped connection. It is a lie for the design
+    gate, which refuses because the design states no mechanics and will refuse
+    identically forever: nothing in the CLI or the interface writes mechanics,
+    only the designer's proposal in `diseño` does, and that is the stage that
+    was skipped. This branch's own review traced that road to its end -- the
+    hint sent the reader to `llmz80 project write`, which refuses the same way
+    however often it is run, and `llmz80 project adapt` refuses too because no
+    game was identified. So this names the file and the field instead, and
+    only then the command that will run.
+    """
+    if isinstance(stop.cause, pipeline.DesignRefused):
+        return (
+            f"This design needs mechanics before a program can be written for it: "
+            f"add them to `mechanics` in {directory / 'game.yml'}, one sentence per "
+            f"rule, and then `llmz80 project write {directory}` will run."
+        )
+    return (
+        f"Nothing is lost: retry this stage with `llmz80 project {RESUMES[stop.step]} {directory}`."
+    )
 
 
 # --- the stages, each with the sentence its END line ends in -----------------

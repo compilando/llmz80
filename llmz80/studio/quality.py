@@ -66,6 +66,14 @@ def verification_level(runtime: dict[str, Any] | None) -> str:
     return VERIFICATION_BUILT
 
 
+#: The check that refuses a brief with nothing to implement. Named because
+#: three places ask about this one check by name -- the report builds it, the
+#: refusal sentence is looked up under it, and `make.py` asks whether skipping
+#: `diseño` has left the design in exactly this state -- and a slug spelled
+#: out four times is a slug that will be misspelled once.
+MECHANICS_CHECK = "design_states_the_mechanics_its_brief_asks_for"
+
+
 #: Why each design check refuses, in words the person who wrote the design can
 #: act on. `failures` carries check *names* -- slugs, which are what a report
 #: reader and a test want, and which say nothing to somebody told their game
@@ -81,10 +89,11 @@ DESIGN_REFUSALS = {
         "this design reserves more binary or static data than the target "
         "machine has; lower the budgets until they fit"
     ),
-    "design_states_the_mechanics_its_brief_asks_for": (
+    MECHANICS_CHECK: (
         "this design carries a brief but states no mechanics, so nothing tells "
         "the writer how the game is won, lost or played and the program would "
-        "be whatever the model infers; state the mechanics the brief asks for"
+        "be whatever the model infers; write the rules the brief asks for into "
+        "the design's `mechanics` list in game.yml, one sentence per rule"
     ),
 }
 
@@ -130,8 +139,7 @@ def design_quality_report(project: GameProject) -> dict[str, Any]:
             project.budgets.binary_bytes <= pack.binary_budget
             and project.budgets.static_data_bytes <= pack.data_budget
         ),
-        "design_states_the_mechanics_its_brief_asks_for": bool(project.mechanics)
-        or not project.metadata.brief.strip(),
+        MECHANICS_CHECK: bool(project.mechanics) or not project.metadata.brief.strip(),
     }
     failures = [name for name, passed in checks.items() if not passed]
     return {
