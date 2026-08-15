@@ -238,6 +238,35 @@ def _read_probes(connection: socket.socket, probes: dict[str, Any]) -> dict[str,
     return values
 
 
+#: Bitmap plus attributes: 6144 + 768, the whole Spectrum display file.
+SCREEN_BYTES = 6912
+
+#: Where the display file starts on a 48K.
+SCREEN_ORIGIN = 16384
+
+
+def _screen_from_answer(answer: str) -> bytes:
+    """The display file out of one ZRCP `read-memory` answer.
+
+    Split on the prompt exactly as `_read_probes` does: ZRCP writes
+    "command@ ..." after its payload, and its hex digits would otherwise be
+    read as the last bytes of the screen.
+    """
+    digits = "".join(re.findall(r"[0-9A-Fa-f]{2}", answer.split("command@")[0]))[: SCREEN_BYTES * 2]
+    if len(digits) < SCREEN_BYTES * 2:
+        return b""
+    return bytes(int(digits[index : index + 2], 16) for index in range(0, SCREEN_BYTES * 2, 2))
+
+
+def _read_screen(connection: socket.socket) -> bytes:
+    """Ask for the whole display file. Empty when the answer arrived short."""
+    try:
+        answer = _zrcp_query(connection, f"read-memory {SCREEN_ORIGIN} {SCREEN_BYTES}")
+    except OSError:
+        return b""
+    return _screen_from_answer(answer)
+
+
 def _zrcp_command(connection: socket.socket, command: str) -> None:
     connection.sendall((command + "\n").encode("utf-8"))
     time.sleep(_ZRCP_SETTLE)
@@ -299,9 +328,25 @@ def scripted_run_seconds(
     # `key in _SPECTRUM_ROWS` guard decides.
     keyed = sum(1 for step in steps if step.get("key") in _SPECTRUM_ROWS)
     command_cost = keyed * 2 * exchange
+    # The one screen read, taken only when there are steps -- exactly the
+    # `if steps:` block in `_run_zesarux` that captures `played.bmp`. Charged
+    # as one ordinary exchange despite answering ~14 KB rather than two hex
+    # digits: measured against a booted ZEsarUX on this host, `read-memory
+    # 16384 6912` returns in 0.321s and a one-byte probe in the same 0.321s,
+    # because the whole answer lands inside `_ZRCP_SETTLE` and the rest of the
+    # wait is the drain timing out either way. Giving this query a longer drain
+    # of its own would buy nothing and cost a tenth of a second per run.
+    screen_cost = exchange if steps else 0.0
     # Rounded up, not truncated: `int` shaved off up to a second from a figure
     # whose entire purpose is not being short.
-    return math.ceil(max(6, seconds) + probe_cost + hold_cost + command_cost + _HARNESS_OVERHEAD)
+    return math.ceil(
+        max(6, seconds)
+        + probe_cost
+        + hold_cost
+        + command_cost
+        + screen_cost
+        + _HARNESS_OVERHEAD
+    )
 
 
 def _run_zesarux(
@@ -370,6 +415,9 @@ def _run_zesarux(
                 # show gameplay.
                 _zrcp_command(connection, f'save-screen "{played}"')
                 _wait_for_file(played)
+                screen = _read_screen(connection)
+                if screen:
+                    (capture_dir / "screen.bin").write_bytes(screen)
     except OSError as exc:
         remote_error = str(exc)
     # Counted from launch, because `--exit-after` is: waiting `run_seconds`
@@ -383,6 +431,7 @@ def _run_zesarux(
         stdout, stderr = process.communicate(timeout=3)
         remote_error = remote_error or "ZEsarUX exceeded its bounded runtime"
 
+    screen_dump = capture_dir / "screen.bin"
     observations = [
         _image_observation(path) for path in (before, after, played) if path.is_file()
     ]
@@ -426,6 +475,10 @@ def _run_zesarux(
         "frames": observations,
         "frame_bytes": len(raw),
         "capture_dir": str(capture_dir),
+        # The display file as the machine held it, not as an emulator scaled it
+        # into a BMP: judging ink against paper needs the attribute bytes
+        # themselves, and no screenshot carries them.
+        "screen_dump": str(screen_dump) if screen_dump.is_file() else None,
         "stdout_tail": stdout[-1000:],
         "stderr_tail": stderr[-1000:],
     }

@@ -176,6 +176,9 @@ def test_zesarux_step_reading_carries_the_step_hold(monkeypatch, tmp_path):
     monkeypatch.setattr(emulator_smoke, "_zrcp_command", lambda *args, **kwargs: None)
     monkeypatch.setattr(emulator_smoke, "_wait_for_file", lambda *args, **kwargs: True)
     monkeypatch.setattr(emulator_smoke, "_read_probes", lambda *args, **kwargs: {"g_anim_frame": 7})
+    # Patched for the same reason as `_read_probes`: the fake connection answers
+    # nothing, and a screen read is not what this test is about.
+    monkeypatch.setattr(emulator_smoke, "_read_screen", lambda connection: b"")
     monkeypatch.setattr(emulator_smoke.subprocess, "Popen", lambda *args, **kwargs: _FakeProcess())
     monkeypatch.setattr(emulator_smoke.time, "sleep", lambda *args, **kwargs: None)
 
@@ -230,12 +233,18 @@ def test_the_emulator_lifetime_covers_a_scripted_run():
     budget = scripted_run_seconds(seconds=3, steps=script, probes=probes)
 
     # 6s floor + 12 reads of 8 symbols + 11 holds of a second + 10 keyed steps
-    # pressing and releasing + the harness overhead, rounded up.
+    # pressing and releasing + the one screen read + the harness overhead,
+    # rounded up.
     exchange = emulator_smoke._ZRCP_ROUNDTRIP * emulator_smoke._ZRCP_MARGIN
     assert budget == math.ceil(
-        6 + 12 * 8 * exchange + 11 * 1.0 + 10 * 2 * exchange + emulator_smoke._HARNESS_OVERHEAD
+        6
+        + 12 * 8 * exchange
+        + 11 * 1.0
+        + 10 * 2 * exchange
+        + exchange
+        + emulator_smoke._HARNESS_OVERHEAD
     )
-    assert budget == 63
+    assert budget == 64
 
 
 def test_the_budget_outlasts_the_schedule_the_harness_actually_sleeps(monkeypatch, tmp_path):
@@ -297,3 +306,23 @@ def test_the_budget_outlasts_the_schedule_the_harness_actually_sleeps(monkeypatc
     )
 
     assert sum(spent) < emulator_smoke.scripted_run_seconds(seconds=3, steps=script, probes=probes)
+
+
+def test_a_screen_answer_becomes_the_bytes_the_machine_had():
+    """ZRCP answers `read-memory` in hex pairs and then its own prompt; the
+    prompt must not become pixels."""
+    from llmz80.quality.emulator_smoke import _screen_from_answer
+
+    answer = " ".join(f"{value % 256:02X}" for value in range(6912)) + "\ncommand@ deadbeef"
+
+    screen = _screen_from_answer(answer)
+
+    assert len(screen) == 6912
+    assert screen[0] == 0
+    assert screen[257] == 1
+
+
+def test_a_truncated_screen_answer_is_no_screen_at_all():
+    from llmz80.quality.emulator_smoke import _screen_from_answer
+
+    assert _screen_from_answer("00 01 02") == b""
