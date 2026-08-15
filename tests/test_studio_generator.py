@@ -329,6 +329,83 @@ def test_an_abstaining_animation_gate_does_not_block_acceptance(tmp_path: Path, 
     assert result.attempts[0].animation_passed is None
 
 
+def test_a_definite_pacing_refusal_blocks_the_attempt_and_reaches_the_next_writer(
+    tmp_path: Path, project
+):
+    """The pacing gate was wired into `write_program`'s acceptance condition
+    with no test on the wiring: deleting `and attempt.pacing_passed is not
+    False` left the whole suite green, so a program whose loop overran its
+    display frame would have been accepted on attempt one while
+    `runtime_test` failed the very same run. A definite `False` must reject
+    the attempt, and its reason must reach the writer that repairs it.
+    """
+    writer = ScriptedWriter(_sources("juddering"), _sources("paced"))
+    calls = {"n": 0}
+
+    def verify(_project, _directory):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {
+                "build": {"quality_pass": True},
+                "acceptance": {"quality_pass": None},
+                "pacing": {
+                    "quality_pass": False,
+                    "observed": True,
+                    "failures": ["g_worst_frame_cost reached 4 at step hold_left_a"],
+                },
+            }
+        return {
+            "build": {"quality_pass": True},
+            "acceptance": {"quality_pass": None},
+            "pacing": {"quality_pass": True, "observed": True, "failures": []},
+        }
+
+    result = write_program(project, tmp_path, writer, verify)
+
+    assert result.accepted is True
+    assert [attempt.pacing_passed for attempt in result.attempts] == [False, True]
+    assert "g_worst_frame_cost reached 4" in writer.feedback_seen[1]
+    assert "paced" in (tmp_path / project.program_dir / "main.c").read_text()
+
+
+def test_a_definite_attribute_refusal_blocks_the_attempt_and_reaches_the_next_writer(
+    tmp_path: Path, project
+):
+    """The same untested wiring as the pacing gate's: deleting `and
+    attempt.attributes_passed is not False` from the acceptance condition
+    left the suite green, so a program drawing pixels into cells whose ink
+    matches their paper -- a screen no player can read -- was accepted while
+    `runtime_test` refused it.
+    """
+    writer = ScriptedWriter(_sources("invisible"), _sources("legible"))
+    calls = {"n": 0}
+
+    def verify(_project, _directory):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {
+                "build": {"quality_pass": True},
+                "acceptance": {"quality_pass": None},
+                "attributes": {
+                    "quality_pass": False,
+                    "observed": True,
+                    "failures": ["3 character cell(s) hold drawn pixels: (0,0), (1,0), (2,0)"],
+                },
+            }
+        return {
+            "build": {"quality_pass": True},
+            "acceptance": {"quality_pass": None},
+            "attributes": {"quality_pass": True, "observed": True, "failures": []},
+        }
+
+    result = write_program(project, tmp_path, writer, verify)
+
+    assert result.accepted is True
+    assert [attempt.attributes_passed for attempt in result.attempts] == [False, True]
+    assert "3 character cell(s) hold drawn pixels" in writer.feedback_seen[1]
+    assert "legible" in (tmp_path / project.program_dir / "main.c").read_text()
+
+
 def test_a_design_with_no_animation_evidence_is_accepted_exactly_as_before(tmp_path: Path, project):
     """A design with no sprites and no g_anim_frame gives `verify_program` no
     "animation" key at all (its evidence dict predates this gate, or the

@@ -2,8 +2,10 @@
 
 from llmz80.studio.models import GameProject, TargetPlatform
 from llmz80.studio.quality import (
+    RUNTIME_GATES,
     VERIFICATION_BUILT,
     VERIFICATION_OBSERVED,
+    WITNESS_GATES,
     design_quality_report,
     studio_quality_report,
     verification_level,
@@ -105,6 +107,28 @@ def test_a_gate_that_watched_and_refused_is_not_observed():
     """A refusal outranks a sibling's approval: one gate saying it watched and
     disliked what it saw is not cancelled out by another that liked it."""
     runtime = {"animation": {"quality_pass": False}, "acceptance": {"quality_pass": True}}
+
+    assert verification_level(runtime) == VERIFICATION_BUILT
+
+
+def test_only_a_gate_that_watched_behaviour_can_promote_a_run_to_observed():
+    """`pacing` and `attributes` judge how a program ran, not that it did
+    anything: a program that paints one screen and then sits there forever
+    passes both. They can refuse a run and they cannot certify one, so they
+    are not in `WITNESS_GATES` -- and this is not a spelling of the constant,
+    it is the run that used to reach `observed` on those two alone.
+    """
+    assert WITNESS_GATES == ("acceptance", "animation", "state_probe")
+    assert set(WITNESS_GATES) < set(RUNTIME_GATES)
+
+    runtime = {
+        "quality_pass": True,
+        "acceptance": {"quality_pass": None},
+        "animation": {"quality_pass": None},
+        "state_probe": {"quality_pass": None},
+        "pacing": {"quality_pass": True},
+        "attributes": {"quality_pass": True},
+    }
 
     assert verification_level(runtime) == VERIFICATION_BUILT
 

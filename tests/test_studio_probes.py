@@ -207,6 +207,90 @@ def test_an_animation_abstention_does_not_lower_the_overall_verdict(tmp_path, mo
     assert report["quality_pass"] is True
 
 
+def _invisible_screen(directory: Path) -> Path:
+    """A display file whose first cell holds drawn pixels on ink the same
+    colour as its paper -- what `attributes.invisible_cells` refuses, written
+    out at the exact length `emulator_smoke._read_screen` would have dumped.
+    """
+    from llmz80.studio.attributes import ATTRIBUTE_ORIGIN, SCREEN_BYTES, cell_offset
+
+    screen = bytearray(SCREEN_BYTES)
+    for line in range(8):
+        screen[cell_offset(0, 0) + (line << 8)] = 0xFF
+    # PAPER_BLUE | INK_BLUE: pixels were drawn, and nothing in that cell reaches
+    # the player.
+    screen[ATTRIBUTE_ORIGIN] = 0b00_001_001
+    path = directory / "screen.bin"
+    path.write_bytes(bytes(screen))
+    return path
+
+
+def test_the_runtime_report_carries_the_pacing_verdict_and_a_refusal_lowers_it(
+    tmp_path, monkeypatch
+):
+    """`runtime_test` folds five gates into its verdict, and the pacing gate's
+    place in that fold had no test: replacing `pacing_report(report)` with a
+    literal abstention left the suite green, so a loop that overran its display
+    frame would have passed the run that measured it. The key has to be in the
+    report -- `release.py` and `verification_level` read it by name -- and a
+    definite `False` has to lower `quality_pass`.
+    """
+    service = StudioService.at(tmp_path)
+    project = blank_project("Paced", TargetPlatform.SPECTRUM)
+    fake_report = {
+        "quality_pass": True,
+        "platform": "spectrum",
+        "probe_after": {},
+        # No `g_anim_frame` anywhere, so the animation gate abstains and the
+        # pacing gate is the only thing that can lower this verdict.
+        "step_readings": [
+            {"id": "hold_left_a", "hold": "left", "read": {"g_worst_frame_cost": 4}},
+        ],
+    }
+    _stub_runtime_test(monkeypatch, service, tmp_path, fake_report)
+
+    report = service.runtime_test(project, tmp_path)
+
+    assert report["animation"]["quality_pass"] is None
+    assert report["pacing"]["observed"] is True
+    assert report["pacing"]["worst"] == 4
+    assert report["pacing"]["quality_pass"] is False
+    assert report["quality_pass"] is False
+    assert json.loads((tmp_path / "emulator_report.json").read_text())["pacing"] == (
+        report["pacing"]
+    )
+
+
+def test_the_runtime_report_carries_the_attribute_verdict_and_a_refusal_lowers_it(
+    tmp_path, monkeypatch
+):
+    """The same untested fold as the pacing gate's: with `attribute_report`
+    replaced by a literal abstention the suite stayed green, so a screen whose
+    drawn pixels no player could see passed the run that read it.
+    """
+    service = StudioService.at(tmp_path)
+    project = blank_project("Drawn", TargetPlatform.SPECTRUM)
+    fake_report = {
+        "quality_pass": True,
+        "platform": "amstrad_cpc",  # the pacing gate abstains, leaving this gate alone
+        "probe_after": {},
+        "screen_dump": str(_invisible_screen(tmp_path)),
+    }
+    _stub_runtime_test(monkeypatch, service, tmp_path, fake_report)
+
+    report = service.runtime_test(project, tmp_path)
+
+    assert report["pacing"]["quality_pass"] is None
+    assert report["attributes"]["observed"] is True
+    assert report["attributes"]["invisible_cells"] == [(0, 0)]
+    assert report["attributes"]["quality_pass"] is False
+    assert report["quality_pass"] is False
+    # Round-tripped through JSON, where the cell tuples come back as lists.
+    written = json.loads((tmp_path / "emulator_report.json").read_text())
+    assert written["attributes"]["quality_pass"] is False
+    assert written["attributes"]["invisible_cells"] == [[0, 0]]
+
+
 def test_a_missing_required_symbol_is_a_diagnostic_the_writer_can_act_on():
     failures = contract_failures({"missing_required": ["g_score", "g_state"]})
 
