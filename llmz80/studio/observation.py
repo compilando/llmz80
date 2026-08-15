@@ -4,10 +4,17 @@ This is not the examiner and it must never become one. It states no
 expectation about what the program should do: it holds each binding the design
 declared, twice, then lets go, and the gates that read `step_readings` decide
 what those readings mean. Keeping the two apart is what stops an
-expectation-free script from being mistaken for a passed examination --
-`acceptance.runtime_script` stays empty and `acceptance_report` keeps
-abstaining, while `feel.animation_report` finally gets readings to judge (and
-the pacing gate will too, once it exists).
+expectation-free script from being mistaken for a passed examination: with no
+examiner, `acceptance.runtime_examination` finds no expectations to bind to
+these steps and `acceptance_report` abstains, while `feel.animation_report`
+and the pacing gate judge the same readings on their own terms.
+
+The examiner (`runtime_exam.py`) now writes expectations *onto* these steps,
+which is the one direction the separation allows: it is handed the steps this
+module decided on and may only say what they will show. It never gets to ask
+for a step of its own -- a script written to make a claim checkable is a
+script that has already assumed what the game is, and assuming that is what
+made the first version of this gate reject three finished games.
 """
 
 from __future__ import annotations

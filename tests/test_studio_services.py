@@ -293,7 +293,7 @@ def test_write_program_lets_runtime_test_narrate_from_inside_the_repair_loop(tmp
             output_dir=directory / "build",
         )
 
-    def fake_runtime_test(project, directory, *, seconds=3, on_progress=None):
+    def fake_runtime_test(project, directory, *, seconds=3, on_progress=None, examiner=None):
         if on_progress is not None:
             on_progress("compilando el programa")
             on_progress("arrancando el emulador")

@@ -198,8 +198,8 @@ def sprite_usage_errors(project: GameProject, sources: dict[str, str]) -> list[s
     sprite reached the screen needs the emulator, the way
     `feel.animation_report` does for the claims only runtime evidence can
     settle. (The acceptance scenarios this once leaned on for the same kind
-    of proof are gone in this schema -- deriving them is deferred to phase 2,
-    see `acceptance.runtime_script`.) What this cannot catch: a call
+    of proof are gone in this schema; what a run must show is derived from
+    the design by an examiner now, see `runtime_exam.py`.) What this cannot catch: a call
     inside dead code (an `if (0)`, a branch the scripted acceptance inputs
     never take, a function nothing calls). That is a real gap, but it is the
     same gap every other capability check in

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 import re
@@ -14,6 +14,7 @@ from PIL import Image
 
 from .compiler import BuildResult, SourceResult, build_project, render_project
 from .design_exam import DesignExaminer
+from .runtime_exam import RuntimeExaminer
 from .attributes import attribute_report
 from .feel import animation_report
 from .models import AssetSpec, EntitySpec, GameProject, TargetPlatform
@@ -27,7 +28,7 @@ from .sprite_artist import SpriteArtist
 from .spriting import SPRITE_SIZE
 from .store import ProjectStore
 from .quality import RUNTIME_GATES, studio_quality_report
-from .acceptance import runtime_script
+from .acceptance import RuntimeExamination, runtime_examination, step_mismatches
 from .generator import write_program
 from .release import export_release
 import json
@@ -48,6 +49,11 @@ def _say(on_progress: Progress, text: str) -> None:
 @dataclass
 class StudioService:
     store: ProjectStore
+    #: Examinations already paid for, keyed by the design and the symbols the
+    #: program exposes. See `examination`.
+    _examinations: dict[tuple[str, tuple[str, ...]], RuntimeExamination] = field(
+        default_factory=dict
+    )
 
     @classmethod
     def at(cls, workspace: Path) -> "StudioService":
@@ -369,50 +375,77 @@ class StudioService:
         self.generate_sources(project, directory)
         return build_project(project, directory / "build")
 
-    def acceptance_report(self, project: GameProject, runtime: dict[str, Any]) -> dict[str, Any]:
-        """Judge each executable acceptance step against what memory showed.
+    def acceptance_report(
+        self,
+        project: GameProject,
+        runtime: dict[str, Any],
+        examiner: RuntimeExaminer | None = None,
+    ) -> dict[str, Any]:
+        """Judge each examined acceptance step against what memory showed.
 
         A step whose reading never arrived is reported as unobserved, never as
         satisfied, so a target without a probe adapter cannot inherit a pass.
+        The same rule decides the order of the two abstentions below: whether
+        anything was read at all is settled *before* the examiner is asked,
+        because asking a model what a run must show when no run was observed
+        spends money to produce a verdict that could only abstain anyway.
+
+        Which symbols the examiner may talk about comes from the readings
+        rather than from the contract, so it cannot assert anything about a
+        symbol this program does not have -- a design with no lives never
+        declares `g_lives`, and a claim about one would fail the game for a
+        concept it never had.
+
+        The mechanics nobody checked are published here, not just counted.
+        That list is the honest measure of how much of this design the gate
+        said nothing about, and a pass that hides it reads as a full
+        examination -- which is the shape of the failure that let an
+        abstention be mistaken for approval in the first place.
         """
         readings = {
             reading.get("id"): reading.get("read") or {}
             for reading in runtime.get("step_readings") or []
         }
-        steps = runtime_script(project)
-        if not steps:
+        if not any(readings.values()):
             return {
-                "schema_version": 1,
+                "schema_version": 2,
                 "observed": False,
-                "reason": "no examiner has derived what this design should do",
+                "reason": "this target has no memory probe adapter",
                 "scenarios": [],
                 "quality_pass": None,
             }
-        if not any(readings.values()):
+        symbols = sorted({name for read in readings.values() for name in read})
+        examination = self.examination(project, examiner, symbols)
+        common = {
+            "mechanics_total": len(project.mechanics),
+            "unchecked_mechanics": examination.unchecked,
+            "unverifiable": examination.reasons,
+            "discarded_assertions": examination.discarded,
+        }
+        if not examination.asserted:
             return {
-                "schema_version": 1,
+                "schema_version": 2,
                 "observed": False,
-                "reason": "this target has no memory probe adapter",
-                "scenarios": [step["id"] for step in steps],
+                "reason": (
+                    "no examiner has derived what this design should do"
+                    if not examination.steps
+                    else "the examiner found nothing this run could check"
+                ),
+                "scenarios": [],
                 "quality_pass": None,
+                **common,
             }
         results = []
-        for step in steps:
+        for step in examination.steps:
             read = readings.get(step["id"], {})
-            mismatches = [
-                f"{name}: expected {value}, read {read.get(name)}"
-                for name, value in sorted(step["expect"].items())
-                if read.get(name) != value
-            ]
+            mismatches = step_mismatches(step, readings)
             # `bool(read)` guards against a step whose reading never arrived
             # inheriting a pass by vacuous truth -- but that guard only means
-            # something for a step that actually predicts a contract value.
-            # The two animation-probe steps (`acceptance.ANIM_PROBE_MOVE_ID`,
-            # `..._IDLE_ID`) predict nothing here on purpose: they exist for
-            # `feel.animation_report`, which reads `step_readings` itself.
-            # Judging them by whether *this* gate happened to receive a
-            # reading would fail a program for a step this gate never made a
-            # claim about.
+            # something for a step that actually predicts something. Most
+            # steps predict nothing: the examiner binds its assertions to the
+            # few steps that can witness them, and judging the rest by whether
+            # a reading happened to arrive would fail a program over steps
+            # this gate never made a claim about.
             passed = not mismatches and (bool(read) or not step["expect"])
             results.append(
                 {
@@ -426,12 +459,34 @@ class StudioService:
                 }
             )
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "observed": True,
             "scenarios": results,
             "failures": [item["id"] for item in results if not item["passed"]],
             "quality_pass": all(item["passed"] for item in results),
+            **common,
         }
+
+    def examination(
+        self,
+        project: GameProject,
+        examiner: RuntimeExaminer | None,
+        symbols: list[str],
+    ) -> RuntimeExamination:
+        """The examiner's verdict on this design, asked for at most once.
+
+        `generator.write_program` verifies up to five attempts, and the design
+        it examines is the same document every time -- only the program
+        changes. Without this the same question would be paid for five times
+        per game and answered slightly differently each time, so a repair
+        could be judged against an exam the previous attempt never sat.
+        Keyed by the symbols too, because a program that starts declaring
+        `g_lives` on its third attempt is a different exam.
+        """
+        key = (project.model_dump_json(), tuple(symbols))
+        if key not in self._examinations:
+            self._examinations[key] = runtime_examination(project, examiner, symbols=symbols)
+        return self._examinations[key]
 
     def probe_report(self, project: GameProject, runtime: dict[str, Any]) -> dict[str, Any]:
         """Report what memory said, without judging it.
@@ -458,6 +513,7 @@ class StudioService:
         *,
         seconds: int = 3,
         on_progress: Progress = None,
+        examiner: RuntimeExaminer | None = None,
     ) -> dict[str, Any]:
         """Build the project, then watch it run in the emulator.
 
@@ -480,7 +536,7 @@ class StudioService:
         )
         probes = self.probe_report(project, report)
         report["state_probe"] = probes
-        acceptance = self.acceptance_report(project, report)
+        acceptance = self.acceptance_report(project, report, examiner)
         report["acceptance"] = acceptance
         animation = animation_report(report)
         report["animation"] = animation
@@ -510,6 +566,7 @@ class StudioService:
         directory: Path,
         *,
         on_progress: Progress = None,
+        examiner: RuntimeExaminer | None = None,
     ) -> dict[str, Any]:
         """Build the project and, where the target allows it, watch it run.
 
@@ -548,7 +605,9 @@ class StudioService:
             # diagnostics alone.
             return evidence
         try:
-            runtime = self.runtime_test(project, directory, on_progress=on_progress)
+            runtime = self.runtime_test(
+                project, directory, on_progress=on_progress, examiner=examiner
+            )
         except RuntimeError as exc:
             evidence["runtime_error"] = str(exc)
             return evidence
@@ -568,6 +627,7 @@ class StudioService:
         *,
         attempts: int = 5,
         on_progress: Progress = None,
+        examiner: RuntimeExaminer | None = None,
     ) -> dict[str, Any]:
         """Have a program written into the project and repaired until it passes.
 
@@ -591,7 +651,14 @@ class StudioService:
         """
 
         def _verify(project: GameProject, directory: Path) -> dict[str, Any]:
-            return self.verify_program(project, directory, on_progress=on_progress)
+            # The examiner rides in the same closure as `on_progress` and for
+            # the same reason: `generator.write_program`'s `verify` is a fixed
+            # two-argument callable that several tests inject their own
+            # version of, and widening it would force every one of them to
+            # accept an argument only this caller cares about.
+            return self.verify_program(
+                project, directory, on_progress=on_progress, examiner=examiner
+            )
 
         result = write_program(
             project, directory, writer, _verify, attempts=attempts, on_progress=on_progress

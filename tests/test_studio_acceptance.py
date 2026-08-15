@@ -1,11 +1,14 @@
-"""Until the examiner exists, the runtime gate abstains instead of guessing."""
+"""What the runtime gate judges, and what it refuses to judge."""
 
 from llmz80.studio.acceptance import design_prompt, generation_prompt, runtime_script
 from llmz80.studio.models import GameProject, TargetPlatform
 from llmz80.studio.samples import blank_project
 
 
-def test_the_runtime_script_is_empty_and_says_so():
+def test_a_project_nobody_examined_gets_no_script_at_all():
+    """No examiner, no steps, and `acceptance_report` abstains on the empty
+    list -- the state this gate was deliberately left in when the hardcoded
+    script was withdrawn, and the one it must fall back to."""
     assert runtime_script(blank_project("Quiet", TargetPlatform.SPECTRUM)) == []
 
 

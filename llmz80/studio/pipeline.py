@@ -377,6 +377,7 @@ def write(
     dossier: GameReference | None = None,
     *,
     say: Say = _quiet,
+    examiner: Any = None,
 ) -> dict[str, Any]:
     """Have the program written and repaired against the compiler.
 
@@ -403,11 +404,18 @@ def write(
     if writer is None:
         from ..cli import _openai_client_and_model
         from .generator import ResponsesProgramWriter
+        from .runtime_exam import ResponsesRuntimeExaminer
 
         client, model = _openai_client_and_model()
         say(f"writing the program with {model}; this calls the OpenAI API")
         writer = ResponsesProgramWriter(client, model=model, reference=dossier)
-    return service.write_program(project, directory, writer, on_progress=say)
+        # Built inside the `if`, exactly as `adapt` and `draft` build theirs: a
+        # caller that injected its own writer -- every test, every offline run
+        # -- gets no examiner either and makes no call it did not ask for, and
+        # the acceptance gate goes on abstaining as it did before phase 2.
+        if examiner is None:
+            examiner = ResponsesRuntimeExaminer(client, model=model)
+    return service.write_program(project, directory, writer, on_progress=say, examiner=examiner)
 
 
 def test(
@@ -416,6 +424,7 @@ def test(
     directory: Path,
     *,
     say: Say = _quiet,
+    examiner: Any = None,
 ) -> dict[str, Any]:
     """Build it, run it in the emulator, and report what the gates saw.
 
@@ -423,5 +432,14 @@ def test(
     callers for the reason the module docstring gives: this is a stage of the
     pipeline, the list of stages is what `make` and the command line have to
     agree on, and a stage missing from the list is how they stop agreeing.
+
+    No examiner is built here when the caller supplies none, unlike `write`
+    just above. Two reasons. This stage costs nothing today -- it compiles and
+    runs an emulator, and a person watching readings can run it as often as
+    they like -- and making it call a paid API would take that away. And
+    inside one `llmz80 make` it would be paying twice for one answer anyway:
+    `write` already asked, and `StudioService.examination` keeps that
+    examination, so this stage judges against the exam already sat as long as
+    the design and the program's symbols have not changed since.
     """
-    return service.runtime_test(project, directory, on_progress=say)
+    return service.runtime_test(project, directory, on_progress=say, examiner=examiner)

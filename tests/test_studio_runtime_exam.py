@@ -1,0 +1,304 @@
+"""The examiner that lets the acceptance gate judge a program, and its limits.
+
+Every reading in this file was recorded by a real emulator run of a real game
+in `studio-projects/`, pasted here because that directory is not in the
+repository and a gate this often wrong deserves to be pinned against runs that
+actually happened rather than against numbers invented to make it pass.
+"""
+
+from __future__ import annotations
+
+from typing import Any, get_args
+
+from llmz80.studio.acceptance import (
+    AT_LEAST,
+    AT_MOST,
+    COMPARISONS,
+    EQUALS,
+    runtime_examination,
+    step_mismatches,
+)
+from llmz80.studio.models import GameProject, TargetPlatform
+from llmz80.studio.runtime_exam import (
+    RuntimeAssertion,
+    RuntimeExam,
+    UncheckableMechanic,
+    usable_assertions,
+)
+from llmz80.studio.samples import blank_project
+from llmz80.studio.services import StudioService
+
+#: `studio-projects/un-minero-que-cava-tuneles-y-2/build/emulator_report.json`.
+#: The miner digs, scores, reaches the exit on the seventh step (g_state 3) and
+#: is back on its title screen by the eighth, with four steps still to run.
+MINER_READINGS: list[tuple[str, dict[str, int]]] = [
+    ("hold_action_a", {"g_anim_frame": 0, "g_lives": 3, "g_score": 0, "g_state": 1}),
+    ("hold_action_b", {"g_anim_frame": 0, "g_lives": 3, "g_score": 0, "g_state": 1}),
+    ("hold_left_a", {"g_anim_frame": 1, "g_lives": 3, "g_score": 0, "g_state": 1}),
+    ("hold_right_a", {"g_anim_frame": 2, "g_lives": 3, "g_score": 14, "g_state": 1}),
+    ("hold_up_a", {"g_anim_frame": 3, "g_lives": 3, "g_score": 15, "g_state": 1}),
+    ("hold_down_a", {"g_anim_frame": 2, "g_lives": 3, "g_score": 24, "g_state": 1}),
+    ("hold_left_b", {"g_anim_frame": 0, "g_lives": 3, "g_score": 525, "g_state": 3}),
+    ("hold_right_b", {"g_anim_frame": 0, "g_lives": 3, "g_score": 525, "g_state": 0}),
+    ("hold_up_b", {"g_anim_frame": 0, "g_lives": 3, "g_score": 525, "g_state": 0}),
+    ("hold_down_b", {"g_anim_frame": 0, "g_lives": 3, "g_score": 525, "g_state": 0}),
+    ("idle", {"g_anim_frame": 0, "g_lives": 3, "g_score": 525, "g_state": 0}),
+]
+
+#: `studio-projects/rana-recheck/build/emulator_report.json`. The frog is
+#: driven in all four directions for a second each and never reaches the far
+#: side of the road, so its score stays 0 for the whole run. That is the
+#: correct behaviour of a correct program, and an examiner that asserted the
+#: score rises would be rejecting a finished game.
+FROG_READINGS: list[tuple[str, dict[str, int]]] = [
+    (step, {"g_anim_frame": frame, "g_score": 0, "g_state": 1})
+    for step, frame in [
+        ("hold_action_a", 0),
+        ("hold_action_b", 0),
+        ("hold_left_a", 1),
+        ("hold_right_a", 2),
+        ("hold_up_a", 3),
+        ("hold_down_a", 0),
+        ("hold_left_b", 1),
+        ("hold_right_b", 2),
+        ("hold_up_b", 3),
+        ("hold_down_b", 0),
+        ("idle", 0),
+    ]
+]
+
+
+def _service() -> StudioService:
+    """The gate with no workspace behind it: `acceptance_report` reads only the
+    runtime report it is handed, so a store would be scenery."""
+    return StudioService(store=None)  # type: ignore[arg-type]
+
+
+def _runtime(readings: list[tuple[str, dict[str, int]]]) -> dict[str, Any]:
+    return {"step_readings": [{"id": step, "read": read} for step, read in readings]}
+
+
+def _project(*mechanics: str) -> GameProject:
+    """A Spectrum design whose bindings give the observation script the exact
+    step ids the recorded runs above were driven with."""
+    document = blank_project("Examined", TargetPlatform.SPECTRUM).model_dump(mode="json")
+    document["mechanics"] = list(mechanics)
+    return GameProject.model_validate(document)
+
+
+class ScriptedExaminer:
+    """Answers with assertions decided here, so no test makes an API call."""
+
+    def __init__(self, exam: RuntimeExam) -> None:
+        self.exam = exam
+        self.calls = 0
+
+    def examine(self, project, steps, symbols) -> RuntimeExam:
+        self.calls += 1
+        return self.exam
+
+
+def _exam(
+    *assertions: RuntimeAssertion, unverifiable: list[UncheckableMechanic] | None = None
+) -> RuntimeExam:
+    return RuntimeExam(assertions=list(assertions), unverifiable=unverifiable or [])
+
+
+def test_a_score_that_rises_across_the_run_is_a_claim_the_gate_can_actually_judge():
+    """Exact equality, the whole vocabulary this gate had until now, cannot say
+    "the score went up": it can only name a number nobody can predict. Judged
+    against the miner's own recorded readings, where it went 0, 14, 24."""
+    report = _service().acceptance_report(
+        _project("Digging dirt scores a point for every cell dug away."),
+        _runtime(MINER_READINGS),
+        ScriptedExaminer(
+            _exam(
+                RuntimeAssertion(
+                    step="hold_down_a",
+                    symbol="g_score",
+                    compare=AT_LEAST,
+                    baseline="hold_left_a",
+                    mechanic=1,
+                    why="every dug cell scores, and the miner digs while a direction is held",
+                )
+            )
+        ),
+    )
+
+    assert report["quality_pass"] is True
+    judged = {step["id"]: step for step in report["scenarios"]}
+    assert judged["hold_down_a"]["expect"]["g_score"]["baseline"] == "hold_left_a"
+    assert judged["hold_down_a"]["mismatches"] == []
+
+
+def test_a_game_whose_score_never_moves_is_not_failed_for_a_rule_nobody_could_check():
+    """The frog's score stays 0 because the harness cannot walk it to the far
+    kerb. Its scoring mechanic must come back as unchecked, not as a failure:
+    rejecting a finished game for a claim the run cannot witness is the exact
+    mistake that cost three games all their write attempts."""
+    goal = "Al entrar en una casilla de meta, ganas la partida."
+    report = _service().acceptance_report(
+        _project(goal, "La rana no puede salir de la pantalla."),
+        _runtime(FROG_READINGS),
+        ScriptedExaminer(
+            _exam(
+                RuntimeAssertion(
+                    step="hold_left_a",
+                    symbol="g_state",
+                    compare=EQUALS,
+                    value=1,
+                    mechanic=0,
+                    why="the action key has been held twice, so the title screen is behind us",
+                ),
+                unverifiable=[
+                    UncheckableMechanic(mechanic=1, why="nobody can steer the frog to the goal")
+                ],
+            )
+        ),
+    )
+
+    assert report["quality_pass"] is True
+    assert report["unchecked_mechanics"] == [goal, "La rana no puede salir de la pantalla."]
+    assert report["mechanics_total"] == 2
+    assert report["unverifiable"] == [f'"{goal}" -- nobody can steer the frog to the goal']
+
+
+def test_an_assertion_the_run_cannot_honour_is_thrown_away_instead_of_failed():
+    """A step nobody runs, a symbol nothing reads, a baseline that comes later:
+    no program on earth satisfies these, so judging them would fail every game
+    equally and say "your program is wrong" about the examiner's own mistake."""
+    steps = [{"id": "hold_left_a"}, {"id": "hold_right_a"}]
+    exam = _exam(
+        RuntimeAssertion(
+            step="hold_jump_a", symbol="g_state", compare=EQUALS, value=1, mechanic=1, why="x"
+        ),
+        RuntimeAssertion(
+            step="hold_left_a", symbol="g_lives", compare=AT_MOST, value=3, mechanic=1, why="x"
+        ),
+        RuntimeAssertion(
+            step="hold_left_a",
+            symbol="g_score",
+            compare=AT_LEAST,
+            baseline="hold_right_a",
+            mechanic=1,
+            why="x",
+        ),
+        RuntimeAssertion(
+            step="hold_right_a", symbol="g_state", compare=EQUALS, mechanic=1, why="x"
+        ),
+    )
+
+    kept, discarded = usable_assertions(exam, steps, ["g_score", "g_state"])
+
+    assert kept == []
+    assert [reason.split(":")[1].strip() for reason in discarded] == [
+        "no step of this run is called 'hold_jump_a'",
+        "this program does not expose g_lives",
+        "its baseline hold_right_a does not run before it",
+        "it names neither a value nor a baseline",
+    ]
+
+
+def test_a_symbol_that_was_expected_and_never_read_fails_its_step():
+    """The abstention rule, at the level of one number: an absent reading that
+    satisfied whatever was asked of it is how an unobserved run turns into an
+    approved one."""
+    step = {"id": "idle", "expect": {"g_state": {"compare": EQUALS, "value": 1}}}
+
+    mismatches = step_mismatches(step, {"idle": {"g_score": 0}})
+
+    assert mismatches == ["g_state: expected exactly 1, read nothing"]
+
+
+def test_the_gate_abstains_when_the_examiner_finds_nothing_it_can_check():
+    """An examination that asserts nothing is not an examination that passed.
+    Reading it as a pass is what let a program that draws one glyph and quits
+    on a keypress be accepted on its first attempt."""
+    report = _service().acceptance_report(
+        _project("Ganas al llegar a la meta."),
+        _runtime(FROG_READINGS),
+        ScriptedExaminer(
+            _exam(unverifiable=[UncheckableMechanic(mechanic=1, why="nobody reaches the goal")])
+        ),
+    )
+
+    assert report["quality_pass"] is None
+    assert report["observed"] is False
+    assert report["reason"] == "the examiner found nothing this run could check"
+
+
+def test_an_examiner_that_breaks_leaves_the_gate_abstaining():
+    """A model having a bad day must cost an unobserved run, not the write
+    attempt it was called from."""
+
+    class Broken:
+        def examine(self, project, steps, symbols):
+            raise RuntimeError("the model returned nothing")
+
+    examination = runtime_examination(_project("Algo."), Broken(), symbols=["g_state"])
+
+    assert examination.steps == []
+    assert examination.asserted is False
+    assert "the model returned nothing" in examination.reasons[0]
+
+
+def test_one_design_is_examined_once_however_many_attempts_it_takes():
+    """`write_program` verifies up to five attempts against the same design.
+    Asking again each time would pay five times for one answer and could judge
+    a repair against an exam the attempt before it never sat."""
+    service = _service()
+    project = _project("Cavar puntúa.")
+    examiner = ScriptedExaminer(
+        _exam(
+            RuntimeAssertion(
+                step="hold_left_a", symbol="g_state", compare=EQUALS, value=1, mechanic=0, why="x"
+            )
+        )
+    )
+
+    for _ in range(3):
+        service.acceptance_report(project, _runtime(MINER_READINGS), examiner)
+
+    assert examiner.calls == 1
+
+
+def test_a_mechanic_the_examiner_called_unverifiable_stays_unchecked_even_if_it_asserted_one():
+    """Recorded from the first real run of this prompt against
+    `studio-projects/fase-uno-cpc`: the examiner declared its first mechanic
+    unverifiable and bound an assertion to it in the same answer. A report that
+    believed the assertion would claim more of the design was checked than the
+    examiner itself believed."""
+    gravity = "El explorador salta con SPACE y la gravedad lo devuelve a la cornisa."
+    report = _service().acceptance_report(
+        _project(gravity),
+        _runtime(MINER_READINGS),
+        ScriptedExaminer(
+            _exam(
+                RuntimeAssertion(
+                    step="hold_action_a",
+                    symbol="g_state",
+                    compare=EQUALS,
+                    value=1,
+                    mechanic=1,
+                    why="the action key starts the game",
+                ),
+                unverifiable=[
+                    UncheckableMechanic(mechanic=1, why="nothing reads where the explorer is")
+                ],
+            )
+        ),
+    )
+
+    assert report["quality_pass"] is True
+    assert report["unchecked_mechanics"] == [gravity]
+
+
+def test_every_comparison_the_examiner_may_answer_is_one_the_judge_implements():
+    """The examiner's `compare` is a `Literal` because a JSON schema needs one,
+    and `acceptance.COMPARISONS` is what judges it: two statements of the same
+    fact, pinned the way `observation.SPECTRUM_KEYS` is pinned against
+    `codegen.KEY_CODES`. A comparison the model may answer and the judge does
+    not implement would be judged as equality without saying so."""
+    answerable = get_args(RuntimeAssertion.model_fields["compare"].annotation)
+
+    assert set(answerable) == set(COMPARISONS)

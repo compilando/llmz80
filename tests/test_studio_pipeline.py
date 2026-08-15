@@ -519,7 +519,7 @@ def test_write_hands_back_the_report_and_narrates_the_attempts(opened):
         def write(self, *args, **kwargs):  # pragma: no cover - never reached
             raise AssertionError("the fake service below is what answers")
 
-    def _write_program(project, directory, writer, *, on_progress=None):
+    def _write_program(project, directory, writer, *, on_progress=None, examiner=None):
         on_progress("attempt 1: asking the model")
         return {"accepted": True, "attempts": [{"number": 1}]}
 
@@ -534,7 +534,7 @@ def test_test_forwards_its_commentary_to_whoever_is_listening(opened):
     service, project, directory = opened
     said: list[str] = []
 
-    def _runtime_test(project, directory, *, on_progress=None):
+    def _runtime_test(project, directory, *, on_progress=None, examiner=None):
         on_progress("building")
         return {"quality_pass": True}
 
