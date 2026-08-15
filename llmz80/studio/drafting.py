@@ -451,17 +451,26 @@ def draft_and_apply(
     one untouched default `actor`. `design_exam`'s other examiner passed it
     too -- it reads the mechanics as evidence the brief is served, and the
     drafter wrote them, so the design certified itself. Feeding the gaps back
-    is what makes the finding buy another attempt rather than a refusal.
+    is what makes the finding buy another attempt rather than a refusal, and
+    feeding it back is now all it can do: the coherence gate is never asked on
+    the last attempt left. See `review` for the measurements that put it
+    there.
 
-    The third acceptance test is the observability nudge, and it is the only
-    one here that gives up rather than insisting. See `observability_feedback`
-    for what it asks and why it does not ask for a symbol; what belongs here
-    is why it fires at most once per draft. A design may legitimately declare
-    no observables, so a drafter that keeps leaving the field empty is not
-    producing a bad design -- and spending this stage's whole attempt budget
-    on a missing sentence would cost a correct game its draft, the exact shape
-    of false failure this apparatus was rebuilt to prevent. One prompt, then
-    the design stands on the two gates that really can refuse it.
+    The third acceptance test is the observability nudge, which gives up in
+    the same way and for one more reason of its own. See
+    `observability_feedback` for what it asks and why it does not ask for a
+    symbol; what belongs here is why it fires at most *once* per draft, where
+    coherence may fire on every attempt but the last. A design may
+    legitimately declare no observables, so a drafter that keeps leaving the
+    field empty is not producing a bad design at all -- there is nothing there
+    to repair, and asking twice would only spend attempts. A design that
+    assumes an actor it never declares is genuinely broken, so asking again
+    while attempts remain is worth what it costs.
+
+    So the only refusal this stage can end on is the design gate's, which
+    needs no model to decide and which `pipeline.write` would enforce anyway.
+    That is deliberate: a stage whose whole purpose is to produce a draft
+    should not lose one to a judgement call.
 
     Raises `DraftRefused` once attempts run out, carrying what the design was
     still missing.
@@ -488,17 +497,40 @@ def draft_and_apply(
                 + "; ".join(refusals),
                 gate_feedback(refusals),
             )
-        # Asked second, and only once the gate is happy, because it is the
-        # one of the two that costs a model call. A draft that states no
-        # mechanics has already been sent back by the line above, and it is
-        # also the draft with nothing for this examiner to read.
-        gaps = _coherence_gaps(updated, examiner)
-        if gaps:
-            return (
-                "the draft applied but the design assumes things it never declares: "
-                + "; ".join(gaps),
-                coherence_feedback(gaps),
-            )
+        # Asked second, only once the gate is happy, and never on the last
+        # attempt left.
+        #
+        # Second because it is the one of the two that costs a model call, and
+        # a draft that states no mechanics has already been sent back by the
+        # line above -- it is also the draft with nothing for this examiner to
+        # read.
+        #
+        # Never last because this verdict is a model's judgement about prose,
+        # and it was measured getting that judgement wrong. Over eight runs
+        # each, the examiner refused `studio-projects/minero-observable` --
+        # drafted, written and verified, on disk -- seven times for "no tile
+        # is declared for earth" when that tile is declared as `dirt`; and it
+        # refused a roster declaring one generic `enemy` against mechanics
+        # about murciélagos eight times out of eight. `design_exam` has since
+        # been told that ids are identifiers, which is what those two were
+        # really about, but no wording makes a model's judgement certain, and
+        # the cost of the two mistakes is not symmetric. A gap named while an
+        # attempt remains buys the drafter another try with the gap named,
+        # which is the whole value of this gate; a gap named on the last
+        # attempt ends the stage, and a false one there costs a correct design
+        # its entire draft -- the failure two earlier generations of this
+        # apparatus died of. A missed gap costs coverage only: the design
+        # still faces `pipeline.write`, and the frog that names coches and
+        # declares no car is still caught, still fed back and still repaired
+        # on every attempt but the last.
+        if len(drafted) < attempts:
+            gaps = _coherence_gaps(updated, examiner)
+            if gaps:
+                return (
+                    "the draft applied but the design assumes things it never declares: "
+                    + "; ".join(gaps),
+                    coherence_feedback(gaps),
+                )
         # Asked last, never twice, and never on the last attempt left. A
         # design with observables has answered the question by declaring them;
         # one with neither observables nor a word about why is the only case

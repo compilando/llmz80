@@ -353,3 +353,36 @@ def test_the_coherence_prompt_reads_the_design_alone_and_never_the_brief(flying_
 
     assert "Entities" in prompt
     assert "avión de combate" not in prompt
+
+
+def test_the_coherence_examiner_is_told_that_an_id_is_not_the_designs_word_for_a_thing(
+    flying_project,
+):
+    """The false refusal this paragraph was written for, in the design it was
+    measured on.
+
+    `models.ID_PATTERN` binds every id to lower case ASCII with no accents, so
+    a Spanish design still declares `bat` and `dirt` while its mechanics say
+    murciélagos and tierra. Told nothing about that, the examiner read the
+    roster as a list of words: over eight runs it refused
+    `studio-projects/minero-observable` -- a design on disk that was drafted,
+    written and verified -- seven times for "no tile is declared for earth",
+    against a tile declared `dirt` in the same sentence it quoted. The
+    prompt now says where a thing's meaning lives, and the summary stops
+    dropping a tile's traits, which were part of that meaning all along.
+    """
+    trodden = flying_project.model_copy(
+        update={
+            "tiles": [
+                tile.model_copy(update={"traits": ["diggable"]}) if tile.id == "floor" else tile
+                for tile in flying_project.tiles
+            ]
+        }
+    )
+
+    prompt = coherence_prompt(trodden)
+
+    assert "floor '.' (diggable)" in design_summary(trodden)
+    assert "identifiers" in prompt
+    assert "kind and notes" in prompt
+    assert "murciélagos" in prompt and "bat" in prompt

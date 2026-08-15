@@ -78,6 +78,14 @@ def _entities_line(project: GameProject) -> str:
     and a false refusal costs an attempt the design needed for a real one.
     `count` is here for the same reason in the other direction: "van
     apareciendo otros cazas" is answered by how many of what there are.
+
+    The heading names the columns because the first one is the least
+    informative and reads like the most: an id is a machine identifier, bound
+    by `models.ID_PATTERN` to lower-case ASCII with no accents, so a design
+    whose prose is Spanish still declares `bat` and `dirt`. A reader shown a
+    bare `bat (murciélago) x6` has to guess which token it is being asked to
+    match a mechanic against, and the answer -- the kind and the notes, never
+    the id -- is cheaper to say than to infer.
     """
     described = []
     for entity in project.entities:
@@ -85,7 +93,30 @@ def _entities_line(project: GameProject) -> str:
         if entity.notes:
             line += f": {entity.notes}"
         described.append(line)
-    return "\n".join(["Entities:", *described])
+    heading = "Entities (id, what the design calls it, how many there are, what it does):"
+    return "\n".join([heading, *described])
+
+
+def _tiles_line(project: GameProject) -> str:
+    """Every kind of terrain with its character and its traits.
+
+    The traits are here for the reason `_entities_line` carries notes: they
+    are the design's own statement about what a terrain *is*, and they were
+    being dropped. `studio-projects/minero-observable` declares `dirt 'd'`
+    with the trait `diggable` and `exit 'E'` with `goal`, and the summary
+    showed the examiner an id and a character -- a token to match words
+    against and nothing that says what the cell means.
+
+    Rendered in parentheses rather than appended bare so a trait cannot be
+    read as another tile in the comma-separated list.
+    """
+    described = []
+    for tile in project.tiles:
+        line = f"{tile.id} '{tile.char}'"
+        if tile.traits:
+            line += " (" + ", ".join(tile.traits) + ")"
+        described.append(line)
+    return "Tiles: " + ", ".join(described)
 
 
 def design_summary(project: GameProject) -> str:
@@ -116,7 +147,7 @@ def design_summary(project: GameProject) -> str:
             or "none"
         ),
         _entities_line(project),
-        "Tiles: " + ", ".join(f"{t.id} '{t.char}'" for t in project.tiles),
+        _tiles_line(project),
         "Controls: " + ", ".join(f"{n}={k}" for n, k in project.controls.bindings.items()),
         "Scenes: " + ", ".join(f"{scene.id} ({scene.kind})" for scene in project.scenes),
         f"Presentation: style {presentation.style!r}, "
@@ -242,6 +273,20 @@ def coherence_prompt(project: GameProject) -> str:
     asked "is this design coherent?" will answer about pacing, difficulty and
     fun, and every one of those verdicts costs the drafter an attempt it
     cannot spend usefully.
+
+    The paragraph about identifiers is the other half of that narrowing, and
+    it was paid for. Asked as this prompt used to ask,
+    `studio-projects/minero-observable` -- a finished design on disk, drafted,
+    written and verified -- was refused in seven runs out of eight for "no
+    tile is declared for earth", when the tile is declared as `dirt` and the
+    very sentence quoted against it ends "and cannot pass through dirt". The
+    same eight runs refused a roster declaring one generic `enemy` against
+    mechanics about murciélagos every single time. Both are the one mistake:
+    reading the roster as a list of words and matching the mechanics' words
+    against it, so a synonym, a translation or a category reads as an absence.
+    Naming the mismatch outright is what a model can act on; the fix that was
+    considered and rejected was renaming ids into the design's language, which
+    `models.ID_PATTERN` forbids -- `murciélago` has an accent in it.
     """
     return f"""EXAMINE WHETHER THIS DESIGN DECLARES WHAT ITS OWN MECHANICS ASSUME
 
@@ -259,6 +304,30 @@ of the game and it is absent from `Entities` or from `Tiles` above. Things
 that are not entities and not tiles are never missing: the screen, the
 player's score, a life, a level, the passage of time, a key press, a
 direction, a sound. Do not report those.
+
+Ids are machine identifiers, not the design's words for things. An entity is
+written `id (what the design calls it) xcount: what it does` and a tile is
+written `id 'char' (traits)`. Every id is lower case ASCII with no accents,
+so ids are routinely English -- `bat`, `dirt`, `coche_dcha`, `actor` -- while
+the mechanics are prose in whatever language the design is written in. What a
+thing *is* lives in an entity's kind and notes and in a tile's traits, not in
+its id.
+
+So a mechanic's word and a declaration are the same thing whenever they mean
+the same thing, and you must read them that way:
+  * across languages -- mechanics about `murciélagos` are answered by a `bat`
+    entity, mechanics about tierra by a `dirt` tile;
+  * across synonyms -- a mechanic about `earth` is answered by a tile
+    declared `dirt`, one about a `carriage` by an entity declared `wagon`;
+  * across specific and general -- a mechanic naming one creature is answered
+    by the roster that declares it under the group it belongs to, and one
+    naming the group by the roster that declares the members.
+
+Read the whole roster for anything that could be the thing a mechanic speaks
+of, and report a gap only when nothing declared anywhere could be it. A thing
+this design does declare, reported missing because the mechanics call it by
+another name, is worse than a gap you let through: it costs a correct design
+the attempts it needed for a real one.
 
 WHAT THE DESIGN STATES
 

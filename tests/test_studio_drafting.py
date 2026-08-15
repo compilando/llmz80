@@ -416,16 +416,29 @@ def test_a_draft_whose_mechanics_assume_a_car_it_never_declares_is_tried_again(f
     assert "/entities/-" in feedback and "/tiles/-" in feedback
 
 
-def test_a_drafter_that_keeps_assuming_a_car_it_never_declares_is_refused(frog):
-    """Once the attempts are spent the design does not go through: a program
-    written from this one would invent the cars or have none."""
+def test_the_coherence_gate_never_spends_the_last_attempt_a_draft_has(frog):
+    """A drafter that keeps assuming the car is sent back while attempts
+    remain and then let through on its last one, examiner unasked.
+
+    This is the trade the gate is worth making. Its verdict is a model's
+    judgement about prose, and it was measured getting that judgement wrong on
+    designs that are correct: over eight runs it refused
+    `studio-projects/minero-observable` seven times for "no tile is declared
+    for earth" against a tile declared `dirt`. Ending the stage on such a
+    verdict costs a working design its whole draft and hundreds of seconds of
+    API; letting a real gap through on the last attempt costs coverage only,
+    and the gap was still named twice on the way. `design_exam`'s prompt is
+    what makes the verdict better; this is what stops any verdict being fatal.
+    """
     drafter = ScriptedDrafter(_the_frog_draft_that_shipped())
     examiner = ScriptedCoherenceExaminer(_no_car_declared())
 
-    with pytest.raises(DraftRefused, match="coche"):
-        draft_and_apply(frog, drafter, attempts=2, examiner=examiner)
+    result = draft_and_apply(frog, drafter, attempts=3, examiner=examiner)
 
     assert len(examiner.seen) == 2
+    assert len(result.refusals) == 2
+    assert all("coche" in refusal for refusal in result.refusals)
+    assert result.project.mechanics == _the_frog_draft_that_shipped().changes[0].value_rows
 
 
 def test_a_draft_that_states_no_mechanics_is_never_sent_to_the_coherence_examiner(frog):
