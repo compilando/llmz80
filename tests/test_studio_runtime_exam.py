@@ -397,6 +397,27 @@ def _assertion(step: str, symbol: str, compare: str, mechanic: int = 0, **target
     )
 
 
+def test_a_game_that_is_back_on_its_title_screen_in_two_seconds_fails_the_derived_claim():
+    """`studio-projects/un-minero-que-cava-tuneles-y` spent its three lives and
+    returned to its title while nothing but the action key was held. It was
+    refused by the other gates and redesigned, and the examiner asserted
+    nothing at all about it -- which is the run the derived title claim exists
+    for."""
+    burnt_out = [
+        ("hold_action_a", {"g_score": 0, "g_state": 1}),
+        ("hold_action_b", {"g_score": 0, "g_state": 0}),
+        ("hold_left_a", {"g_score": 0, "g_state": 0}),
+    ]
+    report = _service().acceptance_report(
+        _project("Perder las tres vidas termina la partida."),
+        _runtime(burnt_out),
+        ScriptedExaminer(_exam()),
+    )
+
+    assert report["quality_pass"] is False
+    assert report["failures"] == ["hold_action_b"]
+
+
 def test_a_claim_only_one_of_the_passes_made_is_still_kept_by_the_merge():
     """The union is the whole mechanism. Four examinations of one design left
     5, 5, 5 and 6 of its seven mechanics unchecked, so the pass that found a

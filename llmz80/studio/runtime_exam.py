@@ -459,6 +459,15 @@ def derived_assertions(
     pressed the key a title screen waits for, and every finished game in
     `studio-projects/` leaves its title on exactly that key
     (`INPUT_ACTION`/`INPUT_JUMP`, held by `observation_script`'s action steps).
+
+    Every recorded run in `studio-projects/` satisfies it but one, and that
+    one is the point: `un-minero-que-cava-tuneles-y` reads g_state 1 at its
+    first action step and 0 at its second, having spent its three lives and
+    come back to its title screen in two seconds of a held key. It was already
+    refused (`quality_pass: false`) and redesigned as
+    `un-minero-que-cava-tuneles-y-2`, so nothing correct is failed here -- but
+    it is what this claim is for, and on that run the examiner asserted
+    nothing at all.
     """
     derived: list[RuntimeAssertion] = []
     action_steps = [step for step in steps if step.get("hold") == HOLD_ACTION]
