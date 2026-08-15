@@ -28,7 +28,7 @@ from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from llmz80.core.state_contract import REQUIRED_SYMBOLS
+from llmz80.core.state_contract import REQUIRED_SYMBOLS, SYMBOLS_BY_NAME
 
 from .models import TargetPlatform
 from .registry import Registry
@@ -62,6 +62,19 @@ ALLOWED_LICENCES = frozenset(
 )
 
 
+def is_pinned_commit(commit: str) -> bool:
+    """Whether this is a full 40-character hex commit, the only thing that pins.
+
+    A module-level predicate rather than a line inside `pin_errors` so that the
+    code writing a vendor manifest and the code validating a pack test the same
+    fact with the same test: two checks of one fact that disagree are worse
+    than either alone, and this one had already drifted -- the vendoring script
+    was measuring only the length, so forty non-hex characters could be written
+    into a manifest that no `EnginePack` would ever accept.
+    """
+    return len(commit) == 40 and all(c in "0123456789abcdef" for c in commit.lower())
+
+
 class EngineClass(str, Enum):
     #: The model writes C against the engine's API. Restricts nothing about
     #: what it can write.
@@ -83,7 +96,27 @@ class EnginePack:
     #: vendored it.
     licence: str
     vendor_dir: Path
-    #: Contract symbol -> the name or address this engine keeps it under.
+    #: Contract symbol -> the identifier this engine keeps it under. Values are
+    #: **undecorated C identifiers**: `g_score`, never `_g_score`. That is the
+    #: form both parsers in `probes.py` already produce -- `parse_z88dk_map`
+    #: strips the leading underscore, and `parse_sdcc_noi` keeps the `_` outside
+    #: its capture group -- so choosing the decorated form would mean changing
+    #: two working parsers to suit a field that has no callers yet. Written down
+    #: because a value space nobody stated is one that gets filled in two
+    #: different ways by two different people.
+    #:
+    #: Open question, deliberately left open for E1: a DSL engine of the
+    #: MK1/La Churrera class keeps its state at fixed addresses inside a build
+    #: this project does not control, and may emit no symbol file at all. This
+    #: mapping would hold "0x8000" quite happily, with nothing saying whether
+    #: that is legal or how `probes.py` should tell an address from a symbol.
+    #: Answering that with one engine in view is what E1 is warned against; the
+    #: second engine is what will force the answer.
+    #:
+    #: And note that CPCtelera will exercise almost none of the indirection this
+    #: field exists for: it is a LIBRARY, so the game's own C declares the
+    #: contract symbols and its map is nearly the identity. A green CPCtelera is
+    #: not evidence that probe_map works.
     probe_map: Mapping[str, str]
     capabilities: frozenset[str]
 
@@ -98,16 +131,28 @@ class EnginePack:
         ]
 
     def probe_errors(self) -> list[str]:
+        errors = []
         missing = sorted(set(REQUIRED_SYMBOLS) - set(self.probe_map))
-        if not missing:
-            return []
-        return [
-            f"{self.id} does not say where these required contract symbols live, "
-            "so every behaviour gate would abstain on any game built with it: " + ", ".join(missing)
-        ]
+        if missing:
+            errors.append(
+                f"{self.id} does not say where these required contract symbols "
+                "live, so every behaviour gate would abstain on any game built "
+                "with it: " + ", ".join(missing)
+            )
+        # A key the contract does not have is a typo that fails silently: the
+        # optional probe it was meant to enable simply never fires, and no gate
+        # ever says why. Silent abstention is the failure this branch exists to
+        # remove, so it is named here rather than discovered in a report.
+        unknown = sorted(set(self.probe_map) - set(SYMBOLS_BY_NAME))
+        if unknown:
+            errors.append(
+                f"{self.id} maps names the state contract does not have, so "
+                "whatever they point at is never read: " + ", ".join(unknown)
+            )
+        return errors
 
     def pin_errors(self) -> list[str]:
-        if len(self.commit) == 40 and all(c in "0123456789abcdef" for c in self.commit.lower()):
+        if is_pinned_commit(self.commit):
             return []
         return [
             f"{self.id} is pinned to {self.commit!r}, which is not a full commit "

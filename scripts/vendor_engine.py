@@ -18,7 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from llmz80.studio.engines import ALLOWED_LICENCES
+from llmz80.studio.engines import ALLOWED_LICENCES, is_pinned_commit
 
 VENDOR_ROOT = Path(__file__).resolve().parents[1] / "vendor"
 
@@ -38,7 +38,10 @@ def write_manifest(
             "genuinely acceptable, add it to engines.ALLOWED_LICENCES in its own "
             "commit, with the reason"
         )
-    if len(commit) != 40:
+    # The same predicate `EnginePack.pin_errors` uses, imported rather than
+    # restated: a manifest this script accepts and a pack that then rejects it
+    # would be a disagreement about the one fact both exist to record.
+    if not is_pinned_commit(commit):
         raise ValueError(f"{commit!r} is not a full commit hash")
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "ENGINE.json"

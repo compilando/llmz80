@@ -23,7 +23,7 @@ def _pack(**overrides) -> EnginePack:
         commit="0" * 40,
         licence="GPL-3.0-or-later",
         vendor_dir=Path("vendor/cpctelera"),
-        probe_map={"g_score": "_g_score", "g_state": "_g_state", "g_worst_frame_cost": "_g_wfc"},
+        probe_map={"g_score": "g_score", "g_state": "g_state", "g_worst_frame_cost": "g_wfc"},
         capabilities=frozenset({"masked_sprites", "hardware_scroll", "ay_music"}),
     )
     fields.update(overrides)
@@ -46,11 +46,28 @@ def test_an_engine_that_cannot_be_probed_is_refused():
     """Every gate this project owns reads the state contract out of memory. An
     engine that does not say where its state lives silently switches all of
     them off."""
-    errors = _pack(probe_map={"g_score": "_g_score"}).probe_errors()
+    errors = _pack(probe_map={"g_score": "g_score"}).probe_errors()
 
     assert len(errors) == 1
     assert "g_state" in errors[0]
     assert "g_worst_frame_cost" in errors[0]
+
+
+def test_a_symbol_the_contract_does_not_have_is_refused_rather_than_ignored():
+    """A typo in a probe name fails silently: the probe it was meant to enable
+    never fires and no gate says why. This branch exists to remove exactly that
+    kind of quiet abstention."""
+    errors = _pack(
+        probe_map={
+            "g_score": "g_score",
+            "g_state": "g_state",
+            "g_worst_frame_cost": "g_wfc",
+            "g_scores": "g_scores",
+        }
+    ).probe_errors()
+
+    assert len(errors) == 1
+    assert "g_scores" in errors[0]
 
 
 def test_a_commit_that_is_not_pinned_is_refused():
@@ -99,4 +116,20 @@ def test_vendoring_refuses_a_licence_nobody_read(tmp_path):
             repository="https://example.invalid/mystery",
             commit="b" * 40,
             licence="UNKNOWN",
+        )
+
+
+def test_a_manifest_cannot_record_forty_characters_that_are_not_a_hash(tmp_path):
+    """The script that writes a manifest and the pack that validates one test
+    the same fact, so they test it the same way: a length-only check here would
+    write a manifest no EnginePack could ever accept."""
+    from scripts.vendor_engine import write_manifest
+
+    with pytest.raises(ValueError, match="not a full commit hash"):
+        write_manifest(
+            tmp_path,
+            engine_id="mystery",
+            repository="https://example.invalid/mystery",
+            commit="z" * 40,
+            licence="MIT",
         )
