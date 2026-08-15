@@ -1,4 +1,6 @@
-"""Does the design state what its own brief asked for.
+"""Two questions asked of a finished design, both answered by a model.
+
+The first: does the design state what its own brief asked for.
 
 `quality.design_quality_report` catches the design that states nothing at all.
 This catches the one that states something else: `studio-projects/my-retro-game`
@@ -14,6 +16,17 @@ This is not a gate that only ever says no. `reference_design.propose_and_apply`
 runs it inside its repair loop, so the first thing a missed brief buys is
 another attempt with the gap named -- see that module. A refusal reaching a
 person means the designer was told what was missing and still did not state it.
+
+The second, at the foot of this module: does the design declare everything its
+own mechanics take for granted. The first examiner cannot ask it, because it
+reads the mechanics as the evidence that the brief is served -- and when the
+drafter wrote those mechanics, the design certifies itself. That is
+`studio-projects/una-rana-que-cruza-una`, drafted from "una rana que cruza una
+carretera esquivando coches": three of its five mechanics name coches, and it
+declares one `actor`, a `wall` and a `floor`. The brief says cars, the prose
+says cars, covered. The program written from it would have invented the cars
+or had none. Reading the design against itself needs no brief and no dossier,
+which is what makes the second question cheap and general.
 """
 
 from __future__ import annotations
@@ -193,4 +206,120 @@ class ResponsesDesignExaminer:
         parsed = response.output_parsed
         if parsed is None:
             raise ValueError("the model did not return a coverage verdict")
+        return parsed
+
+
+# --- the second question: is the design consistent with itself -------------
+
+
+class DesignCoherence(BaseModel):
+    """One verdict on whether a design declares what its own mechanics assume."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    coherent: bool
+    #: Things the mechanics treat as actors and `/entities` never declares,
+    #: named as the mechanics name them, one per item.
+    missing_entities: list[str]
+    #: Things the mechanics treat as terrain and `/tiles` never declares.
+    missing_tiles: list[str]
+    #: The mechanic sentence this verdict is about, quoted verbatim, so a
+    #: refusal can be checked against the design rather than taken on faith --
+    #: the same reason `BriefCoverage` quotes the brief.
+    quoted: str
+
+
+class DesignCoherenceExaminer(Protocol):
+    def examine(self, project: GameProject) -> DesignCoherence: ...
+
+
+def coherence_prompt(project: GameProject) -> str:
+    """Everything the coherence examiner is owed before it judges.
+
+    No brief and no dossier: one document read against itself, which is what
+    makes this question cheap and what makes it apply to any design however it
+    was written. The narrowing in the prompt is most of the work -- a model
+    asked "is this design coherent?" will answer about pacing, difficulty and
+    fun, and every one of those verdicts costs the drafter an attempt it
+    cannot spend usefully.
+    """
+    return f"""EXAMINE WHETHER THIS DESIGN DECLARES WHAT ITS OWN MECHANICS ASSUME
+
+One question only: does every thing the mechanics below treat as existing in
+the game appear in the design's own declarations?
+
+You are NOT judging whether the game is good, whether it is fun, whether it
+is balanced, whether it serves the brief it came from, or whether it is
+complete in any other sense. You are not asked what the design should also
+say. Only this: a mechanic speaks of a thing as if it were in the game, and
+the design never declares that thing.
+
+Something is missing only if the mechanics treat it as a thing in the world
+of the game and it is absent from `Entities` or from `Tiles` above. Things
+that are not entities and not tiles are never missing: the screen, the
+player's score, a life, a level, the passage of time, a key press, a
+direction, a sound. Do not report those.
+
+WHAT THE DESIGN STATES
+
+{design_summary(project)}
+
+Answer with coherent=true when every actor and every kind of terrain the
+mechanics take for granted is declared. Otherwise name in `missing_entities`
+each thing the mechanics act as if there were an actor for and the design
+declares none, in `missing_tiles` each kind of terrain the same is true of,
+using the words the mechanics use, and quote in `quoted` the one mechanic
+sentence your verdict is about, verbatim.
+"""
+
+
+def coherence_errors(coherence: DesignCoherence) -> list[str]:
+    """The verdict as diagnostics, or nothing when the design holds together.
+
+    Same contradiction rule as `coverage_errors`, for the same reason: a
+    `coherent=True` that still lists gaps is read as incoherent, because a
+    model that answers yes and then names what is absent has told us it is
+    unsure, and the safe reading of a contradiction is the one that does not
+    let a design through.
+    """
+    if coherence.coherent and not coherence.missing_entities and not coherence.missing_tiles:
+        return []
+    named = []
+    if coherence.missing_entities:
+        named.append("no entity is declared for " + ", ".join(coherence.missing_entities))
+    if coherence.missing_tiles:
+        named.append("no tile is declared for " + ", ".join(coherence.missing_tiles))
+    gaps = "; ".join(named) or "the examiner refused without naming a gap"
+    return [
+        f'the design says "{coherence.quoted}" and does not declare what that '
+        f"takes for granted: {gaps}"
+    ]
+
+
+class ResponsesCoherenceExaminer:
+    """Examines a design against itself with the OpenAI Responses API."""
+
+    def __init__(self, client: Any, model: str = "gpt-5") -> None:
+        self.client = client
+        self.model = model
+
+    def examine(self, project: GameProject) -> DesignCoherence:
+        response = self.client.responses.parse(
+            model=self.model,
+            input=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You read a game design against itself. You answer only about "
+                        "whether the things its mechanics assume are declared, never "
+                        "about taste, balance or completeness."
+                    ),
+                },
+                {"role": "user", "content": coherence_prompt(project)},
+            ],
+            text_format=DesignCoherence,
+        )
+        parsed = response.output_parsed
+        if parsed is None:
+            raise ValueError("the model did not return a coherence verdict")
         return parsed

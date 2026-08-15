@@ -4,6 +4,9 @@ import pytest
 
 from llmz80.studio.design_exam import (
     BriefCoverage,
+    DesignCoherence,
+    coherence_errors,
+    coherence_prompt,
     coverage_errors,
     design_summary,
     examination_prompt,
@@ -300,3 +303,53 @@ def test_the_summary_carries_presentation_and_audio_but_not_the_machine_budgets(
     assert "classic arcade" in summary
     assert "no music" in summary
     assert str(flying_project.budgets.binary_bytes) not in summary
+
+
+# --- the second question: is the design consistent with itself --------------
+
+
+def test_a_design_that_assumes_a_car_it_never_declares_becomes_an_error_naming_it():
+    """`studio-projects/una-rana-que-cruza-una`: three mechanics name coches
+    and `/entities` holds the blank project's untouched single `actor`."""
+    errors = coherence_errors(
+        DesignCoherence(
+            coherent=False,
+            missing_entities=["coche"],
+            missing_tiles=["carretera"],
+            quoted="Los coches se desplazan horizontalmente por sus carriles",
+        )
+    )
+
+    assert len(errors) == 1
+    assert "coche" in errors[0]
+    assert "carretera" in errors[0]
+    assert "Los coches se desplazan" in errors[0]
+
+
+def test_a_coherent_verdict_that_still_lists_gaps_is_read_as_incoherent():
+    """Same rule as `coverage_errors`: a model that says yes and then names
+    what is absent has contradicted itself, and the safe reading of a
+    contradiction is the one that does not let a design through."""
+    verdict = DesignCoherence(
+        coherent=True, missing_entities=["coche"], missing_tiles=[], quoted="los coches"
+    )
+
+    assert coherence_errors(verdict) != []
+
+
+def test_a_design_that_holds_together_is_no_error():
+    assert (
+        coherence_errors(
+            DesignCoherence(coherent=True, missing_entities=[], missing_tiles=[], quoted="")
+        )
+        == []
+    )
+
+
+def test_the_coherence_prompt_reads_the_design_alone_and_never_the_brief(flying_project):
+    """One document read against itself is what makes this question cheap and
+    what makes it apply to a design however it was written."""
+    prompt = coherence_prompt(flying_project)
+
+    assert "Entities" in prompt
+    assert "avión de combate" not in prompt

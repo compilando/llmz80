@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from .design_exam import design_summary
+from .design_exam import DesignCoherenceExaminer, coherence_errors, design_summary
 from .models import GameProject
 from .planner import AppliedProposal, ProjectProposal, propose_apply_repair
 from .quality import design_quality_report, design_refusals
@@ -265,12 +265,62 @@ def gate_feedback(refusals: list[str]) -> str:
     )
 
 
+def coherence_feedback(gaps: list[str]) -> str:
+    """Turn the coherence examiner's gaps into an instruction the drafter can
+    act on.
+
+    Deliberately not `reference_design.coverage_feedback`, for the reason
+    `gate_feedback` gives above: that text tells the model adding entities is
+    refused and it must work with the actors it has, which is true of the
+    designer and a lie to the drafter -- `/entities/-` and `/tiles/-` are open
+    to it, and this gap is usually closed by exactly those paths. Being told
+    the gap and then told the way to close it is forbidden would spend an
+    attempt on nothing.
+
+    The paths are named out loud rather than left to the system prompt, which
+    the model has already read once and already followed into a design missing
+    a car: `una-rana-que-cruza-una` names coches in three mechanics and
+    declares one `actor`.
+    """
+    return "\n".join(
+        [
+            "THE DRAFT APPLIED BUT THE DESIGN DOES NOT DECLARE WHAT IT ASSUMES",
+            "",
+            *(f"  {gap}" for gap in gaps),
+            "",
+            "Propose again, declaring each of these. `/entities/-` appends a whole "
+            "new actor and `/tiles/-` a whole new kind of terrain -- both are yours, "
+            "and adding one is the ordinary way to close this. A tile you add must "
+            "then appear in the screen rows that use its character, and an entity "
+            "that starts somewhere needs its spawn under `/screens/N/spawns`.",
+        ]
+    )
+
+
+def _coherence_gaps(project: GameProject, examiner: DesignCoherenceExaminer | None) -> list[str]:
+    """What the examiner says this design assumes and never declares, or
+    nothing.
+
+    Nothing, and no model call, when there is no examiner -- every offline
+    caller and every test that injects a drafter alone -- and when the design
+    states no mechanics, since there is then nothing that could take anything
+    for granted. The second case is not merely a saving: the design gate below
+    already refuses a mechanics-less draft in words the drafter can act on,
+    and paying a model to add "and it declares nothing" to that would tell it
+    something it was about to be told anyway.
+    """
+    if examiner is None or not project.mechanics:
+        return []
+    return coherence_errors(examiner.examine(project))
+
+
 def draft_and_apply(
     project: GameProject,
     drafter: DesignDrafter,
     dossier: GameReference | None = None,
     *,
     attempts: int = 3,
+    examiner: DesignCoherenceExaminer | None = None,
 ) -> AppliedProposal:
     """Draft a design from the brief and validate it through `apply_proposal`.
 
@@ -296,19 +346,39 @@ def draft_and_apply(
     so only a hand edit gets a design here failing anything but its mechanics,
     and `pipeline.write` refuses that edit anyway.
 
+    An `examiner` adds a second acceptance test beside the gate, and the one
+    the gate cannot make: whether the design declares what its own mechanics
+    take for granted. `studio-projects/una-rana-que-cruza-una` passed the gate
+    with five mechanics, three of which name coches, and an entity roster of
+    one untouched default `actor`. `design_exam`'s other examiner passed it
+    too -- it reads the mechanics as evidence the brief is served, and the
+    drafter wrote them, so the design certified itself. Feeding the gaps back
+    is what makes the finding buy another attempt rather than a refusal.
+
     Raises `DraftRefused` once attempts run out, carrying what the design was
     still missing.
     """
 
     def review(updated: GameProject) -> tuple[str, str] | None:
         refusals = design_refusals(design_quality_report(updated))
-        if not refusals:
-            return None
-        return (
-            "the draft applied but the design still does not pass its own gate: "
-            + "; ".join(refusals),
-            gate_feedback(refusals),
-        )
+        if refusals:
+            return (
+                "the draft applied but the design still does not pass its own gate: "
+                + "; ".join(refusals),
+                gate_feedback(refusals),
+            )
+        # Asked second, and only once the gate is happy, because it is the
+        # one of the two that costs a model call. A draft that states no
+        # mechanics has already been sent back by the line above, and it is
+        # also the draft with nothing for this examiner to read.
+        gaps = _coherence_gaps(updated, examiner)
+        if gaps:
+            return (
+                "the draft applied but the design assumes things it never declares: "
+                + "; ".join(gaps),
+                coherence_feedback(gaps),
+            )
+        return None
 
     return propose_apply_repair(
         project,

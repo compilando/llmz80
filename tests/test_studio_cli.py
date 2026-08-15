@@ -416,7 +416,13 @@ def _stub_draft_dependencies(monkeypatch, drafter):
     `openai.OpenAI` and `ResponsesDesignDrafter` through local imports, so
     the modules they come from are patched rather than any name already
     bound in `llmz80.cli`.
+
+    The coherence examiner is stubbed alongside it because the stage builds
+    one whenever it builds its own drafter -- a fake drafter left with a real
+    examiner would reach for `.responses` on the fake client and fail there,
+    which is not what these tests are about.
     """
+    import llmz80.studio.design_exam as design_exam_module
     import llmz80.studio.drafting as drafting_module
     import llmz80.utils.config as config_module
     import openai
@@ -425,6 +431,19 @@ def _stub_draft_dependencies(monkeypatch, drafter):
     monkeypatch.setattr(config_module, "load_api_key", lambda: "test-key")
     monkeypatch.setattr(config_module, "load_config", lambda *_: {})
     monkeypatch.setattr(drafting_module, "ResponsesDesignDrafter", lambda *_a, **_k: drafter)
+    monkeypatch.setattr(
+        design_exam_module, "ResponsesCoherenceExaminer", lambda *_a, **_k: _FakeExaminer()
+    )
+
+
+class _FakeExaminer:
+    """An examiner that finds the design consistent with itself, so the CLI
+    tests keep testing the command rather than the gate."""
+
+    def examine(self, project):
+        from llmz80.studio.design_exam import DesignCoherence
+
+        return DesignCoherence(coherent=True, missing_entities=[], missing_tiles=[], quoted="")
 
 
 class _FakeDrafter:

@@ -168,6 +168,7 @@ def draft(
     *,
     say: Say = _quiet,
     confirm: Ask | None = None,
+    examiner: Any = None,
 ) -> GameProject:
     """Decide what this game is, and save what the draft came to.
 
@@ -197,6 +198,11 @@ def draft(
 
     `confirm` is handed the diff and decides whether it is applied, as in
     `adapt`, and for the same reason it is safe to go ahead without one.
+
+    The coherence examiner is built here too, so `llmz80 make` and `llmz80
+    project draft` both get the second acceptance test `draft_and_apply`
+    describes -- the one that would have caught the frog design that names
+    coches in three mechanics and declares no car.
     """
     from .drafting import draft_and_apply, needs_drafting
     from .planner import proposal_diff
@@ -218,12 +224,18 @@ def draft(
             raise Unreadable(str(exc)) from exc
     if drafter is None:
         from ..cli import _openai_client_and_model
+        from .design_exam import ResponsesCoherenceExaminer
         from .drafting import ResponsesDesignDrafter
 
         client, model = _openai_client_and_model()
         say(f"drafting the design with {model}; this calls the OpenAI API")
         drafter = ResponsesDesignDrafter(client, model=model)
-    drafted = draft_and_apply(project, drafter, dossier)
+        # Built inside the `if`, exactly as `adapt` builds its examiner: a
+        # caller that injected its own drafter -- every test, every offline
+        # run -- gets no examiner either and makes no call it did not ask for.
+        if examiner is None:
+            examiner = ResponsesCoherenceExaminer(client, model=model)
+    drafted = draft_and_apply(project, drafter, dossier, examiner=examiner)
     for number, reason in enumerate(drafted.refusals, start=1):
         say(f"Attempt {number} was refused, repairing: {reason}")
     if confirm is not None and not confirm(proposal_diff(drafted.proposal)):

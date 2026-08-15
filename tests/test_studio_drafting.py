@@ -2,6 +2,7 @@
 
 import pytest
 
+from llmz80.studio.design_exam import DesignCoherence
 from llmz80.studio.drafting import (
     DraftRefused,
     draft_and_apply,
@@ -265,3 +266,138 @@ def test_a_call_that_returns_nothing_parsed_is_not_silently_accepted(blank):
         ResponsesDesignDrafter(client).draft(blank)
 
     assert len(client.responses.calls) == 1
+
+
+# --- the design that assumes a car it never declares ------------------------
+#
+# The incident this gate exists for. Run on "una rana que cruza una carretera
+# esquivando coches", drafting produced the five mechanics reconstructed
+# below -- three of them naming coches -- and left `/entities` at the blank
+# project's single default `actor` and `/tiles` at wall and floor. The design
+# gate passed it, because `mechanics` is not empty; `design_exam`'s brief
+# examiner passed it too, because it reads those same mechanics as the
+# evidence the brief is served, and the drafter had written them. The design
+# on disk is `studio-projects/una-rana-que-cruza-una/game.yml`.
+
+
+class ScriptedCoherenceExaminer:
+    """A coherence examiner whose verdicts are decided in advance. The last
+    verdict repeats, the way a model that keeps seeing the same gap would."""
+
+    def __init__(self, *verdicts: DesignCoherence) -> None:
+        self.verdicts = list(verdicts)
+        self.seen = []
+
+    def examine(self, project):
+        self.seen.append(project)
+        return self.verdicts[min(len(self.seen), len(self.verdicts)) - 1]
+
+
+@pytest.fixture
+def frog():
+    return rename_project(
+        blank_project("Una Rana Que Cruza Una", TargetPlatform.SPECTRUM),
+        "una rana que cruza una",
+        brief="una rana que cruza una carretera esquivando coches",
+    )
+
+
+def _the_frog_draft_that_shipped() -> ProjectProposal:
+    """The draft that reached the writer: mechanics that talk about coches and
+    an entity roster nobody touched."""
+    return _mechanics(
+        "El jugador controla una rana que se mueve una casilla por pulsación en "
+        "las direcciones arriba, abajo, izquierda y derecha.",
+        "La rana comienza en el borde inferior de la pantalla, frente a una "
+        "carretera compuesta por carriles con coches en movimiento.",
+        "Los coches se desplazan horizontalmente por sus carriles; si la rana "
+        "toca un coche en cualquier momento, es atropellada.",
+        "Si la rana es atropellada por un coche, la partida se pierde de inmediato.",
+        "El objetivo es cruzar la carretera y alcanzar la zona segura en el borde "
+        "superior de la pantalla sin ser atropellada.",
+    )
+
+
+def _no_car_declared() -> DesignCoherence:
+    return DesignCoherence(
+        coherent=False,
+        missing_entities=["coche"],
+        missing_tiles=[],
+        quoted="Los coches se desplazan horizontalmente por sus carriles; si la "
+        "rana toca un coche en cualquier momento, es atropellada.",
+    )
+
+
+def test_a_draft_whose_mechanics_assume_a_car_it_never_declares_is_tried_again(frog):
+    drafter = ScriptedDrafter(
+        _the_frog_draft_that_shipped(),
+        ProjectProposal(
+            summary="declare the car the mechanics already talk about",
+            changes=[
+                ProjectChange(
+                    path="/entities/-",
+                    operation="add",
+                    reason="three mechanics name coches and the design declared none",
+                    value_entity=EntityValue(
+                        id="coche", kind="enemigo", count=4, notes="recorre su carril"
+                    ),
+                ),
+                ProjectChange(
+                    path="/mechanics",
+                    operation="replace",
+                    reason="the rules are unchanged; the cast is what was missing",
+                    value_rows=["Los coches recorren sus carriles y atropellan a la rana."],
+                ),
+            ],
+            risks=[],
+        ),
+    )
+    examiner = ScriptedCoherenceExaminer(
+        _no_car_declared(),
+        DesignCoherence(coherent=True, missing_entities=[], missing_tiles=[], quoted=""),
+    )
+
+    result = draft_and_apply(frog, drafter, attempts=2, examiner=examiner)
+
+    assert [entity.id for entity in result.project.entities] == ["actor", "coche"]
+    assert len(result.refusals) == 1
+    assert "coche" in result.refusals[0]
+    feedback = drafter.feedback_seen[1]
+    assert feedback is not None
+    assert "coche" in feedback
+    assert "/entities/-" in feedback and "/tiles/-" in feedback
+
+
+def test_a_drafter_that_keeps_assuming_a_car_it_never_declares_is_refused(frog):
+    """Once the attempts are spent the design does not go through: a program
+    written from this one would invent the cars or have none."""
+    drafter = ScriptedDrafter(_the_frog_draft_that_shipped())
+    examiner = ScriptedCoherenceExaminer(_no_car_declared())
+
+    with pytest.raises(DraftRefused, match="coche"):
+        draft_and_apply(frog, drafter, attempts=2, examiner=examiner)
+
+    assert len(examiner.seen) == 2
+
+
+def test_a_draft_that_states_no_mechanics_is_never_sent_to_the_coherence_examiner(frog):
+    """The design gate has already sent it back in words the drafter can act
+    on, and a design with no mechanics has nothing that could assume
+    anything -- so the call would be paid for to say the obvious."""
+    drafter = ScriptedDrafter(ProjectProposal(summary="nothing", changes=[], risks=[]))
+    examiner = ScriptedCoherenceExaminer(_no_car_declared())
+
+    with pytest.raises(DraftRefused, match="mechanics"):
+        draft_and_apply(frog, drafter, attempts=2, examiner=examiner)
+
+    assert examiner.seen == []
+
+
+def test_without_an_examiner_no_second_question_is_asked(frog):
+    """Every offline caller and every existing test injects a drafter alone;
+    none of them may start making a call they did not ask for."""
+    drafter = ScriptedDrafter(_the_frog_draft_that_shipped())
+
+    result = draft_and_apply(frog, drafter)
+
+    assert result.refusals == []
