@@ -554,6 +554,26 @@ def _run_caprice32(
         "-O", "video.scr_scale=1",
         "-O", "video.scr_fps=0",
         "-O", f"system.boot_time={delay_frames}",
+        # No host gamepad. `/etc/cap32.cfg` ships `joysticks=1`, and Caprice32
+        # was observed holding the developer machine's pad open (its evdev
+        # node stayed in the process's fd table for the whole run) while it
+        # fed axis motion into the emulated keyboard matrix as
+        # CPC_J0_LEFT/RIGHT/UP/DOWN -- keys whose BASIC-prompt characters are
+        # the CPC's arrow glyphs, 240 to 243.
+        #
+        # Those are the very characters that corrupt the autotyped command
+        # when this goes wrong. `tests/test_sprite_blitter_toolchain.py`'s CPC
+        # probe has been seen capturing `run"p->rogra->m.^<-bin"` answered by
+        # `Bad command`: the program never ran, and the flat cleared screen it
+        # judges was still the BASIC text screen. That the pad is the source
+        # was not reproduced on demand -- a synthetic uinput device did not do
+        # it -- so this closes a channel rather than proving a cure. Closing
+        # it costs nothing either way: every key this run sends comes from
+        # `-a`, so the same reasoning that sets SDL_VIDEODRIVER=dummy below
+        # applies to the pad. `llmz80 play` builds its own command line
+        # (`studio/play.py`) and is untouched, so a person playing a game
+        # still has their joystick.
+        "-O", "system.joysticks=0",
         "-a", "CAP32_SCRNSHOT",
         "-a", 'run"program.bin"',
         "-a", "CAP32_DELAY",
@@ -611,6 +631,8 @@ def _run_caprice32(
             "-O", "video.scr_scale=1",
             "-O", "video.scr_fps=0",
             "-O", f"system.boot_time={delay_frames}",
+            # Same reason as the primary command above.
+            "-O", "system.joysticks=0",
             "-a", 'run"program.bin"',
             "-a", "CAP32_DELAY",
             "-a", "CAP32_DELAY",
