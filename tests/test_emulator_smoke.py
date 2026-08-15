@@ -326,3 +326,92 @@ def test_a_truncated_screen_answer_is_no_screen_at_all():
     from llmz80.quality.emulator_smoke import _screen_from_answer
 
     assert _screen_from_answer("00 01 02") == b""
+
+
+def test_the_cpc_is_driven_by_zesarux_ahead_of_caprice32(monkeypatch):
+    """Caprice32 reads no memory, so a CPC run driven by it can only ever be
+    judged on pixels and every behaviour gate abstains. ZEsarUX comes first
+    wherever both are installed; Caprice32 stays behind it as the fallback."""
+    installed = {"zesarux": "/usr/bin/zesarux", "cap32": "/usr/bin/cap32"}
+    monkeypatch.setattr(emulator_smoke.shutil, "which", installed.get)
+
+    adapter = emulator_smoke.discover_adapter("amstrad_cpc")
+
+    assert adapter["name"] == "zesarux"
+    assert adapter["capabilities"]["scripted_input"] is True
+
+    monkeypatch.setattr(emulator_smoke.shutil, "which", {"cap32": "/usr/bin/cap32"}.get)
+    assert emulator_smoke.discover_adapter("amstrad_cpc")["name"] == "cap32"
+
+
+def test_the_cpc_is_typed_into_running_and_then_driven_by_key_events(monkeypatch, tmp_path):
+    """The whole CPC adapter in one wiring check, no emulator needed.
+
+    Four things here are each a silent failure if they drift. The machine must
+    be the 6128, the only emulated CPC with the disc drive a .dsk needs. The
+    banner ZEsarUX greets a connection with must be drained before anything
+    parses an answer, because a hex-pair regex reads a banner as bytes. The
+    program must be asked for by name at the BASIC prompt -- a .dsk does not
+    autostart the way a .tap does -- and the `"` must arrive as SHIFT and 2,
+    because ZEsarUX types no punctuation on this machine. And a held key must
+    become `send-keys-event`, not the 48K keyboard-matrix bytes.
+    """
+    commands: list[str] = []
+
+    class _FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+    class _FakeProcess:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return "", ""
+
+    monkeypatch.setattr(emulator_smoke, "_connect_zrcp", lambda port, deadline: _FakeConnection())
+    monkeypatch.setattr(
+        emulator_smoke, "_zrcp_command", lambda connection, command: commands.append(command)
+    )
+    monkeypatch.setattr(emulator_smoke, "_wait_for_file", lambda *args, **kwargs: True)
+    monkeypatch.setattr(emulator_smoke, "_read_probes", lambda *args, **kwargs: {"g_score": 5})
+    monkeypatch.setattr(emulator_smoke.subprocess, "Popen", lambda *args, **kwargs: _FakeProcess())
+    monkeypatch.setattr(emulator_smoke.time, "sleep", lambda *args, **kwargs: None)
+
+    report = emulator_smoke._run_zesarux(
+        {"executable": "/usr/bin/zesarux"},
+        tmp_path / "output.dsk",
+        tmp_path,
+        "cpct_isKeyPressed(Key_Space);",
+        3,
+        probes={"addresses": {"g_score": 32768}, "widths": {"g_score": 2}},
+        script=[{"id": "hold_left_a", "hold": "left", "key": "left", "frames": 50}],
+        platform="amstrad_cpc",
+    )
+
+    assert report["command"][report["command"].index("--machine") + 1] == "CPC6128"
+    assert commands[0] == "noop"
+    assert "send-keys-string 60 run" in commands
+    # SHIFT held down, 2 pressed and released underneath it, SHIFT let go.
+    quote = commands.index("send-keys-event 133 1")
+    assert commands[quote : quote + 4] == [
+        "send-keys-event 133 1",
+        "send-keys-event 50 1",
+        "send-keys-event 50 0",
+        "send-keys-event 133 0",
+    ]
+    assert "send-keys-string 60 program" in commands
+    assert "send-keys-ascii 60 13" in commands
+    # The scripted step holds the CPC's own cursor-left key, 142 in ZEsarUX's
+    # util_teclas, and lets it go again.
+    assert "send-keys-event 142 1" in commands
+    assert "send-keys-event 142 0" in commands
+    assert not any(command.startswith("set-ui-io-ports") for command in commands)
+    assert report["step_readings"] == [
+        {"id": "hold_left_a", "hold": "left", "read": {"g_score": 5}}
+    ]
+    # No display file: the CPC keeps no attribute area, so `attributes` must
+    # abstain rather than be handed CPC memory to interpret as Spectrum cells.
+    assert report["screen_dump"] is None

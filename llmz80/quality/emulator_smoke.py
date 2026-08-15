@@ -23,7 +23,14 @@ def discover_adapter(platform: str) -> dict[str, Any]:
         [("zesarux", {"headless": True, "frames": True, "scripted_input": True}),
          ("fuse", {"headless": False, "frames": False, "scripted_input": False})]
         if platform == "spectrum"
-        else [("cap32", {"headless": True, "frames": True, "scripted_input": True}),
+        # ZEsarUX first on the CPC too, and for the same reason it comes first
+        # on the Spectrum: it is the only adapter here that reads emulated
+        # memory, which is what every behaviour gate judges. Caprice32 stays
+        # behind it rather than being dropped -- it takes screenshots and sends
+        # virtual keys, so a host without ZEsarUX still gets the old evidence
+        # instead of no evidence at all.
+        else [("zesarux", {"headless": True, "frames": True, "scripted_input": True}),
+              ("cap32", {"headless": True, "frames": True, "scripted_input": True}),
               ("caprice32", {"headless": True, "frames": True, "scripted_input": True}),
               ("cpcec", {"headless": False, "frames": False, "scripted_input": False})]
     )
@@ -125,6 +132,48 @@ _SPECTRUM_ROWS = {
     "y": (5, 4), "u": (5, 3), "i": (5, 2), "o": (5, 1), "p": (5, 0),
     "h": (6, 4), "j": (6, 3), "k": (6, 2), "l": (6, 1), "enter": (6, 0),
     "b": (7, 4), "n": (7, 3), "m": (7, 2), "space": (7, 0),
+}
+
+
+#: Harness key name -> the value ZEsarUX's `send-keys-event` wants for it.
+#: The protocol's own help for that command points at `enum util_teclas` in
+#: ZEsarUX's utils.h, which is ASCII below 128 and named constants above it;
+#: 142, 143, 144 and 145 are LEFT, RIGHT, DOWN and UP, and on a CPC those set
+#: the four cursor-key bits of the real keyboard matrix.
+#:
+#: This mirrors `_SPECTRUM_ROWS` deliberately -- the same key names, one table
+#: per machine -- so `observation.py` names a key once and the harness presses
+#: it on either target. It is not a keyboard matrix, and that is the point: the
+#: Spectrum path pokes raw port bytes through `set-ui-io-ports` because the 48K
+#: offers nothing better, while `send-keys-event` is machine-independent, so no
+#: CPC matrix is written down here to be got wrong.
+#:
+#: Letters are the *lowercase* ASCII codes. ZEsarUX reads an uppercase code as
+#: shift-plus-letter and holds the CPC's SHIFT down with it, which is not the
+#: key `cpct_isKeyPressed(Key_A)` tests for.
+_CPC_KEYS: dict[str, int] = {
+    **{chr(code): code for code in range(ord("a"), ord("z") + 1)},
+    **{str(digit): ord(str(digit)) for digit in range(10)},
+    "space": 32,
+    "enter": 13,
+    "left": 142,
+    "right": 143,
+    "down": 144,
+    "up": 145,
+}
+
+
+#: CPCtelera key id -> the name `_CPC_KEYS` knows it by. Only what
+#: `_cpc_input` can return needs to be here; anything else falls back to space.
+_CPC_TOKEN_KEYS: dict[str, str] = {
+    **{f"Key_{chr(code)}": chr(code).lower() for code in range(ord("A"), ord("Z") + 1)},
+    **{f"Key_{digit}": str(digit) for digit in range(10)},
+    "Key_Space": "space",
+    "Key_Return": "enter",
+    "Key_CursorLeft": "left",
+    "Key_CursorRight": "right",
+    "Key_CursorUp": "up",
+    "Key_CursorDown": "down",
 }
 
 
@@ -294,6 +343,142 @@ def _matrix_for_key(key: str) -> tuple[str, str]:
     return "".join(f"{value:02x}" for value in values) + "00", "1f" * 8 + "00"
 
 
+def _spectrum_key_commands(key: str) -> tuple[str, str]:
+    """ZRCP commands that hold one 48K key down, then let it go."""
+    pressed, released = _matrix_for_key(key)
+    return f"set-ui-io-ports {pressed}", f"set-ui-io-ports {released}"
+
+
+def _cpc_key_commands(key: str) -> tuple[str, str]:
+    """ZRCP commands that hold one CPC key down, then let it go."""
+    code = _CPC_KEYS[key]
+    return f"send-keys-event {code} 1", f"send-keys-event {code} 0"
+
+
+def _spectrum_initial_input(source: str) -> tuple[str, str, str]:
+    """The one key pressed before the script runs: name, hold, release."""
+    name, pressed, released = _spectrum_input(source)
+    return name, f"set-ui-io-ports {pressed}", f"set-ui-io-ports {released}"
+
+
+def _cpc_initial_input(source: str) -> tuple[str, str, str]:
+    """The same, guessed from the CPCtelera key ids the sources name."""
+    token, _event = _cpc_input(source)
+    key = _CPC_TOKEN_KEYS.get(token, "space")
+    pressed, released = _cpc_key_commands(key)
+    return token, pressed, released
+
+
+#: How long to wait for the CPC firmware to reach its BASIC prompt before
+#: typing at it. Measured on this host at well under two seconds from a cold
+#: `--machine CPC6128`; the margin is for a loaded machine, and typing early
+#: loses the first characters of the command with no error to show for it.
+_CPC_BASIC_SECONDS = 3.5
+
+#: How long AMSDOS takes to find the binary on the disc and start it. The
+#: program is running long before this on a warm host, but a short wait here
+#: means the first screenshot catches a BASIC prompt and the first probe read
+#: catches memory the program has not written yet.
+_CPC_LOAD_SECONDS = 5.0
+
+#: The AMSDOS name typed at the prompt, with no extension on purpose -- see
+#: `_boot_amstrad_cpc`.
+_CPC_PROGRAM_NAME = "program"
+
+
+def _boot_spectrum(connection: socket.socket) -> None:
+    """Wait for the tape to load. A .tap given to ZEsarUX as a positional
+    argument is SmartLoaded and autostarts, so there is nothing to type."""
+    time.sleep(1.4)
+
+
+def _boot_amstrad_cpc(connection: socket.socket) -> None:
+    """Type the command that runs the program off the .dsk.
+
+    A CPC .dsk is not a tape: SmartLoad inserts it in drive A and leaves the
+    machine at a BASIC prompt, so unlike the Spectrum something has to ask for
+    the program by name. `send-keys-string` is what that is for.
+
+    Two details are the whole reason this is a sequence rather than one string.
+
+    The quote cannot be typed as a character. ZEsarUX turns an ASCII code into
+    a key press in `ascii_to_keyboard_port_set_clear` (utils.c), which handles
+    letters, digits, space and ENTER on every machine and punctuation only on
+    the QL -- so `send-keys-string 60 run"program.bin"` reaches the CPC as
+    `runprogrambin` and BASIC answers `Syntax error`. That was observed here
+    before this sequence was settled on. What does work is the physical key
+    combination: `"` is SHIFT and 2 on a CPC keyboard, and SHIFT (util_teclas
+    133) is one of the few named keys ZEsarUX does wire to the CPC matrix.
+
+    The extension cannot be typed either, for the same reason -- `.` is
+    punctuation. It does not need to be: AMSDOS, given a name with no
+    extension, tries the bare name, then .BAS, then .BIN, and the artifact this
+    pipeline builds is program.bin. So the command typed is `run"program`,
+    whose closing quote BASIC does not require, and it was confirmed to start
+    the program: memory at 0x4000 went from zeros to the program's own code and
+    PC landed inside it.
+    """
+    time.sleep(_CPC_BASIC_SECONDS)
+    _zrcp_command(connection, "send-keys-string 60 run")
+    time.sleep(0.6)
+    for command in (
+        "send-keys-event 133 1",
+        "send-keys-event 50 1",
+        "send-keys-event 50 0",
+        "send-keys-event 133 0",
+    ):
+        _zrcp_command(connection, command)
+    _zrcp_command(connection, f"send-keys-string 60 {_CPC_PROGRAM_NAME}")
+    time.sleep(0.6)
+    _zrcp_command(connection, "send-keys-ascii 60 13")
+    time.sleep(_CPC_LOAD_SECONDS)
+    # One more drain before the caller asks its first real question. Each
+    # send-keys command above takes longer inside the emulator than the drain
+    # `_zrcp_command` allows it, so their prompts arrive late; a prompt sitting
+    # in front of a `read-memory` answer does not shorten it, and both
+    # `_read_probes` and `_screen_from_answer` pull hex pairs out with a regex,
+    # so late text shifts a reading instead of failing it.
+    _zrcp_command(connection, "noop")
+
+
+#: Everything that differs between the two machines ZEsarUX drives for us. One
+#: harness, two rows: the alternative was a `_run_cpc_zesarux` beside
+#: `_run_zesarux`, which would have had to be kept in step by hand with every
+#: later change to the script, the budget and the probe reads.
+_ZESARUX_PROFILES: dict[str, dict[str, Any]] = {
+    "spectrum": {
+        "machine": "48k",
+        "keys": _SPECTRUM_ROWS,
+        "key_commands": _spectrum_key_commands,
+        "initial_input": _spectrum_initial_input,
+        "boot": _boot_spectrum,
+        # Already covered by `_HARNESS_OVERHEAD`, which was sized when the
+        # 1.4s tape wait was the only thing between connecting and capturing.
+        "boot_seconds": 0.0,
+        # Only the Spectrum has a display file at a fixed address in a layout
+        # this project knows how to read. `attributes.attribute_report` judges
+        # ink against paper out of those 6912 bytes; the CPC keeps no
+        # attributes at all, so there is nothing there to point it at.
+        "reads_display_file": True,
+    },
+    "amstrad_cpc": {
+        # CPC464 and CPC664 are emulated too. The 6128 is the one with a disc
+        # drive built in -- a 464 needs an external DDI-1 to see a .dsk at all
+        # -- and a .dsk is the artifact this pipeline builds.
+        "machine": "CPC6128",
+        "keys": _CPC_KEYS,
+        "key_commands": _cpc_key_commands,
+        "initial_input": _cpc_initial_input,
+        "boot": _boot_amstrad_cpc,
+        # The two sleeps in `_boot_amstrad_cpc` plus the eight ZRCP commands it
+        # sends, rounded up. Charged to `--exit-after` or the emulator dies
+        # mid-script.
+        "boot_seconds": 14.0,
+        "reads_display_file": False,
+    },
+}
+
+
 def _step_hold_seconds(step: dict[str, Any]) -> float:
     """How long `_run_zesarux` will hold this step's key.
 
@@ -306,7 +491,11 @@ def _step_hold_seconds(step: dict[str, Any]) -> float:
 
 
 def scripted_run_seconds(
-    *, seconds: int, steps: list[dict[str, Any]], probes: dict[str, Any] | None
+    *,
+    seconds: int,
+    steps: list[dict[str, Any]],
+    probes: dict[str, Any] | None,
+    platform: str = "spectrum",
 ) -> int:
     """How long ZEsarUX must live to finish this script.
 
@@ -326,7 +515,8 @@ def scripted_run_seconds(
     # Counted per keyed step rather than per step: the trailing idle step holds
     # nothing down and sends neither, exactly as the harness's own
     # `key in _SPECTRUM_ROWS` guard decides.
-    keyed = sum(1 for step in steps if step.get("key") in _SPECTRUM_ROWS)
+    profile = _ZESARUX_PROFILES[platform]
+    keyed = sum(1 for step in steps if step.get("key") in profile["keys"])
     command_cost = keyed * 2 * exchange
     # The one screen read, taken only when there are steps -- exactly the
     # `if steps:` block in `_run_zesarux` that captures `played.bmp`. Charged
@@ -336,11 +526,15 @@ def scripted_run_seconds(
     # because the whole answer lands inside `_ZRCP_SETTLE` and the rest of the
     # wait is the drain timing out either way. Giving this query a longer drain
     # of its own would buy nothing and cost a tenth of a second per run.
-    screen_cost = exchange if steps else 0.0
+    screen_cost = exchange if steps and profile["reads_display_file"] else 0.0
     # Rounded up, not truncated: `int` shaved off up to a second from a figure
     # whose entire purpose is not being short.
     return math.ceil(
         max(6, seconds)
+        # What it costs to get the program running at all, which is nothing on
+        # a Spectrum -- its .tap autostarts -- and most of a CPC run's first
+        # quarter minute, because a .dsk has to be asked for at a BASIC prompt.
+        + profile["boot_seconds"]
         + probe_cost
         + hold_cost
         + command_cost
@@ -352,17 +546,30 @@ def scripted_run_seconds(
 def _run_zesarux(
     adapter: dict[str, Any], artifact: Path, output_dir: Path, source: str, seconds: int,
     probes: dict[str, Any] | None = None, script: list[dict[str, Any]] | None = None,
+    platform: str = "spectrum",
 ) -> dict[str, Any]:
-    capture_dir = _frame_dir(output_dir, "spectrum")
+    """Drive one bounded ZEsarUX session and read the program's own memory.
+
+    `platform` selects a row of `_ZESARUX_PROFILES` and nothing else: which
+    machine to emulate, how to get the program running, how a key is held down,
+    and whether there is a display file worth dumping. Everything that follows
+    -- the script, the probe reads, the captures, the budget -- is the same
+    code for both machines, which is what makes `animation` and `state_probe`
+    able to judge a CPC game at all.
+    """
+    profile = _ZESARUX_PROFILES[platform]
+    capture_dir = _frame_dir(output_dir, platform)
     raw_frames = capture_dir / "frames.raw"
     before = capture_dir / "before.bmp"
     after = capture_dir / "after.bmp"
     played = capture_dir / "played.bmp"
     port = _free_local_port()
     steps = list(script or [])
-    run_seconds = scripted_run_seconds(seconds=seconds, steps=steps, probes=probes)
+    run_seconds = scripted_run_seconds(
+        seconds=seconds, steps=steps, probes=probes, platform=platform
+    )
     command = [
-        adapter["executable"], "--noconfigfile", "--machine", "48k",
+        adapter["executable"], "--noconfigfile", "--machine", profile["machine"],
         "--vo", "null", "--ao", "null", "--vofile", str(raw_frames),
         "--vofilefps", "5", "--fastautoload", "--quickexit",
         "--enable-remoteprotocol", "--remoteprotocol-port", str(port),
@@ -372,7 +579,7 @@ def _run_zesarux(
     process = subprocess.Popen(
         command, cwd=output_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
-    input_name, pressed, released = _spectrum_input(source)
+    input_name, press_command, release_command = profile["initial_input"](source)
     remote_error: str | None = None
     probe_before: dict[str, int] = {}
     probe_after: dict[str, int] = {}
@@ -380,18 +587,28 @@ def _run_zesarux(
     try:
         connection = _connect_zrcp(port, time.monotonic() + 2.5)
         with connection:
-            time.sleep(1.4)
+            # ZEsarUX greets a fresh connection with a banner, and the first
+            # query on that socket answers behind it. Both `_read_probes` and
+            # `_screen_from_answer` pull their bytes out with a hex-pair regex,
+            # and a banner carries hex pairs of its own ("available" alone
+            # supplies one), so a banner in front of a payload shifts a reading
+            # rather than shortening it -- silently, and only by a byte or two.
+            # The Spectrum path used to get away with this because its first
+            # exchange happened to be a `save-screen` command whose answer
+            # nobody parsed. Draining it here makes that an intention.
+            _zrcp_command(connection, "noop")
+            profile["boot"](connection)
             _zrcp_command(connection, f'save-screen "{before}"')
             _wait_for_file(before)
             if probes:
                 probe_before = _read_probes(connection, probes)
-            _zrcp_command(connection, f"set-ui-io-ports {pressed}")
+            _zrcp_command(connection, press_command)
             time.sleep(0.45)
             _zrcp_command(connection, f'save-screen "{after}"')
             _wait_for_file(after)
             if probes and not steps:
                 probe_after = _read_probes(connection, probes)
-            _zrcp_command(connection, f"set-ui-io-ports {released}")
+            _zrcp_command(connection, release_command)
             # Each step holds one input for its own duration and then reads the
             # state contract. Steps accumulate inside a single boot, so their
             # order is the order the design states them in.
@@ -399,15 +616,15 @@ def _run_zesarux(
                 reading: dict[str, Any] = {"id": step.get("id"), "hold": step.get("hold"), "read": {}}
                 step_readings.append(reading)
                 key = step.get("key")
-                if key in _SPECTRUM_ROWS:
-                    held, let_go = _matrix_for_key(key)
-                    _zrcp_command(connection, f"set-ui-io-ports {held}")
+                if key in profile["keys"]:
+                    held, let_go = profile["key_commands"](key)
+                    _zrcp_command(connection, held)
                 time.sleep(_step_hold_seconds(step))
                 if probes:
                     reading["read"] = _read_probes(connection, probes)
                     probe_after = reading["read"] or probe_after
-                if key in _SPECTRUM_ROWS:
-                    _zrcp_command(connection, f"set-ui-io-ports {let_go}")
+                if key in profile["keys"]:
+                    _zrcp_command(connection, let_go)
             if steps:
                 # The early captures land while the tape is still loading, so
                 # they show a loader rather than the program. Capture once more
@@ -415,9 +632,10 @@ def _run_zesarux(
                 # show gameplay.
                 _zrcp_command(connection, f'save-screen "{played}"')
                 _wait_for_file(played)
-                screen = _read_screen(connection)
-                if screen:
-                    (capture_dir / "screen.bin").write_bytes(screen)
+                if profile["reads_display_file"]:
+                    screen = _read_screen(connection)
+                    if screen:
+                        (capture_dir / "screen.bin").write_bytes(screen)
     except OSError as exc:
         remote_error = str(exc)
     # Counted from launch, because `--exit-after` is: waiting `run_seconds`
@@ -713,15 +931,20 @@ def smoke_test(
         "source_transition_observation": source_transitions,
         "transition_required": source_transitions,
     }
+    # ZEsarUX drives both machines, so the adapter and not the platform decides
+    # which harness runs. Caprice32 remains the CPC fallback for a host without
+    # ZEsarUX, and it reads no memory: every behaviour gate abstains on it,
+    # which is the honest reading of a run nobody could probe.
     supported_full = (
-        (platform == "spectrum" and adapter["name"] == "zesarux")
-        or (platform == "amstrad_cpc" and adapter["name"] in {"cap32", "caprice32"})
-    )
+        adapter["name"] == "zesarux" and platform in _ZESARUX_PROFILES
+    ) or adapter["name"] in {"cap32", "caprice32"}
     if full and supported_full and artifact_ok:
         try:
-            if platform == "spectrum":
+            if adapter["name"] == "zesarux":
                 report.update(
-                    _run_zesarux(adapter, artifact, output_dir, source, seconds, probes, script)
+                    _run_zesarux(
+                        adapter, artifact, output_dir, source, seconds, probes, script, platform
+                    )
                 )
                 report["evidence"].append("bounded ZEsarUX framebuffer capture and ZRCP input")
             else:

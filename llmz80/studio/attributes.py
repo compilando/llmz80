@@ -105,10 +105,20 @@ def attribute_report(runtime: dict[str, Any]) -> dict[str, Any]:
     Abstaining is not passing, exactly as in `feel.animation_report` and
     `pacing.pacing_report`: with no dump to read there is nothing to judge,
     and `quality_pass` is `None` rather than `True`. There are three ways to
-    have nothing: a target whose harness never dumps a screen (the CPC path,
-    `emulator_smoke._run_caprice32`, has no remote protocol to read memory
-    through and writes no such key), a run whose ZRCP answer arrived short so
-    `_read_screen` wrote no file at all, and a file that cannot be read back.
+    have nothing: a target whose harness never dumps a screen, a run whose
+    ZRCP answer arrived short so `_read_screen` wrote no file at all, and a
+    file that cannot be read back.
+
+    The CPC is the first kind and stays that way on purpose. ZEsarUX now
+    drives it over the same ZRCP the Spectrum uses, so pointing this gate at
+    CPC memory would be one line -- and it would be nonsense. Everything above
+    is Spectrum hardware: a bitmap addressed in thirds, one attribute byte per
+    8x8 cell, ink and paper in the low six bits of it. A CPC screen has no
+    attribute area at all; its colour lives in the pixel bytes themselves,
+    interleaved differently in each video mode. So `_ZESARUX_PROFILES` marks
+    the CPC as reading no display file, no `screen_dump` key reaches this gate,
+    and it abstains. Judging a CPC screen is a different gate that does not
+    exist yet, not this one aimed somewhere new.
 
     A dump of the wrong length abstains for the same reason `invisible_cells`
     refuses it: half a display file judged as though the missing half were
@@ -119,8 +129,10 @@ def attribute_report(runtime: dict[str, Any]) -> dict[str, Any]:
         return {
             "schema_version": 1,
             "observed": False,
-            "reason": "this run kept no display file; the target has no way to read "
-            "emulated memory, or the screen read came back short",
+            "reason": "this run kept no display file; the target has no display "
+            "file this gate knows how to read -- the CPC keeps its colour in the "
+            "pixel bytes and has no attribute area at all -- or the screen read "
+            "came back short",
             "invisible_cells": [],
             "failures": [],
             "quality_pass": None,

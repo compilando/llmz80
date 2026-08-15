@@ -4,13 +4,19 @@ import pytest
 
 from llmz80.studio.feel import animation_report
 from llmz80.studio.models import HOLD_DIRECTIONS, KEY_LABELS, TargetPlatform
-from llmz80.studio.observation import SPECTRUM_KEYS, STEP_FRAMES, observation_script
+from llmz80.studio.observation import (
+    CPC_KEYS,
+    PLATFORM_KEYS,
+    SPECTRUM_KEYS,
+    STEP_FRAMES,
+    observation_script,
+)
 from llmz80.studio.samples import blank_project
 
 
-def _bind(title: str, bindings: dict[str, str]):
-    """A Spectrum project whose design coined `bindings` itself."""
-    project = blank_project(title, TargetPlatform.SPECTRUM)
+def _bind(title: str, bindings: dict[str, str], platform=TargetPlatform.SPECTRUM):
+    """A project whose design coined `bindings` itself."""
+    project = blank_project(title, platform)
     project.controls.bindings = bindings
     return project
 
@@ -111,6 +117,27 @@ def test_the_key_pressed_is_the_key_the_program_reads(label: str):
     assert [step["key"] for step in script] == [expected, expected, None]
 
 
+@pytest.mark.parametrize("label", KEY_LABELS)
+def test_the_key_pressed_on_the_cpc_is_the_key_the_program_reads(label: str):
+    """The same obligation as the Spectrum test above, on the machine that
+    only just acquired it. `codegen.KEY_CODES[AMSTRAD_CPC]` decides which
+    CPCtelera key id the *program* tests for; `CPC_KEYS` decides which key
+    ZEsarUX's `send-keys-event` *presses*. Drift between them presses
+    something the program ignores, and every gate that reads `step_readings`
+    then reports a failure for a correct program."""
+    from llmz80.quality.emulator_smoke import _CPC_KEYS, _CPC_TOKEN_KEYS
+    from llmz80.studio.codegen import KEY_CODES
+
+    token = KEY_CODES[TargetPlatform.AMSTRAD_CPC][label]
+
+    assert CPC_KEYS[label] == _CPC_TOKEN_KEYS[token]
+    assert CPC_KEYS[label] in _CPC_KEYS
+
+    script = observation_script(_bind("Bound CPC", {"left": label}, TargetPlatform.AMSTRAD_CPC))
+    expected = CPC_KEYS[label]
+    assert [step["key"] for step in script] == [expected, expected, None]
+
+
 def test_every_step_states_no_expectation():
     """Expectations belong to the phase 2 examiner. A step that predicted a
     value here would be judged by `acceptance_report` and could hand out a pass
@@ -121,12 +148,34 @@ def test_every_step_states_no_expectation():
     assert all(step["frames"] == STEP_FRAMES for step in observation_script(project))
 
 
-def test_a_target_the_harness_cannot_drive_gets_no_script():
-    """`_run_caprice32` ignores its script entirely, so handing the CPC one
-    would promise readings that never arrive."""
-    project = blank_project("Silent CPC", TargetPlatform.AMSTRAD_CPC)
+def test_the_amstrad_cpc_is_driven_by_the_same_script_as_the_spectrum():
+    """The CPC used to get `[]` here, because the only adapter it had read no
+    memory and took no script -- so every behaviour gate abstained and no CPC
+    game could reach `observed`. ZEsarUX drives it now, so it gets the same
+    steps in the same order, differing only by the name of each key."""
+    spectrum = observation_script(blank_project("Watched", TargetPlatform.SPECTRUM))
+    cpc = observation_script(blank_project("Watched CPC", TargetPlatform.AMSTRAD_CPC))
 
-    assert observation_script(project) == []
+    assert [step["id"] for step in cpc] == [step["id"] for step in spectrum]
+    assert [step["hold"] for step in cpc] == [step["hold"] for step in spectrum]
+    assert [step["key"] for step in cpc] != [step["key"] for step in spectrum]
+
+
+def test_a_target_the_harness_cannot_drive_gets_no_script():
+    """A machine absent from `PLATFORM_KEYS` has no key the harness could
+    press, and a script promising readings nothing will produce makes every
+    gate look broken rather than absent."""
+
+    # Stood in rather than assigned onto a real project: `TargetSpec` validates
+    # its platform against the enum, so a machine nobody has added cannot be
+    # expressed as a GameProject at all -- which is exactly why this floor has
+    # to be checked from outside one.
+    class _Project:
+        class target:
+            platform = "sinclair ql"
+
+    assert _Project.target.platform not in PLATFORM_KEYS
+    assert observation_script(_Project()) == []
 
 
 def test_a_design_that_never_names_a_direction_gets_no_script():

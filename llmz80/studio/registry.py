@@ -92,7 +92,12 @@ BUILTIN_TARGETS = (
         (VideoMode.CPC_MODE_0, VideoMode.CPC_MODE_1),
         32768,
         12288,
-        ("cap32", "caprice32", "cpcec"),
+        # ZEsarUX first, and for the same reason it leads the Spectrum's list:
+        # it is the only one of these that reads emulated memory, which is what
+        # every behaviour gate judges. `emulator_smoke.discover_adapter` states
+        # the same order and is what actually picks; this is the machine's own
+        # description of what can drive it.
+        ("zesarux", "cap32", "caprice32", "cpcec"),
         # No audio yet. Arkos would mean bundling song assets into every
         # generated game, and driving the PSG directly shares the PPI with
         # cpct_scanKeyboard_f, which would put the verified input path at risk.

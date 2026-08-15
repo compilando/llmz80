@@ -40,6 +40,44 @@ SPECTRUM_KEYS: dict[str, str] = {
     "RIGHT": "8",
 }
 
+#: Design key label -> the name `emulator_smoke._CPC_KEYS` knows it by, which
+#: is a value for ZEsarUX's `send-keys-event` rather than a keyboard matrix
+#: position. The CPC does have cursor keys, so unlike the 48K its four
+#: directions are the four directions, exactly as `codegen.KEY_CODES` already
+#: says with `Key_CursorLeft` and its siblings.
+#:
+#: The same fact from the other side as `codegen.KEY_CODES[AMSTRAD_CPC]`, and
+#: the same obligation as `SPECTRUM_KEYS` above: the key the emulator presses
+#: must be the key the program reads, or every moving step presses something
+#: the program ignores and the animation gate fails a correct program.
+#: `test_studio_observation` pins the equivalence across every label in
+#: `KEY_LABELS` on both machines.
+CPC_KEYS: dict[str, str] = {
+    **{chr(code): chr(code).lower() for code in range(ord("A"), ord("Z") + 1)},
+    **{str(digit): str(digit) for digit in range(10)},
+    "SPACE": "space",
+    "ENTER": "enter",
+    "LEFT": "left",
+    "DOWN": "down",
+    "UP": "up",
+    "RIGHT": "right",
+}
+
+#: Which table a target's steps are written from. One code path, one row per
+#: machine: what the two platforms differ by is the name of a key, and a
+#: second `observation_script` for the CPC would have had to be kept in step
+#: by hand with every later change to the script's shape -- the interleaving,
+#: the trailing idle step, the action-before-direction split, all of which
+#: exist because a real emulator run showed they had to.
+#:
+#: A target absent from here gets no script, which is what `observation_script`
+#: returns for one and why: a script promises readings, and a harness that
+#: cannot press a key cannot produce them.
+PLATFORM_KEYS: dict[TargetPlatform, dict[str, str]] = {
+    TargetPlatform.SPECTRUM: SPECTRUM_KEYS,
+    TargetPlatform.AMSTRAD_CPC: CPC_KEYS,
+}
+
 #: Frames each step holds its key. Fifty is one second at 50 Hz: long enough
 #: that a program pacing itself on the frame clock has certainly moved.
 STEP_FRAMES = 50
@@ -77,13 +115,15 @@ def observation_script(project: GameProject) -> list[dict[str, Any]]:
     satisfy, and `generator.py` feeds it to `repair_prompt` and burns an
     attempt on it.
 
-    Empty for any target the harness cannot drive. `emulator_smoke.smoke_test`
-    hands its `script` to `_run_zesarux` and to nothing else: the CPC branch
-    calls `_run_caprice32(adapter, artifact, output_dir, source, seconds)`,
-    which has no `script` parameter to be given one. It presses a single key
-    guessed from the sources and reads no memory at all, so a CPC script would
-    promise readings that never arrive and make every gate look broken rather
-    than absent.
+    Empty for any target `PLATFORM_KEYS` does not name. The CPC used to be
+    one: `emulator_smoke.smoke_test` sent it to `_run_caprice32`, which takes
+    no script, presses a single key guessed from the sources and reads no
+    memory at all, so a CPC script would have promised readings that never
+    arrived and made every gate look broken rather than absent. ZEsarUX drives
+    the CPC now and reads its memory through the same ZRCP the Spectrum uses,
+    so the CPC gets a script; a host with only Caprice32 installed still
+    receives one and still cannot use it, and the gates go on abstaining
+    because `step_readings` never appears in that report at all.
 
     Empty, too, when no binding is named for a direction: `hold` comes from
     the name the *design* coined, and a design that calls them `izquierda` and
@@ -92,7 +132,8 @@ def observation_script(project: GameProject) -> list[dict[str, Any]]:
     definite failure for a program it never actually watched move. A script
     that can tell the gate nothing must let it abstain honestly instead.
     """
-    if project.target.platform is not TargetPlatform.SPECTRUM:
+    keys = PLATFORM_KEYS.get(project.target.platform)
+    if keys is None:
         return []
     bindings = project.controls.bindings.items()
     # The design's own declaration order survives within each group; only the
@@ -109,7 +150,7 @@ def observation_script(project: GameProject) -> list[dict[str, Any]]:
             # `ControlsSpec` validates every binding against, so a label
             # missing here is a developer error and should be loud rather than
             # silently dropping the binding from the script.
-            "key": SPECTRUM_KEYS[label],
+            "key": keys[label],
             "hold": name if name in HOLD_DIRECTIONS else HOLD_ACTION,
             "frames": STEP_FRAMES,
             "expect": {},
