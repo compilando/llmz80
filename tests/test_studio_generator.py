@@ -229,7 +229,7 @@ def test_write_program_narrates_before_a_slow_attempt_returns(tmp_path: Path, pr
     assert messages[0] == "intento 1: escribiendo..."
     assert messages[1] == (
         "intento 1: build compiló, aceptación aprobada, animación sin observar, "
-        "ritmo sin observar, atributos sin observar"
+        "ritmo sin observar, atributos sin observar, estado sin observar"
     )
 
 
@@ -404,6 +404,47 @@ def test_a_definite_attribute_refusal_blocks_the_attempt_and_reaches_the_next_wr
     assert [attempt.attributes_passed for attempt in result.attempts] == [False, True]
     assert "3 character cell(s) hold drawn pixels" in writer.feedback_seen[1]
     assert "legible" in (tmp_path / project.program_dir / "main.c").read_text()
+
+
+def test_a_definite_state_probe_refusal_blocks_the_attempt(tmp_path: Path, project):
+    """`runtime_test` has always folded the runtime state-probe verdict into
+    its own, but this loop read only `evidence["probes"]` -- the build-time
+    symbol map -- so the runtime gate reached one verdict path and not the
+    other. Harmless only while `probe_report` hardcodes `quality_pass: None`:
+    the day the phase 2 examiner makes it refuse, `runtime_test` would fail
+    the run and `release` would refuse the artifact while this loop accepted
+    the attempt and never asked for a repair. One program, two verdicts.
+
+    The refusal carries no sentence for `repair_prompt` yet -- that is the
+    examiner's to write with the expectation it derives -- so a run failed by
+    this gate alone stops the loop saying there was no diagnostic to act on.
+    That is the honest order: a program nobody can tell how to fix is not a
+    program to accept.
+    """
+    writer = ScriptedWriter(_sources("wrong_state"))
+
+    result = write_program(
+        project,
+        tmp_path,
+        writer,
+        lambda p, d: {
+            "build": {"quality_pass": True},
+            "acceptance": {"quality_pass": None},
+            # The build-time symbol map: every required symbol is in the
+            # linker map, which says nothing about what memory read back.
+            "probes": {"missing_required": []},
+            "state_probe": {
+                "quality_pass": False,
+                "observed": True,
+                "mismatches": ["g_lives: expected 3, read 0"],
+            },
+        },
+        attempts=1,
+    )
+
+    assert result.accepted is False
+    assert result.attempts[0].state_probe_passed is False
+    assert result.attempts[0].build_passed is True
 
 
 def test_a_design_with_no_animation_evidence_is_accepted_exactly_as_before(tmp_path: Path, project):

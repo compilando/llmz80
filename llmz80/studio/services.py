@@ -513,9 +513,16 @@ class StudioService:
             "animation": None,
             "pacing": None,
             "attributes": None,
+            "state_probe": None,
         }
         build = self.build(project, directory)
         evidence["build"] = build.report
+        # The build-time symbol map, which is what `repair_prompt`'s missing
+        # contract symbols are read from and stays under this name. The runtime
+        # state-probe gate is a different verdict about a different thing and
+        # goes in under `state_probe` below, so the two are never confused --
+        # confusing them is why the runtime gate could fail a run that the
+        # repair loop was accepting.
         evidence["probes"] = build.report.get("probes")
         if not build.success:
             # No emulator has run yet, so there is no animation, pacing or
@@ -532,6 +539,7 @@ class StudioService:
         evidence["animation"] = runtime.get("animation")
         evidence["pacing"] = runtime.get("pacing")
         evidence["attributes"] = runtime.get("attributes")
+        evidence["state_probe"] = runtime.get("state_probe")
         return evidence
 
     def write_program(

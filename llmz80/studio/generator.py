@@ -288,6 +288,19 @@ class Attempt:
     #: Non-fatal for the same reason as the three above: a screen nobody read
     #: is not a screen anybody approved.
     attributes_passed: bool | None = None
+    #: The *runtime* state-probe gate -- `services.probe_report`, which reads
+    #: the contract back out of the running machine -- and not the build-time
+    #: symbol map, which the writer still gets as `evidence["probes"]`. It
+    #: abstains at every run today (no examiner has derived what a design
+    #: should read), and it is wired anyway: `runtime_test` has always folded
+    #: it into its verdict, so the day the phase 2 examiner makes it return
+    #: `False` this loop would have accepted the very program `release`
+    #: refused -- one program with two verdicts, which is the defect this
+    #: floor exists to remove. Until that examiner also gives the refusal a
+    #: sentence, a run failed by this gate alone ends the loop with "rejected
+    #: without any diagnostic to act on" rather than with a repair, which is
+    #: the honest order of those two problems.
+    state_probe_passed: bool | None = None
     feedback: str = ""
 
 
@@ -320,10 +333,11 @@ def _attempt_line(attempt: Attempt) -> str:
     animation = _gate_verdict(attempt.animation_passed)
     pacing = _gate_verdict(attempt.pacing_passed)
     attributes = _gate_verdict(attempt.attributes_passed)
+    state_probe = _gate_verdict(attempt.state_probe_passed)
     return (
         f"intento {attempt.number}: build {build}, "
         f"aceptación {acceptance}, animación {animation}, ritmo {pacing}, "
-        f"atributos {attributes}"
+        f"atributos {attributes}, estado {state_probe}"
     )
 
 
@@ -402,11 +416,17 @@ def write_program(
         animation = evidence.get("animation")
         pacing = evidence.get("pacing")
         attributes = evidence.get("attributes")
+        # The runtime gate, under its own key. `probes` above is the build-time
+        # symbol map, which `repair_prompt` legitimately wants for its missing
+        # contract symbols; reading the verdict off that map is what let the
+        # runtime one reach `runtime_test` and never reach this loop.
+        state_probe = evidence.get("state_probe")
         attempt.build_passed = bool(build and build.get("quality_pass"))
         attempt.acceptance_passed = (acceptance or {}).get("quality_pass")
         attempt.animation_passed = (animation or {}).get("quality_pass")
         attempt.pacing_passed = (pacing or {}).get("quality_pass")
         attempt.attributes_passed = (attributes or {}).get("quality_pass")
+        attempt.state_probe_passed = (state_probe or {}).get("quality_pass")
         _say(on_progress, _attempt_line(attempt))
 
         # An unobservable target cannot confirm behaviour, so a clean build is
@@ -419,12 +439,17 @@ def write_program(
         # and its harness dumps no display file at all: not a pass earned,
         # but not a refusal either. Only a definite `False` -- a gate that
         # actually watched and found something wrong -- blocks acceptance.
+        # All five gates `services.runtime_test` folds into its own verdict
+        # are read here, and the same way: a gate that fails the run and not
+        # the attempt gives one program two verdicts, with `release` refusing
+        # what this loop accepted and never asked to have repaired.
         if (
             attempt.build_passed
             and attempt.acceptance_passed is not False
             and attempt.animation_passed is not False
             and attempt.pacing_passed is not False
             and attempt.attributes_passed is not False
+            and attempt.state_probe_passed is not False
         ):
             result.accepted = True
             return result
