@@ -1,0 +1,250 @@
+"""Turn a brief into a design that states something.
+
+The pipeline had a hole where this stage now is. `adapt` dresses a design in a
+researched game's clothes and says so in its own prompt -- what the game *is*
+is "settled and not yours to change" -- and `samples.blank_project` is one
+actor, two tiles and no mechanics, with a docstring saying it has no
+authority. Between the two, nobody ever decided what the game was: both v4
+projects in this repository reached the writer with `mechanics: []`, one of
+them from a dossier that had correctly identified *Harrier Attack!*.
+
+Drafting decides what the game is; adaptation decides what it looks like.
+Keeping them apart is what leaves `adapt`'s prompt intact, and it is why this
+stage runs *after* research rather than instead of it: when there is a
+dossier the draft reads it, and when there is none it drafts from the brief
+alone -- which is what unblocks an order that used to dead-end on a game
+nobody recognised.
+
+Like `reference_design`, this emits the `ProjectProposal` the assistant
+already emits, so it inherits the diff, the protected paths and the
+transactional validation of `apply_proposal` without writing any of them.
+"""
+
+from __future__ import annotations
+
+from typing import Protocol
+
+from .design_exam import _design_summary
+from .models import GameProject
+from .planner import AppliedProposal, ProjectProposal, propose_apply_repair
+from .quality import design_quality_report, design_refusals
+from .reference import GameReference
+
+#: Everything the drafter is told. It is the mirror image of
+#: `reference_design.DESIGN_SYSTEM_PROMPT`: that one is warned off the fields
+#: that carry the design's identity, and this one is pointed at exactly those
+#: fields, because deciding them is the whole job. What both share is the
+#: warning off Studio's own guarantees -- a proposal touching a protected path
+#: is refused on apply, and one that outgrows the target's playable grid is
+#: refused by `GameProject`'s own validation, so spending changes there only
+#: wastes the twenty a proposal is allowed.
+DRAFT_SYSTEM_PROMPT = """\
+You write the design of a game from the brief somebody wrote for it. The
+design you are given is a blank: one actor, two tiles, one empty room. It
+decides nothing and you are not contradicting anybody by replacing it.
+
+Say what this game *is*: who is in it, what the player does, how it is won
+and how it is lost. Nothing downstream infers these -- the program is
+written from what the design states, so a rule you leave unstated is a rule
+the game will not have.
+
+Draft only what the brief asks for. Where the brief is silent about a
+mechanic, do not invent one to fill the space; a smaller design that answers
+the brief is right, and a bigger one that answers a different game is the
+one failure this stage exists to avoid. Where a researched game is supplied,
+it is evidence about what the brief means, not a second brief: take from it
+what the brief already asked for.
+
+Propose JSON-pointer changes to the supplied GameProject. You get at most 20
+changes in total, so spend them on whole arrays and whole objects rather than
+one row, cell or spawn at a time:
+  /mechanics                what the game does, one sentence per rule,
+                             in the design's own language        -> value_rows
+  /entities/-               a whole new actor, appended          -> value_entity, add
+  /entities/N/kind          what an actor already there is       -> value_text
+  /entities/N/notes         what that actor does                 -> value_text
+  /entities/N/count         how many of it there are             -> value_number
+  /tiles/-                  a whole new kind of terrain          -> value_tile, add
+  /screens/N/tiles          the room, as rows of the design's own
+                             tile characters                     -> value_rows
+  /screens/N/spawns         where each actor starts              -> value_spawns
+  /controls/bindings/NAME   a key for an action the brief names and
+                             the design has no key for           -> value_text, add
+
+Each change carries its value in exactly one of those value_* fields --
+never more than one, and none at all for a remove.
+
+Out of bounds, and refused if you try:
+  * /budgets -- the machine imposes those, not the design.
+  * /target, /schema_version, /metadata/slug and /acceptance -- protected.
+  * /metadata -- a person wrote the brief and the title; they are not yours
+    to edit, and the brief least of all.
+
+Rules:
+  * Every id -- an entity's, a tile's -- is lower case, starts with a letter
+    and holds only letters, digits and underscores: `caza_enemigo`, never
+    `Caza Enemigo`.
+  * A tile's `char` is one printable character, and no two tiles may share
+    one. It is what the screen rows are written in.
+  * A screen's terrain rows must all match its declared width and height
+    exactly, and use only tile characters the design declares under `/tiles`.
+    Add the tile before you use its character.
+  * Leave `sprite`, `art` and `colour` unset on everything you add. They name
+    assets and palette entries this design does not declare yet, and naming
+    one that does not exist is refused outright. The artwork comes later.
+  * A spawn names an entity the design declares and sits inside the screen it
+    is on; an entity's `count` is the most instances of it one screen may
+    place.
+  * Give each change a reason that says what in the brief motivates it.
+"""
+
+
+def needs_drafting(project: GameProject) -> bool:
+    """Whether this design is one that should be drafted at all.
+
+    Both halves matter, and for opposite reasons.
+
+    No brief means nobody has said what this game should be. Drafting one
+    anyway would mean inventing the brief, which is the exact failure the
+    whole pipeline is built to prevent -- it is why `reference.py` makes a
+    researcher admit it found nothing rather than describe a plausible game,
+    and the same rule applies to a stage with even less to go on.
+
+    Mechanics already stated mean the design is somebody's. Redrafting it
+    would be the reinterpretation `adapt`'s own prompt refuses on the
+    dossier's behalf, and refusing it there while doing it here would be a
+    rule that only binds the stage that did not need it.
+
+    A design with neither is left alone by both halves at once, and that is
+    correct: `quality.design_notices` already tells whoever created it that
+    nothing says what the game does, and the remedy is a brief, not a draft.
+    """
+    return bool(project.metadata.brief.strip()) and not project.mechanics
+
+
+class DesignDrafter(Protocol):
+    def draft(
+        self,
+        project: GameProject,
+        dossier: GameReference | None = None,
+        feedback: str | None = None,
+    ) -> ProjectProposal: ...
+
+
+def drafting_prompt(project: GameProject, dossier: GameReference | None) -> str:
+    """Everything the drafter is owed before it decides what this game is.
+
+    What the design states today comes from `design_exam._design_summary`
+    rather than a second summary written here. The examiner asks whether the
+    design answers its brief and this stage has to make it answer it: that is
+    one question from two sides, and two renderings of the same document
+    would drift until the drafter was told something the examiner never
+    judged.
+    """
+    sections = [
+        "WRITE THE DESIGN THIS BRIEF ASKS FOR",
+        "THE BRIEF\n\n" + project.metadata.brief.strip(),
+        "WHAT THE DESIGN STATES TODAY\n\n" + _design_summary(project),
+    ]
+    # An unidentified dossier is empty by its own contract -- `reference.py`
+    # refuses to let a researcher half-fill one -- so there is nothing in it
+    # to read, and showing a model a document of blank fields invites it to
+    # treat the blanks as facts.
+    if dossier is not None and dossier.identified:
+        sections.append(
+            "A REAL GAME WAS RESEARCHED FOR THIS BRIEF\n\n"
+            "It is evidence about what the brief means. Take from it what the "
+            "brief already asked for, and nothing else.\n\n" + dossier.model_dump_json(indent=2)
+        )
+    return "\n\n".join(sections)
+
+
+class DraftRefused(ValueError):
+    """The drafter could not produce a design that states anything.
+
+    Its own class so `make` and the CLI can tell "the drafter did not manage
+    it" from every other `ValueError` a stage can raise -- the distinction
+    `pipeline.DesignRefused` already draws for a refused design.
+    """
+
+
+def gate_feedback(refusals: list[str]) -> str:
+    """Turn the design gate's refusals into an instruction the drafter can act
+    on.
+
+    The sentences, not the check names: `quality.design_refusals` exists
+    because telling somebody their design failed
+    `design_states_the_mechanics_its_brief_asks_for` leaves them no better off
+    than the silence that used to let it through.
+
+    Deliberately not `reference_design.coverage_feedback`, which reads well
+    and would be wrong here: it tells the model that adding entities is
+    refused and it must work with the actors it has. That is true of the
+    designer and false of the drafter, whose whole reason to exist is that
+    `/entities/-` is open to it.
+    """
+    return "\n".join(
+        [
+            "THE DRAFT APPLIED BUT THE DESIGN STILL DOES NOT PASS ITS OWN GATE",
+            "",
+            *(f"  {refusal}" for refusal in refusals),
+            "",
+            "Propose again, fixing exactly these. `/mechanics` is where what the "
+            "game does belongs -- one sentence per rule -- and it is the one the "
+            "writer downstream refuses to work without.",
+        ]
+    )
+
+
+def draft_and_apply(
+    project: GameProject,
+    drafter: DesignDrafter,
+    dossier: GameReference | None = None,
+    *,
+    attempts: int = 3,
+) -> AppliedProposal:
+    """Draft a design from the brief and validate it through `apply_proposal`.
+
+    The loop is `planner.propose_apply_repair`, shared with
+    `reference_design.propose_and_apply`. What is this stage's own is the two
+    things below: the dossier is optional where the designer's is required --
+    drafting from a brief alone is the case that unblocks a game nobody
+    recognised -- and the acceptance test is the design gate rather than the
+    examiner's coverage.
+
+    The gate is the right acceptance test because it is the one that stops the
+    pipeline later: `pipeline.write` refuses a design that carries a brief and
+    states no mechanics before it pays a writer. A draft that would fail there
+    is worth another attempt here, where the failure is still cheap and can be
+    handed back as feedback.
+
+    The whole gate is used, not only its mechanics check, and one of its three
+    checks is not the drafter's to fix: `/budgets` is refused to a proposal
+    outright. A design that arrives already over budget would spend every
+    attempt being told something it cannot act on. That is written down rather
+    than guarded against because there is no way in yet -- `blank_project`
+    sets both budgets to exactly what its target allows and declares no audio,
+    so only a hand edit gets a design here failing anything but its mechanics,
+    and `pipeline.write` refuses that edit anyway.
+
+    Raises `DraftRefused` once attempts run out, carrying what the design was
+    still missing.
+    """
+
+    def review(updated: GameProject) -> tuple[str, str] | None:
+        refusals = design_refusals(design_quality_report(updated))
+        if not refusals:
+            return None
+        return (
+            "the draft applied but the design still does not pass its own gate: "
+            + "; ".join(refusals),
+            gate_feedback(refusals),
+        )
+
+    return propose_apply_repair(
+        project,
+        lambda feedback: drafter.draft(project, dossier, feedback),
+        review,
+        attempts=attempts,
+        refusal=DraftRefused,
+    )

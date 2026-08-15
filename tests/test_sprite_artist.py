@@ -782,8 +782,8 @@ def test_a_solid_block_is_retried_and_the_feedback_names_the_problem():
     """A first attempt that comes back as a solid block (`_solid_block_sheet`)
     must be retried, not packed as-is -- and the second request must carry
     feedback that names exactly what was wrong, the way
-    `reference_design.repair_feedback` names a refused proposal's specific
-    fields rather than just saying "try again".
+    `planner.repair_feedback` names a refused proposal's specific fields
+    rather than just saying "try again".
     """
     project = _project(TargetPlatform.SPECTRUM)
     entity = next(e for e in project.entities if e.kind == "player")

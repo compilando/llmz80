@@ -4,13 +4,17 @@ import pytest
 
 from llmz80.studio.editing import rename_project
 from llmz80.studio.models import PresentationSpec, TargetPlatform
-from llmz80.studio.planner import ProjectChange, ProjectProposal, apply_proposal
+from llmz80.studio.planner import (
+    ProjectChange,
+    ProjectProposal,
+    apply_proposal,
+    repair_feedback,
+)
 from llmz80.studio.reference import GameReference, load_reference, save_reference
 from llmz80.studio.reference_design import (
     DESIGN_SYSTEM_PROMPT,
     ResponsesReferenceDesigner,
     propose_and_apply,
-    repair_feedback,
 )
 from llmz80.studio.samples import blank_project
 from llmz80.studio.services import StudioService
