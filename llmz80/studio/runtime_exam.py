@@ -269,6 +269,22 @@ def usable_assertions(
     examiner's own mistakes stay visible instead of quietly shrinking the exam.
     """
     order = {step["id"]: number for number, step in enumerate(steps)}
+    # The first step that holds a direction. Everything at or after it may be
+    # any distance into a game that has already been won, lost or restarted --
+    # a mining run reached victory on its seventh step and was back on its
+    # title screen by the eighth -- so a claim that the game is *still in
+    # play* is only safe up to and including it -- the earliest steps, where
+    # least has had a chance to happen. The prompt says so too, and saying so was
+    # not enough: an examiner bound `g_state == 1` to the idle step of a game
+    # that happens never to end, which would have failed a correct program
+    # the moment the same design did end. Advice the model may decline is
+    # advice; this is the same rule the applier keeps rather than the prompt.
+    from .models import HOLD_DIRECTIONS
+
+    moving = [
+        number for number, step in enumerate(steps) if step.get("hold") in HOLD_DIRECTIONS
+    ]
+    first_direction = moving[0] if moving else len(steps)
     kept: list[RuntimeAssertion] = []
     discarded: list[str] = []
     for assertion in exam.assertions:
@@ -278,6 +294,13 @@ def usable_assertions(
             continue
         if assertion.symbol not in symbols:
             discarded.append(f"{claim}: this program does not expose {assertion.symbol}")
+            continue
+        if assertion.symbol == "g_state" and order[assertion.step] > first_direction:
+            discarded.append(
+                f"{claim}: which screen is showing is only safe to claim before the "
+                "first direction is held, since by then the game may have been won, "
+                "lost or restarted"
+            )
             continue
         if assertion.baseline is not None:
             if assertion.baseline not in order:
