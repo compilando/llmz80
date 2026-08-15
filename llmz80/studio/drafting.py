@@ -152,8 +152,16 @@ def drafting_prompt(project: GameProject, dossier: GameReference | None) -> str:
     would drift until the drafter was told something the examiner never
     judged.
     """
+    # Named outright rather than left to the brief's own wording. Two runs of
+    # the same brief drafted the same game in different languages, one Spanish
+    # and one English, because nothing here said which -- and `mechanics` is
+    # read by a person editing game.yml as well as by the model that writes
+    # the program, so the design should not change tongue between runs.
+    tongue = "Spanish" if project.metadata.language == "es" else "English"
     sections = [
         "WRITE THE DESIGN THIS BRIEF ASKS FOR",
+        f"Write every sentence of the design in {tongue}: that is the language "
+        "this project declares in its metadata.",
         "THE BRIEF\n\n" + project.metadata.brief.strip(),
         "WHAT THE DESIGN STATES TODAY\n\n" + design_summary(project),
     ]

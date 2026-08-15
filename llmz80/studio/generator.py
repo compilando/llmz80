@@ -273,6 +273,11 @@ class Attempt:
     files: list[str]
     build_passed: bool | None = None
     acceptance_passed: bool | None = None
+    #: Whether the toolchain itself accepted the sources, as opposed to
+    #: whether the build passed policy. A compile that succeeds and is then
+    #: refused over its warnings is a different thing to fix from one that
+    #: never compiled, and the progress line used to call both "no compiló".
+    build_compiled: bool | None = None
     #: `None` means the animation gate abstained (no adapter, or the design
     #: never declared g_anim_frame) -- exactly as unobserved as `acceptance`'s
     #: own abstention, and just as non-fatal. See `write_program`.
@@ -328,7 +333,12 @@ def _gate_verdict(passed: bool | None) -> str:
 def _attempt_line(attempt: Attempt) -> str:
     """One attempt, as `Attempt` already recorded it: its number, whether the
     build compiled, and each gate's verdict."""
-    build = "compiló" if attempt.build_passed else "no compiló"
+    if attempt.build_passed:
+        build = "compiló"
+    elif attempt.build_compiled:
+        build = "compiló pero fue rechazado"
+    else:
+        build = "no compiló"
     acceptance = _gate_verdict(attempt.acceptance_passed)
     animation = _gate_verdict(attempt.animation_passed)
     pacing = _gate_verdict(attempt.pacing_passed)
@@ -422,6 +432,7 @@ def write_program(
         # runtime one reach `runtime_test` and never reach this loop.
         state_probe = evidence.get("state_probe")
         attempt.build_passed = bool(build and build.get("quality_pass"))
+        attempt.build_compiled = bool(build and build.get("compile_succeeded"))
         attempt.acceptance_passed = (acceptance or {}).get("quality_pass")
         attempt.animation_passed = (animation or {}).get("quality_pass")
         attempt.pacing_passed = (pacing or {}).get("quality_pass")
