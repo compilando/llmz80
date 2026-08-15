@@ -124,18 +124,31 @@ def examinable_symbols(symbols: list[str]) -> list[str]:
     return [name for name in sorted(symbols) if name not in LIBRARY_GATED]
 
 
-def _symbol_menu(symbols: list[str]) -> str:
-    """The symbols this program exposes, with what the contract says they mean.
+def _symbol_menu(project: GameProject, symbols: list[str]) -> str:
+    """The symbols this program exposes, with what each one means.
 
     Only the ones the run really read. A design with no notion of lives never
     declares `g_lives`, nothing reads it, and an assertion about it would be
     judged "read nothing" -- a failure the program could not possibly repair.
+
+    A symbol the design itself declared is described in the design's own
+    words and said to be the design's, because the contract has no meaning to
+    offer for it and the reading it lists would otherwise be "no contract
+    meaning" -- a symbol with no stated meaning is one no examiner will bind
+    an assertion to, which is the whole reason this menu exists. These are
+    the only symbols in the menu that can witness a rule of *this* game:
+    `g_score` and `g_state` are the same six numbers in every game there is.
     """
-    return "\n".join(
-        f"  {name}: "
-        + (SYMBOLS_BY_NAME[name].meaning if name in SYMBOLS_BY_NAME else "no contract meaning")
-        for name in symbols
-    )
+    declared = {observable.symbol: observable.meaning for observable in project.observables}
+    lines = []
+    for name in symbols:
+        if name in SYMBOLS_BY_NAME:
+            lines.append(f"  {name}: {SYMBOLS_BY_NAME[name].meaning}")
+        elif name in declared:
+            lines.append(f"  {name}: {declared[name]} (declared by this design)")
+        else:
+            lines.append(f"  {name}: no stated meaning")
+    return "\n".join(lines)
 
 
 def _step_menu(steps: list[dict[str, Any]]) -> str:
@@ -235,7 +248,18 @@ meaning of the symbol itself rather than from any mechanic.
 
 THE SYMBOLS THIS PROGRAM EXPOSES. These, and nothing else, will be read:
 
-{_symbol_menu(symbols)}
+{_symbol_menu(project, symbols)}
+
+Any symbol above marked "declared by this design" is this design's own
+vocabulary, and the meaning shown is the sentence the design wrote for it.
+The design declared it precisely so that one of its own rules could be
+witnessed from outside, which the fixed contract symbols cannot do -- so
+those are the symbols to reach for when a mechanic below looks uncheckable,
+and an assertion bound to one is worth more than another claim about
+g_score. What a design's own symbol counts is only what its own sentence
+says: it is subject to every hazard above, so bound it rather than
+predicting an exact value, and say it is unverifiable when this blind run
+cannot make the rule happen at all.
 
 THE STEPS, in the order they run:
 

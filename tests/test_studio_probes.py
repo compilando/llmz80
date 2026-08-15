@@ -60,6 +60,42 @@ def test_sdcc_noi_yields_probe_addresses_and_ignores_other_globals():
     assert found["g_score"] == 0x5105
 
 
+def test_a_designs_own_observable_is_located_and_read_at_its_declared_width(tmp_path: Path):
+    """The link the whole chain was broken at. A design declares `g_dug`,
+    `codegen.render_state_header` declares it extern, the writer defines it --
+    and this report only ever searched the state contract, so the symbol was
+    never located, never read out of memory and never reached a gate."""
+    (tmp_path / "output.map").write_text(
+        "_g_score = $9F02 ; addr, public, , engine\n"
+        "_g_state = $9F04 ; addr, public, , engine\n"
+        "_g_worst_frame_cost = $9F05 ; addr, public, , engine\n"
+        "_g_dug = $9F06 ; addr, public, , engine\n"
+    )
+
+    report = write_probe_report(tmp_path, "spectrum", {"g_dug": 2})
+
+    assert report["addresses"]["g_dug"] == 0x9F06
+    # Read as two bytes because the design said two, not because the contract
+    # has an opinion: `emulator_smoke._read_probes` reads `widths[name]`.
+    assert report["widths"]["g_dug"] == 2
+    assert report["observables"] == ["g_dug"]
+    assert report["missing_observables"] == []
+    assert contract_failures(report) == []
+
+
+def test_an_observable_the_design_declared_and_the_program_never_defined_fails_the_build():
+    """The design promised a window onto one of its own rules and the program
+    did not open it. Treated exactly like a missing required contract symbol,
+    since the alternative -- reporting it and building anyway -- is how a
+    recorded absence went on being accepted before `contract_failures` was
+    consulted at all."""
+    failures = contract_failures({"missing_required": [], "missing_observables": ["g_dug"]})
+
+    assert len(failures) == 1
+    assert "g_dug" in failures[0]
+    assert "game.yml" in failures[0]
+
+
 def test_probe_report_records_what_could_not_be_located(tmp_path: Path):
     (tmp_path / "output.map").write_text("_g_score = $9F02 ; addr, public, , engine\n")
 

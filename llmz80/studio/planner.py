@@ -65,6 +65,34 @@ class TileValue(BaseModel):
     traits: list[str] = Field(default_factory=list)
 
 
+class ObservableValue(BaseModel):
+    """One whole observable, in the shape `ObservableSpec` validates.
+
+    Its own field for the reason `ProjectChange`'s docstring gives -- strict
+    structured output rejects a property with no concrete JSON type, so there
+    is no generic `value` to put it in -- and its own *shape* because an
+    observable is neither an entity nor a tile: it is a C symbol, a width in
+    bytes and a sentence saying what the number means.
+
+    A design that declares one is the only way a gate can witness a rule the
+    state contract has no word for. Nothing had ever declared one: `game.yml`
+    could carry observables since schema v4 and no stage could propose them,
+    so the four finished games in `studio-projects/` were judged entirely on
+    `g_score`, `g_state` and their siblings, and not one of their own
+    mechanics was checked.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: str
+    #: Bytes to read out of memory. Mirrors `ObservableSpec`'s own default
+    #: rather than being required, so a drafter naming a counter it has not
+    #: thought about the range of gets the one-byte reading a hand-written
+    #: design would get.
+    width: int = 1
+    meaning: str
+
+
 class ProjectChange(BaseModel):
     """One JSON-pointer edit.
 
@@ -85,6 +113,7 @@ class ProjectChange(BaseModel):
     value_spawns: list[SpawnValue] | None = None  # a screen's spawns
     value_entity: EntityValue | None = None  # a whole entity
     value_tile: TileValue | None = None  # a whole tile
+    value_observable: ObservableValue | None = None  # a whole observable
 
     @model_validator(mode="after")
     def validate_value_shape(self) -> "ProjectChange":
@@ -97,6 +126,7 @@ class ProjectChange(BaseModel):
                 self.value_spawns,
                 self.value_entity,
                 self.value_tile,
+                self.value_observable,
             )
             if v is not None
         ]
@@ -124,6 +154,8 @@ class ProjectChange(BaseModel):
             return self.value_entity.model_dump(mode="json")
         if self.value_tile is not None:
             return self.value_tile.model_dump(mode="json")
+        if self.value_observable is not None:
+            return self.value_observable.model_dump(mode="json")
         return None
 
 

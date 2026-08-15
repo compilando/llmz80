@@ -19,6 +19,7 @@ from llmz80.studio.acceptance import (
     step_mismatches,
 )
 from llmz80.studio.models import GameProject, TargetPlatform
+from llmz80.studio.observation import observation_script
 from llmz80.studio.runtime_exam import (
     RuntimeAssertion,
     RuntimeExam,
@@ -302,3 +303,24 @@ def test_every_comparison_the_examiner_may_answer_is_one_the_judge_implements():
     answerable = get_args(RuntimeAssertion.model_fields["compare"].annotation)
 
     assert set(answerable) == set(COMPARISONS)
+
+
+def test_the_examiner_is_offered_the_designs_own_symbols_in_the_designs_own_words():
+    """A design's observable is the only symbol in the menu that can witness a
+    rule of *this* game -- the other six are the same numbers in every game
+    there is. Left unexplained it reads as "no stated meaning", which is a
+    symbol no examiner will bind an assertion to, and the run goes on being
+    judged entirely on g_score."""
+    from llmz80.studio.runtime_exam import examination_prompt
+
+    document = _project("Cavar tierra la convierte en suelo.").model_dump(mode="json")
+    document["observables"] = [
+        {"symbol": "g_dug", "width": 2, "meaning": "celdas de tierra excavadas; solo sube"}
+    ]
+    project = GameProject.model_validate(document)
+
+    prompt = examination_prompt(project, observation_script(project), ["g_dug", "g_score"])
+
+    assert "g_dug: celdas de tierra excavadas; solo sube (declared by this design)" in prompt
+    assert "declared by this design" in prompt
+    assert "g_score: current score" in prompt

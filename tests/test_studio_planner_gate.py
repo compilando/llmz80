@@ -169,3 +169,35 @@ def test_a_whole_entity_a_proposal_added_becomes_one_the_design_declares(project
     assert [entity.id for entity in applied.entities] == ["actor", "caza"]
     assert applied.entities[1].kind == "enemigo"
     assert applied.entities[1].count == 3
+
+
+def test_a_whole_observable_a_proposal_added_becomes_one_the_design_declares(project):
+    """`/observables/-` is the path that had never existed at all: `game.yml`
+    could carry observables since schema v4 and no stage could propose one, so
+    every finished game was judged on the six fixed contract symbols and not
+    one of its own rules was ever witnessed. What matters here is the same
+    thing `/entities/-` had to prove: that the change lands in the document as
+    a real `ObservableSpec`, width and meaning intact."""
+    from llmz80.studio.planner import ObservableValue
+
+    proposal = ProjectProposal(
+        summary="make the digging rule checkable from outside",
+        changes=[
+            ProjectChange(
+                path="/observables/-",
+                operation="add",
+                reason="no contract symbol can witness dirt turning into floor",
+                value_observable=ObservableValue(
+                    symbol="g_dug",
+                    width=2,
+                    meaning="celdas de tierra excavadas; solo sube",
+                ),
+            )
+        ],
+    )
+
+    applied = apply_proposal(project, proposal)
+
+    assert [observable.symbol for observable in applied.observables] == ["g_dug"]
+    assert applied.observables[0].width == 2
+    assert applied.observables[0].meaning == "celdas de tierra excavadas; solo sube"

@@ -484,7 +484,16 @@ def build_project(
     report["stdout"] = process.stdout[-12000:]
     report["stderr"] = process.stderr[-12000:]
     if report["quality_pass"]:
-        probes = write_probe_report(output_dir, platform)
+        # The design's own observables travel with the contract's symbols, as
+        # a mapping rather than as the project: see `probes._wanted` for why
+        # that module stays free of the IR. Without them here the rest of the
+        # chain is dead -- game.yml declares a symbol, game_state.h declares
+        # it extern, the writer defines it, and nothing ever looks it up.
+        probes = write_probe_report(
+            output_dir,
+            platform,
+            {observable.symbol: observable.width for observable in project.observables},
+        )
         report["probes"] = probes
         failures = contract_failures(probes)
         if failures:

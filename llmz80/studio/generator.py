@@ -173,6 +173,19 @@ def repair_prompt(
             "which usually means they were declared static or optimised away:\n  "
             + ", ".join(probes["missing_required"])
         )
+    # Said in its own section rather than folded into the one above: these are
+    # not the contract's symbols but this design's own, game_state.h declares
+    # them `extern` from game.yml, and a writer told only "contract symbols are
+    # missing" would go looking for them in `contract_prompt`, where they are
+    # not.
+    if probes and probes.get("missing_observables"):
+        sections.append(
+            "THIS DESIGN'S OWN OBSERVABLES ARE MISSING\n\ngame_state.h declares these "
+            "extern because game.yml declares them, and they are absent from the "
+            "linker map. Define each one exactly once at file scope -- not static, "
+            "not inside a function -- and update it where the rule it names "
+            "happens:\n  " + ", ".join(probes["missing_observables"])
+        )
     if acceptance and acceptance.get("quality_pass") is False:
         lines = ["THE PROGRAM BUILT AND RAN BUT BEHAVED WRONGLY", ""]
         for scenario in acceptance.get("scenarios", []):

@@ -72,9 +72,39 @@ one row, cell or spawn at a time:
   /screens/N/spawns         where each actor starts              -> value_spawns
   /controls/bindings/NAME   a key for an action the brief names and
                              the design has no key for           -> value_text, add
+  /observables/-            a number the finished program keeps, so one of
+                             your own rules can be checked from
+                             outside                             -> value_observable, add
 
 Each change carries its value in exactly one of those value_* fields --
 never more than one, and none at all for a remove.
+
+Observables, and what they are for. The finished program is verified by
+reading variables straight out of the machine's memory while it runs. Six of
+those are fixed for every game -- the score, which screen is showing, lives,
+the level, objectives remaining, the high score -- and they can witness
+almost nothing you write here: "digging dirt turns it into floor", "the bats
+turn round at a wall", "a car leaving one side comes back on the other" are
+invisible to all six. An observable is how you make one of your own rules
+visible: you name a C symbol the program must keep, say in one sentence what
+the number means, and the program is then required to define it and a gate
+reads it out of memory.
+
+  * Declare one only where it makes a rule you have just written checkable
+    from outside. A count of what has happened -- cells dug, cars wrapped,
+    bats turned round, enemies asleep -- is worth far more than a copy of
+    something already on screen.
+  * Never declare one for something the six fixed symbols already carry: no
+    observable for the score, the state, lives, the level, objectives
+    remaining or the high score. Such a design is refused outright.
+  * `symbol` is a C identifier beginning `g_`, lower case, letters, digits
+    and underscores: `g_dug_cells`, `g_car_wraps`. `width` is 1 for a number
+    that stays under 256 and 2 for one that may not. `meaning` is one
+    sentence, in the design's language, saying what the number counts and
+    which way it moves.
+  * Declaring none is a perfectly good answer. Two or three is plenty; a
+    design that declares one per rule is inventing bookkeeping the game does
+    not need.
 
 Out of bounds. Never propose a change to any of these:
   * /schema_version, /metadata/slug, /target/platform and /acceptance are
