@@ -66,3 +66,37 @@ def test_the_registry_keeps_one_pack_per_id():
     assert registry.get("cpctelera").name == "CPCtelera"
     with pytest.raises(KeyError, match="unknown plugin"):
         registry.get("mk1")
+
+
+def test_the_manifest_records_what_a_rebuild_would_need(tmp_path):
+    from scripts.vendor_engine import write_manifest
+
+    path = write_manifest(
+        tmp_path,
+        engine_id="cpctelera",
+        repository="https://github.com/lronaldo/cpctelera",
+        commit="a" * 40,
+        licence="GPL-3.0-or-later",
+    )
+
+    import json
+
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    assert manifest["commit"] == "a" * 40
+    assert manifest["licence"] == "GPL-3.0-or-later"
+    assert manifest["repository"].endswith("cpctelera")
+
+
+def test_vendoring_refuses_a_licence_nobody_read(tmp_path):
+    import pytest
+
+    from scripts.vendor_engine import write_manifest
+
+    with pytest.raises(ValueError, match="not one this project has accepted"):
+        write_manifest(
+            tmp_path,
+            engine_id="mystery",
+            repository="https://example.invalid/mystery",
+            commit="b" * 40,
+            licence="UNKNOWN",
+        )
