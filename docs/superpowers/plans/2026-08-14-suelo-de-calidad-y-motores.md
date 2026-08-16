@@ -2229,3 +2229,21 @@ El examinador reveló la cifra que faltaba: **de 24 mecánicas en cuatro juegos,
 | `attributes` para CPC | Otro formato de pantalla | Hoy se abstiene honestamente |
 
 **Sueltos con causa conocida:** `pipeline.test` no construye examinador, así que los observables sólo llegan a la puerta dentro de `write` o `make`; `_cpc_input` busca teclas en ficheros que los proyectos Studio no usan; 372 MB de framebuffer crudo por ejecución de CPC, con `raw_frame_change` ya casi redundante; y el segundo modo de cuelgue de cap32 sigue sin explicar — el gamepad era el otro.
+
+---
+
+# Abierto al cerrar la sesión del 2026-08-16
+
+Nada de esto bloquea usar el pipeline. Está aquí para no volver a descubrirlo.
+
+**El bucle de reparación puede adelgazar un borrador en silencio.** `planner.propose_apply_repair` aplica cada intento contra el proyecto *original*, y `repair_feedback` le dice al modelo «deja todo lo demás exactamente como estaba». Un intento rechazado por un solo detalle —una nota de 240 caracteres— vuelve proponiendo únicamente lo que le señalaron, y todo lo que había redactado antes se pierde. Medido: un borrador del minero acabó declarando seis reglas sobre murciélagos con una sola entidad `actor` y ningún tile de murciélago. Es el diseño incoherente que la puerta de coherencia existe para cazar, fabricado por nuestro propio bucle. Arreglo probable: aplicar cada intento sobre el resultado del anterior, o pedir al modelo el conjunto completo en vez de el delta.
+
+**La redacción falla en seco 1 de cada 7 veces**, por cosas ajenas al esquema: un borrador sin mecánicas, otro colocando 21 spawns contra `max_entities`. Nada en el prompt dice cuántos spawns caben en una pantalla.
+
+**Un diseño puede declarar que no usa la tecla de acción**, y entonces los dos pasos de acción del guion de observación no hacen nada. Ese diseño merece un guion distinto.
+
+**40 revisiones históricas bajo `studio-projects/*/.llmz80/revisions/` ya no validan** — llevan la corrupción `},{` y los NUL que `Prose` ahora rechaza. Inofensivo salvo que algo reproduzca una revisión.
+
+**Sin cambios:** `pipeline.test` no construye examinador, así que los observables sólo llegan a la puerta dentro de `write` o `make`; `_cpc_input` busca teclas en ficheros que los proyectos Studio no usan; 372 MB de framebuffer crudo por ejecución de CPC; el segundo modo de cuelgue de cap32 sigue sin explicar.
+
+**Y lo que más subiría la cobertura**, por orden: el agente jugador (M2), porque el guion barre teclas a ciegas y ninguna condición de victoria es comprobable sin dirección; y un motor con DSL (E3), donde la LLM deja de escribir C.
