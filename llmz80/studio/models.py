@@ -50,6 +50,12 @@ def _readable(value: str) -> str:
     model call, and the same field written by the drafting stage was clean.
     That is exactly why the guard is here rather than at the suspected
     source: this catches it whatever produced it.
+
+    Still unknown, and deliberately not assumed settled by its sibling.
+    `_unstructured` below guards a second corruption of the same shape whose
+    source *was* traced -- to the model, by replaying the calls and reading
+    the raw responses -- but nobody has replayed this one, so the two share a
+    resemblance and not a finding.
     """
     found = _CONTROL_CHARACTERS.search(value)
     if found:
@@ -61,9 +67,82 @@ def _readable(value: str) -> str:
     return value
 
 
+#: The separator between two objects of a JSON array: `},{`, with the
+#: insignificant whitespace JSON allows around it. Deliberately *not* a brace
+#: on its own. A design sentence may legitimately hold one -- a mechanic
+#: describing a `{` key legend, a style naming a font -- and refusing every
+#: brace would fail honest prose to catch a machine artefact. What no design
+#: means is a closing brace, a comma and an opening brace in that order:
+#: outside a JSON document that sequence says nothing, and inside one it says
+#: "this object ends and the next begins".
+_JSON_OBJECT_SEPARATOR = re.compile(r"\}\s*,\s*\{")
+
+
+def _unstructured(value: str) -> str:
+    """Refuse a design string carrying the punctuation of the transport that
+    brought it.
+
+    Not a hypothetical, and the second of its kind after the NUL bytes
+    `_readable` describes. Three designs on disk carried `},{` welded to the
+    end of a text value: `studio-projects/minero-vigilado` has an entity whose
+    `kind` is `minero},{`, and `studio-projects/minero-observable` and
+    `studio-projects/un-minero-que-cava-tuneles-y-2` (the same design, copied)
+    have a `presentation.style` ending `tiny sprites},{`. All three reached
+    the examiner and the program writer as they were.
+
+    Both stages that ask a model for a `ProjectProposal` produced one: the
+    `kind` came from `drafting`, and the `style` from `reference_design`
+    (`minero-vigilado` has no `reference.yml`, so no adaptation ever ran
+    there). Nothing between the model and `game.yml` concatenates or restitches
+    a value -- `planner.apply_proposal` deep-copies `change.value` into the
+    document and revalidates -- so the separator was inside the string when
+    the SDK parsed it, which means the model emitted it there.
+
+    Replaying both calls against gpt-5 shows the pressure that produces it.
+    `ProjectChange` declares ten properties and strict structured output
+    requires every one of them, so after writing `value_text` the model must
+    still emit six `value_*: null` fields before it may close the object. In
+    the captured raw responses it stalls at exactly that point, padding with
+    runs of 1 to 762 literal spaces between the closing quote and the
+    `, "value_number": null` tail. `},{` is that same impatience arriving one
+    token early: a brace, a comma and a brace are ordinary string characters,
+    so the grammar that masks them *between* fields permits them *inside* the
+    value, and the model's attempt to start the next change is absorbed as
+    text.
+
+    Refused here rather than in `planner`, for the reason `_readable` gives:
+    this is the one place a document must pass through however it was written,
+    and it costs nothing. Being a validation error also makes it repairable --
+    `apply_proposal` revalidates the whole document, so
+    `planner.propose_apply_repair` catches this, hands
+    `planner.repair_feedback` the offending path, and the model gets another
+    attempt instead of the run dying.
+    """
+    found = _JSON_OBJECT_SEPARATOR.search(value)
+    if found:
+        raise ValueError(
+            f"this text carries the JSON separator {found.group()!r} at position "
+            f"{found.start()}, which no design means: it is the punctuation between "
+            "two objects of the response that carried it, not part of the value. "
+            + repr(value[max(0, found.start() - 30) : found.start() + 10])
+        )
+    return value
+
+
 #: Prose a design writes for a person or for the model that reads the design.
 #: Length limits stay on the fields themselves, since each has its own.
-Prose = Annotated[str, AfterValidator(_readable)]
+#:
+#: What wears it is every string field a design carries that the schema does
+#: not otherwise pin down -- no pattern, no enum, no single character. That is
+#: the rule, and it is wider than "the fields that read like sentences",
+#: because `EntitySpec.kind` does not read like one and is exactly where the
+#: `},{` incident landed. Fields with a pattern (`id`, `symbol`, a tile's
+#: `char`, an asset's `source`) or a fixed vocabulary (a binding's key label)
+#: need nothing from this: their own constraint already refuses anything a
+#: broken response could smuggle in. So do a screen's terrain rows, which
+#: `structure._reference_errors` checks character by character against the
+#: tiles the design declares.
+Prose = Annotated[str, AfterValidator(_readable), AfterValidator(_unstructured)]
 
 
 class StrictModel(BaseModel):
@@ -132,10 +211,10 @@ HOLD_DIRECTIONS: tuple[str, ...] = ("left", "right", "up", "down")
 
 class Metadata(StrictModel):
     slug: str = Field(pattern=SLUG_PATTERN)
-    title: str = Field(min_length=1, max_length=32)
+    title: Prose = Field(min_length=1, max_length=32)
     #: What this game is, in the designer's own words.
     brief: Prose = Field(default="", max_length=2000)
-    author: str = Field(default="LLMZ80 Studio", max_length=32)
+    author: Prose = Field(default="LLMZ80 Studio", max_length=32)
     language: Literal["en", "es"] = "es"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -168,7 +247,7 @@ class PaletteEntry(StrictModel):
     when the art is packed, not here: this is the design's own vocabulary."""
 
     id: str = Field(pattern=ID_PATTERN)
-    colour: str = Field(min_length=1, max_length=32)
+    colour: Prose = Field(min_length=1, max_length=32)
 
 
 class PresentationSpec(StrictModel):
@@ -233,7 +312,11 @@ class EntitySpec(StrictModel):
     """One kind of actor. `kind` is the design's own word for it."""
 
     id: str = Field(pattern=ID_PATTERN)
-    kind: str = Field(min_length=1, max_length=32)
+    #: `Prose`, not a bare string, and the field that made the rule
+    #: explicit: it is the design's own free-written word, so nothing else
+    #: constrains what may be in it, and `minero},{` is what came back from
+    #: the drafter for `studio-projects/minero-vigilado`.
+    kind: Prose = Field(min_length=1, max_length=32)
     sprite: str | None = Field(default=None, pattern=ID_PATTERN)
     #: Named poses the artwork carries: walk, jump, die.
     poses: list[Annotated[str, StringConstraints(pattern=ID_PATTERN)]] = Field(
@@ -267,7 +350,7 @@ class ScreenSpec(StrictModel):
     """One screen of the game, and where it leads."""
 
     id: str = Field(pattern=ID_PATTERN)
-    name: str = Field(min_length=1, max_length=24)
+    name: Prose = Field(min_length=1, max_length=24)
     width: int = Field(ge=8, le=40)
     height: int = Field(ge=8, le=25)
     time_limit_seconds: int | None = Field(default=None, ge=10, le=999)
@@ -302,7 +385,7 @@ class ScreenSpec(StrictModel):
 
 
 class MenuOption(StrictModel):
-    label: str = Field(min_length=1, max_length=24)
+    label: Prose = Field(min_length=1, max_length=24)
     target_scene: str = Field(pattern=ID_PATTERN)
 
 
@@ -315,7 +398,7 @@ class SceneSpec(StrictModel):
     #: ("title", "credits", "boss_intro", ...). Studio only walks the graph
     #: -- id, next_scene, options -- and never branches on this value.
     kind: str = Field(pattern=ID_PATTERN)
-    title: str = Field(default="", max_length=32)
+    title: Prose = Field(default="", max_length=32)
     next_scene: str | None = Field(default=None, pattern=ID_PATTERN)
     options: list[MenuOption] = Field(default_factory=list, max_length=6)
 

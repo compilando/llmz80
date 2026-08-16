@@ -1,7 +1,12 @@
 import pytest
 
 from llmz80.studio.models import TargetPlatform
-from llmz80.studio.planner import ProjectChange, ProjectProposal, apply_proposal
+from llmz80.studio.planner import (
+    ProjectChange,
+    ProjectProposal,
+    apply_proposal,
+    propose_apply_repair,
+)
 from llmz80.studio.samples import blank_project
 
 
@@ -201,3 +206,54 @@ def test_a_whole_observable_a_proposal_added_becomes_one_the_design_declares(pro
     assert [observable.symbol for observable in applied.observables] == ["g_dug"]
     assert applied.observables[0].width == 2
     assert applied.observables[0].meaning == "celdas de tierra excavadas; solo sube"
+
+
+def test_a_proposal_whose_text_carries_the_json_separator_is_refused_and_repairable(project):
+    """The `},{` corruption arrives as a `ProjectChange.value_text`, so this is
+    the path the guard in `models._unstructured` actually has to cover.
+
+    Both halves matter. The refusal is what stops `minero},{` reaching the
+    program writer, as it did in `studio-projects/minero-vigilado`. Being a
+    plain validation error is what makes the run survive it: the model emitted
+    the separator in 2 of 14 replayed calls, so a refusal that ended the stage
+    would cost roughly one draft in seven, while `propose_apply_repair` turns
+    it into another attempt with the offending path named.
+    """
+    corrupt = ProjectProposal(
+        summary="name the actor",
+        changes=[
+            ProjectChange(
+                path="/entities/0/kind",
+                operation="replace",
+                value_text="minero},{",
+                reason="the brief's protagonist is a miner",
+            )
+        ],
+    )
+    clean = ProjectProposal(
+        summary="name the actor",
+        changes=[
+            ProjectChange(
+                path="/entities/0/kind",
+                operation="replace",
+                value_text="minero",
+                reason="the brief's protagonist is a miner",
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="JSON separator"):
+        apply_proposal(project, corrupt)
+
+    attempts = [corrupt, clean]
+    seen: list[str | None] = []
+
+    def propose(feedback: str | None) -> ProjectProposal:
+        seen.append(feedback)
+        return attempts.pop(0)
+
+    applied = propose_apply_repair(project, propose, lambda _updated: None)
+
+    assert applied.project.entities[0].kind == "minero"
+    assert "JSON separator" in applied.refusals[0]
+    assert "entities/0/kind" in (seen[1] or "")
