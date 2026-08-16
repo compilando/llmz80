@@ -60,7 +60,9 @@ def load_platform_config():
     """Load platform configurations from YAML file"""
     logger.debug("Cargando configuración de plataformas desde YAML")
     try:
-        yaml_path = os.path.join("resources", "platforms.yml")
+        from llmz80.utils.config import resolve_project_file
+
+        yaml_path = str(resolve_project_file(os.path.join("resources", "platforms.yml")))
         logger.debug(f"Archivo YAML: {yaml_path} (existe: {os.path.exists(yaml_path)})")
         with open(yaml_path, "r") as f:
             config = yaml.safe_load(f)

@@ -16,6 +16,27 @@ DEFAULT_LOG_LEVEL = "INFO"
 # Obtener logger para este módulo
 logger = logging.getLogger(__name__)
 
+#: Where this project's own files live, whatever directory the command was
+#: run from. Every path below used to be resolved against the caller's cwd,
+#: which is why `llmz80` on the PATH failed anywhere but the checkout: a
+#: console script is expected to work from a user's home directory, and this
+#: one died on `resources/platforms.yml` before it printed anything.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def resolve_project_file(path: str | Path) -> Path:
+    """`path` as given if it exists, else the same name under the project.
+
+    Tried in that order rather than the other way round so a caller standing
+    in a directory with its own `config.yml` still gets theirs -- the point is
+    to stop relative paths failing away from the checkout, not to stop them
+    working inside it.
+    """
+    candidate = Path(path)
+    if candidate.exists():
+        return candidate
+    return PROJECT_ROOT / candidate
+
 def load_config(config_path: str) -> Dict[str, Any]:
     """Carga la configuración desde un archivo YAML.
     
@@ -26,6 +47,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
         Un diccionario con la configuración
     """
     try:
+        config_path = resolve_project_file(config_path)
         with open(config_path, 'r', encoding='utf-8') as f:
             config_data = yaml.safe_load(f)
             logger.info(f"Configuración cargada correctamente desde {config_path}")
