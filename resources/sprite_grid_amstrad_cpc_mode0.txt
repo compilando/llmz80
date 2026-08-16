@@ -1,0 +1,27 @@
+AMSTRAD CPC MODE 0 SPRITE
+
+Subject: {prompt}
+
+Mode 0 is the CPC's colour mode, and its pixels are twice as wide as they
+are tall on a real screen. That is the single most important thing to know
+here: a figure you draw {width} columns wide by {height} rows tall will
+appear on the television twice as wide as it looks in the grid below. Draw
+it *narrow* -- a standing figure wants roughly half the columns it would
+want on a square-pixel machine -- or it will come out squat and fat.
+
+You have four pens, and PENS lists exactly which. Use them for flat areas
+that mean something -- body, clothing, a held object -- not for shading a
+curve. Four flat colours read; four colours blended do not.
+
+What reads well at this size:
+- Bold shapes in flat colour, one pen per body part.
+- One accent pen kept for the feature that identifies the character, so the
+  eye finds it immediately.
+- Deliberate transparency around the figure: the background shows through
+  every '.', so the outline is the shape.
+
+What does not work here:
+- Drawing at square-pixel proportions and hoping. See above; it is the one
+  mistake this mode punishes hardest.
+- Checkerboard dithering to fake a fifth colour. At this size it reads as
+  dirt, not as shading.

@@ -81,17 +81,17 @@ def test_the_help_lists_the_reference_commands(capsys):
 def _stub_reference_dependencies(monkeypatch, researcher):
     """Route the `reference` command's OpenAI-backed collaborators to a fake.
 
-    `_project_command` imports `openai.OpenAI`, `ResponsesReferenceResearcher`,
+    `_project_command` imports `anthropic.Anthropic`, `ResponsesReferenceResearcher`,
     and the config loaders locally inside the branch, so patching the modules
     they come from (rather than names already bound in `llmz80.cli`) is what
     actually takes effect.
     """
     import llmz80.studio.reference as reference_module
     import llmz80.utils.config as config_module
-    import openai
+    import anthropic
 
-    monkeypatch.setattr(openai, "OpenAI", lambda **_: object())
-    monkeypatch.setattr(config_module, "load_api_key", lambda: "test-key")
+    monkeypatch.setattr(anthropic, "Anthropic", lambda **_: object())
+    monkeypatch.setattr(config_module, "load_anthropic_api_key", lambda: "test-key")
     monkeypatch.setattr(config_module, "load_config", lambda *_: {})
     monkeypatch.setattr(
         reference_module, "ResponsesReferenceResearcher", lambda *_a, **_k: researcher
@@ -193,16 +193,16 @@ def _stub_adapt_dependencies(monkeypatch, designer):
     """Route the `adapt` command's OpenAI-backed collaborator to a fake.
 
     Same reasoning as `_stub_reference_dependencies`: `_project_command`
-    resolves `openai.OpenAI` and `ResponsesReferenceDesigner` through local
+    resolves `anthropic.Anthropic` and `ResponsesReferenceDesigner` through local
     imports inside the branch, so the modules they come from are patched
     rather than any name already bound in `llmz80.cli`.
     """
     import llmz80.studio.reference_design as reference_design_module
     import llmz80.utils.config as config_module
-    import openai
+    import anthropic
 
-    monkeypatch.setattr(openai, "OpenAI", lambda **_: object())
-    monkeypatch.setattr(config_module, "load_api_key", lambda: "test-key")
+    monkeypatch.setattr(anthropic, "Anthropic", lambda **_: object())
+    monkeypatch.setattr(config_module, "load_anthropic_api_key", lambda: "test-key")
     monkeypatch.setattr(config_module, "load_config", lambda *_: {})
     monkeypatch.setattr(
         reference_design_module, "ResponsesReferenceDesigner", lambda *_a, **_k: designer
@@ -358,8 +358,8 @@ def test_adapt_repairs_a_refused_proposal_and_tells_the_user_it_retried(
 def test_reference_reports_rather_than_crashes_on_a_malformed_model_response(
     tmp_path: Path, capsys, monkeypatch
 ):
-    """The OpenAI SDK parses the model's JSON into GameReference itself, inside
-    client.responses.parse(): a response that satisfies the JSON schema but
+    """The Anthropic SDK parses the model's JSON into GameReference itself, inside
+    client.messages.parse(): a response that satisfies the JSON schema but
     violates a cross-field rule (an "identified" dossier with no sources) raises
     pydantic.ValidationError from there, before ResponsesReferenceResearcher or
     StudioService ever see a constructed object.
@@ -377,7 +377,7 @@ def test_reference_reports_rather_than_crashes_on_a_malformed_model_response(
     capsys.readouterr()
     game_path = tmp_path / "malformed-response" / "game.yml"
 
-    class _RaisingResponses:
+    class _RaisingMessages:
         def parse(self, **_kwargs):
             # Satisfies GameReference's JSON schema field-by-field but fails
             # its cross-field model_validator -- a shape a real model
@@ -389,13 +389,13 @@ def test_reference_reports_rather_than_crashes_on_a_malformed_model_response(
 
     class _RaisingClient:
         def __init__(self, **_kwargs):
-            self.responses = _RaisingResponses()
+            self.messages = _RaisingMessages()
 
     import llmz80.utils.config as config_module
-    import openai
+    import anthropic
 
-    monkeypatch.setattr(openai, "OpenAI", _RaisingClient)
-    monkeypatch.setattr(config_module, "load_api_key", lambda: "test-key")
+    monkeypatch.setattr(anthropic, "Anthropic", _RaisingClient)
+    monkeypatch.setattr(config_module, "load_anthropic_api_key", lambda: "test-key")
     monkeypatch.setattr(config_module, "load_config", lambda *_: {})
 
     code = main(["project", "reference", str(game_path)])
@@ -413,22 +413,22 @@ def _stub_draft_dependencies(monkeypatch, drafter):
     """Route the `draft` command's OpenAI-backed collaborator to a fake.
 
     Same reasoning as `_stub_adapt_dependencies`: the branch resolves
-    `openai.OpenAI` and `ResponsesDesignDrafter` through local imports, so
+    `anthropic.Anthropic` and `ResponsesDesignDrafter` through local imports, so
     the modules they come from are patched rather than any name already
     bound in `llmz80.cli`.
 
     The coherence examiner is stubbed alongside it because the stage builds
     one whenever it builds its own drafter -- a fake drafter left with a real
-    examiner would reach for `.responses` on the fake client and fail there,
+    examiner would reach for `.messages` on the fake client and fail there,
     which is not what these tests are about.
     """
     import llmz80.studio.design_exam as design_exam_module
     import llmz80.studio.drafting as drafting_module
     import llmz80.utils.config as config_module
-    import openai
+    import anthropic
 
-    monkeypatch.setattr(openai, "OpenAI", lambda **_: object())
-    monkeypatch.setattr(config_module, "load_api_key", lambda: "test-key")
+    monkeypatch.setattr(anthropic, "Anthropic", lambda **_: object())
+    monkeypatch.setattr(config_module, "load_anthropic_api_key", lambda: "test-key")
     monkeypatch.setattr(config_module, "load_config", lambda *_: {})
     monkeypatch.setattr(drafting_module, "ResponsesDesignDrafter", lambda *_a, **_k: drafter)
     monkeypatch.setattr(
@@ -518,7 +518,7 @@ def test_draft_says_so_and_spends_nothing_on_a_design_that_is_already_somebodys(
     """The command a person reaches for after `programa` refused. Run against
     a design that already states its rules it must cost nothing and say why --
     proved by making the OpenAI client itself an error."""
-    import openai
+    import anthropic
 
     game_path = _drafted(tmp_path, "Draft Stated")
     capsys.readouterr()
@@ -529,7 +529,7 @@ def test_draft_says_so_and_spends_nothing_on_a_design_that_is_already_somebodys(
     def _refuse_to_be_built(**_kwargs):
         raise AssertionError("the OpenAI client was built for a design nobody had to draft")
 
-    monkeypatch.setattr(openai, "OpenAI", _refuse_to_be_built)
+    monkeypatch.setattr(anthropic, "Anthropic", _refuse_to_be_built)
     code = main(["project", "draft", str(game_path)])
 
     printed = capsys.readouterr().out
@@ -596,36 +596,49 @@ def _sprite_sheet_image():
 
 
 class _FakeImageGenerator:
-    """Stands in for `OpenAIImageGenerator`: returns a fixed sheet, makes no
-    network call, and remembers how many times it was asked to draw.
+    """Stands in for the client `ClaudeGridSheetSource` draws through:
+    returns a fixed, valid grid, makes no network call, and remembers how
+    many times it was asked to draw.
+
+    The grid is a filled left half -- neither blank nor solid, so it passes
+    `sprite_grid.grid_errors` and `sprite_artist._judge_frames` alike --
+    drawn in pen 0, which every target has.
     """
 
     def __init__(self, **_kwargs):
         self.calls = 0
+        self.messages = self
 
-    def generate_image(self, prompt):
+    def parse(self, **_kwargs):
+        from llmz80.studio.sprite_grid import (
+            TRANSPARENT,
+            SpriteFrameGrid,
+            SpriteSheetGrid,
+        )
+        from llmz80.studio.spriting import SPRITE_SIZE
+
         self.calls += 1
-        return _sprite_sheet_image()
+        half = "0" * (SPRITE_SIZE // 2) + TRANSPARENT * (SPRITE_SIZE // 2)
+        grid = SpriteSheetGrid(
+            frames=[SpriteFrameGrid(rows=[half] * SPRITE_SIZE) for _ in range(4)]
+        )
+        return type("Response", (), {"parsed_output": grid})()
 
 
 def _stub_sprites_dependencies(monkeypatch, generator):
-    """Route the `sprites` command's OpenAI-backed collaborators to fakes.
+    """Route the `sprites` command's model-backed collaborators to fakes.
 
-    Same reasoning as `_stub_reference_dependencies`: `_project_command`
-    resolves `openai.OpenAI` and `OpenAIImageGenerator` through local imports
-    inside the branch, so the modules they come from are patched rather than
-    any name already bound in `llmz80.cli`.
+    Same reasoning as `_stub_reference_dependencies`: `pipeline.sprites`
+    resolves `anthropic.Anthropic` through a local import inside the branch,
+    so the module it comes from is patched rather than any name already
+    bound in `llmz80.cli`.
     """
-    from types import SimpleNamespace
-
-    import generators.openai_generator as openai_generator_module
+    import anthropic
     import llmz80.utils.config as config_module
-    import openai
 
-    monkeypatch.setattr(openai, "OpenAI", lambda **_: SimpleNamespace(api_key="test-key"))
-    monkeypatch.setattr(config_module, "load_api_key", lambda: "test-key")
+    monkeypatch.setattr(anthropic, "Anthropic", lambda **_: generator)
+    monkeypatch.setattr(config_module, "load_anthropic_api_key", lambda: "test-key")
     monkeypatch.setattr(config_module, "load_config", lambda *_: {})
-    monkeypatch.setattr(openai_generator_module, "OpenAIImageGenerator", lambda **_: generator)
 
 
 def test_sprites_draws_and_registers_missing_art(tmp_path: Path, capsys, monkeypatch):
@@ -725,32 +738,25 @@ def test_sprites_prints_the_money_warning_before_constructing_a_generator(
 
     printed_before_construction = []
 
-    class _RefusingGenerator:
+    class _RefusingClient:
         def __init__(self, **_kwargs):
             printed_before_construction.append(capsys.readouterr().out)
             raise _StoppedBeforeSpending()
 
-        def generate_image(self, prompt):  # pragma: no cover - must never run
-            raise AssertionError("an image must not be generated in this test")
-
-    from types import SimpleNamespace
-
-    import generators.openai_generator as openai_generator_module
+    import anthropic
     import llmz80.utils.config as config_module
-    import openai
 
-    monkeypatch.setattr(openai, "OpenAI", lambda **_: SimpleNamespace(api_key="test-key"))
-    monkeypatch.setattr(config_module, "load_api_key", lambda: "test-key")
+    monkeypatch.setattr(anthropic, "Anthropic", _RefusingClient)
+    monkeypatch.setattr(config_module, "load_anthropic_api_key", lambda: "test-key")
     monkeypatch.setattr(config_module, "load_config", lambda *_: {})
-    monkeypatch.setattr(openai_generator_module, "OpenAIImageGenerator", _RefusingGenerator)
 
     import pytest
 
     with pytest.raises(_StoppedBeforeSpending):
         main(["project", "sprites", str(game_path)])
 
-    assert printed_before_construction, "the generator was never constructed"
-    assert "OpenAI API" in printed_before_construction[0]
+    assert printed_before_construction, "the client was never constructed"
+    assert "Anthropic API" in printed_before_construction[0]
 
 
 def test_write_reports_a_refused_design_instead_of_tracebacking(tmp_path: Path, capsys):

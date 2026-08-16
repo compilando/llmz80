@@ -56,6 +56,7 @@ from pydantic import BaseModel, ConfigDict
 
 from llmz80.core.state_contract import STATE_TITLE, SYMBOLS_BY_NAME
 
+from .llm import structured
 from .models import HOLD_ACTION, GameProject
 
 
@@ -677,33 +678,26 @@ class RepeatedExaminer:
 
 
 class ResponsesRuntimeExaminer:
-    """Derives the run's expectations with the OpenAI Responses API."""
+    """Derives the run's expectations with the model."""
 
-    def __init__(self, client: Any, model: str = "gpt-5") -> None:
+    def __init__(self, client: Any, model: str = "claude-opus-5") -> None:
         self.client = client
         self.model = model
 
     def examine(
         self, project: GameProject, steps: list[dict[str, Any]], symbols: list[str]
     ) -> RuntimeExam:
-        response = self.client.responses.parse(
-            model=self.model,
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You decide what a fixed, unsteered emulator run of a game must "
-                        "show in memory. You assert only what every correct program must "
-                        "produce in that exact run, and you say plainly which rules the "
-                        "run cannot check. You never assert that the player achieves "
-                        "anything."
-                    ),
-                },
-                {"role": "user", "content": examination_prompt(project, steps, symbols)},
-            ],
-            text_format=RuntimeExam,
+        return structured(
+            self.client,
+            self.model,
+            system=(
+                "You decide what a fixed, unsteered emulator run of a game must "
+                "show in memory. You assert only what every correct program must "
+                "produce in that exact run, and you say plainly which rules the "
+                "run cannot check. You never assert that the player achieves "
+                "anything."
+            ),
+            user=examination_prompt(project, steps, symbols),
+            schema=RuntimeExam,
+            missing="the model did not return a runtime examination",
         )
-        parsed = response.output_parsed
-        if parsed is None:
-            raise ValueError("the model did not return a runtime examination")
-        return parsed

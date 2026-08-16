@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![OpenAI](https://img.shields.io/badge/OpenAI-GPT--5-412991.svg)](https://openai.com/)
+[![Anthropic](https://img.shields.io/badge/Anthropic-Claude%20Opus%205-D97757.svg)](https://www.anthropic.com/)
 [![Qdrant](https://img.shields.io/badge/Qdrant-Vector%20DB-DC244C.svg)](https://qdrant.tech/)
 
 LLMZ80 es un generador inteligente de código C para microordenadores clásicos Z80 (ZX Spectrum y Amstrad CPC) que utiliza **Large Language Models** (LLMs), **embeddings**, **RAG** (Retrieval Augmented Generation), validación previa y corrección automática para generar código compilable desde descripciones en lenguaje natural.
@@ -37,7 +37,7 @@ documentan en [Extending LLMZ80 Studio](docs/STUDIO_EXTENSIONS.md).
 
 ## ✨ Características Principales
 
-- 🤖 **Generación de código con IA**: Usa modelos OpenAI configurables para crear código C orientado a Z80
+- 🤖 **Generación de código con IA**: Usa Claude para crear código C orientado a Z80
 - 🔍 **RAG fiable**: catálogo local determinista de programas compilables, ampliable con Qdrant
 - 🧭 **Vocabulario declarado por el diseño**: `game.yml` no elige entre juegos
   previstos, los describe. Los tiles llevan su carácter y sus rasgos, las
@@ -124,8 +124,9 @@ Otros emuladores compatibles: RetroVirtualMachine, XRoar
 
 ### API Keys Necesarias
 
-- **OpenAI API Key**: Para generación de código (requerido)
-- **Gemini API Key**: Para generación de sprites (opcional)
+- **Anthropic API Key**: Para todo el flujo de Studio: diseño, sprites y programa (requerido)
+- **OpenAI API Key**: Sólo para el generador antiguo (`llm_z80.py`) (opcional)
+- **Gemini API Key**: Para el generador de sprites antiguo (opcional)
 - **Google Cloud**: Para Vertex AI (opcional)
 
 ## 🚀 Instalación
@@ -226,12 +227,19 @@ GOOGLE_CLOUD_PROJECT=...
 El archivo `config.yml` contiene la configuración del sistema:
 
 ```yaml
+anthropic:
+  model: claude-opus-5       # El modelo con el que piensa Studio
+
+# Sin `temperature`: el modelo lo rechaza con un 400, no lo ignora.
+# Sin `reasoning_effort`: su sustituto (output_config.effort) ya viene en
+# el valor alto que Studio quiere, así que nombrarlo sería repetir el defecto.
+
 openai:
-  model: gpt-5               # Modelo de OpenAI
-  temperature: 0.3           # Ignorado por modelos reasoning; útil para fallback
-  max_tokens: 16384          # Tokens máximos
-  reasoning_effort: medium   # Esfuerzo de razonamiento para modelos reasoning
-  embedding_model: text-embedding-3-small
+  # Sólo lo lee el generador antiguo (llm_z80.py, llmz80/api/generator.py)
+  model: gpt-5
+  temperature: 0.3
+  max_tokens: 16384
+  reasoning_effort: medium
 
 examples:
   max_examples: 8            # Programas completos en el prompt
@@ -276,7 +284,7 @@ los sprites que falten, escribe el programa y lo repara contra el compilador, y
 por último compila y lo ejecuta en el emulador. La última línea que imprime es
 la ruta de la cinta o del disco.
 
-Gasta dinero de la API de OpenAI en cuatro etapas (`referencia`, `diseño`,
+Gasta dinero de la API de Anthropic en cuatro etapas (`referencia`, `diseño`,
 `sprites`, `programa`) y lo dice al empezar; avisar no es preguntar. Si la
 investigación no identifica ningún juego real no es un fallo: se salta la
 adaptación y el diseño conserva su tipología. Si una etapa falla, la orden para
@@ -505,8 +513,8 @@ llmz80/
 
 ### Tecnologías Utilizadas
 
-- **Modelos OpenAI configurables**: Generación y corrección de código
-- **OpenAI Embeddings**: text-embedding-3-small para vectorización
+- **Claude Opus 5**: Diseño, sprites, generación y corrección de código
+- **fastembed (local)**: BAAI/bge-small-en-v1.5 para vectorización, sin llamada de red
 - **Qdrant**: Base de datos vectorial para RAG
 - **Z88DK**: Compilador C para ZX Spectrum
 - **SDCC + CPCtelera**: Compilador C para Amstrad CPC
@@ -657,14 +665,13 @@ docker run -p 6333:6333 qdrant/qdrant
 python llm_z80.py --platform spectrum --populate-db
 ```
 
-### Error: API Key de OpenAI inválida
+### Error: API Key de Anthropic inválida
 
 ```bash
 # Verificar que .env existe y tiene la clave correcta
-cat .env | grep OPENAI_API_KEY
+cat .env | grep ANTHROPIC_API_KEY
 
-# La clave debe empezar con sk-proj- o sk-
-# Obtener una clave en: https://platform.openai.com/api-keys
+# Obtener una clave en: https://console.anthropic.com/settings/keys
 ```
 
 ### Error de Compilación SDCC/Z88DK
@@ -753,7 +760,7 @@ Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) par
 
 ## 🙏 Agradecimientos
 
-- **OpenAI** por los modelos de generación y la API de embeddings
+- **Anthropic** por los modelos con los que Studio diseña, dibuja y escribe
 - **Qdrant** por la excelente base de datos vectorial
 - **Z88DK Team** por el kit de desarrollo Z80
 - **CPCtelera** ([@FranGallegoBR](https://github.com/lronaldo)) por el framework de Amstrad CPC

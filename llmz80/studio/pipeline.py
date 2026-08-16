@@ -4,7 +4,7 @@ There were three copies of this. `llmz80 project <stage>` had one, the
 terminal wizard had another (`steps.py`), and `llmz80 make` made a third the
 day it was written -- three places that knew a dossier must be archived before
 a design can be adapted to it, that art is only ever overwritten by evicting
-it first, and how to build the OpenAI collaborator each stage needs. A fix to
+it first, and how to build the model collaborator each stage needs. A fix to
 what a stage *does* had to be made three times or it was made once and the
 other two drifted.
 
@@ -24,7 +24,7 @@ the silent one. `Declined` is what a refusal comes back as, so a caller
 reports it as the ordinary outcome it is instead of reading it as a failure.
 
 The collaborator each stage needs -- researcher, designer, artist, writer --
-is a parameter, defaulted to the OpenAI-backed one built inside the stage that
+is a parameter, defaulted to the model-backed one built inside the stage that
 needs it. Built there, and not up front, for the reason `make.py` gives: a
 missing API key should stop the stage that needed it, with everything the
 earlier stages produced already on disk.
@@ -135,7 +135,7 @@ def research(
     `reference.yml` is meant to be corrected by hand once a search gets a
     detail wrong, so `confirm` is asked -- with the archived dossier's title
     -- before a fresh search replaces one. That question is put before the
-    OpenAI client is built, so declining costs nothing.
+    client is built, so declining costs nothing.
 
     The dossier is archived whether or not it identified a game (that is
     `research_reference`'s own rule): knowing a search already came up empty
@@ -150,11 +150,11 @@ def research(
         if not confirm(existing.title or "(unidentified)"):
             raise Declined("the archived dossier was kept")
     if researcher is None:
-        from ..cli import _openai_client_and_model
+        from ..cli import _llm_client_and_model
         from .reference import ResponsesReferenceResearcher
 
-        client, model = _openai_client_and_model()
-        say(f"searching the web with {model}; this calls the OpenAI API")
+        client, model = _llm_client_and_model()
+        say(f"searching the web with {model}; this calls the Anthropic API")
         researcher = ResponsesReferenceResearcher(client, model=model)
     return service.research_reference(project, directory, researcher)
 
@@ -183,7 +183,7 @@ def draft(
     failure: the project comes back untouched and `say` gets the reason.
     `needs_drafting` is asked before anything at all is built, for the reason
     `research`'s docstring gives about putting the question before the money
-    -- this stage announces "this calls the OpenAI API" out loud, and a design
+    -- this stage announces "this calls the Anthropic API" out loud, and a design
     that already states its rules must never hear it. The reason is worded
     here while the decision stays in `needs_drafting`, so there is still one
     place that decides and one that phrases.
@@ -223,12 +223,12 @@ def draft(
         except ValueError as exc:
             raise Unreadable(str(exc)) from exc
     if drafter is None:
-        from ..cli import _openai_client_and_model
+        from ..cli import _llm_client_and_model
         from .design_exam import ResponsesCoherenceExaminer
         from .drafting import ResponsesDesignDrafter
 
-        client, model = _openai_client_and_model()
-        say(f"drafting the design with {model}; this calls the OpenAI API")
+        client, model = _llm_client_and_model()
+        say(f"drafting the design with {model}; this calls the Anthropic API")
         drafter = ResponsesDesignDrafter(client, model=model)
         # Built inside the `if`, exactly as `adapt` builds its examiner: a
         # caller that injected its own drafter -- every test, every offline
@@ -273,7 +273,7 @@ def adapt(
 
     Whether there is a game to adapt to at all is settled before the OpenAI
     client is built, for the same reason `research` puts its `confirm`
-    question first: this stage announces "this calls the OpenAI API" out loud,
+    question first: this stage announces "this calls the Anthropic API" out loud,
     and a project with no dossier used to hear that and then get an error --
     no call was ever made, but being told money was about to go out and then
     handed a failure reads as a charge that went wrong. The check is
@@ -282,12 +282,12 @@ def adapt(
     """
     dossier = service.identified_reference(directory, dossier)
     if designer is None:
-        from ..cli import _openai_client_and_model
+        from ..cli import _llm_client_and_model
         from .design_exam import ResponsesDesignExaminer
         from .reference_design import ResponsesReferenceDesigner
 
-        client, model = _openai_client_and_model()
-        say(f"adapting the design with {model}; this calls the OpenAI API")
+        client, model = _llm_client_and_model()
+        say(f"adapting the design with {model}; this calls the Anthropic API")
         designer = ResponsesReferenceDesigner(client, model=model)
         # Built here and not above the `if`, so a caller that injected its own
         # designer -- every test, every offline run -- gets no examiner either
@@ -355,17 +355,16 @@ def sprites(
         project = project.model_copy(update={"assets": remaining})
         service.save_project(project, directory)
     if artist is None:
-        from generators.openai_generator import OpenAIImageGenerator
+        from ..cli import _llm_client_and_model
+        from .sprite_artist import ClaudeGridSheetSource, SpriteArtist
 
-        from ..cli import _openai_client_and_model, _openai_image_model
-        from .sprite_artist import SpriteArtist
-
-        # `OpenAIImageGenerator` takes an API key rather than a client, so the
-        # key is read off the client already built instead of loaded twice.
-        client, _model = _openai_client_and_model()
-        artist = SpriteArtist(
-            OpenAIImageGenerator(api_key=client.api_key, model=_openai_image_model())
-        )
+        # Drawn by the same model that thinks about everything else, because
+        # a 16x16 sprite for these machines is not a picture -- it is 256
+        # pens out of a palette of at most four, which is something a model
+        # can simply write. See `sprite_grid.py` for what stops being
+        # possible once it does.
+        client, model = _llm_client_and_model()
+        artist = SpriteArtist(source=ClaudeGridSheetSource(client, model))
     return service.draw_sprites(project, directory, artist, dossier, on_progress=say)
 
 
@@ -402,12 +401,12 @@ def write(
             "this design is not ready to be written:\n  " + "\n  ".join(design_refusals(design))
         )
     if writer is None:
-        from ..cli import _openai_client_and_model
+        from ..cli import _llm_client_and_model
         from .generator import ResponsesProgramWriter
         from .runtime_exam import RepeatedExaminer, ResponsesRuntimeExaminer
 
-        client, model = _openai_client_and_model()
-        say(f"writing the program with {model}; this calls the OpenAI API")
+        client, model = _llm_client_and_model()
+        say(f"writing the program with {model}; this calls the Anthropic API")
         writer = ResponsesProgramWriter(client, model=model, reference=dossier)
         # Built inside the `if`, exactly as `adapt` and `draft` build theirs: a
         # caller that injected its own writer -- every test, every offline run

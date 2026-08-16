@@ -318,7 +318,7 @@ class StudioService:
 
         Split out of `propose_from_reference` so a caller can ask the question
         before it does anything expensive. `pipeline.adapt` does exactly that:
-        it used to announce "this calls the OpenAI API" and build the client,
+        it used to announce "this calls the Anthropic API" and build the client,
         and only then hit these two guards, so a project with no dossier was
         told money was about to go out and then handed an error -- which reads
         as a charge that failed rather than one that never happened. The

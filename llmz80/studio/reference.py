@@ -20,6 +20,8 @@ from typing import Any, Literal, Protocol
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from .llm import structured
+
 
 class ReferenceSource(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -168,35 +170,30 @@ class ReferenceResearcher(Protocol):
     def research(self, brief: str, target: str) -> GameReference: ...
 
 
-class ResponsesReferenceResearcher:
-    """Researches through the OpenAI Responses API with web search enabled."""
+#: The server-side search tool, spelled as the model this targets expects it.
+#: It is the one call in Studio that reaches outside: a dossier is only worth
+#: keeping if it cites real sources (see `RESEARCH_SYSTEM_PROMPT`), and
+#: nothing in the training data can be cited.
+WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search"}
 
-    def __init__(self, client: Any, model: str = "gpt-5") -> None:
+
+class ResponsesReferenceResearcher:
+    """Researches a real game through the model, with web search enabled."""
+
+    def __init__(self, client: Any, model: str = "claude-opus-5") -> None:
         self.client = client
         self.model = model
 
     def research(self, brief: str, target: str) -> GameReference:
-        response = self.client.responses.parse(
-            model=self.model,
-            input=[
-                {"role": "system", "content": RESEARCH_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": (
-                        f"TARGET PLATFORM: {target}\n\n"
-                        f"WHAT THE DESIGNER ASKED FOR:\n{brief}"
-                    ),
-                },
-            ],
-            # The pinned SDK (openai==1.75.0) types this tool as
-            # web_search_preview. The API also answers to the later
-            # "web_search" name, but sending that makes the SDK mis-parse
-            # its own request model and warn on every search. Move to the
-            # newer name when the pin moves.
-            tools=[{"type": "web_search_preview"}],
-            text_format=GameReference,
+        return structured(
+            self.client,
+            self.model,
+            system=RESEARCH_SYSTEM_PROMPT,
+            user=(
+                f"TARGET PLATFORM: {target}\n\n"
+                f"WHAT THE DESIGNER ASKED FOR:\n{brief}"
+            ),
+            schema=GameReference,
+            missing="the model did not return a structured game reference",
+            tools=[WEB_SEARCH_TOOL],
         )
-        parsed = response.output_parsed
-        if parsed is None:
-            raise ValueError("the model did not return a structured game reference")
-        return parsed

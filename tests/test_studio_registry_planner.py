@@ -96,13 +96,13 @@ def test_responses_planner_requests_typed_proposal():
         ],
     )
 
-    class FakeResponses:
+    class FakeMessages:
         def parse(self, **kwargs):
-            assert kwargs["text_format"] is ProjectProposal
-            assert "Never emit C code" in kwargs["input"][0]["content"]
-            return SimpleNamespace(output_parsed=proposal)
+            assert kwargs["output_format"] is ProjectProposal
+            assert "Never emit C code" in kwargs["system"]
+            return SimpleNamespace(parsed_output=proposal)
 
-    planner = ResponsesProjectPlanner(SimpleNamespace(responses=FakeResponses()))
+    planner = ResponsesProjectPlanner(SimpleNamespace(messages=FakeMessages()))
     project = blank_project("Maze", TargetPlatform.SPECTRUM)
 
     assert planner.propose(project, "Make it harder") == proposal

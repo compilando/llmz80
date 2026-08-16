@@ -27,7 +27,6 @@ from llmz80.studio.sprite_artist import FRAMES_PER_SHEET, MAX_DRAW_ATTEMPTS, Spr
 from llmz80.studio.sprite_sheet import split_frames
 from llmz80.studio.spriting import SPRITE_SIZE, pack_spectrum
 
-_FIXTURE_SHEET = Path(__file__).parent / "fixtures" / "sprite_sheet_running_figure.png"
 
 
 def _create_sprited_project(service: StudioService, title: str, platform=TargetPlatform.SPECTRUM):
@@ -46,32 +45,63 @@ def _create_sprited_project(service: StudioService, title: str, platform=TargetP
     return project, directory
 
 
-class _FakeGenerator:
-    """Returns one fixed image; see `test_sprite_artist.py`'s twin."""
+class _GridClient:
+    """Stands in for the client `ClaudeGridSheetSource` draws through,
+    answering with one grid decided in advance."""
 
-    def __init__(self, image: Image.Image) -> None:
-        self.image = image
+    def __init__(self, grid) -> None:
+        self.grid = grid
+        self.messages = self
 
-    def generate_image(self, prompt: str) -> Image.Image:
-        return self.image
+    def parse(self, **_kwargs):
+        return type("Response", (), {"parsed_output": self.grid})()
+
+
+def _figure_grid():
+    """A silhouette worth losing: an outlined body with real transparent
+    space inside its own bounding box, so a round trip through disk that
+    damaged it would show."""
+    from llmz80.studio.sprite_grid import TRANSPARENT, SpriteFrameGrid, SpriteSheetGrid
+
+    body = [
+        "......0000......",
+        ".....000000.....",
+        ".....0....0.....",
+        "....0......0....",
+        "....0......0....",
+        "...00000000000..",
+        "...0..0..0..0...",
+        "......0..0......",
+        "......0..0......",
+        "......0..0......",
+        ".....00..00.....",
+        ".....0....0.....",
+        "....00....00....",
+        "...00......00...",
+        "..000......000..",
+        "................",
+    ]
+    assert all(len(row) == 16 for row in body) and len(body) == 16
+    return SpriteSheetGrid(frames=[SpriteFrameGrid(rows=list(body)) for _ in range(4)])
 
 
 class _FixtureArtist:
     """A fake artist -- `draw_sprites`' collaborator parameter, not a mock of
-    the filesystem -- whose `draw_frames` returns real, already-keyed RGBA
-    frames drawn from the real `gpt-image-1` fixture (via the real
-    `SpriteArtist`, computed once in `__init__`). This is what lets this
-    test exercise `draw_sprites`' own tiling/save/reload path with a
-    silhouette worth losing, without a network call and without patching
-    `Path`, `Image.open` or anything else in `services.py`.
+    the filesystem -- whose `draw_frames` returns real RGBA frames produced
+    by the real `SpriteArtist` from a real grid, computed once in
+    `__init__`. This is what lets the test exercise `draw_sprites`' own
+    tiling/save/reload path with a silhouette worth losing, without a
+    network call and without patching `Path`, `Image.open` or anything else
+    in `services.py`.
     """
 
     def __init__(self) -> None:
+        from llmz80.studio.sprite_artist import ClaudeGridSheetSource
+
         project = blank_project("Fixture", TargetPlatform.SPECTRUM)
         entity = project.entities[0]
-        with Image.open(_FIXTURE_SHEET) as sheet:
-            real_artist = SpriteArtist(_FakeGenerator(sheet.copy()))
-            self.frames = real_artist.draw_frames(project, entity)
+        real_artist = SpriteArtist(source=ClaudeGridSheetSource(_GridClient(_figure_grid())))
+        self.frames = real_artist.draw_frames(project, entity)
         self.calls: list[str] = []
 
     def draw_frames(self, project, entity, dossier=None, *, on_progress=None):
@@ -161,11 +191,11 @@ def test_draw_sprites_saves_the_raw_sheet_beside_the_registered_asset(tmp_path: 
     assert raw_path.is_file(), "the raw response must be saved beside the registered asset"
     assert raw_path.parent == asset_path.parent
 
-    with Image.open(raw_path) as raw, Image.open(_FIXTURE_SHEET) as original:
-        assert raw.size == original.size
+    with Image.open(raw_path) as raw:
+        assert raw.size == artist.frames.sheet.size
         assert (
-            raw.convert("RGB").tobytes() == original.convert("RGB").tobytes()
-        ), "the saved file must be the model's raw response, not a cleaned/packed frame"
+            raw.convert("RGB").tobytes() == artist.frames.sheet.convert("RGB").tobytes()
+        ), "the saved file must be the sheet the source rendered, not a packed frame"
 
     # The real fixture passes judgement on the first attempt, so the numbered
     # attempt history (see the failure-path test below) is exactly one entry
@@ -188,11 +218,15 @@ def test_draw_sprites_saves_every_attempts_raw_sheet_after_a_failure(tmp_path: P
     """
     service = StudioService.at(tmp_path)
     project, directory = _create_sprited_project(service, "Persistent Failure")
-    # Filled edge to edge, no white margin at all -- `_clean_image`'s tight
-    # bounding-box crop leaves nothing but figure, so every attempt is judged
-    # a solid block and none of the three ever wins.
-    blank = Image.new("RGBA", (512, 128), (10, 20, 30, 255))
-    artist = SpriteArtist(_FakeGenerator(blank))
+    # Every pixel drawn: a 16x16 block, not a shape, so every attempt is
+    # judged a solid block and none of the three ever wins.
+    from llmz80.studio.sprite_artist import ClaudeGridSheetSource
+    from llmz80.studio.sprite_grid import SpriteFrameGrid, SpriteSheetGrid
+
+    solid = SpriteSheetGrid(
+        frames=[SpriteFrameGrid(rows=["0" * 16] * 16) for _ in range(4)]
+    )
+    artist = SpriteArtist(source=ClaudeGridSheetSource(_GridClient(solid)))
 
     with pytest.raises(ValueError):
         service.draw_sprites(project, directory, artist)

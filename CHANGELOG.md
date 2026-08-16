@@ -5,6 +5,48 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [Sin versionar] - 2026-08-16
+
+### Cambiado
+- **Studio piensa con Claude Opus 5, no con GPT-5.** Las ocho llamadas
+  estructuradas (`drafting`, `reference`, `reference_design`, `planner`, los
+  dos examinadores de diseño, `generator`, `runtime_exam`) pasan por un único
+  adaptador nuevo, `llmz80/studio/llm.py`, en vez de repetir la misma petición
+  ocho veces. `llm_z80.py` y `llmz80/api/generator.py` siguen en OpenAI.
+- **`config.yml` ya no lleva `temperature` en la sección de Studio**: el
+  modelo la rechaza con un 400 en vez de ignorarla. `reasoning_effort`
+  tampoco: su sustituto ya viene en el valor alto que Studio quiere.
+- La búsqueda web de `reference.py` usa la herramienta de servidor
+  `web_search_20260209`.
+- **`ANTHROPIC_API_KEY` es ahora la clave que Studio necesita.**
+  `OPENAI_API_KEY` sigue haciendo falta sólo para el generador antiguo.
+
+### Añadido
+- **Los sprites los dibuja el modelo como rejilla de índices de paleta**
+  (`llmz80/studio/sprite_grid.py`), no como una imagen de 1024x1024 de la que
+  haya que rescatar 16x16. Dos clases enteras de fallo dejan de ser posibles
+  en vez de detectarse: no hay carácter para un gris intermedio, así que no
+  hay antialiasing, y no hay carácter fuera del alfabeto de la máquina, así
+  que no hay color que no pueda mostrar. Un fallo de forma —una fila corta,
+  un frame vacío— vuelve como frase que nombra el frame y la fila, y alimenta
+  el mismo bucle de reintento que ya existía.
+- `SpriteArtist` gana un seam, `SheetSource`, con dos implementaciones: la
+  original por modelo de imagen (`ImageModelSheetSource`, intacta) y la nueva
+  (`ClaudeGridSheetSource`). El bucle de reintento, el juicio de los frames y
+  la conservación de cada intento son comunes a las dos.
+- Plantillas de prompt por máquina para el camino de rejilla
+  (`resources/sprite_grid_*.txt`), incluida la advertencia de que en modo 0
+  del CPC el píxel es el doble de ancho que de alto.
+
+### Cambiado (embeddings)
+- **Los embeddings se calculan en esta máquina** con `fastembed`
+  (`BAAI/bge-small-en-v1.5`), sin clave de API ni llamada de red.
+  `llmz80/core/embedding_backend.py` es ahora el único sitio que decide qué
+  modelo y qué anchura.
+- ⚠️ **Los vectores pasan de 1536 a 384 dimensiones.** Cualquier colección de
+  Qdrant o caché en `local/embeddings` anterior a este cambio hay que
+  **recrearla**, no migrarla.
+
 ## [Sin versionar] - 2026-06-02
 
 ### Añadido

@@ -1,0 +1,24 @@
+ZX SPECTRUM SPRITE
+
+Subject: {prompt}
+
+This machine draws a sprite as a bitmap: each pixel is either set or it is
+not. There is no shading, no dithering into greys and no second colour --
+the colour comes later, from the attribute byte Studio derives itself, and
+one sprite is one colour across all of it. What you are drawing is a
+silhouette, and it lives or dies on being recognisable in solid black at
+{width}x{height} pixels.
+
+What reads well at this size:
+- A bold, chunky outline with limbs thick enough to survive: a one-pixel
+  arm disappears against a busy background on a real screen.
+- Big, unambiguous distinguishing features -- a hat, a beak, a weapon held
+  clear of the body -- rather than interior detail nobody can resolve.
+- Empty space around the figure where the pose allows it, so the shape
+  reads against whatever it is standing on.
+
+What does not work here:
+- Interior detail: faces, buttons, texture. At sixteen pixels a face is
+  three pixels and reads as noise.
+- Any attempt at shading, gradient or checkerboard dithering. There is one
+  ink colour; a checkerboard is just a hole in the figure.

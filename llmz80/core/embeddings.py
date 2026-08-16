@@ -7,15 +7,22 @@ from pathlib import Path
 from typing import Dict, Tuple, Any, List, Optional
 import os
 from ..utils.helpers import estimate_tokens
+from .embedding_backend import EMBEDDING_DIM, embed, zero_vector
 
 class EmbeddingsManager:
     """Administrador para generar y gestionar embeddings."""
     
     def __init__(self, client, platform: str, global_vars: Dict[str, Any]):
         """Inicializa el administrador de embeddings.
-        
+
         Args:
-            client: Cliente de OpenAI
+            client: ya no se usa. Los embeddings los calcula un modelo local
+                (`embedding_backend`), sin llamada de red ni clave de API. El
+                parámetro sigue aquí, y sigue guardándose, porque
+                `llmz80/api/generator.py` construye este objeto pasándole su
+                cliente y quitarlo obligaría a tocar ese camino legacy sin
+                ninguna ganancia. `self.embedding_model` corre la misma
+                suerte: el modelo real lo decide `embedding_backend`.
             platform: Plataforma seleccionada
             global_vars: Variables globales configuradas
         """
@@ -42,7 +49,7 @@ class EmbeddingsManager:
         try:
             if not text.strip():
                 logging.warning("Texto vacío para embedding.")
-                return [(np.zeros((1536,), dtype=float), 0)] # Devuelve un vector cero con índice 0
+                return [(zero_vector(), 0)] # Devuelve un vector cero con índice 0
 
             safe_token_limit = int(self.token_limit * self.safety_margin)
             estimated_tokens = estimate_tokens(text)
@@ -51,19 +58,15 @@ class EmbeddingsManager:
             if estimated_tokens <= safe_token_limit:
                 logging.debug(f"Texto dentro del límite de tokens (~{estimated_tokens} tokens), procesando directamente.")
                 try:
-                    response = self.client.embeddings.create(model=self.embedding_model, input=text)
-                    embedding_data = response.data[0].embedding
-                    
-                    if not isinstance(embedding_data, list) or not all(isinstance(x, (int, float)) for x in embedding_data):
-                        logging.error(f"API devolvió un embedding inválido: tipo {type(embedding_data)}")
+                    embedding = embed([text])[0]
+                    if embedding.shape != (EMBEDDING_DIM,):
+                        logging.error(
+                            f"El modelo devolvió un vector de forma {embedding.shape}, "
+                            f"y se esperaba ({EMBEDDING_DIM},)"
+                        )
                         results.append((None, 0))
                     else:
-                        embedding = np.array(embedding_data, dtype=float)
-                        if not isinstance(embedding, np.ndarray):
-                             logging.error(f"La conversión a numpy array falló: {type(embedding)}")
-                             results.append((None, 0))
-                        else:
-                             results.append((embedding, 0)) # Índice 0 para texto no dividido
+                        results.append((embedding, 0)) # Índice 0 para texto no dividido
                 except Exception as e:
                     logging.error(f"Error al obtener embedding directo: {e}")
                     results.append((None, 0))
@@ -111,23 +114,17 @@ class EmbeddingsManager:
                 chunk_tokens = estimate_tokens(chunk_content)
                 logging.info(f"Procesando chunk {original_index + 1} (de {len(chunks)} totales) - ~{chunk_tokens} tokens...")
                 try:
-                    response = self.client.embeddings.create(model=self.embedding_model, input=chunk_content)
-                    chunk_embedding_data = response.data[0].embedding
-                    
-                    if not isinstance(chunk_embedding_data, list) or not all(isinstance(x, (int, float)) for x in chunk_embedding_data):
-                        logging.warning(f"Chunk {original_index + 1}: API devolvió embedding inválido.")
+                    chunk_embedding = embed([chunk_content])[0]
+                    if chunk_embedding.shape != (EMBEDDING_DIM,):
+                        logging.warning(
+                            f"Chunk {original_index + 1}: el modelo devolvió un vector de "
+                            f"forma {chunk_embedding.shape}."
+                        )
                         results.append((None, original_index))
                     else:
-                        chunk_embedding = np.array(chunk_embedding_data, dtype=float)
-                        if not isinstance(chunk_embedding, np.ndarray):
-                            logging.warning(f"Chunk {original_index + 1}: Falló conversión a numpy array.")
-                            results.append((None, original_index))
-                        else:
-                            results.append((chunk_embedding, original_index))
+                        results.append((chunk_embedding, original_index))
                 except Exception as e:
                     logging.error(f"Error procesando chunk {original_index + 1}: {e}")
-                    if "maximum context length" in str(e).lower():
-                         logging.warning(f"Chunk {original_index + 1} sigue siendo demasiado grande. Omitiendo.")
                     results.append((None, original_index)) # Añadir None si el chunk falla
             
             return results
@@ -146,7 +143,7 @@ class EmbeddingsManager:
         
         if not valid_embeddings:
             logging.error("No se pudieron generar embeddings válidos para el texto.")
-            return np.zeros((1536,), dtype=float) # Dimensión por defecto
+            return zero_vector() # Dimensión por defecto
             
         if len(valid_embeddings) == 1:
             # Si solo hay uno (texto corto o solo un chunk válido), devolver ese
@@ -163,17 +160,17 @@ class EmbeddingsManager:
                     combined_embedding = combined_embedding / norm_val
                 else: # Caso raro: promedio es vector cero
                      logging.warning("Promedio de embeddings resultó en vector cero.")
-                     return np.zeros((1536,), dtype=float)
+                     return zero_vector()
                  
                 if not isinstance(combined_embedding, np.ndarray):
                      logging.error(f"Resultado combinado no es numpy array: {type(combined_embedding)}")
-                     return np.zeros((1536,), dtype=float)
+                     return zero_vector()
                 
                 logging.info(f"Embedding combinado generado con éxito.")
                 return combined_embedding
             except Exception as e:
                 logging.error(f"Error al combinar embeddings: {e}")
-                return np.zeros((1536,), dtype=float)
+                return zero_vector()
 
     def get_embedding_for_large_file(self, text: str) -> np.ndarray:
         """Compatibility wrapper for callers that explicitly flag large files."""
@@ -196,10 +193,10 @@ class EmbeddingsManager:
                 # Si alguno es un escalar, convertirlo a array vacío
                 if isinstance(a, (int, float)):
                     logging.error(f"⚠️ Primer vector para similitud coseno es un escalar: {a}")
-                    a = np.zeros((1536,), dtype=float)
+                    a = zero_vector()
                 if isinstance(b, (int, float)):
                     logging.error(f"⚠️ Segundo vector para similitud coseno es un escalar: {b}")
-                    b = np.zeros((1536,), dtype=float)
+                    b = zero_vector()
                 
                 # Si después de convertir todavía no son arrays, retornar 0
                 if not isinstance(a, np.ndarray) or not isinstance(b, np.ndarray):

@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from llmz80.core.platform_notes import platform_notes
 
 from .acceptance import generation_prompt
+from .llm import structured
 from .models import GameProject
 from .reference import GameReference, reference_prompt
 from .retrieval import examples_prompt
@@ -243,12 +244,12 @@ def repair_prompt(
 
 
 class ResponsesProgramWriter:
-    """Writes the program with the OpenAI Responses API."""
+    """Writes the program with the model."""
 
     def __init__(
         self,
         client: Any,
-        model: str = "gpt-5",
+        model: str = "claude-opus-5",
         reference: GameReference | None = None,
     ) -> None:
         self.client = client
@@ -259,24 +260,17 @@ class ResponsesProgramWriter:
         content = writing_prompt(project, reference=self.reference)
         if feedback:
             content += "\n\nYOUR PREVIOUS ATTEMPT WAS REJECTED\n\n" + feedback
-        response = self.client.responses.parse(
-            model=self.model,
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You write complete, small C programs for 8-bit Z80 home computers. "
-                        "You honour the stated contract exactly and you never invent build files."
-                    ),
-                },
-                {"role": "user", "content": content},
-            ],
-            text_format=ProgramSources,
+        return structured(
+            self.client,
+            self.model,
+            system=(
+                "You write complete, small C programs for 8-bit Z80 home computers. "
+                "You honour the stated contract exactly and you never invent build files."
+            ),
+            user=content,
+            schema=ProgramSources,
+            missing="the model did not return program sources",
         )
-        parsed = response.output_parsed
-        if parsed is None:
-            raise ValueError("the model did not return program sources")
-        return parsed
 
 
 @dataclass

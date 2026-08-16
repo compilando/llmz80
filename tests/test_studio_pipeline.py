@@ -355,7 +355,7 @@ def test_drafting_settles_whether_it_is_wanted_before_it_spends_anything(
     def _refuse_to_be_built():
         raise AssertionError("the OpenAI client was built before the guard fired")
 
-    monkeypatch.setattr(cli, "_openai_client_and_model", _refuse_to_be_built)
+    monkeypatch.setattr(cli, "_llm_client_and_model", _refuse_to_be_built)
 
     for project, directory, state in (
         (stated, stated_directory, "stated"),
@@ -432,7 +432,7 @@ def test_adapt_refuses_before_it_announces_that_it_is_about_to_spend_money(opene
             built.append("client")
             raise AssertionError("the OpenAI client was built before the guard fired")
 
-        monkeypatch.setattr(cli, "_openai_client_and_model", _refuse_to_be_built)
+        monkeypatch.setattr(cli, "_llm_client_and_model", _refuse_to_be_built)
 
         with pytest.raises(ValueError, match="no researched game"):
             pipeline.adapt(service, project, directory, say=said.append)

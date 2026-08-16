@@ -549,8 +549,8 @@ def test_the_writing_prompt_is_unchanged_without_a_dossier():
     assert "REFERENCE GAME" not in writing_prompt(project, with_examples=False)
 
 
-class _FakeResponses:
-    """Stands in for client.responses, recording how it was called."""
+class _FakeMessages:
+    """Stands in for client.messages, recording how it was called."""
 
     def __init__(self, parsed):
         self.parsed = parsed
@@ -558,19 +558,19 @@ class _FakeResponses:
 
     def parse(self, **kwargs):
         self.calls.append(kwargs)
-        return type("Response", (), {"output_parsed": self.parsed})()
+        return type("Response", (), {"parsed_output": self.parsed})()
 
 
 class _FakeClient:
     def __init__(self, parsed):
-        self.responses = _FakeResponses(parsed)
+        self.messages = _FakeMessages(parsed)
 
 
 def test_the_writer_actually_sends_the_dossier_to_the_model():
     """Every other dossier test calls writing_prompt or reference_prompt
     directly, so none of them would notice write() forgetting to pass the
     reference through. This one inspects what actually reached
-    client.responses.parse."""
+    client.messages.parse."""
     project = blank_project("Ref", TargetPlatform.SPECTRUM)
     dossier = GameReference(
         identified=True,
@@ -590,7 +590,7 @@ def test_the_writer_actually_sends_the_dossier_to_the_model():
 
     ResponsesProgramWriter(client, reference=dossier).write(project)
 
-    content = client.responses.calls[0]["input"][1]["content"]
+    content = client.messages.calls[0]["messages"][0]["content"]
     assert "REFERENCE GAME" in content
     assert "Zampa Bolas" in content
 

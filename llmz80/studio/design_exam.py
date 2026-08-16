@@ -35,6 +35,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
+from .llm import structured
 from .models import GameProject
 
 
@@ -213,31 +214,24 @@ def coverage_errors(coverage: BriefCoverage) -> list[str]:
 
 
 class ResponsesDesignExaminer:
-    """Examines the design with the OpenAI Responses API."""
+    """Examines the design against its brief with the model."""
 
-    def __init__(self, client: Any, model: str = "gpt-5") -> None:
+    def __init__(self, client: Any, model: str = "claude-opus-5") -> None:
         self.client = client
         self.model = model
 
     def examine(self, project: GameProject) -> BriefCoverage:
-        response = self.client.responses.parse(
-            model=self.model,
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You examine game designs against the brief they came from. "
-                        "You answer only about what is stated, never about taste."
-                    ),
-                },
-                {"role": "user", "content": examination_prompt(project)},
-            ],
-            text_format=BriefCoverage,
+        return structured(
+            self.client,
+            self.model,
+            system=(
+                "You examine game designs against the brief they came from. "
+                "You answer only about what is stated, never about taste."
+            ),
+            user=examination_prompt(project),
+            schema=BriefCoverage,
+            missing="the model did not return a coverage verdict",
         )
-        parsed = response.output_parsed
-        if parsed is None:
-            raise ValueError("the model did not return a coverage verdict")
-        return parsed
 
 
 # --- the second question: is the design consistent with itself -------------
@@ -366,29 +360,22 @@ def coherence_errors(coherence: DesignCoherence) -> list[str]:
 
 
 class ResponsesCoherenceExaminer:
-    """Examines a design against itself with the OpenAI Responses API."""
+    """Examines a design against itself with the model."""
 
-    def __init__(self, client: Any, model: str = "gpt-5") -> None:
+    def __init__(self, client: Any, model: str = "claude-opus-5") -> None:
         self.client = client
         self.model = model
 
     def examine(self, project: GameProject) -> DesignCoherence:
-        response = self.client.responses.parse(
-            model=self.model,
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You read a game design against itself. You answer only about "
-                        "whether the things its mechanics assume are declared, never "
-                        "about taste, balance or completeness."
-                    ),
-                },
-                {"role": "user", "content": coherence_prompt(project)},
-            ],
-            text_format=DesignCoherence,
+        return structured(
+            self.client,
+            self.model,
+            system=(
+                "You read a game design against itself. You answer only about "
+                "whether the things its mechanics assume are declared, never "
+                "about taste, balance or completeness."
+            ),
+            user=coherence_prompt(project),
+            schema=DesignCoherence,
+            missing="the model did not return a coherence verdict",
         )
-        parsed = response.output_parsed
-        if parsed is None:
-            raise ValueError("the model did not return a coherence verdict")
-        return parsed

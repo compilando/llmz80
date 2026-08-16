@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from .design_exam import DesignCoherenceExaminer, coherence_errors, design_summary
+from .llm import structured
 from .models import GameProject
 from .planner import AppliedProposal, ProjectProposal, propose_apply_repair
 from .quality import design_quality_report, design_refusals
@@ -232,7 +233,7 @@ def drafting_prompt(project: GameProject, dossier: GameReference | None) -> str:
 
 
 class ResponsesDesignDrafter:
-    """Drafts a design through the OpenAI Responses API.
+    """Drafts a design through the model.
 
     The same shape as `reference_design.ResponsesReferenceDesigner`, including
     the guard it opens with: that one refuses to adapt to a game nobody
@@ -249,7 +250,7 @@ class ResponsesDesignDrafter:
     without one.
     """
 
-    def __init__(self, client: Any, model: str = "gpt-5") -> None:
+    def __init__(self, client: Any, model: str = "claude-opus-5") -> None:
         self.client = client
         self.model = model
 
@@ -266,18 +267,14 @@ class ResponsesDesignDrafter:
         content = "\n\n".join([typology_hints(), drafting_prompt(project, dossier)])
         if feedback:
             content += "\n\nYOUR PREVIOUS DRAFT WAS REJECTED\n\n" + feedback
-        response = self.client.responses.parse(
-            model=self.model,
-            input=[
-                {"role": "system", "content": DRAFT_SYSTEM_PROMPT},
-                {"role": "user", "content": content},
-            ],
-            text_format=ProjectProposal,
+        return structured(
+            self.client,
+            self.model,
+            system=DRAFT_SYSTEM_PROMPT,
+            user=content,
+            schema=ProjectProposal,
+            missing="the model did not return a structured project proposal",
         )
-        parsed = response.output_parsed
-        if parsed is None:
-            raise ValueError("the model did not return a structured project proposal")
-        return parsed
 
 
 class DraftRefused(ValueError):

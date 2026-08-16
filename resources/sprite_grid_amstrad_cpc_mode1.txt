@@ -1,0 +1,26 @@
+AMSTRAD CPC MODE 1 SPRITE
+
+Subject: {prompt}
+
+Mode 1 is the CPC's everyday mode: square pixels at {width}x{height}, and
+four pens. What you draw in the grid is the shape that appears on screen,
+proportion for proportion -- unlike mode 0, nothing is stretched.
+
+You have four pens, and PENS lists exactly which. That is enough for a
+figure to have a body, a second colour that distinguishes it, and an
+accent -- and not enough for shading. Treat each pen as a flat area that
+means something.
+
+What reads well at this size:
+- A clear silhouette first, colour second: the shape has to be recognisable
+  even if every pen were the same.
+- One pen reserved for whatever identifies this character, used sparingly
+  enough that it stands out.
+- Transparency worked into the pose -- gaps between limbs, space under an
+  outstretched arm -- so the figure does not read as a block.
+
+What does not work here:
+- Outlining the whole figure in one pen and filling with another: at
+  sixteen pixels the outline eats the figure.
+- Dithering to fake more colours. Four flat pens read; a checkerboard at
+  this size reads as noise.

@@ -1,4 +1,15 @@
+# The model Studio thinks with. `temperature` is deliberately absent: it was
+# removed from this model family and sending it is a 400, not a value that
+# gets ignored. So is `reasoning_effort` -- its replacement, `output_config.
+# effort`, already defaults to the high setting Studio wants, so naming it
+# here would only be restating the default.
+anthropic:
+  model: claude-opus-5
+
 openai:
+  # Still read by the legacy generator (llm_z80.py, llmz80/api/generator.py)
+  # and by the embeddings/sprite paths, none of which Studio goes through any
+  # more. Everything here keeps the semantics it had for those callers.
   model: gpt-5
   # temperature ignored for reasoning models (gpt-5, o-series); kept for fallback to classic models
   temperature: 0.3
@@ -6,11 +17,10 @@ openai:
   max_tokens: 16384
   # Reasoning effort: minimal | low | medium | high | xhigh (only used by reasoning models)
   reasoning_effort: medium
-  embedding_model: text-embedding-3-small
-  # Sprite sheets are quantized down to 16x16 frames for 8-bit hardware, so
-  # this needs a model that actually obeys "no anti-aliasing, blocky pixels" --
-  # dall-e-3 does not. gpt-image-1 does; see generators/openai_generator.py.
-  image_model: gpt-image-1
+  # There is no `image_model` any more. Sprites are drawn by the model as a
+  # grid of palette indices (see llmz80/studio/sprite_grid.py), so no image
+  # model is involved. `llm_sprites.py`, the standalone legacy script, still
+  # takes its own on the command line.
 
 examples:
   max_examples: 8
@@ -27,6 +37,14 @@ generation:
   max_attempts: 4
 
 embeddings:
+  # There is deliberately no `model` key. Embeddings are computed on this
+  # machine now, and which model does it is `llmz80/core/embedding_backend.py`'s
+  # decision, not configuration: the vector width has to agree with every
+  # Qdrant collection and every cached vector on disk, and a config key that
+  # can silently disagree with those is a key that will.
+  #
+  # Vectors are 384 wide, not the 1536 the previous, remote backend produced.
+  # Collections and caches built before that change must be recreated.
   cache_dir: "local/embeddings"
   max_chunk_size: 15000  # Reducido: Tamaño máximo de chunk para procesamiento de embeddings (caracteres)
   token_limit: 8000  # Límite de tokens para embeddings

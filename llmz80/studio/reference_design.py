@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from .design_exam import DesignExaminer, coverage_errors
+from .llm import structured
 from .models import GameProject
 from .planner import AppliedProposal, ProjectProposal, propose_apply_repair
 from .reference import GameReference
@@ -85,9 +86,9 @@ class ReferenceDesigner(Protocol):
 
 
 class ResponsesReferenceDesigner:
-    """Proposes a design adaptation through the OpenAI Responses API."""
+    """Proposes a design adaptation through the model."""
 
-    def __init__(self, client: Any, model: str = "gpt-5") -> None:
+    def __init__(self, client: Any, model: str = "claude-opus-5") -> None:
         self.client = client
         self.model = model
 
@@ -107,18 +108,14 @@ class ResponsesReferenceDesigner:
         )
         if feedback:
             content += "\n\nYOUR PREVIOUS PROPOSAL WAS REJECTED\n\n" + feedback
-        response = self.client.responses.parse(
-            model=self.model,
-            input=[
-                {"role": "system", "content": DESIGN_SYSTEM_PROMPT},
-                {"role": "user", "content": content},
-            ],
-            text_format=ProjectProposal,
+        return structured(
+            self.client,
+            self.model,
+            system=DESIGN_SYSTEM_PROMPT,
+            user=content,
+            schema=ProjectProposal,
+            missing="the model did not return a structured project proposal",
         )
-        parsed = response.output_parsed
-        if parsed is None:
-            raise ValueError("the model did not return a structured project proposal")
-        return parsed
 
 
 def coverage_feedback(errors: list[str]) -> str:

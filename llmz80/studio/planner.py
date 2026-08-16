@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from .editing import editing_status
+from .llm import structured
 from .models import GameProject
 
 
@@ -275,40 +276,30 @@ class ProjectProposal(BaseModel):
 
 
 class ResponsesProjectPlanner:
-    def __init__(self, client: Any, model: str = "gpt-5") -> None:
+    def __init__(self, client: Any, model: str = "claude-opus-5") -> None:
         self.client = client
         self.model = model
 
     def propose(self, project: GameProject, request: str) -> ProjectProposal:
-        response = self.client.responses.parse(
-            model=self.model,
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a game designer for constrained Z80 computers. "
-                        "Propose small JSON-pointer changes to the supplied GameProject. "
-                        "Never emit C code and never silently relax budgets or acceptance tests. "
-                        "Each change carries its value in `value`, as an object naming "
-                        'the shape it is: {"text": ...} for strings such as '
-                        "presentation.style, a mechanic's sentence or an entity's notes, "
-                        '{"number": ...} for integers such as an entity\'s count, '
-                        '{"rows": [...]} for a screen\'s tiles (one string per row) or the '
-                        'whole mechanics list, and {"spawns": [...]} for a screen\'s spawns. '
-                        "Leave `value` null for a remove, and set it for an add or a replace."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": f"REQUEST:\n{request}\n\nPROJECT:\n{project.model_dump_json(indent=2)}",
-                },
-            ],
-            text_format=ProjectProposal,
+        return structured(
+            self.client,
+            self.model,
+            system=(
+                "You are a game designer for constrained Z80 computers. "
+                "Propose small JSON-pointer changes to the supplied GameProject. "
+                "Never emit C code and never silently relax budgets or acceptance tests. "
+                "Each change carries its value in `value`, as an object naming "
+                'the shape it is: {"text": ...} for strings such as '
+                "presentation.style, a mechanic's sentence or an entity's notes, "
+                '{"number": ...} for integers such as an entity\'s count, '
+                '{"rows": [...]} for a screen\'s tiles (one string per row) or the '
+                'whole mechanics list, and {"spawns": [...]} for a screen\'s spawns. '
+                "Leave `value` null for a remove, and set it for an add or a replace."
+            ),
+            user=f"REQUEST:\n{request}\n\nPROJECT:\n{project.model_dump_json(indent=2)}",
+            schema=ProjectProposal,
+            missing="the model did not return a structured project proposal",
         )
-        parsed = response.output_parsed
-        if parsed is None:
-            raise ValueError("the model did not return a structured project proposal")
-        return parsed
 
 
 PROTECTED_PATHS = ("/schema_version", "/metadata/slug", "/target/platform", "/acceptance")

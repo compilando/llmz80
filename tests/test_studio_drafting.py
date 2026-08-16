@@ -245,19 +245,19 @@ def test_a_draft_the_document_refuses_is_repaired_rather_than_abandoned(blank):
     assert "REFUSED" in (drafter.feedback_seen[1] or "")
 
 
-class _FakeResponses:
+class _FakeMessages:
     def __init__(self, parsed):
         self.parsed = parsed
         self.calls = []
 
     def parse(self, **kwargs):
         self.calls.append(kwargs)
-        return type("Response", (), {"output_parsed": self.parsed})()
+        return type("Response", (), {"parsed_output": self.parsed})()
 
 
 class _FakeClient:
     def __init__(self, parsed):
-        self.responses = _FakeResponses(parsed)
+        self.messages = _FakeMessages(parsed)
 
 
 def test_the_request_carries_the_brief_the_design_and_what_kinds_of_game_exist(blank):
@@ -267,11 +267,12 @@ def test_the_request_carries_the_brief_the_design_and_what_kinds_of_game_exist(b
 
     ResponsesDesignDrafter(client).draft(blank)
 
-    sent = client.responses.calls[0]["input"]
-    assert sent[0]["content"] == DRAFT_SYSTEM_PROMPT
-    assert "avión de combate" in sent[1]["content"]
-    assert "Mechanics: none stated" in sent[1]["content"]
-    assert "KINDS OF GAME THAT EXIST" in sent[1]["content"]
+    call = client.messages.calls[0]
+    assert call["system"] == DRAFT_SYSTEM_PROMPT
+    user = call["messages"][0]["content"]
+    assert "avión de combate" in user
+    assert "Mechanics: none stated" in user
+    assert "KINDS OF GAME THAT EXIST" in user
 
 
 def test_a_rejected_draft_is_sent_back_with_what_rejected_it(blank):
@@ -283,7 +284,7 @@ def test_a_rejected_draft_is_sent_back_with_what_rejected_it(blank):
 
     ResponsesDesignDrafter(client).draft(blank, None, "THE DRAFT APPLIED BUT ...")
 
-    assert "THE DRAFT APPLIED BUT ..." in client.responses.calls[0]["input"][1]["content"]
+    assert "THE DRAFT APPLIED BUT ..." in client.messages.calls[0]["messages"][0]["content"]
 
 
 def test_a_project_with_no_brief_is_not_drafted_from_even_here(blank):
@@ -300,7 +301,7 @@ def test_a_project_with_no_brief_is_not_drafted_from_even_here(blank):
     with pytest.raises(ValueError, match="no brief"):
         ResponsesDesignDrafter(client).draft(briefless)
 
-    assert client.responses.calls == []
+    assert client.messages.calls == []
 
 
 def test_a_call_that_returns_nothing_parsed_is_not_silently_accepted(blank):
@@ -313,7 +314,7 @@ def test_a_call_that_returns_nothing_parsed_is_not_silently_accepted(blank):
     with pytest.raises(ValueError, match="did not return a structured project proposal"):
         ResponsesDesignDrafter(client).draft(blank)
 
-    assert len(client.responses.calls) == 1
+    assert len(client.messages.calls) == 1
 
 
 # --- the design that assumes a car it never declares ------------------------

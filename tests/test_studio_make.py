@@ -1,6 +1,6 @@
 """`llmz80 make`, judged as an orchestrator: the order, the skip, and the stop.
 
-Not one OpenAI call and not one emulator is started here. Four of the six
+Not one model call and not one emulator is started here. Four of the six
 stages spend money and one drives a real emulator, so `make_game` takes them
 as a parameter -- the same reason `generator.write_program` takes its `verify`
 and `writer` -- and everything below runs against stages that only record
@@ -151,7 +151,7 @@ def test_the_money_is_announced_before_anything_is_spent(tmp_path: Path):
 
     _run(tmp_path, printed)
 
-    assert "OpenAI API in 5 stages" in printed[0]
+    assert "Anthropic API in 5 stages" in printed[0]
     assert "referencia" in printed[0] and "programa" in printed[0]
 
 

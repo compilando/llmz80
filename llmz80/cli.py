@@ -12,7 +12,7 @@ def _print_help() -> None:
         "LLMZ80\n"
         "\n"
         "  llmz80 make 'what the game should be' [--cpc] [--workspace PATH] [--play]\n"
-        "                                   (the whole pipeline; calls the OpenAI API)\n"
+        "                                   (the whole pipeline; calls the Anthropic API)\n"
         "  llmz80 play PROJECT|GAME.tap|GAME.dsk\n"
         "                                   (start the emulator and play it)\n"
         "  llmz80 studio [WORKSPACE|PROJECT]\n"
@@ -22,11 +22,11 @@ def _print_help() -> None:
         "  llmz80 project types             (kinds of game that exist, for inspiration)\n"
         "  llmz80 project validate PATH\n"
         "  llmz80 project contract PATH\n"
-        "  llmz80 project reference PATH    (searches the web, calls the OpenAI API)\n"
+        "  llmz80 project reference PATH    (searches the web, calls the Anthropic API)\n"
         "  llmz80 project draft PATH        (writes the design the brief asks for)\n"
         "  llmz80 project adapt PATH        (adapts the design to the researched game)\n"
-        "  llmz80 project write PATH        (calls the OpenAI API)\n"
-        "  llmz80 project sprites PATH      (calls the OpenAI API)\n"
+        "  llmz80 project write PATH        (calls the Anthropic API)\n"
+        "  llmz80 project sprites PATH      (calls the Anthropic API)\n"
         "  llmz80 project scaffold PATH\n"
         "  llmz80 project build PATH\n"
         "  llmz80 project test PATH\n"
@@ -35,36 +35,21 @@ def _print_help() -> None:
     )
 
 
-def _openai_client_and_model() -> tuple[object, str]:
-    """Resolve the configured OpenAI client and model name once.
+def _llm_client_and_model() -> tuple[object, str]:
+    """Resolve the configured model client and model name once.
 
     Three subcommands each read config.yml and construct a client; keeping the
-    "gpt-5" default and the config lookup in one place means changing either
-    is a single edit instead of three synchronised ones. The imports stay
-    local to this function, not hoisted to module level, so subcommands that
-    never touch OpenAI still cost nothing to import.
+    "claude-opus-5" default and the config lookup in one place means changing
+    either is a single edit instead of three synchronised ones. The imports
+    stay local to this function, not hoisted to module level, so subcommands
+    that never call a model still cost nothing to import.
     """
-    from openai import OpenAI
+    from anthropic import Anthropic
 
-    from llmz80.utils.config import load_api_key, load_config
+    from llmz80.utils.config import load_anthropic_api_key, load_config
 
-    model = load_config("config.yml").get("openai", {}).get("model", "gpt-5")
-    return OpenAI(api_key=load_api_key()), model
-
-
-def _openai_image_model() -> str:
-    """Resolve the configured OpenAI image model.
-
-    Kept separate from `_openai_client_and_model`: that function's "model" is
-    the text/reasoning model three unrelated subcommands share, and reading
-    the two out of the same call would make a caller that wants one always
-    pay for looking up the other. `config.yml`'s `openai.image_model`
-    defaults to `gpt-image-1` there already; the fallback here only matters
-    for a config.yml that predates that key.
-    """
-    from llmz80.utils.config import load_config
-
-    return load_config("config.yml").get("openai", {}).get("image_model", "gpt-image-1")
+    model = load_config("config.yml").get("anthropic", {}).get("model", "claude-opus-5")
+    return Anthropic(api_key=load_anthropic_api_key()), model
 
 
 def _sprite_preview_array(sheet, args: SimpleNamespace):
@@ -412,9 +397,9 @@ def _project_command(arguments: list[str]) -> int:
                 input("Redraw it, overwriting the existing art? [y/N] ").strip().casefold() == "y"
             )
 
-        # Said before anything is constructed, let alone spent: the image API
-        # is the most expensive call in this file.
-        print("Drawing sprites with OpenAI's image API; this calls the OpenAI API.")
+        # Said before anything is constructed, let alone spent: drawing every
+        # entity's sheet is the most expensive call in this file.
+        print("Drawing sprites; this calls the Anthropic API.")
         try:
             drawn = pipeline.sprites(service, project, directory, say=print, confirm=redraw)
         except pipeline.Declined:

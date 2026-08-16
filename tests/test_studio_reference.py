@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from llmz80.studio.reference import (
     RESEARCH_SYSTEM_PROMPT,
+    WEB_SEARCH_TOOL,
     GameReference,
     ReferenceSource,
     ResponsesReferenceResearcher,
@@ -153,8 +154,8 @@ def test_the_prompt_block_does_not_claim_the_reference_is_the_brief():
     assert "design" in block.lower()
 
 
-class _FakeResponses:
-    """Stands in for client.responses, recording how it was called."""
+class _FakeMessages:
+    """Stands in for client.messages, recording how it was called."""
 
     def __init__(self, parsed):
         self.parsed = parsed
@@ -162,12 +163,12 @@ class _FakeResponses:
 
     def parse(self, **kwargs):
         self.calls.append(kwargs)
-        return type("Response", (), {"output_parsed": self.parsed})()
+        return type("Response", (), {"parsed_output": self.parsed})()
 
 
 class _FakeClient:
     def __init__(self, parsed):
-        self.responses = _FakeResponses(parsed)
+        self.messages = _FakeMessages(parsed)
 
 
 def test_research_asks_for_web_search_and_returns_the_dossier():
@@ -177,12 +178,12 @@ def test_research_asks_for_web_search_and_returns_the_dossier():
     dossier = ResponsesReferenceResearcher(client).research(brief, "spectrum")
 
     assert dossier.title == "Zampa Bolas"
-    call = client.responses.calls[0]
-    assert {"type": "web_search_preview"} in call["tools"]
-    assert call["text_format"] is GameReference
-    assert call["input"][0] == {"role": "system", "content": RESEARCH_SYSTEM_PROMPT}
-    assert "spectrum" in call["input"][1]["content"]
-    assert brief in call["input"][1]["content"]
+    call = client.messages.calls[0]
+    assert WEB_SEARCH_TOOL in call["tools"]
+    assert call["output_format"] is GameReference
+    assert call["system"] == RESEARCH_SYSTEM_PROMPT
+    assert "spectrum" in call["messages"][0]["content"]
+    assert brief in call["messages"][0]["content"]
 
 
 def test_research_refuses_an_empty_parse():

@@ -7,7 +7,9 @@ import logging
 
 # Valores por defecto 
 DEFAULT_MODEL = "gpt-4o"
-DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+# Kept only so an old caller importing this name still resolves; the real
+# choice lives in `llmz80/core/embedding_backend.py`.
+DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS = 4096
 DEFAULT_MAX_EXAMPLES = 10
@@ -73,6 +75,27 @@ def load_api_key() -> str:
     logging.info("🔑 Clave de API de OpenAI encontrada.")
     return api_key
 
+
+def load_anthropic_api_key() -> str:
+    """Carga la clave de API de Anthropic desde variables de entorno.
+
+    Hermana de `load_api_key` en vez de un parámetro suyo: Studio llama al
+    modelo de Anthropic y el generador antiguo (`llm_z80.py`,
+    `llmz80/api/generator.py`) sigue llamando al de OpenAI. Son dos claves que
+    conviven, y darle a cada una su función deja que un fallo diga cuál falta
+    en lugar de nombrar un proveedor que quizá no es el que el llamador quería.
+
+    Returns:
+        La clave de API como string
+    """
+    load_dotenv()
+    api_key = os.getenv('ANTHROPIC_API_KEY')
+    if not api_key:
+        logging.error("❌ ANTHROPIC_API_KEY no encontrada en variables de entorno o archivo .env")
+        raise ValueError("ANTHROPIC_API_KEY es obligatoria.")
+    logging.info("🔑 Clave de API de Anthropic encontrada.")
+    return api_key
+
 def initialize_global_vars(config: Dict[str, Any], platform: str) -> Dict[str, Any]:
     """Inicializa las variables globales desde la configuración.
     
@@ -135,7 +158,12 @@ def initialize_global_vars(config: Dict[str, Any], platform: str) -> Dict[str, A
     max_tokens = config.get('openai', {}).get('max_tokens', DEFAULT_MAX_TOKENS)
     reasoning_effort = config.get('openai', {}).get('reasoning_effort')
     max_examples = config.get('examples', {}).get('max_examples', DEFAULT_MAX_EXAMPLES)
-    embedding_model = config.get('openai', {}).get('embedding_model', DEFAULT_EMBEDDING_MODEL)
+    # Not read from config on purpose: the embedding model is chosen by
+    # `llmz80/core/embedding_backend.py`, because its vector width has to
+    # agree with every stored collection and cache, and a config key that can
+    # disagree with those is a key that eventually will. Still reported here
+    # because callers log it.
+    from ..core.embedding_backend import EMBEDDING_MODEL as embedding_model
     
     # Devolver todas las variables como un diccionario
     return {

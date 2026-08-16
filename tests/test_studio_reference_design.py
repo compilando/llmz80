@@ -47,19 +47,19 @@ def _dossier(**overrides) -> GameReference:
     return GameReference.model_validate(document)
 
 
-class _FakeResponses:
+class _FakeMessages:
     def __init__(self, parsed):
         self.parsed = parsed
         self.calls = []
 
     def parse(self, **kwargs):
         self.calls.append(kwargs)
-        return type("Response", (), {"output_parsed": self.parsed})()
+        return type("Response", (), {"parsed_output": self.parsed})()
 
 
 class _FakeClient:
     def __init__(self, parsed):
-        self.responses = _FakeResponses(parsed)
+        self.messages = _FakeMessages(parsed)
 
 
 @pytest.fixture
@@ -144,7 +144,7 @@ def test_the_dossier_and_the_project_both_reach_the_model(project):
 
     ResponsesReferenceDesigner(client).propose(project, _dossier())
 
-    sent = client.responses.calls[0]["input"][1]["content"]
+    sent = client.messages.calls[0]["messages"][0]["content"]
     assert "Zampa Bolas" in sent
     assert project.screens[0].id in sent
     assert "KINDS OF GAME THAT EXIST" in sent
@@ -178,7 +178,7 @@ def test_an_unidentified_dossier_yields_no_proposal(project):
             project, _dossier(identified=False, sources=[], title="")
         )
 
-    assert client.responses.calls == []
+    assert client.messages.calls == []
 
 
 def test_a_call_that_returns_nothing_parsed_is_not_silently_accepted(project):
@@ -189,7 +189,7 @@ def test_a_call_that_returns_nothing_parsed_is_not_silently_accepted(project):
     with pytest.raises(ValueError, match="did not return a structured project proposal"):
         ResponsesReferenceDesigner(client).propose(project, _dossier())
 
-    assert len(client.responses.calls) == 1
+    assert len(client.messages.calls) == 1
 
 
 # --- reached through the service ---------------------------------------

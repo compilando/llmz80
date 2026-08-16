@@ -1,4 +1,5 @@
 # Core dependencies
+anthropic>=0.122.0
 openai==1.75.0
 pydantic>=2.7.0,<3.0.0
 textual>=1.0.0
@@ -17,6 +18,7 @@ requests>=2.32.3
 
 # Vector database
 qdrant-client==1.18.0
+fastembed>=0.8.0
 
 # CLI utilities
 termcolor==2.5.0

@@ -36,7 +36,16 @@ load_dotenv()
 QDRANT_URL = os.getenv("QDRANT_URL", "http://127.0.0.1:6333")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 QDRANT_COLLECTION_PREFIX = os.getenv("QDRANT_COLLECTION_PREFIX", "llmz80_")
-OPENAI_EMBEDDING_DIM = 1536  # Dimension for text-embedding-3-small
+#: How wide a stored vector is. Read from the backend that produces them
+#: rather than written out here, because the two disagreeing is silent: a
+#: collection created at the wrong width accepts nothing and reports only
+#: that the vector had the wrong size.
+#:
+#: The name is kept for the callers that import it (`scripts/init_qdrant.py`),
+#: but it is no longer OpenAI's: embeddings are computed locally now, at 384
+#: dimensions rather than 1536, so **any collection built before that change
+#: has to be recreated rather than reused**.
+from llmz80.core.embedding_backend import EMBEDDING_DIM as OPENAI_EMBEDDING_DIM  # noqa: E402
 
 def get_qdrant_client():
     """Initializes and returns a Qdrant client based on .env configuration."""

@@ -5,7 +5,7 @@ import os
 import sys
 import numpy as np
 from pathlib import Path
-from openai import OpenAI
+from llmz80.core.embedding_backend import EMBEDDING_DIM, EMBEDDING_MODEL, embed, zero_vector
 from termcolor import colored
 from dotenv import load_dotenv
 
@@ -21,90 +21,72 @@ def check_imports():
     """Verifica que todas las dependencias necesarias estén instaladas."""
     try:
         import numpy
-        import openai
+        import fastembed
         import termcolor
         import yaml
         import dotenv
         logging.info("✅ Todas las dependencias están instaladas correctamente.")
     except ImportError as e:
         logging.error(f"❌ Falta una dependencia: {e}")
-        logging.error("Ejecuta: pip install numpy openai termcolor pyyaml python-dotenv")
+        logging.error("Ejecuta: pip install numpy fastembed termcolor pyyaml python-dotenv")
         sys.exit(1)
 
 def load_api_key():
-    """Carga la clave de API de OpenAI."""
-    load_dotenv()
-    api_key = os.getenv('OPENAI_API_KEY')
-    if not api_key:
-        logging.error("❌ No se encontró la clave API de OpenAI en las variables de entorno.")
-        logging.error("Crea un archivo .env con la variable OPENAI_API_KEY=tu_clave_api")
-        sys.exit(1)
-    return api_key
+    """Ya no hace falta ninguna clave: los embeddings se calculan aquí.
+
+    La función se conserva y sigue devolviendo algo porque `main` la llama y
+    porque un usuario que venga de la versión anterior lo primero que
+    comprueba es la clave -- decirle explícitamente que ya no se necesita es
+    más útil que quitar la llamada y dejarle preguntándose si se le olvidó
+    configurarla.
+    """
+    logging.info("🔑 No se necesita clave de API: el modelo de embeddings es local.")
+    return None
 
 def test_api_connection(api_key):
-    """Prueba la conexión a la API de OpenAI."""
-    client = OpenAI(api_key=api_key)
+    """Comprueba que el modelo local carga y produce un vector de la anchura esperada.
+
+    El nombre se conserva porque `main` lo llama, pero ya no hay conexión que
+    probar. Lo que sí conviene verificar antes de indexar un corpus entero es
+    que el modelo se descarga y arranca: es una descarga de ~67MB la primera
+    vez, y descubrir que falla a mitad del indexado es peor que descubrirlo
+    ahora.
+    """
     try:
-        # Intenta una llamada simple
-        response = client.embeddings.create(
-            model="text-embedding-3-small",
-            input="Test"
-        )
-        if hasattr(response, 'data') and len(response.data) > 0:
-            embedding = response.data[0].embedding
-            if isinstance(embedding, list) and len(embedding) > 0:
-                logging.info(f"✅ Conexión a OpenAI exitosa. Dimensión de embedding: {len(embedding)}")
-                return client
-            else:
-                logging.error(f"❌ La API devolvió un embedding inválido: {embedding}")
-                sys.exit(1)
-        else:
-            logging.error("❌ La API devolvió una respuesta sin datos de embedding válidos.")
+        logging.info(f"Cargando modelo local {EMBEDDING_MODEL} (la primera vez se descarga)...")
+        vector = embed(["Test"])[0]
+        if vector.shape != (EMBEDDING_DIM,):
+            logging.error(f"❌ El modelo devolvió un vector de forma {vector.shape}.")
             sys.exit(1)
+        logging.info(f"✅ Modelo local listo. Dimensión de embedding: {EMBEDDING_DIM}")
+        return None
     except Exception as e:
-        logging.error(f"❌ Error al conectar con la API de OpenAI: {e}")
+        logging.error(f"❌ Error al cargar el modelo de embeddings: {e}")
         sys.exit(1)
 
-def get_embedding(client, text, model="text-embedding-3-small"):
-    """Obtiene el embedding para un texto asegurando que sea válido."""
+def get_embedding(client, text, model=None):
+    """Obtiene el embedding para un texto asegurando que sea válido.
+
+    `client` y `model` se ignoran; siguen en la firma porque `main` llama a
+    esta función con el resultado de `test_api_connection`.
+    """
     try:
         if not text or not text.strip():
             logging.warning("⚠️ Texto vacío para embedding.")
-            return np.zeros((1536,), dtype=float)
-            
-        response = client.embeddings.create(
-            model=model,
-            input=text
-        )
-        
-        embedding_data = response.data[0].embedding
-        
-        # Validación exhaustiva
-        if not isinstance(embedding_data, list):
-            logging.error(f"❌ Tipo incorrecto de embedding: {type(embedding_data)}")
-            return np.zeros((1536,), dtype=float)
-        
-        if not embedding_data:
-            logging.error("❌ La API devolvió una lista de embedding vacía")
-            return np.zeros((1536,), dtype=float)
-            
-        if not all(isinstance(x, (int, float)) for x in embedding_data):
-            logging.error("❌ La API devolvió elementos no numéricos en el embedding")
-            return np.zeros((1536,), dtype=float)
-            
-        # Convertir a numpy array
-        embedding_array = np.array(embedding_data, dtype=float)
-        
-        if embedding_array.size == 0:
-            logging.error("❌ Array de embedding vacío después de la conversión")
-            return np.zeros((1536,), dtype=float)
-            
+            return zero_vector()
+
+        embedding_array = embed([text])[0]
+
+        if embedding_array.shape != (EMBEDDING_DIM,):
+            logging.error(f"❌ Forma inesperada de embedding: {embedding_array.shape}")
+            return zero_vector()
+
         logging.info(f"✅ Embedding generado correctamente: {embedding_array.shape}")
         return embedding_array
-        
+
     except Exception as e:
         logging.error(f"❌ Error al obtener embedding: {e}")
-        return np.zeros((1536,), dtype=float)
+        return zero_vector()
 
 def create_empty_cache(platform):
     """Crea un archivo de caché vacío pero válido."""

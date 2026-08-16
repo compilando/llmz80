@@ -96,9 +96,9 @@ _CHANNEL_ON_THRESHOLD = 128
 _BRIGHT_THRESHOLD = 230
 
 #: Ink to fall back to when the dominant opaque colour reads as plain black
-#: (see `_spectrum_attribute`). `resources/sprite_prompt_spectrum.txt` asks
+#: (see `_spectrum_attribute`). `resources/sprite_grid_spectrum.txt` asks
 #: for "strictly monochrome, black figure on white"; once
-#: `sprite_artist._key_out_background` keys the white away, the dominant
+#: the grid's transparent character leaves nothing opaque there, the dominant
 #: *opaque* colour left in the frame is that black figure -- and INK_BLACK
 #: on `_PAPER_BLACK` draws nothing at all: a correctly-shaped sprite that no
 #: player can ever see, confirmed against the real `gpt-image-1` fixture in

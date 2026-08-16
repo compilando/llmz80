@@ -20,7 +20,7 @@ money on top of a broken one.
 
 Stages are injected (`Stages`, `ServiceStages`) for the same reason
 `generator.write_program` takes its `verify` and `writer` as parameters: four
-of the six spend money on the OpenAI API and one drives a real emulator, so
+of the six spend money on the Anthropic API and one drives a real emulator, so
 the only way to test the *order* -- and what happens when one of them refuses
 -- is to be able to run it against stages that do neither.
 """
@@ -324,7 +324,7 @@ def make_game(
     steps = {step.name: step for step in wizard.steps(None, None)}
 
     out(
-        "This runs the whole pipeline and spends money on the OpenAI API in "
+        "This runs the whole pipeline and spends money on the Anthropic API in "
         f"{len(PAID_STAGES)} stages ({', '.join(PAID_STAGES)}); it asks nothing else."
     )
     title = title_from(idea)
