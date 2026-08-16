@@ -90,7 +90,7 @@ def test_responses_planner_requests_typed_proposal():
             {
                 "path": "/gameplay/lives",
                 "operation": "replace",
-                "value_number": 2,
+                "value": {"number": 2},
                 "reason": "The commercial difficulty profile needs more tension.",
             }
         ],
@@ -116,7 +116,7 @@ def test_reviewed_proposal_is_transactional_and_validated():
             {
                 "path": "/presentation/hud_rows",
                 "operation": "replace",
-                "value_number": 1,
+                "value": {"number": 1},
                 "reason": "Free up a row for a taller playfield.",
             }
         ],
@@ -134,7 +134,7 @@ def test_ai_cannot_change_protected_contract(path):
     project = blank_project("Maze", TargetPlatform.SPECTRUM)
     proposal = ProjectProposal(
         summary="Unsafe change",
-        changes=[{"path": path, "operation": "replace", "value_number": 1, "reason": "test"}],
+        changes=[{"path": path, "operation": "replace", "value": {"number": 1}, "reason": "test"}],
     )
 
     with pytest.raises(ValueError, match="protected"):
@@ -149,7 +149,7 @@ def test_budget_change_requires_explicit_approval():
             {
                 "path": "/budgets/binary_bytes",
                 "operation": "replace",
-                "value_number": 30000,
+                "value": {"number": 30000},
                 "reason": "More content.",
             }
         ],

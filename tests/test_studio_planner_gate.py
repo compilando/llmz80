@@ -1,9 +1,15 @@
 import pytest
+from openai.lib._pydantic import to_strict_json_schema
+from pydantic import ValidationError
 
 from llmz80.studio.models import TargetPlatform
 from llmz80.studio.planner import (
+    EntityValue,
+    NumberValue,
     ProjectChange,
     ProjectProposal,
+    RowsValue,
+    TextValue,
     apply_proposal,
     propose_apply_repair,
 )
@@ -30,13 +36,13 @@ def test_a_proposal_that_outgrows_the_target_grid_is_refused(project):
             ProjectChange(
                 path="/screens/0/width",
                 operation="replace",
-                value_number=40,
+                value=NumberValue(number=40),
                 reason="more room to run",
             ),
             ProjectChange(
                 path="/screens/0/tiles",
                 operation="replace",
-                value_rows=wide,
+                value=RowsValue(rows=wide),
                 reason="more room to run",
             ),
         ],
@@ -53,7 +59,7 @@ def test_a_playable_proposal_still_applies(project):
             ProjectChange(
                 path="/presentation/style",
                 operation="replace",
-                value_text="moody pixel-art dungeon",
+                value=TextValue(text="moody pixel-art dungeon"),
                 reason="match the new mechanics",
             )
         ],
@@ -80,13 +86,13 @@ def test_a_proposal_can_change_mechanics_and_a_screens_tiles(project):
             ProjectChange(
                 path="/mechanics",
                 operation="replace",
-                value_rows=["the player explores the screen and avoids obstacles"],
+                value=RowsValue(rows=["the player explores the screen and avoids obstacles"]),
                 reason="the design had no stated mechanics yet",
             ),
             ProjectChange(
                 path="/screens/0/tiles",
                 operation="replace",
-                value_rows=edited_tiles,
+                value=RowsValue(rows=edited_tiles),
                 reason="break up the empty room with a single pillar",
             ),
         ],
@@ -100,17 +106,17 @@ def test_a_proposal_can_change_mechanics_and_a_screens_tiles(project):
 
 def test_a_change_can_carry_a_whole_entity():
     """A design that states nothing has no entity to edit a field of: the
-    drafting stage has to add one, and `value_text` cannot hold an object."""
+    drafting stage has to add one, and a `TextValue` cannot hold an object."""
     from llmz80.studio.planner import EntityValue
 
     change = ProjectChange(
         path="/entities/-",
         operation="add",
         reason="the brief asks for enemy fighters and the design has none",
-        value_entity=EntityValue(id="caza", kind="enemigo", notes="cruza la pantalla disparando"),
+        value=EntityValue(id="caza", kind="enemigo", notes="cruza la pantalla disparando"),
     )
 
-    assert change.value == {
+    assert change.applied_value == {
         "id": "caza",
         "kind": "enemigo",
         "sprite": None,
@@ -128,26 +134,31 @@ def test_a_change_can_carry_a_whole_tile():
         path="/tiles/-",
         operation="add",
         reason="the brief asks for water the player cannot cross",
-        value_tile=TileValue(id="agua", char="~", traits=["solid"]),
+        value=TileValue(id="agua", char="~", traits=["solid"]),
     )
 
-    assert change.value["id"] == "agua"
-    assert change.value["char"] == "~"
-    assert change.value["traits"] == ["solid"]
+    assert change.applied_value["id"] == "agua"
+    assert change.applied_value["char"] == "~"
+    assert change.applied_value["traits"] == ["solid"]
 
 
-def test_an_entity_and_a_tile_are_still_only_one_value_each():
-    """The one-value-per-change rule is what keeps `value` unambiguous, and a
-    new shape must not become an exception to it."""
-    from llmz80.studio.planner import EntityValue, TileValue
+def test_a_value_that_mixes_two_shapes_is_refused():
+    """The one-shape-per-change rule is what keeps `value` unambiguous.
 
-    with pytest.raises(ValueError, match="exactly one value_"):
-        ProjectChange(
-            path="/entities/-",
-            operation="add",
-            reason="two shapes at once",
-            value_entity=EntityValue(id="uno", kind="actor"),
-            value_tile=TileValue(id="dos", char="#"),
+    It used to need a validator counting how many of seven sibling `value_*`
+    fields were set. Now the anyOf does it: no branch of the union accepts an
+    entity's `kind` beside a tile's `char`, because every variant forbids the
+    others' fields. This test is what says the anyOf really is that strict,
+    rather than quietly picking a branch and dropping what did not fit.
+    """
+    with pytest.raises(ValidationError):
+        ProjectChange.model_validate(
+            {
+                "path": "/entities/-",
+                "operation": "add",
+                "reason": "two shapes at once",
+                "value": {"id": "uno", "kind": "actor", "char": "#"},
+            }
         )
 
 
@@ -164,7 +175,7 @@ def test_a_whole_entity_a_proposal_added_becomes_one_the_design_declares(project
                 path="/entities/-",
                 operation="add",
                 reason="the brief asks for enemy fighters and the design has none",
-                value_entity=EntityValue(id="caza", kind="enemigo", count=3),
+                value=EntityValue(id="caza", kind="enemigo", count=3),
             )
         ],
     )
@@ -192,7 +203,7 @@ def test_a_whole_observable_a_proposal_added_becomes_one_the_design_declares(pro
                 path="/observables/-",
                 operation="add",
                 reason="no contract symbol can witness dirt turning into floor",
-                value_observable=ObservableValue(
+                value=ObservableValue(
                     symbol="g_dug",
                     width=2,
                     meaning="celdas de tierra excavadas; solo sube",
@@ -209,7 +220,7 @@ def test_a_whole_observable_a_proposal_added_becomes_one_the_design_declares(pro
 
 
 def test_a_proposal_whose_text_carries_the_json_separator_is_refused_and_repairable(project):
-    """The `},{` corruption arrives as a `ProjectChange.value_text`, so this is
+    """The `},{` corruption arrives as a `ProjectChange` text value, so this is
     the path the guard in `models._unstructured` actually has to cover.
 
     Both halves matter. The refusal is what stops `minero},{` reaching the
@@ -225,7 +236,7 @@ def test_a_proposal_whose_text_carries_the_json_separator_is_refused_and_repaira
             ProjectChange(
                 path="/entities/0/kind",
                 operation="replace",
-                value_text="minero},{",
+                value=TextValue(text="minero},{"),
                 reason="the brief's protagonist is a miner",
             )
         ],
@@ -236,7 +247,7 @@ def test_a_proposal_whose_text_carries_the_json_separator_is_refused_and_repaira
             ProjectChange(
                 path="/entities/0/kind",
                 operation="replace",
-                value_text="minero",
+                value=TextValue(text="minero"),
                 reason="the brief's protagonist is a miner",
             )
         ],
@@ -257,3 +268,58 @@ def test_a_proposal_whose_text_carries_the_json_separator_is_refused_and_repaira
     assert applied.project.entities[0].kind == "minero"
     assert "JSON separator" in applied.refusals[0]
     assert "entities/0/kind" in (seen[1] or "")
+
+
+def test_changes_of_different_shapes_still_apply_in_the_order_they_were_written(project):
+    """Cross-type ordering is what `apply_proposal` promises, and it is what a
+    schema change could quietly take away.
+
+    Index-based JSON pointers make the order load-bearing: `/entities/-`
+    appending an actor is what *creates* the index `/entities/1/notes` then
+    edits, so the two are not interchangeable and neither is any other pair
+    where an add feeds a later path. The reason to pin it now is that one of
+    the shapes considered for this schema -- a separate ordered list per value
+    type, entities in one and text in another -- would have applied every add
+    before every edit and passed every other test in this file.
+    """
+    proposal = ProjectProposal(
+        summary="add the enemy the brief asks for, then say what it does",
+        changes=[
+            ProjectChange(
+                path="/entities/-",
+                operation="add",
+                reason="the design has no enemy yet",
+                value=EntityValue(id="murcielago", kind="enemigo"),
+            ),
+            ProjectChange(
+                path="/entities/1/notes",
+                operation="replace",
+                reason="say what the enemy the previous change added does",
+                value=TextValue(text="patrulla la cueva de lado a lado"),
+            ),
+        ],
+    )
+
+    applied = apply_proposal(project, proposal)
+
+    assert [entity.id for entity in applied.entities] == ["actor", "murcielago"]
+    assert applied.entities[1].notes == "patrulla la cueva de lado a lado"
+
+
+def test_a_change_declares_one_value_property_and_no_null_siblings():
+    """What the model has to write per change, counted at the schema.
+
+    This is the whole point of the anyOf. Strict structured output requires
+    every declared property, so seven sibling `value_*` fields meant six
+    `null`s after each value the model actually wrote -- and the replayed raw
+    responses show it stalling in exactly that gap, padding with runs of up to
+    762 literal spaces and twice spilling `},{` into the string it had not
+    finished. Four properties, with `value` last, leaves nothing to stall
+    towards. A regression that reintroduces a sibling would be invisible in
+    every behavioural test here and expensive in every real response.
+    """
+    schema = to_strict_json_schema(ProjectProposal)["$defs"]["ProjectChange"]
+
+    assert list(schema["properties"]) == ["path", "operation", "reason", "value"]
+    assert schema["required"] == ["path", "operation", "reason", "value"]
+    assert "anyOf" in schema["properties"]["value"]

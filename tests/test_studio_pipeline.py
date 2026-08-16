@@ -23,7 +23,7 @@ import pytest
 from llmz80 import cli
 from llmz80.studio import pipeline
 from llmz80.studio.models import TargetPlatform
-from llmz80.studio.planner import ProjectChange, ProjectProposal
+from llmz80.studio.planner import NumberValue, ProjectChange, ProjectProposal, RowsValue, TextValue
 from llmz80.studio.reference import GameReference, ReferenceSource, save_reference
 from llmz80.studio.services import StudioService
 from llmz80.studio.spriting import SPRITE_SIZE
@@ -74,7 +74,7 @@ class _FakeDesigner:
                         path="/schema_version",
                         operation="replace",
                         reason="bogus",
-                        value_number=99,
+                        value=NumberValue(number=99),
                     )
                 ],
             )
@@ -85,7 +85,7 @@ class _FakeDesigner:
                     path="/presentation/style",
                     operation="replace",
                     reason="matches the dossier's visual style",
-                    value_text="arcade neon",
+                    value=TextValue(text="arcade neon"),
                 )
             ],
         )
@@ -236,10 +236,12 @@ class _FakeDrafter:
                     path="/mechanics",
                     operation="replace",
                     reason="the brief says what this is",
-                    value_rows=[
-                        "el minero cava hacia abajo",
-                        "un murcielago le quita una vida",
-                    ],
+                    value=RowsValue(
+                        rows=[
+                            "el minero cava hacia abajo",
+                            "un murcielago le quita una vida",
+                        ]
+                    ),
                 )
             ],
             # The note every real draft carries now: `draft_and_apply` sends a

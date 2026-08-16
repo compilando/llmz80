@@ -5,8 +5,10 @@ import pytest
 from llmz80.studio.editing import rename_project
 from llmz80.studio.models import PresentationSpec, TargetPlatform
 from llmz80.studio.planner import (
+    NumberValue,
     ProjectChange,
     ProjectProposal,
+    TextValue,
     apply_proposal,
     repair_feedback,
 )
@@ -133,7 +135,7 @@ def test_the_dossier_and_the_project_both_reach_the_model(project):
             ProjectChange(
                 path="/presentation/style",
                 operation="replace",
-                value_text="bright maze on black",
+                value=TextValue(text="bright maze on black"),
                 reason="the original drew a bright maze on black",
             )
         ],
@@ -155,7 +157,7 @@ def test_a_proposal_from_a_dossier_applies_like_any_other(project):
             ProjectChange(
                 path="/presentation/style",
                 operation="replace",
-                value_text="bright maze on black",
+                value=TextValue(text="bright maze on black"),
                 reason="the original drew a bright maze on black",
             )
         ],
@@ -240,7 +242,7 @@ def test_a_reference_proposal_is_returned_with_its_diff(tmp_path):
             ProjectChange(
                 path="/presentation/style",
                 operation="replace",
-                value_text="bright maze on black",
+                value=TextValue(text="bright maze on black"),
                 reason="the original drew a bright maze on black",
             )
         ],
@@ -356,7 +358,7 @@ class ScriptedDesigner:
 
 def _oversized_style_proposal() -> ProjectProposal:
     """The live-run shape: a `presentation.style` written past its 80-char
-    bound. `ProjectChange.value_text` carries no length limit of its own, so
+    bound. A `ProjectChange`'s `TextValue` carries no length limit of its own, so
     this parses cleanly and is only refused once `apply_proposal` revalidates
     the whole `GameProject`."""
     return ProjectProposal(
@@ -365,7 +367,7 @@ def _oversized_style_proposal() -> ProjectProposal:
             ProjectChange(
                 path="/presentation/style",
                 operation="replace",
-                value_text="x" * 100,
+                value=TextValue(text="x" * 100),
                 reason="the dossier's visual_style ran long",
             )
         ],
@@ -379,7 +381,7 @@ def _fixed_style_proposal() -> ProjectProposal:
             ProjectChange(
                 path="/presentation/style",
                 operation="replace",
-                value_text="bright maze on black",
+                value=TextValue(text="bright maze on black"),
                 reason="the dossier's visual_style, trimmed to fit",
             )
         ],
@@ -396,13 +398,13 @@ def test_repair_feedback_names_every_field_that_ended_up_out_of_bounds(project):
             ProjectChange(
                 path="/presentation/style",
                 operation="replace",
-                value_text="x" * 100,
+                value=TextValue(text="x" * 100),
                 reason="paste the dossier's visual style",
             ),
             ProjectChange(
                 path="/entities/0/count",
                 operation="replace",
-                value_number=0,
+                value=NumberValue(number=0),
                 reason="remove the enemies",
             ),
         ],

@@ -13,7 +13,7 @@ from llmz80.studio.design_exam import (
 )
 from llmz80.studio.editing import rename_project
 from llmz80.studio.models import TargetPlatform
-from llmz80.studio.planner import ProjectChange, ProjectProposal
+from llmz80.studio.planner import ProjectChange, ProjectProposal, RowsValue
 from llmz80.studio.reference import GameReference, save_reference
 from llmz80.studio.reference_design import coverage_feedback, propose_and_apply
 from llmz80.studio.samples import blank_project
@@ -130,7 +130,7 @@ def _mechanics_proposal(*sentences: str) -> ProjectProposal:
             ProjectChange(
                 path="/mechanics",
                 operation="replace",
-                value_rows=list(sentences),
+                value=RowsValue(rows=list(sentences)),
                 reason="the dossier describes these",
             )
         ],

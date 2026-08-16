@@ -94,21 +94,29 @@ def _unstructured(value: str) -> str:
     `kind` came from `drafting`, and the `style` from `reference_design`
     (`minero-vigilado` has no `reference.yml`, so no adaptation ever ran
     there). Nothing between the model and `game.yml` concatenates or restitches
-    a value -- `planner.apply_proposal` deep-copies `change.value` into the
-    document and revalidates -- so the separator was inside the string when
+    a value -- `planner.apply_proposal` deep-copies `change.applied_value` into
+    the document and revalidates -- so the separator was inside the string when
     the SDK parsed it, which means the model emitted it there.
 
-    Replaying both calls against gpt-5 shows the pressure that produces it.
-    `ProjectChange` declares ten properties and strict structured output
-    requires every one of them, so after writing `value_text` the model must
-    still emit six `value_*: null` fields before it may close the object. In
-    the captured raw responses it stalls at exactly that point, padding with
-    runs of 1 to 762 literal spaces between the closing quote and the
+    Replaying both calls against gpt-5 showed the pressure that produced it.
+    `ProjectChange` then declared ten properties and strict structured output
+    requires every one of them, so after writing `value_text` the model still
+    had to emit six `value_*: null` fields before it could close the object.
+    In the captured raw responses it stalled at exactly that point, padding
+    with runs of 1 to 762 literal spaces between the closing quote and the
     `, "value_number": null` tail. `},{` is that same impatience arriving one
     token early: a brace, a comma and a brace are ordinary string characters,
     so the grammar that masks them *between* fields permits them *inside* the
     value, and the model's attempt to start the next change is absorbed as
     text.
+
+    That pressure is gone: `ProjectChange` now declares one `value` property
+    whose type is an anyOf of narrow variants, so there are no siblings left
+    to pad towards -- see `planner.ChangeValue`. Replaying both stages again
+    over 40 responses turned up no `},{` at all, against 7 of 30 before. This
+    stays anyway, as the net under the fix rather than under the fault: it
+    costs nothing, and it is a claim about what a design may contain that
+    holds however the document was written.
 
     Refused here rather than in `planner`, for the reason `_readable` gives:
     this is the one place a document must pass through however it was written,

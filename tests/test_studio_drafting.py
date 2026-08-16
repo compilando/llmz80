@@ -11,7 +11,7 @@ from llmz80.studio.drafting import (
 )
 from llmz80.studio.editing import rename_project
 from llmz80.studio.models import TargetPlatform
-from llmz80.studio.planner import EntityValue, ProjectChange, ProjectProposal
+from llmz80.studio.planner import EntityValue, ProjectChange, ProjectProposal, RowsValue
 from llmz80.studio.samples import blank_project
 
 
@@ -52,7 +52,7 @@ def _mechanics(*sentences: str) -> ProjectProposal:
                 path="/mechanics",
                 operation="replace",
                 reason="the brief says what this game is and the design said nothing",
-                value_rows=list(sentences),
+                value=RowsValue(rows=list(sentences)),
             )
         ],
         risks=[],
@@ -198,7 +198,7 @@ def test_a_draft_that_adds_the_cast_the_brief_asks_for_is_applied(blank):
                     path="/entities/-",
                     operation="add",
                     reason="the brief asks for other fighters and the design has none",
-                    value_entity=EntityValue(
+                    value=EntityValue(
                         id="caza", kind="enemigo", count=3, notes="dispara al jugador"
                     ),
                 ),
@@ -206,7 +206,7 @@ def test_a_draft_that_adds_the_cast_the_brief_asks_for_is_applied(blank):
                     path="/mechanics",
                     operation="replace",
                     reason="the brief says the two sides shoot at each other",
-                    value_rows=["los cazas y el jugador se disparan entre ellos"],
+                    value=RowsValue(rows=["los cazas y el jugador se disparan entre ellos"]),
                 ),
             ],
             risks=[],
@@ -230,7 +230,7 @@ def test_a_draft_the_document_refuses_is_repaired_rather_than_abandoned(blank):
                 path="/entities/-",
                 operation="add",
                 reason="the brief asks for other fighters",
-                value_entity=EntityValue(id="Caza Enemigo", kind="enemigo"),
+                value=EntityValue(id="Caza Enemigo", kind="enemigo"),
             )
         ],
         risks=[],
@@ -386,7 +386,7 @@ def test_a_draft_whose_mechanics_assume_a_car_it_never_declares_is_tried_again(f
                     path="/entities/-",
                     operation="add",
                     reason="three mechanics name coches and the design declared none",
-                    value_entity=EntityValue(
+                    value=EntityValue(
                         id="coche", kind="enemigo", count=4, notes="recorre su carril"
                     ),
                 ),
@@ -394,7 +394,9 @@ def test_a_draft_whose_mechanics_assume_a_car_it_never_declares_is_tried_again(f
                     path="/mechanics",
                     operation="replace",
                     reason="the rules are unchanged; the cast is what was missing",
-                    value_rows=["Los coches recorren sus carriles y atropellan a la rana."],
+                    value=RowsValue(
+                        rows=["Los coches recorren sus carriles y atropellan a la rana."]
+                    ),
                 ),
             ],
             risks=[],
@@ -438,7 +440,7 @@ def test_the_coherence_gate_never_spends_the_last_attempt_a_draft_has(frog):
     assert len(examiner.seen) == 2
     assert len(result.refusals) == 2
     assert all("coche" in refusal for refusal in result.refusals)
-    assert result.project.mechanics == _the_frog_draft_that_shipped().changes[0].value_rows
+    assert result.project.mechanics == _the_frog_draft_that_shipped().changes[0].value.rows
 
 
 def test_a_draft_that_states_no_mechanics_is_never_sent_to_the_coherence_examiner(frog):

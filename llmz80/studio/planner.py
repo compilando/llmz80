@@ -12,6 +12,109 @@ from .editing import editing_status
 from .models import GameProject
 
 
+class ChangeValue(BaseModel):
+    """What one `ProjectChange` writes into the document, in one of a handful
+    of narrow shapes.
+
+    The variants are the anyOf branches of `ProjectChange.value`. Each declares
+    only the fields its own shape needs, which is the whole point: `value` used
+    to be seven sibling `value_*` properties -- `value_text`, `value_number`,
+    `value_rows`, `value_spawns`, `value_entity`, `value_tile`,
+    `value_observable` -- because OpenAI strict structured output rejects a
+    property with no concrete JSON type, so a single generic `value` was not
+    available and each shape had to bring its own field.
+
+    That shape cost more than the schema. Strict mode also requires *every*
+    declared property, so after writing the one field it wanted the model had
+    to emit the other six as `null` before it could close the object, and in
+    the captured raw responses it stalled exactly there: runs of 1 to 762
+    literal spaces between a value's closing quote and the
+    `, "value_number": null` tail. Twice in fourteen replayed responses the
+    stall arrived one token early and came out *inside* the string, as `},{` --
+    a brace, a comma and a brace being ordinary string characters that the
+    grammar masks between fields and permits within a value. That corruption
+    reached three designs on disk (`minero-vigilado`'s entity `kind`,
+    `minero-observable`'s and `un-minero-que-cava-tuneles-y-2`'s
+    `presentation.style`) and the program writer, and is what `models.Prose`
+    now refuses at the document edge.
+
+    An anyOf of narrow objects removes the pressure instead of catching its
+    output: the model writes one value and closes, with no siblings to pad
+    towards. It was verified against the live API before being adopted --
+    strict structured output accepts an anyOf of objects for a property, and
+    gpt-5 picks the branch matching the field it is editing.
+
+    Replaying both stages that emit a proposal, from the same inputs the
+    corrupted designs had, says what it bought. Before: 7 of 30 responses
+    carried `},{` inside a string value, and 15 of 30 carried a stall run --
+    always in the same place, between a written value and the following
+    `"value_number": null`, up to 131 characters of it. After: 0 of 40
+    responses carried either, over more changes per response (244 against
+    174). The only whitespace left in the sample is one response that chose
+    to indent the whole document, which is a style and not a stall.
+
+    Rejected alternatives:
+
+      * A bare union of JSON types (`str | int | list[str] | ...`). Fewer
+        tokens still, but it takes away the model's chance to *say* which
+        shape it means, and a `/mechanics` change that should be rows arrives
+        as a paragraph with nothing having declared the mismatch.
+      * One ordered list per shape. It keeps every variant narrow but loses
+        cross-type ordering, and `apply_proposal` applies changes in order:
+        an `/entities/-` that appends an actor before an `/entities/2/notes`
+        that edits one is not the same proposal in the other order. Restoring
+        it means carrying an explicit sequence number in every change, which
+        is more machinery than one anyOf.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    def json_value(self) -> Any:
+        """The plain JSON this variant writes into the document."""
+        raise NotImplementedError
+
+
+class TextValue(ChangeValue):
+    """A string: `presentation.style`, a mechanic's sentence, an entity's
+    notes, a control binding's key."""
+
+    text: str
+
+    def json_value(self) -> Any:
+        return self.text
+
+
+class NumberValue(ChangeValue):
+    """A whole number: an entity's `count`, a screen's `time_limit_seconds`.
+
+    The one variant worth asking whether it earns its place: across 174
+    replayed changes under the old shape no stage ever set `value_number`, and
+    every one of them still paid a `"value_number": null`. Kept because under
+    an anyOf an unused branch costs nothing per response -- and because the
+    model did reach for it 3 times in 244 changes once it was a peer of the
+    other shapes rather than a null to step over.
+    """
+
+    number: int
+
+    def json_value(self) -> Any:
+        return self.number
+
+
+class RowsValue(ChangeValue):
+    """A list of strings: a screen's terrain rows, or the whole `mechanics`
+    list, one sentence per rule.
+
+    Kept apart from `SpawnsValue` rather than folded into one "list" variant,
+    because they are lists of different things and a model that picks the
+    wrong one would produce a screen made of spawns."""
+
+    rows: list[str]
+
+    def json_value(self) -> Any:
+        return list(self.rows)
+
+
 class SpawnValue(BaseModel):
     """Mirrors `SpawnSpec` in models.py: where one entity instance starts on
     one of the design's screens."""
@@ -22,13 +125,19 @@ class SpawnValue(BaseModel):
     row: int = Field(ge=0, le=24)
 
 
-class EntityValue(BaseModel):
+class SpawnsValue(ChangeValue):
+    """A whole screen's spawn list."""
+
+    spawns: list[SpawnValue]
+
+    def json_value(self) -> Any:
+        return [spawn.model_dump(mode="json") for spawn in self.spawns]
+
+
+class EntityValue(ChangeValue):
     """One whole entity, in the shape `EntitySpec` validates.
 
-    Flat and with every field concrete, for the reason `ProjectChange`'s own
-    docstring gives: structured outputs reject a property with no JSON type,
-    which is why there is no generic `value` and why `SpawnValue` exists. An
-    entity is the first thing a proposal ever needed to *add* rather than
+    An entity is the first thing a proposal ever needed to *add* rather than
     edit -- the designer only ever touched `/entities/N/notes` of an entity
     that was already there -- and a design that states nothing has none.
 
@@ -36,8 +145,6 @@ class EntityValue(BaseModel):
     and a kind gets exactly what a designer writing the same two fields by
     hand would get.
     """
-
-    model_config = ConfigDict(extra="forbid")
 
     id: str
     kind: str
@@ -47,8 +154,11 @@ class EntityValue(BaseModel):
     colour: str | None = None
     notes: str = ""
 
+    def json_value(self) -> Any:
+        return self.model_dump(mode="json")
 
-class TileValue(BaseModel):
+
+class TileValue(ChangeValue):
     """One whole tile, in the shape `TileSpec` validates.
 
     Here for the same reason as `EntityValue`: a design that states nothing
@@ -56,23 +166,22 @@ class TileValue(BaseModel):
     is a tile the design has to grow, not a field of one it already declares.
     """
 
-    model_config = ConfigDict(extra="forbid")
-
     id: str
     char: str
     art: str | None = None
     colour: str | None = None
     traits: list[str] = Field(default_factory=list)
 
+    def json_value(self) -> Any:
+        return self.model_dump(mode="json")
 
-class ObservableValue(BaseModel):
+
+class ObservableValue(ChangeValue):
     """One whole observable, in the shape `ObservableSpec` validates.
 
-    Its own field for the reason `ProjectChange`'s docstring gives -- strict
-    structured output rejects a property with no concrete JSON type, so there
-    is no generic `value` to put it in -- and its own *shape* because an
-    observable is neither an entity nor a tile: it is a C symbol, a width in
-    bytes and a sentence saying what the number means.
+    Its own variant because an observable is neither an entity nor a tile: it
+    is a C symbol, a width in bytes and a sentence saying what the number
+    means.
 
     A design that declares one is the only way a gate can witness a rule the
     state contract has no word for. Nothing had ever declared one: `game.yml`
@@ -82,8 +191,6 @@ class ObservableValue(BaseModel):
     mechanics was checked.
     """
 
-    model_config = ConfigDict(extra="forbid")
-
     symbol: str
     #: Bytes to read out of memory. Mirrors `ObservableSpec`'s own default
     #: rather than being required, so a drafter naming a counter it has not
@@ -92,71 +199,54 @@ class ObservableValue(BaseModel):
     width: int = 1
     meaning: str
 
+    def json_value(self) -> Any:
+        return self.model_dump(mode="json")
+
+
+#: The anyOf `ProjectChange.value` declares. Order matters only to readers:
+#: every variant forbids the others' fields, so nothing here is ambiguous.
+AnyChangeValue = (
+    TextValue | NumberValue | RowsValue | SpawnsValue | EntityValue | TileValue | ObservableValue
+)
+
 
 class ProjectChange(BaseModel):
     """One JSON-pointer edit.
 
-    `value` is not a field: OpenAI's strict structured output requires every
-    property to carry a concrete JSON Schema type, and `Any` has none. Each
-    shape a design edit actually needs gets its own optional field instead, and
-    `value` becomes a read-only property over whichever one is set, so callers
-    keep reading a single thing.
+    `value` carries a `ChangeValue` variant rather than the bare JSON it
+    stands for: OpenAI's strict structured output requires every property to
+    carry a concrete JSON Schema type, and `Any` has none. An anyOf of narrow
+    objects is how one `value` property gets a type again -- see `ChangeValue`
+    for what the seven sibling `value_*` fields it replaces were costing.
     """
 
     model_config = ConfigDict(extra="forbid")
     path: str = Field(pattern=r"^/[a-zA-Z0-9_/-]+$")
     operation: Literal["replace", "add", "remove"]
     reason: str = Field(min_length=1, max_length=240)
-    value_text: str | None = None
-    value_number: int | None = None
-    value_rows: list[str] | None = None  # a screen's tiles
-    value_spawns: list[SpawnValue] | None = None  # a screen's spawns
-    value_entity: EntityValue | None = None  # a whole entity
-    value_tile: TileValue | None = None  # a whole tile
-    value_observable: ObservableValue | None = None  # a whole observable
+    #: Last of the four properties on purpose. Strict structured output emits
+    #: them in declaration order, so nothing follows a value the model has
+    #: just written and there is nowhere left to stall.
+    value: AnyChangeValue | None = None
 
     @model_validator(mode="after")
     def validate_value_shape(self) -> "ProjectChange":
-        variants = [
-            v
-            for v in (
-                self.value_text,
-                self.value_number,
-                self.value_rows,
-                self.value_spawns,
-                self.value_entity,
-                self.value_tile,
-                self.value_observable,
-            )
-            if v is not None
-        ]
         if self.operation == "remove":
-            if variants:
+            if self.value is not None:
                 raise ValueError(f"{self.path}: a remove must not carry a value")
-        elif len(variants) != 1:
-            raise ValueError(
-                f"{self.path}: {self.operation} needs exactly one value_* field set, "
-                f"found {len(variants)}"
-            )
+        elif self.value is None:
+            raise ValueError(f"{self.path}: {self.operation} needs a value")
         return self
 
     @property
-    def value(self) -> Any:
-        if self.value_text is not None:
-            return self.value_text
-        if self.value_number is not None:
-            return self.value_number
-        if self.value_rows is not None:
-            return self.value_rows
-        if self.value_spawns is not None:
-            return [spawn.model_dump(mode="json") for spawn in self.value_spawns]
-        if self.value_entity is not None:
-            return self.value_entity.model_dump(mode="json")
-        if self.value_tile is not None:
-            return self.value_tile.model_dump(mode="json")
-        if self.value_observable is not None:
-            return self.value_observable.model_dump(mode="json")
-        return None
+    def applied_value(self) -> Any:
+        """The plain JSON `apply_proposal` writes into the document.
+
+        Named apart from `value` because `value` is now the declared variant,
+        and every consumer -- the applier, the diff -- wants what the variant
+        stands for rather than the wrapper carrying it.
+        """
+        return None if self.value is None else self.value.json_value()
 
 
 class ProjectProposal(BaseModel):
@@ -199,13 +289,13 @@ class ResponsesProjectPlanner:
                         "You are a game designer for constrained Z80 computers. "
                         "Propose small JSON-pointer changes to the supplied GameProject. "
                         "Never emit C code and never silently relax budgets or acceptance tests. "
-                        "Each change carries its value in exactly one of value_text, "
-                        "value_number, value_rows or value_spawns, matching the field being "
-                        "changed: value_text for strings such as presentation.style, a "
-                        "mechanic's sentence or an entity's notes, value_number for integers "
-                        "such as an entity's count, value_rows for a screen's tiles (one string "
-                        "per row), and value_spawns for a screen's spawns. Leave all four unset "
-                        "for a remove, and set exactly one of them for an add or a replace."
+                        "Each change carries its value in `value`, as an object naming "
+                        'the shape it is: {"text": ...} for strings such as '
+                        "presentation.style, a mechanic's sentence or an entity's notes, "
+                        '{"number": ...} for integers such as an entity\'s count, '
+                        '{"rows": [...]} for a screen\'s tiles (one string per row) or the '
+                        'whole mechanics list, and {"spawns": [...]} for a screen\'s spawns. '
+                        "Leave `value` null for a remove, and set it for an add or a replace."
                     ),
                 },
                 {
@@ -228,7 +318,7 @@ def proposal_diff(proposal: ProjectProposal) -> str:
     """Return a stable human-readable preview suitable for TUI approval."""
     lines = [proposal.summary]
     for change in proposal.changes:
-        value = "" if change.operation == "remove" else f" = {change.value!r}"
+        value = "" if change.operation == "remove" else f" = {change.applied_value!r}"
         lines.append(f"{change.operation.upper():7} {change.path}{value}\n         {change.reason}")
     if proposal.observability.strip():
         # Shown to whoever approves the diff, because "this design declares no
@@ -283,9 +373,9 @@ def apply_proposal(
         if isinstance(parent, list):
             index = _list_index(leaf, len(parent), allow_end=change.operation == "add")
             if change.operation == "add":
-                parent.insert(index, deepcopy(change.value))
+                parent.insert(index, deepcopy(change.applied_value))
             elif change.operation == "replace":
-                parent[index] = deepcopy(change.value)
+                parent[index] = deepcopy(change.applied_value)
             else:
                 parent.pop(index)
         elif isinstance(parent, dict):
@@ -293,11 +383,11 @@ def apply_proposal(
             if change.operation == "add":
                 if exists:
                     raise ValueError(f"add target already exists: {change.path}")
-                parent[leaf] = deepcopy(change.value)
+                parent[leaf] = deepcopy(change.applied_value)
             elif change.operation == "replace":
                 if not exists:
                     raise ValueError(f"replace target does not exist: {change.path}")
-                parent[leaf] = deepcopy(change.value)
+                parent[leaf] = deepcopy(change.applied_value)
             else:
                 if not exists:
                     raise ValueError(f"remove target does not exist: {change.path}")

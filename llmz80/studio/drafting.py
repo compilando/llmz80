@@ -61,23 +61,24 @@ Propose JSON-pointer changes to the supplied GameProject. You get at most 20
 changes in total, so spend them on whole arrays and whole objects rather than
 one row, cell or spawn at a time:
   /mechanics                what the game does, one sentence per rule,
-                             in the design's own language        -> value_rows
-  /entities/-               a whole new actor, appended          -> value_entity, add
-  /entities/N/kind          what an actor already there is       -> value_text
-  /entities/N/notes         what that actor does                 -> value_text
-  /entities/N/count         how many of it there are             -> value_number
-  /tiles/-                  a whole new kind of terrain          -> value_tile, add
+                             in the design's own language        -> {"rows": [...]}
+  /entities/-               a whole new actor, appended          -> {"id": ..., "kind": ...}, add
+  /entities/N/kind          what an actor already there is       -> {"text": ...}
+  /entities/N/notes         what that actor does                 -> {"text": ...}
+  /entities/N/count         how many of it there are             -> {"number": ...}
+  /tiles/-                  a whole new kind of terrain          -> {"id": ..., "char": ...}, add
   /screens/N/tiles          the room, as rows of the design's own
-                             tile characters                     -> value_rows
-  /screens/N/spawns         where each actor starts              -> value_spawns
+                             tile characters                     -> {"rows": [...]}
+  /screens/N/spawns         where each actor starts              -> {"spawns": [...]}
   /controls/bindings/NAME   a key for an action the brief names and
-                             the design has no key for           -> value_text, add
+                             the design has no key for           -> {"text": ...}, add
   /observables/-            a number the finished program keeps, so one of
                              your own rules can be checked from
-                             outside                             -> value_observable, add
+                             outside                             -> {"symbol": ..., "width": ...,
+                                                                     "meaning": ...}, add
 
-Each change carries its value in exactly one of those value_* fields --
-never more than one, and none at all for a remove.
+Each change carries its value in `value`, as one object of the shape shown
+above -- never a mixture of two shapes, and null for a remove.
 
 Observables, and what they are for. The finished program is verified by
 reading variables straight out of the machine's memory while it runs. Six of

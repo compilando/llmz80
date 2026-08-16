@@ -218,7 +218,7 @@ class _FakeDesigner:
 
 
 def _style_proposal():
-    from llmz80.studio.planner import ProjectChange, ProjectProposal
+    from llmz80.studio.planner import ProjectChange, ProjectProposal, RowsValue, TextValue
 
     return ProjectProposal(
         summary="tune the palette",
@@ -226,7 +226,7 @@ def _style_proposal():
             ProjectChange(
                 path="/presentation/style",
                 operation="replace",
-                value_text="neon arcade",
+                value=TextValue(text="neon arcade"),
                 reason="match the source",
             )
         ],
@@ -313,7 +313,7 @@ def test_adapt_repairs_a_refused_proposal_and_tells_the_user_it_retried(
     mechanically fixable error must not be thrown away whole. This proves the
     repair actually reaches `project adapt` end to end, and that a user
     watching the command sees why it took more than one model call."""
-    from llmz80.studio.planner import ProjectChange, ProjectProposal
+    from llmz80.studio.planner import ProjectChange, ProjectProposal, RowsValue, TextValue
     from llmz80.studio.reference import save_reference
 
     main(["project", "new", str(tmp_path), "Adapt Repair"])
@@ -328,7 +328,7 @@ def test_adapt_repairs_a_refused_proposal_and_tells_the_user_it_retried(
             ProjectChange(
                 path="/presentation/style",
                 operation="replace",
-                value_text="x" * 100,
+                value=TextValue(text="x" * 100),
                 reason="the dossier's visual_style ran long",
             )
         ],
@@ -455,7 +455,7 @@ class _FakeDrafter:
 
 
 def _mechanics_proposal():
-    from llmz80.studio.planner import ProjectChange, ProjectProposal
+    from llmz80.studio.planner import ProjectChange, ProjectProposal, RowsValue, TextValue
 
     return ProjectProposal(
         summary="state what this game does",
@@ -463,7 +463,9 @@ def _mechanics_proposal():
             ProjectChange(
                 path="/mechanics",
                 operation="replace",
-                value_rows=["el minero cava hacia abajo", "un murcielago le quita una vida"],
+                value=RowsValue(
+                    rows=["el minero cava hacia abajo", "un murcielago le quita una vida"]
+                ),
                 reason="the brief says what this is",
             )
         ],

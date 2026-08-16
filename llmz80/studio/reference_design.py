@@ -44,13 +44,13 @@ screen's entire `tiles` list, an entity's whole spawn list -- rather than one
 row, cell or spawn at a time. Aim them at how the game presents itself, never
 at what it is:
   /screens/N/tiles          the screen layout, as rows of the design's own
-                             tile characters                             -> value_rows
-  /screens/N/spawns         where each actor starts                      -> value_spawns
-  /mechanics                what the game does, one sentence each        -> value_rows
-  /entities/N/notes         what this actor does                         -> value_text
+                             tile characters                             -> {"rows": [...]}
+  /screens/N/spawns         where each actor starts                      -> {"spawns": [...]}
+  /mechanics                what the game does, one sentence each        -> {"rows": [...]}
+  /entities/N/notes         what this actor does                         -> {"text": ...}
   /presentation/style       how it should look, in a short phrase, at most 80
                              characters -- the dossier's own visual_style can
-                             run to 600; do not paste it in whole         -> value_text
+                             run to 600; do not paste it in whole         -> {"text": ...}
 
 /entities/N/count is deliberately not on this list. It looks like
 presentation but it is how many of each actor there is -- exactly the kind
@@ -58,8 +58,8 @@ of thing a dossier describing a different game will disagree with the
 design about, and that disagreement is not the reference's to settle by
 changing it.
 
-Each change carries its value in exactly one of those value_* fields --
-never more than one, and none at all for a remove.
+Each change carries its value in `value`, as one object of the shape shown
+above -- never a mixture of two shapes, and null for a remove.
 
 Rules:
   * A screen's terrain rows must all match its declared width and height
