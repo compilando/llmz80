@@ -36,17 +36,20 @@ notice:
 
 `effort` is a parameter, and it is left out of the request unless a caller
 names a level: its default is already the high setting Studio wants, which is
-why `config.yml` no longer carries a key for it either. (What it carried was
-`reasoning_effort`, an OpenAI-era parameter for a different API. The code that
-still reads it -- `llmz80/utils/helpers.py`, and the old generator behind it --
-does not reach this module, so there is no config value here to plumb through.)
+why the `anthropic:` section of `config.yml` carries no key for it. (The
+`openai:` section still carries `reasoning_effort` -- an OpenAI-era parameter
+for a different API, read by `llmz80/utils/helpers.py` and the old generator
+behind it, neither of which reaches this module. There is no config value here
+to plumb through.)
 The level goes *inside* `output_config` because that is the only place it
 exists: the Messages API has no top-level `effort`, so one sent there is a
 `TypeError` out of the SDK before a request is ever built -- loud, not silent.
 Nesting it costs the schema nothing, because `messages.stream` merges the two
 into `{**output_config, "format": <schema>}` (anthropic 0.122.0,
-`resources/messages/messages.py:1275`), spreading the caller's dict first --
-so `output_format` and `effort` compose rather than compete.
+`resources/messages/messages.py:1156` -- the merge in the `stream` path, not
+the one in `parse`, which this module cannot use at all: see the comment on
+the call itself), spreading the caller's dict first -- so `output_format` and
+`effort` compose rather than compete.
 """
 
 from __future__ import annotations
