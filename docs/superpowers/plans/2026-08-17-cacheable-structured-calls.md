@@ -54,9 +54,10 @@ Append to `tests/test_studio_llm.py`:
 
 ```python
 def test_effort_travels_inside_output_config():
-    """`effort` is not a top-level parameter: the SDK takes it inside
-    `output_config`, which is also where it merges `output_format`. Sent at the
-    top level it is silently ignored, which is the failure this pins."""
+    """The key is nested, so the schema and the effort level reach the model
+    together instead of one displacing the other: `messages.stream` builds
+    `{**output_config, "format": <schema>}` (anthropic 0.122.0,
+    `resources/messages/messages.py:1275`), spreading the caller's dict first."""
     client = _FakeClient(_Verdict(ok=True))
 
     structured(
@@ -96,24 +97,52 @@ In `llmz80/studio/llm.py`, add the parameter to the signature after `attempts`:
 
 ```python
     attempts: int = DEFAULT_ATTEMPTS,
-    effort: str | None = None,
+    effort: Effort | None = None,
 ```
 
-and after the `if tools is not None:` block, add:
+and after the `if tools is not None:` block (never inside the retry loop — see the
+`effort_survives_a_retry` test below), add:
 
 ```python
     if effort is not None:
-        # Inside `output_config`, not top-level: that is where the SDK takes it,
-        # and where it merges `output_format` too (see the module docstring).
-        # Left out entirely when nobody asks, because `high` is already the
-        # default -- naming it would be describing the default.
         request["output_config"] = {"effort": effort}
+```
+
+The rationale belongs in the module docstring, not beside these two lines: an inline
+comment restating what the `if` already shows is narration by this file's own standard.
+Say there that the key is nested because there is nowhere else for it to go — there is no
+top-level `effort` in the request surface, and sent as one, `stream(**request)` raises
+`TypeError: got an unexpected keyword argument 'effort'` before any network I/O. It is the
+loudest possible failure, not a silent one.
+
+Add a test that the level survives the retry loop, too — the property that makes the
+placement correct (set before the loop; the loop only re-assigns `messages`) is otherwise
+unpinned, and Task 2 rebuilds the request's system half in this same function:
+
+```python
+def test_effort_survives_a_retry():
+    """The repair attempt is the same request with a different user turn."""
+    client = _ScriptedClient(_too_long(), _Verdict(ok=True))
+    structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict,
+               missing="m", effort="medium")
+    assert client.messages.calls[1]["output_config"] == {"effort": "medium"}
+```
+
+And constrain the type rather than taking a bare `str`: `OutputConfigParam.effort` is
+`Optional[Literal["low","medium","high","xhigh","max"]]` upstream, `OutputConfigParam` is a
+TypedDict so nothing validates at runtime, and a typo reaches the API as a 400 the retry
+loop does not catch — a paid round trip, minutes into a pipeline run, for a free
+check-time error. Spell the alias out in `llm.py` rather than importing it, so the module
+keeps depending on the client's shape and not on the SDK's types:
+
+```python
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_studio_llm.py -v`
-Expected: PASS, 13 tests
+Expected: PASS, 14 tests
 
 - [ ] **Step 5: Commit**
 
@@ -272,12 +301,12 @@ Replace the `request` construction (currently `llm.py:122-128`) with:
 - [ ] **Step 4: Run the whole file to verify nothing else moved**
 
 Run: `.venv/bin/python -m pytest tests/test_studio_llm.py -v`
-Expected: PASS, 17 tests
+Expected: PASS, 18 tests
 
 - [ ] **Step 5: Run the whole suite — ten other call sites go through this function**
 
 Run: `.venv/bin/python -m pytest tests/ -q`
-Expected: PASS, 1013 tests
+Expected: PASS, 1017 tests
 
 - [ ] **Step 6: Commit**
 
@@ -554,7 +583,7 @@ change, only which half of the request carries it.
 - [ ] **Step 6: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest tests/ -q`
-Expected: PASS, 1016 tests
+Expected: PASS, 1020 tests
 
 - [ ] **Step 7: Commit**
 
@@ -662,7 +691,7 @@ Expected: PASS
 - [ ] **Step 6: Run the whole suite**
 
 Run: `.venv/bin/python -m pytest tests/ -q`
-Expected: PASS, 1018 tests
+Expected: PASS, 1022 tests
 
 - [ ] **Step 7: Commit**
 
