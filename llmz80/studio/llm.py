@@ -1,13 +1,14 @@
 """How Studio asks a model for a structured answer, described once.
 
-Eight places in `llmz80/studio` ask a model a question whose answer must
+Ten places in `llmz80/studio` ask a model a question whose answer must
 satisfy a pydantic schema: the drafter, the reference researcher and the
 design it proposes, the planner, both design examiners, the program writer,
-and the runtime examiner. Every one of them used to spell the same request
-out by hand and follow it with the same four-line check, differing only in
-the schema and in the words of the error. That meant a change to how Studio
-talks to a model -- which is exactly what moving off OpenAI's Responses API
-was -- had to be made eight times, consistently, or not at all.
+the runtime examiner, and both grid drawers -- sprite sheets and tiles.
+Every one of them used to spell the same request out by hand and follow it
+with the same four-line check, differing only in the schema and in the words
+of the error. That meant a change to how Studio talks to a model -- which is
+exactly what moving off OpenAI's Responses API was -- had to be made ten
+times, consistently, or not at all.
 
 `structured` is that request. The callers keep what is genuinely theirs:
 their system prompt, their schema, and the sentence they want to read when
@@ -33,21 +34,38 @@ notice:
   than a value that gets ignored. Nothing here accepts one, so nothing can
   pass one through.
 
-`effort` is deliberately absent for the same reason it is not in
-`config.yml` any more: its default is already the high setting Studio wants,
-so naming it would be describing the default. `output_config` is where it
-would go if a caller ever needed to lower it, and the SDK merges
-`output_format` into that same object rather than treating the two as
-alternatives -- so adding it later is a parameter, not a rewrite.
+`effort` is a parameter, and it is left out of the request unless a caller
+names a level: its default is already the high setting Studio wants, which is
+why `config.yml` no longer carries a key for it either. (What it carried was
+`reasoning_effort`, an OpenAI-era parameter for a different API. The code that
+still reads it -- `llmz80/utils/helpers.py`, and the old generator behind it --
+does not reach this module, so there is no config value here to plumb through.)
+The level goes *inside* `output_config` because that is the only place it
+exists: the Messages API has no top-level `effort`, so one sent there is a
+`TypeError` out of the SDK before a request is ever built -- loud, not silent.
+Nesting it costs the schema nothing, because `messages.stream` merges the two
+into `{**output_config, "format": <schema>}` (anthropic 0.122.0,
+`resources/messages/messages.py:1275`), spreading the caller's dict first --
+so `output_format` and `effort` compose rather than compete.
 """
 
 from __future__ import annotations
 
-from typing import Any, Sequence, TypeVar
+from typing import Any, Literal, Sequence, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
 Schema = TypeVar("Schema", bound=BaseModel)
+
+#: The effort levels the API accepts, spelled out rather than imported from
+#: `anthropic.types`: this module deliberately depends on a client's *shape*,
+#: not on the SDK's type tree, which is what lets every test here pass a fake.
+#: Narrowed to a `Literal` because nothing checks the value at runtime --
+#: `OutputConfigParam` is a TypedDict -- so `"meduim"` would travel to the API
+#: and come back a 400 `BadRequestError`, which the retry loop below does not
+#: catch (it catches `ValidationError` only), after a paid round trip and, for
+#: a per-tile call, minutes into a pipeline run. mypy refuses it for free.
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
 #: Enough room for the largest structured answer Studio asks for -- a whole
 #: C program from `generator.ProgramSources` -- rather than a value tuned to
@@ -83,6 +101,7 @@ def structured(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     tools: Sequence[dict[str, Any]] | None = None,
     attempts: int = DEFAULT_ATTEMPTS,
+    effort: Effort | None = None,
 ) -> Schema:
     """One question, one schema-satisfying answer.
 
@@ -95,6 +114,14 @@ def structured(
     `tools` is left out of the request entirely when no caller asks for it,
     rather than sent as an empty list: only `reference.py` searches the web,
     and an empty tool list is a different request from no tool list.
+
+    `effort` is how much deliberation this one question is worth, and it is
+    left out unless a caller names a level, because `high` is what the model
+    does anyway. A caller passes one only to spend less: drawing an 8x8 tile
+    does not need the reasoning that writing a whole C program does. It is set
+    once, before the retry loop, which touches only `messages` -- so a repair
+    attempt asks at the level the caller chose and not at the default it was
+    trying to avoid.
 
     **An answer the schema refuses is asked for again, with the reason.**
     This is not belt-and-braces; it is required by how the SDK sends a
@@ -115,7 +142,7 @@ def structured(
     an unfixable failure into a fixable one.
 
     The alternative -- writing every limit into every prompt by hand -- was
-    rejected: fifteen fields across eight call sites, each free to drift from
+    rejected: fifteen fields across ten call sites, each free to drift from
     the schema it is supposed to describe, to avoid a retry that costs one
     call only when something already went wrong.
     """
@@ -128,6 +155,8 @@ def structured(
     }
     if tools is not None:
         request["tools"] = tools
+    if effort is not None:
+        request["output_config"] = {"effort": effort}
 
     refusal: ValidationError | None = None
     for attempt in range(1, max(1, attempts) + 1):

@@ -275,3 +275,62 @@ def test_the_default_ceiling_holds_a_deliberation_and_a_program():
     16000 was sized for the C program alone and a whole run was lost to it.
     """
     assert DEFAULT_MAX_TOKENS >= 64000
+
+
+def test_effort_travels_inside_output_config():
+    """Nested, so the schema and the level reach the model together.
+
+    `output_config` is where the level goes and also where the SDK puts the
+    schema: `messages.stream` merges them into `{**output_config, "format":
+    <schema>}`, so neither displaces the other. There is no top-level `effort`
+    to send it to instead -- that spelling is a `TypeError` out of the SDK --
+    so what this pins is the nesting, and that `output_format` survives it.
+    """
+    client = _FakeClient(_Verdict(ok=True))
+
+    structured(
+        client,
+        "claude-opus-5",
+        system="s",
+        user="u",
+        schema=_Verdict,
+        missing="m",
+        effort="medium",
+    )
+
+    call = client.messages.calls[0]
+    assert call["output_config"] == {"effort": "medium"}
+    assert "effort" not in call
+
+
+def test_no_output_config_is_sent_when_no_effort_is_asked_for():
+    """Every existing call site passes no effort and must keep sending exactly
+    what it sends today -- `high` is already the default the model applies, so
+    naming it would be describing the default (see the module docstring)."""
+    client = _FakeClient(_Verdict(ok=True))
+
+    structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
+
+    assert "output_config" not in client.messages.calls[0]
+
+
+def test_effort_survives_a_retry():
+    """The repair attempt is the same request with a different user turn.
+
+    A rebuild inside the loop would drop the level silently -- the writer's
+    repair attempts would each cost the full reasoning the caller paid to
+    avoid, and every other test here answers on the first attempt.
+    """
+    client = _ScriptedClient(_too_long(), _Verdict(ok=True))
+
+    structured(
+        client,
+        "claude-opus-5",
+        system="s",
+        user="u",
+        schema=_Verdict,
+        missing="m",
+        effort="medium",
+    )
+
+    assert client.messages.calls[1]["output_config"] == {"effort": "medium"}
