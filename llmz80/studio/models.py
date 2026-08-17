@@ -307,13 +307,38 @@ class TileSpec(StrictModel):
     #: reaches both a C char literal in the written program and the design
     #: prompt, where it is shown as '{char}'.
     char: str = Field(min_length=1, max_length=1, pattern=r"^[\x21-\x26\x28-\x5b\x5d-\x7e]$")
-    #: Asset id of this tile's artwork. Unused until the graphics phase.
+    #: Asset id of this tile's artwork, filled in by the graphics stage
+    #: (`services.draw_tiles`) rather than by a designer. It cannot be written
+    #: by hand ahead of the art: `structure.py` refuses a document whose
+    #: `tile.art` names an asset that does not exist, exactly as it refuses
+    #: `entity.sprite` doing the same, so the id and the asset have to be
+    #: registered in the same breath. What a designer writes instead is
+    #: `art_note` below.
     art: str | None = Field(default=None, pattern=ID_PATTERN)
+    #: What this terrain should look like, in the design's own words --
+    #: "brickwork, mortar lines between courses". Two things at once, and
+    #: deliberately: it is the brief the tile artist draws from, and it is how
+    #: a design asks for artwork at all (see `wants_art`). Terrain that is
+    #: empty space leaves this blank and stays the character it carries, which
+    #: is why this is not a bool: a stage that drew every declared tile would
+    #: spend a model call drawing nothing.
+    art_note: Prose = Field(default="", max_length=160)
     #: Palette entry id this tile is drawn in.
     colour: str | None = Field(default=None, pattern=ID_PATTERN)
     traits: list[Annotated[str, StringConstraints(pattern=ID_PATTERN)]] = Field(
         default_factory=list, max_length=8
     )
+
+    @property
+    def wants_art(self) -> bool:
+        """Whether this terrain asked to be drawn rather than written.
+
+        One reading of `art_note`, in one place, so the drawing stage, the
+        prompt and any gate all agree on which tiles are scenery -- and so
+        "the design asked for art" never becomes "somebody's guess about
+        which traits mean solid".
+        """
+        return bool(self.art_note.strip())
 
 
 class EntitySpec(StrictModel):

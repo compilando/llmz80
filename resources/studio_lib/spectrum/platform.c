@@ -11,6 +11,7 @@
 #include "platform.h"
 #include "game_config.h"
 #include "sprites.h"
+#include "tiles.h"
 
 #define ROM_FONT ((const unsigned char *)0x3D00)
 /* The ROM frame counter: three bytes at 23672, bumped by the 50 Hz interrupt.
@@ -38,6 +39,18 @@ static unsigned char out_of_band;
  * leaves the program nothing to get wrong, and the linker map carries the
  * symbol either way. */
 unsigned char g_worst_frame_cost;
+
+/* The colour plat_cell and plat_text write in, until a program says otherwise
+ * with plat_ink. White on black is what this library hardcoded at every call
+ * site before a design's declared colours were read at all, so it stays the
+ * default: a program that never mentions colour looks exactly as it did. */
+static unsigned char ink = PAPER_BLACK | INK_WHITE;
+
+unsigned char plat_ink(unsigned char attribute) {
+    unsigned char previous = ink;
+    ink = attribute;
+    return previous;
+}
 
 static void put_glyph(unsigned char col, unsigned char row, const unsigned char *glyph,
                       unsigned char attribute) {
@@ -168,6 +181,30 @@ unsigned char plat_wait_frame(void) {
     return cost;
 }
 
+/* How many gaps plat_frame_baseline will forgive in one run. A game changes
+ * scene, paints a screen and leaves a menu a handful of times; a loop that
+ * overruns does it every iteration, thousands of times, and runs out of
+ * forgiveness immediately. Eight is generous for the first and useless for the
+ * second, which is the only property that matters here. */
+#define BASELINES_ALLOWED 8
+
+static unsigned char baselines_left = BASELINES_ALLOWED;
+
+void plat_frame_baseline(void) {
+    if (baselines_left == 0) return;
+    --baselines_left;
+    /* Resynchronise and forget: the mark moves to now, so the next
+     * plat_wait_frame measures its own iteration and not the work that came
+     * before this call. out_of_band is cleared for the same reason -- a
+     * startup gap must not count towards the "slow for SLOW_RUN iterations in
+     * a row" evidence that reports a genuinely slow loop. g_worst_frame_cost
+     * is deliberately left alone rather than reset: a loop that really did
+     * overrun before this call keeps its number, and only the gap being
+     * closed here goes uncharged. */
+    frame_mark = FRAME_CLOCK;
+    out_of_band = 0;
+}
+
 unsigned char plat_input(void) {
     unsigned char keys = 0;
 #define X(bit, code) if (in_key_pressed(code)) keys |= bit;
@@ -180,8 +217,7 @@ void plat_text(unsigned char col, unsigned char row, const char *text) {
     while (*text != 0 && col < 32) {
         unsigned char code = (unsigned char)*text;
         if (code >= 32) {
-            put_glyph(col, row, ROM_FONT + (((unsigned int)(code - 32)) << 3),
-                      PAPER_BLACK | INK_WHITE);
+            put_glyph(col, row, ROM_FONT + (((unsigned int)(code - 32)) << 3), ink);
         }
         ++col;
         ++text;
@@ -195,11 +231,29 @@ void plat_cell(unsigned char col, unsigned char row, char glyph) {
     static const unsigned char blank[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     if (col >= 32 || row >= 24) return;
     if (code < 32 || code > 127) {
-        put_glyph(col, row, blank, PAPER_BLACK | INK_WHITE);
+        put_glyph(col, row, blank, ink);
         return;
     }
-    put_glyph(col, row, ROM_FONT + (((unsigned int)(code - 32)) << 3),
-              PAPER_BLACK | INK_WHITE);
+    put_glyph(col, row, ROM_FONT + (((unsigned int)(code - 32)) << 3), ink);
+}
+
+/* Draws a tile's own eight bytes into a cell, in the colour its art resolved
+ * to. This is put_glyph with the bitmap coming from tiles.c instead of the ROM
+ * font -- deliberately the same shape, because a tile occupies exactly what a
+ * character occupies, which is what makes terrain art a drop-in replacement
+ * for the character a design's tile carries.
+ *
+ * tile_data[] is indexed with the tile number and nothing else: a tile has one
+ * pose, so there is no frame offset to add and no multiply for SDCC to satisfy
+ * out of a library built for the wrong ABI (see sprite_header.py). */
+void plat_tile(unsigned char col, unsigned char row, unsigned char tile) {
+#if TILE_COUNT
+    if (tile >= TILE_COUNT) return;
+    if (col >= 32 || row >= 24) return;
+    put_glyph(col, row, tile_data[tile], tile_attribute[tile]);
+#else
+    (void)col; (void)row; (void)tile;
+#endif
 }
 
 /* Draws one 16x16 masked sprite as four character cells: two cells wide,

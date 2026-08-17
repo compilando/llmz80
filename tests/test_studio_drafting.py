@@ -13,6 +13,7 @@ from llmz80.studio.editing import rename_project
 from llmz80.studio.models import TargetPlatform
 from llmz80.studio.planner import EntityValue, ProjectChange, ProjectProposal, RowsValue
 from llmz80.studio.samples import blank_project
+from tests.conftest import FakeMessageStream
 
 
 @pytest.fixture
@@ -250,9 +251,9 @@ class _FakeMessages:
         self.parsed = parsed
         self.calls = []
 
-    def parse(self, **kwargs):
+    def stream(self, **kwargs):
         self.calls.append(kwargs)
-        return type("Response", (), {"parsed_output": self.parsed})()
+        return FakeMessageStream(type("Response", (), {"parsed_output": self.parsed})())
 
 
 class _FakeClient:
@@ -465,3 +466,35 @@ def test_without_an_examiner_no_second_question_is_asked(frog):
     result = draft_and_apply(frog, drafter)
 
     assert result.refusals == []
+
+
+def test_the_drafter_is_told_how_to_ask_for_terrain_artwork_and_colour():
+    """Both were describable and neither was reachable: `art_note` had no
+    mention in the vocabulary the drafter is handed, and `colour` was on the
+    "leave unset" list because a palette entry could not be declared either.
+    A design that cannot ask for art or colour produces a game drawn in
+    letters, whatever the machine can do."""
+    from llmz80.studio.drafting import DRAFT_SYSTEM_PROMPT
+
+    assert "/tiles/N/art_note" in DRAFT_SYSTEM_PROMPT
+    assert "/presentation/palette" in DRAFT_SYSTEM_PROMPT
+    assert "empty space" in DRAFT_SYSTEM_PROMPT
+
+
+def test_the_drafter_still_leaves_the_asset_pointers_alone():
+    """`sprite` and `art` name assets that do not exist yet, and naming one is
+    refused outright -- that has not changed. `colour` has: it names an entry
+    of the palette the same proposal may now declare."""
+    from llmz80.studio.drafting import DRAFT_SYSTEM_PROMPT
+
+    assert "Leave `sprite` and `art` unset" in DRAFT_SYSTEM_PROMPT
+
+
+def test_the_designer_adapting_a_dossier_may_dress_the_terrain_and_the_palette():
+    """This stage is the one whose whole job is how the game presents itself,
+    and a researched game's look is exactly what decides whether brickwork is
+    red on black -- so the fields that carry that have to be on its list."""
+    from llmz80.studio.reference_design import DESIGN_SYSTEM_PROMPT
+
+    assert "/tiles/N/art_note" in DESIGN_SYSTEM_PROMPT
+    assert "/presentation/palette" in DESIGN_SYSTEM_PROMPT

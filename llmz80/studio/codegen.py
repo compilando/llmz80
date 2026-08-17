@@ -106,6 +106,19 @@ def _binding_lines(project: GameProject) -> tuple[list[str], list[str]]:
     return bits, entries
 
 
+def _colour_lines(project: GameProject) -> list[str]:
+    """`#define COLOUR_<ID>` for every palette entry this target can show."""
+    from .palette import declared_attribute
+
+    lines = []
+    for entry in project.presentation.palette:
+        value = declared_attribute(project, entry.id)
+        if value is None:
+            continue
+        lines.append(f"#define COLOUR_{entry.id.upper()} {value}  /* {entry.colour} */")
+    return lines
+
+
 def render_config_header(project: GameProject) -> str:
     """Target and design constants the platform library and a program can use."""
     cpc_mode = 0 if project.target.video_mode is VideoMode.CPC_MODE_0 else 1
@@ -132,6 +145,16 @@ def render_config_header(project: GameProject) -> str:
             ],
             "/* Only targets with a free-running frame clock report overruns. */",
             f"#define HAS_FRAME_CLOCK {1 if has_frame_clock(project.target.platform) else 0}",
+            # One per colour the design's palette named and this machine can
+            # show. Resolved here rather than written into a prompt because the
+            # value is target-specific -- a Spectrum attribute byte, a CPC pen
+            # -- while the name a program says is the design's own either way
+            # (see palette.declared_attribute). An entry whose prose names no
+            # colour is left out rather than defaulted: defining it as white
+            # would put a colour nobody chose behind the design's word for it,
+            # and a program that used the name would then fail to compile,
+            # which is the loud version of that mistake.
+            *_colour_lines(project),
             "",
             "/* One bit per binding the design declared, in its own order. */",
             *bits,

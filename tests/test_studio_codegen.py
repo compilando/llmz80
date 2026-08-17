@@ -75,3 +75,47 @@ def test_the_state_header_declares_the_designs_own_observables():
     header = render_state_header(GameProject.model_validate(document))
     assert "extern unsigned char g_keys;" in header
     assert "extern unsigned int g_score;" in header
+
+
+def test_the_config_header_defines_a_constant_per_declared_colour():
+    """`plat_ink(COLOUR_LADRILLO)` only compiles if something defines the name.
+    The value is target-specific -- an attribute byte on the Spectrum, a pen on
+    the CPC -- which is why it is resolved here rather than written by hand into
+    a prompt (see `palette.declared_attribute`)."""
+    from llmz80.studio.models import PaletteEntry
+
+    project = blank_project("Coloured", TargetPlatform.SPECTRUM)
+    project.presentation.palette = [
+        PaletteEntry(id="ladrillo", colour="cian"),
+        PaletteEntry(id="pala", colour="amarillo brillante"),
+    ]
+
+    header = render_config_header(project)
+
+    assert "#define COLOUR_LADRILLO 5" in header
+    assert "#define COLOUR_PALA 70" in header
+
+
+def test_the_same_colours_become_pens_on_the_cpc():
+    from llmz80.studio.models import PaletteEntry
+
+    project = blank_project("Coloured", TargetPlatform.AMSTRAD_CPC)
+    project.presentation.palette = [PaletteEntry(id="pala", colour="blanco")]
+
+    header = render_config_header(project)
+
+    assert "#define COLOUR_PALA 3" in header
+
+
+def test_a_colour_whose_prose_names_nothing_is_left_out_rather_than_guessed():
+    """A palette entry reading "the colour of a stormy afternoon" resolves to
+    no machine colour at all; defining it as white would put a colour nobody
+    chose behind the design's own name for it."""
+    from llmz80.studio.models import PaletteEntry
+
+    project = blank_project("Vague", TargetPlatform.SPECTRUM)
+    project.presentation.palette = [PaletteEntry(id="mood", colour="a stormy afternoon")]
+
+    header = render_config_header(project)
+
+    assert "COLOUR_MOOD" not in header

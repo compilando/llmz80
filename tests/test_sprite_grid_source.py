@@ -22,6 +22,7 @@ from llmz80.studio.sprite_grid import (
     palette_for,
 )
 from llmz80.studio.spriting import SPRITE_SIZE
+from tests.conftest import FakeMessageStream
 
 
 def _project(platform=TargetPlatform.SPECTRUM, mode=None):
@@ -54,10 +55,10 @@ class _FakeMessages:
         self.grids = list(grids)
         self.calls = []
 
-    def parse(self, **kwargs):
+    def stream(self, **kwargs):
         self.calls.append(kwargs)
         grid = self.grids[min(len(self.calls), len(self.grids)) - 1]
-        return type("Response", (), {"parsed_output": grid})()
+        return FakeMessageStream(type("Response", (), {"parsed_output": grid})())
 
 
 class _FakeClient:
@@ -298,3 +299,72 @@ def test_the_artist_narrates_before_the_slow_call_rather_than_only_afterwards():
 
     assert any("intento 1" in line and "dibujando" in line for line in said)
     assert any("rechazado" in line for line in said)
+
+
+# ---------------------------------------------------------------------------
+# Terrain artwork reuses this machinery at a different size: 8x8, one frame,
+# and a solid block is a legitimate answer for a wall rather than a defect.
+# ---------------------------------------------------------------------------
+
+
+def test_a_tile_grid_is_checked_at_its_own_size():
+    from llmz80.studio.sprite_grid import GridPalette, SpriteFrameGrid, SpriteSheetGrid, grid_errors
+
+    palette = GridPalette(pens=((0, 0, 0),))
+    tile = SpriteSheetGrid(frames=[SpriteFrameGrid(rows=["0.0.0.0."] * 8)])
+
+    assert grid_errors(tile, palette, frames_expected=1, size=8) is None
+
+
+def test_a_sixteen_row_frame_is_wrong_when_a_tile_was_asked_for():
+    from llmz80.studio.sprite_grid import GridPalette, SpriteFrameGrid, SpriteSheetGrid, grid_errors
+
+    palette = GridPalette(pens=((0, 0, 0),))
+    sheet = SpriteSheetGrid(frames=[SpriteFrameGrid(rows=["0" * 16] * 16)])
+
+    problem = grid_errors(sheet, palette, frames_expected=1, size=8)
+
+    assert problem is not None and "8 rows" in problem
+
+
+def test_a_solid_tile_is_allowed_where_a_solid_sprite_is_not():
+    """A wall is a solid block; that is what a wall looks like. The
+    no-solid-frames rule exists because a solid *sprite* is a 16x16 brick
+    where a figure should be, which is a different claim about a different
+    kind of art."""
+    from llmz80.studio.sprite_grid import GridPalette, SpriteFrameGrid, SpriteSheetGrid, grid_errors
+
+    palette = GridPalette(pens=((0, 0, 0),))
+    solid = SpriteSheetGrid(frames=[SpriteFrameGrid(rows=["0" * 8] * 8)])
+
+    assert grid_errors(solid, palette, frames_expected=1, size=8, solid_allowed=True) is None
+
+
+def test_a_blank_tile_is_still_refused():
+    """Transparent everywhere draws nothing at all, and a tile that draws
+    nothing is the character it replaced, minus the character."""
+    from llmz80.studio.sprite_grid import GridPalette, SpriteFrameGrid, SpriteSheetGrid, grid_errors
+
+    palette = GridPalette(pens=((0, 0, 0),))
+    blank = SpriteSheetGrid(frames=[SpriteFrameGrid(rows=["." * 8] * 8)])
+
+    problem = grid_errors(blank, palette, frames_expected=1, size=8, solid_allowed=True)
+
+    assert problem is not None and "transparent" in problem
+
+
+def test_a_tile_grid_becomes_an_eight_by_eight_image():
+    from llmz80.studio.sprite_grid import (
+        GridPalette,
+        SpriteFrameGrid,
+        SpriteSheetGrid,
+        frames_from_grid,
+    )
+
+    palette = GridPalette(pens=((0, 0, 0),))
+    tile = SpriteSheetGrid(frames=[SpriteFrameGrid(rows=["0" * 8] * 8)])
+
+    frames = frames_from_grid(tile, palette, size=8)
+
+    assert len(frames) == 1
+    assert frames[0].size == (8, 8)

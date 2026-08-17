@@ -27,7 +27,7 @@ from typing import Any
 
 from llmz80.core.state_contract import contract_prompt
 
-from .models import AssetSpec, GameProject
+from .models import AssetSpec, GameProject, TileSpec
 from .observation import observation_script
 from .runtime_exam import (
     RuntimeExam,
@@ -38,7 +38,7 @@ from .runtime_exam import (
     examinable_symbols,
     usable_assertions,
 )
-from .spriting import is_blitter_sprite
+from .spriting import is_blitter_sprite, is_tile_art
 
 #: How a step's expectation compares the reading against what it expects.
 #:
@@ -68,6 +68,28 @@ def blitter_sprites(project: GameProject) -> list[AssetSpec]:
     that filter lives in `spriting.py` rather than being duplicated here.
     """
     return [asset for asset in project.assets if is_blitter_sprite(asset)]
+
+
+def tile_art(project: GameProject) -> list[tuple[TileSpec, AssetSpec]]:
+    """Every tile `render_project` will really emit a TILE_<ID> for, paired
+    with the artwork it wears.
+
+    `blitter_sprites`' rule for terrain, and it needs the pair rather than
+    just the asset because the constant is named after the *tile*: a design
+    reads its terrain as "'B' is ladrillo", so `TILE_LADRILLO` is the name the
+    writer can act on, while the asset id is a filename it never sees. Two
+    tiles are free to wear the same artwork -- each still gets its own
+    constant, and its own declared colour.
+
+    Filtered through `spriting.is_tile_art`, so this can never advertise a
+    constant the header will not define (see `is_blitter_sprite`).
+    """
+    art_by_id = {asset.id: asset for asset in project.assets if is_tile_art(asset)}
+    return [
+        (tile, art_by_id[tile.art])
+        for tile in project.tiles
+        if tile.art is not None and tile.art in art_by_id
+    ]
 
 
 def predicate(expectation: Any) -> dict[str, Any]:
@@ -321,6 +343,24 @@ def design_prompt(project: GameProject) -> str:
             )
         lines.append("")
 
+    # Stated for every design, not only one with artwork: the gap this is
+    # about is left by any work that happens before the game loop -- painting a
+    # screen, building a level, waiting on a title -- and `plat_wait_frame`
+    # charges it to the loop's first iteration and keeps it as a maximum for the
+    # whole session. Ten consecutive program attempts across two runs were
+    # failed by the pacing gate for exactly that, each one reading its worst
+    # cost at the step where its title screen handed over to the game.
+    lines.append(
+        "Frame pacing. plat_wait_frame reports how many display frames the previous "
+        "iteration of your loop overran by, and the worst it ever sees is read out of "
+        "memory and refused above 1. Work done before the loop starts -- painting a "
+        "screen, building a level, polling tightly for a key on a title -- leaves a gap "
+        "that is charged to whoever calls plat_wait_frame next, so call "
+        "plat_frame_baseline() once after any of it and before the loop that follows. "
+        "It restarts the measurement and charges nobody for the gap it closes."
+    )
+    lines.append("")
+
     lines.append("Controls. game_config.h defines one bit per binding:")
     for name, key in project.controls.bindings.items():
         lines.append(f"  INPUT_{name.upper():<12} key {key}")
@@ -331,14 +371,50 @@ def design_prompt(project: GameProject) -> str:
     # the `if sprites` branch below, the way the sprite-only half of drawing
     # does. A design with no sprites (the common case: a new project starts
     # with none) still needs to be told how its screen gets drawn at all.
+    # `tile_art`, not `project.tiles`: only a tile whose artwork really packs
+    # gets a TILE_<ID> in tiles.h (see that function), and advertising a
+    # constant the header never defines is a prompt that lies to the writer.
+    drawn_tiles = {tile.id for tile, _ in tile_art(project)}
     lines.append(
         "Terrain characters, as they appear in the screens below. Draw one with "
         "plat_cell(col, row, character):"
     )
     for tile in project.tiles:
         traits = f" [{', '.join(tile.traits)}]" if tile.traits else ""
-        lines.append(f"  '{tile.char}' is {tile.id}{traits}")
+        art = (
+            f" -- has artwork: draw it with plat_tile(col, row, TILE_{tile.id.upper()})"
+            if tile.id in drawn_tiles
+            else ""
+        )
+        lines.append(f"  '{tile.char}' is {tile.id}{traits}{art}")
     lines.append("")
+    if drawn_tiles:
+        # Said as an obligation for the same reason the sprite section is: a
+        # program that packs terrain artwork and then draws its terrain as
+        # letters fails verification (compiler.tile_usage_errors), and that is
+        # exactly what a finished, gate-passing game did before this line
+        # existed -- brickwork drawn as the character 'B'.
+        lines.append(
+            "The terrain above that has artwork must be drawn with plat_tile, not with "
+            "plat_cell and its character: a tile covers exactly one character cell, so "
+            "one call per cell, and the character stays only as the design's way of "
+            "writing the screen down. This is mandatory, not optional -- a program that "
+            "packs terrain artwork and never calls plat_tile fails verification. Terrain "
+            "with no artwork listed keeps plat_cell."
+        )
+        # What terrain art costs, said where the obligation is given. A screenful
+        # of brickwork is a hundred cells of eight bytes and an attribute each,
+        # and a loop that repaints all of it every frame overruns its display
+        # frame -- which the pacing gate then reads out of the machine as a
+        # number, with nothing to say the terrain was the reason. A real run
+        # spent four attempts on exactly that.
+        lines.append(
+            "  Draw each cell once, when the screen is built or when that cell changes, "
+            "and never repaint the whole field inside the game loop: a screen of terrain "
+            "is a hundred or more cells, and repainting it every frame overruns the "
+            "display frame, which is measured and refused."
+        )
+        lines.append("")
 
     # "Actors" would presuppose every entity plays that role; `kind` is free
     # vocabulary a design coins for itself (a door, a switch, a collectible),
@@ -386,6 +462,28 @@ def design_prompt(project: GameProject) -> str:
             "check for it). Each sprite below is a SPRITE_<ID> constant and a frame "
             "count from sprites.h."
         )
+        # The footprint, stated because a real run got it wrong in a way that
+        # compiled and passed every gate: a program drew its 16-pixel bat at
+        # `col` and again at `col + 1`, so the sprite overlapped itself by eight
+        # pixels and the bat reached the screen looking like a dumbbell.
+        # Nothing had told the writer a sprite is wider than a cell.
+        lines.append(
+            "  Each sprite covers 2x2 character cells (16x16 pixels) from the cell you "
+            "name, so two calls one column apart draw the same art overlapping itself by "
+            "half. Space sprites at least two columns and two rows apart; something wider "
+            "than 16 pixels needs one sprite per 2x2 block, not the same sprite drawn "
+            "again next door."
+        )
+        # The state contract already declares what `g_anim_frame` means and the
+        # runtime gate already reads it, but nothing told the writer *when* to
+        # touch it. Three attempts of one run drew a correctly animated bat and
+        # left the counter at zero, and the gate could only report the number.
+        lines.append(
+            "  Advance g_anim_frame every time you redraw an actor that is moving, and "
+            "pass it (masked to the sprite's frame count) as plat_sprite's frame: it is "
+            "read straight out of memory while the game runs, and a program whose art "
+            "cycles while that number stands still fails verification."
+        )
         for asset in sprites:
             wearers = [entity.id for entity in project.entities if entity.sprite == asset.id]
             worn = f", worn by {', '.join(wearers)}" if wearers else ""
@@ -393,6 +491,23 @@ def design_prompt(project: GameProject) -> str:
             lines.append(
                 f"  {asset.id}: SPRITE_{asset.id.upper()}, {asset.frames} {frame_word}{worn}"
             )
+        lines.append("")
+
+    if project.presentation.palette:
+        # Terrain and sprite artwork already carry their declared colour --
+        # `compiler.render_project` bakes it into the attribute tables -- so
+        # what is left for the writer is everything it draws itself: the score
+        # line, a title, a tile still drawn as a character. plat_ink is how,
+        # and COLOUR_<ID> is what to pass it (game_config.h defines one per
+        # entry below).
+        lines.append(
+            "Colours this design named. plat_ink(COLOUR_<ID>) sets what every later "
+            "plat_cell and plat_text is drawn in, and returns the previous value so you "
+            "can put it back. Artwork already carries its own colour; this is for the "
+            "text and the cells you draw yourself:"
+        )
+        for entry in project.presentation.palette:
+            lines.append(f"  COLOUR_{entry.id.upper()}  {entry.colour}")
         lines.append("")
 
     if project.audio.effects:
@@ -447,10 +562,11 @@ def design_prompt(project: GameProject) -> str:
             "platform.h documents what it offers.",
         ]
     )
-    if sprites:
+    mandatory = [name for name, needed in (("plat_sprite", sprites), ("plat_tile", drawn_tiles)) if needed]
+    if mandatory:
         lines.append(
-            "Use as much of it as helps, except plat_sprite: this design's sprites "
-            "make it mandatory, not optional (see above)."
+            f"Use as much of it as helps, except {' and '.join(mandatory)}: this design's "
+            "artwork makes them mandatory, not optional (see above)."
         )
     else:
         lines.append("Use it or don't.")

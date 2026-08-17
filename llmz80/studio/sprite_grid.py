@@ -95,7 +95,12 @@ class SpriteSheetGrid(BaseModel):
 
 
 def grid_errors(
-    sheet: SpriteSheetGrid, palette: GridPalette, *, frames_expected: int
+    sheet: SpriteSheetGrid,
+    palette: GridPalette,
+    *,
+    frames_expected: int,
+    size: int = SPRITE_SIZE,
+    solid_allowed: bool = False,
 ) -> str | None:
     """What is wrong with `sheet`, in words the next attempt can act on.
 
@@ -108,6 +113,15 @@ def grid_errors(
     The checks are ordered cheapest and most structural first, and only the
     first failure is reported -- a sheet with the wrong number of frames has
     nothing useful to say about row lengths inside them.
+
+    `size` is the square each frame must be, defaulting to a sprite's 16.
+    Terrain artwork asks for 8 (`spriting.TILE_SIZE`): a tile fills one
+    character cell, and the same grid vocabulary describes it.
+
+    `solid_allowed` lifts the no-solid-frames rule, and only terrain lifts it.
+    A solid *sprite* is a 16x16 brick where a figure should be, which is why
+    that rule exists; a solid *tile* is what a wall looks like. Blank is
+    refused either way -- artwork that draws nothing is not artwork.
     """
     if len(sheet.frames) != frames_expected:
         return (
@@ -117,16 +131,16 @@ def grid_errors(
 
     allowed = set(palette.alphabet) | {TRANSPARENT}
     for number, frame in enumerate(sheet.frames, start=1):
-        if len(frame.rows) != SPRITE_SIZE:
+        if len(frame.rows) != size:
             return (
-                f"frame {number} must have exactly {SPRITE_SIZE} rows, "
+                f"frame {number} must have exactly {size} rows, "
                 f"and it has {len(frame.rows)}"
             )
         for row_number, row in enumerate(frame.rows, start=1):
-            if len(row) != SPRITE_SIZE:
+            if len(row) != size:
                 return (
                     f"frame {number}, row {row_number} must be exactly "
-                    f"{SPRITE_SIZE} characters long, and it is {len(row)}"
+                    f"{size} characters long, and it is {len(row)}"
                 )
             for character in row:
                 if character not in allowed:
@@ -145,10 +159,10 @@ def grid_errors(
         drawn = sum(character != TRANSPARENT for row in frame.rows for character in row)
         if drawn == 0:
             return f"frame {number} is entirely transparent, so it draws nothing"
-        if drawn == SPRITE_SIZE * SPRITE_SIZE:
+        if drawn == size * size and not solid_allowed:
             return (
                 f"frame {number} has no transparent pixel at all, so it is a solid "
-                f"{SPRITE_SIZE}x{SPRITE_SIZE} block rather than a shape"
+                f"{size}x{size} block rather than a shape"
             )
     return None
 
@@ -161,7 +175,11 @@ PREVIEW_SCALE = 8
 
 
 def render_grid(
-    sheet: SpriteSheetGrid, palette: GridPalette, *, scale: int = PREVIEW_SCALE
+    sheet: SpriteSheetGrid,
+    palette: GridPalette,
+    *,
+    scale: int = PREVIEW_SCALE,
+    size: int = SPRITE_SIZE,
 ) -> Image.Image:
     """The sheet as one magnified picture, for somebody to look at.
 
@@ -176,14 +194,12 @@ def render_grid(
     grid and not a smoothed version of it.
     """
     frames = max(len(sheet.frames), 1)
-    image = Image.new(
-        "RGBA", (frames * SPRITE_SIZE * scale, SPRITE_SIZE * scale), (0, 0, 0, 0)
-    )
+    image = Image.new("RGBA", (frames * size * scale, size * scale), (0, 0, 0, 0))
     pixels = image.load()
     for index, frame in enumerate(sheet.frames):
-        origin = index * SPRITE_SIZE
-        for y, row in enumerate(frame.rows[:SPRITE_SIZE]):
-            for x, character in enumerate(row[:SPRITE_SIZE]):
+        origin = index * size
+        for y, row in enumerate(frame.rows[:size]):
+            for x, character in enumerate(row[:size]):
                 if character == TRANSPARENT or not character.isdigit():
                     continue
                 pen = int(character)
@@ -201,7 +217,9 @@ def render_grid(
     return image
 
 
-def frames_from_grid(sheet: SpriteSheetGrid, palette: GridPalette) -> list[Image.Image]:
+def frames_from_grid(
+    sheet: SpriteSheetGrid, palette: GridPalette, *, size: int = SPRITE_SIZE
+) -> list[Image.Image]:
     """`sheet` as the RGBA frames `spriting.py`'s packers take.
 
     Every pixel comes out fully opaque or fully transparent. That is not a
@@ -213,7 +231,7 @@ def frames_from_grid(sheet: SpriteSheetGrid, palette: GridPalette) -> list[Image
     """
     frames: list[Image.Image] = []
     for frame in sheet.frames:
-        image = Image.new("RGBA", (SPRITE_SIZE, SPRITE_SIZE), (0, 0, 0, 0))
+        image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         pixels = image.load()
         for y, row in enumerate(frame.rows):
             for x, character in enumerate(row):

@@ -68,6 +68,12 @@ one row, cell or spawn at a time:
   /entities/N/notes         what that actor does                 -> {"text": ...}
   /entities/N/count         how many of it there are             -> {"number": ...}
   /tiles/-                  a whole new kind of terrain          -> {"id": ..., "char": ...}, add
+  /tiles/N/art_note         what that terrain looks like, so it is drawn as
+                             artwork instead of as its character  -> {"text": ...}
+  /presentation/palette     the colours this design names, so terrain and
+                             actors can wear one                  -> {"palette": [...]}
+  /tiles/N/colour           which of those colours that terrain is -> {"text": ...}
+  /entities/N/colour        which of those colours that actor is  -> {"text": ...}
   /screens/N/tiles          the room, as rows of the design's own
                              tile characters                     -> {"rows": [...]}
   /screens/N/spawns         where each actor starts              -> {"spawns": [...]}
@@ -152,9 +158,22 @@ Rules:
   * A screen's terrain rows must all match its declared width and height
     exactly, and use only tile characters the design declares under `/tiles`.
     Add the tile before you use its character.
-  * Leave `sprite`, `art` and `colour` unset on everything you add. They name
-    assets and palette entries this design does not declare yet, and naming
-    one that does not exist is refused outright. The artwork comes later.
+  * Leave `sprite` and `art` unset on everything you add. They name image
+    assets this design does not declare yet, and naming one that does not
+    exist is refused outright: the artwork itself is drawn after this stage.
+  * `art_note` is how you ask for that artwork. Write it for terrain somebody
+    should see -- a wall, a brick, a girder, water -- in a few words saying
+    what it looks like, and leave it blank for empty space: a tile with no
+    note stays the character it carries, which is exactly right for the air a
+    player walks through and wrong for everything else. Terrain you leave
+    silent about is terrain the finished game draws as a letter.
+  * `colour` may be set, and unlike `art` it names something you declare
+    yourself: put the colours in `/presentation/palette` first, in the same
+    proposal, then name one of their ids. Each entry is an id and the colour
+    in plain words -- "bright cyan", "amarillo brillante". The machine has
+    eight inks and two intensities of each; a colour it cannot show is
+    ignored rather than approximated, and a colour nobody names comes out of
+    whatever the artwork itself happened to use.
   * A spawn names an entity the design declares and sits inside the screen it
     is on; an entity's `count` is the most instances of it one screen may
     place.

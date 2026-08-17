@@ -23,6 +23,16 @@ from .models import AssetSpec
 #: needs something else needs a second sprite kind, not a variable-size one.
 SPRITE_SIZE = 16
 
+#: Terrain artwork is one character cell square, and that is the whole
+#: difference between it and a sprite. A sprite is 16x16 and masked because an
+#: actor moves across a background it must leave intact; a tile *is* the
+#: background, it never moves, and it lands on exactly the cell whose character
+#: it replaces -- so 8x8, no mask, and one attribute for the one cell it fills.
+#: Fixed here for the same reason `SPRITE_SIZE` is: a variable-size tile would
+#: buy nothing and cost the blitter a multiply the CPC link cannot have (see
+#: sprite_header.py's --sdcccall note).
+TILE_SIZE = 8
+
 #: A pixel counts as drawn when it is this opaque. Generated art carries soft
 #: edges no matter how firmly the prompt forbids them, and a threshold is a
 #: decision made once here rather than differently in each caller.
@@ -49,6 +59,22 @@ def is_blitter_sprite(asset: AssetSpec) -> bool:
     `assets.c` conversion and gets no `SPRITE_<ID>` constant at all.
     """
     return asset.kind == "sprite" and asset.frame_width == SPRITE_SIZE and asset.height == SPRITE_SIZE
+
+
+def is_tile_art(asset: AssetSpec) -> bool:
+    """Whether `asset` is a tile's artwork, as `pack_*_tile` accepts it.
+
+    The `is_blitter_sprite` rule, one kind over: `compiler.render_project`
+    packs an asset into `tiles.h` as a `TILE_<ID>` only when this is true, and
+    `acceptance.tile_art` advertises exactly that same set of constants to the
+    writer. Two answers to one question is a prompt that promises a constant
+    the header never defines.
+
+    `kind` is `tileset` rather than `sprite` because `AssetSpec.kind` already
+    had the word and terrain is what it meant. An 8x8 asset declared `sprite`
+    is not tile art: the design said what it was for.
+    """
+    return asset.kind == "tileset" and asset.frame_width == TILE_SIZE and asset.height == TILE_SIZE
 
 #: Ink and BRIGHT bits exactly as z88dk defines them in <arch/zx.h>, found on
 #: this machine at
@@ -149,8 +175,12 @@ def _dominant_opaque_rgb(frames: list[Image.Image]) -> tuple[int, int, int] | No
     counts: Counter[tuple[int, int, int]] = Counter()
     for frame in frames:
         pixels = frame.load()
-        for y in range(SPRITE_SIZE):
-            for x in range(SPRITE_SIZE):
+        # The frame's own size, not `SPRITE_SIZE`: `pack_spectrum_tile` asks
+        # this same question of an 8x8 tile, and a hard-coded 16 walked off the
+        # end of it.
+        width, height = frame.size
+        for y in range(height):
+            for x in range(width):
                 r, g, b, a = pixels[x, y]
                 if a >= ALPHA_THRESHOLD:
                     counts[(r, g, b)] += 1
@@ -405,3 +435,103 @@ def pack_cpc(
     # unused rather than absent -- so sprite_header.py can emit one
     # `sprite_attribute[]` array shape that compiles against either platform.
     return PackedSprite(bytes(data), b"", width_bytes, SPRITE_SIZE, len(frames))
+
+
+@dataclass(frozen=True)
+class PackedTile:
+    """One tile's cell, ready to be written into a header.
+
+    Deliberately *not* a `PackedSprite` with `frames=1`. Three of that class's
+    five fields would be lies here -- `mask` is empty because terrain has no
+    background to keep rather than because the mask is interleaved, `frames`
+    is one because a tile has no animation rather than because this sheet
+    happens to hold a single pose, and `bytes_per_frame`'s "is `mask` empty?"
+    test for which packer produced it would read a CPC layout off a Spectrum
+    tile. A separate, smaller record says what a tile is instead of what a
+    sprite is not.
+    """
+
+    data: bytes
+    width_bytes: int
+    #: The Spectrum attribute byte for the one cell this tile fills; see
+    #: `_spectrum_attribute`, which sprites already use for the four cells
+    #: they cover. Ignored on the CPC, where the pen travels in the pixels.
+    attribute: int = 0
+    #: Kept for the same reason `PackedSprite` carries it: the header writer
+    #: emits the row count rather than assuming it, and one shape of
+    #: `tiles.c` compiles against both platform libraries.
+    height: int = TILE_SIZE
+    #: Always empty. Present so a reader of `tiles.c` beside `sprites.c` can
+    #: see that the absence of a mask here is a decision this packer made,
+    #: not a field somebody forgot to fill in.
+    mask: bytes = b""
+
+
+def _checked_tile(image: Image.Image) -> Image.Image:
+    if image.size != (TILE_SIZE, TILE_SIZE):
+        raise ValueError(f"a tile must be {TILE_SIZE}x{TILE_SIZE}; found {image.size}")
+    return image.convert("RGBA")
+
+
+def pack_spectrum_tile(image: Image.Image) -> PackedTile:
+    """Pack one 8x8 tile as one bit per pixel, one byte to a row.
+
+    This is the same bitmap layout the ROM font uses -- eight bytes, top row
+    first -- because it lands in the same place: the Spectrum's `plat_cell`
+    writes a ROM glyph into a cell's eight screen bytes, and `plat_tile`
+    writes these eight instead. A clear pixel packs as a zero bit and so shows
+    the paper; there is no mask, because a tile is the background rather than
+    something drawn over it.
+    """
+    checked = _checked_tile(image)
+    attribute = _spectrum_attribute([checked])
+    pixels = checked.load()
+    data = bytearray()
+    for y in range(TILE_SIZE):
+        bits = 0
+        for x in range(TILE_SIZE):
+            if pixels[x, y][3] >= ALPHA_THRESHOLD:
+                bits |= 0x80 >> x
+        data.append(bits)
+    return PackedTile(bytes(data), 1, attribute=attribute)
+
+
+def pack_cpc_tile(
+    image: Image.Image, *, mode: int, palette: list[tuple[int, int, int]]
+) -> PackedTile:
+    """Pack one 8x8 tile for CPCtelera's unmasked `cpct_drawSprite`.
+
+    The pixel encoding is `pack_cpc`'s exactly -- `_pack_byte_m0` and
+    `_pack_byte_m1`, the two CPCtelera macros quoted there -- and the one
+    difference is that nothing is interleaved: terrain is drawn with the
+    unmasked call, so `data` holds colour bytes only, and a clear pixel is
+    packed as pen 0 (the paper) rather than as a transparent pen. A tile
+    packed with a mask would have to be drawn with `cpct_drawSpriteMasked`,
+    which reads two bytes per byte drawn and exists to preserve a background
+    the terrain does not have.
+    """
+    if mode not in (0, 1):
+        raise ValueError(f"the CPC tile packer only supports modes 0 and 1; got mode {mode}")
+    pixels_per_byte = 2 if mode == 0 else 4
+    bits_per_pen = 4 if mode == 0 else 2
+    max_pens = 1 << bits_per_pen
+    if len(palette) > max_pens:
+        raise ValueError(
+            f"mode {mode} pens are {bits_per_pen} bits wide, so a palette can have at most "
+            f"{max_pens} entries; got {len(palette)}"
+        )
+    pack_byte = _pack_byte_m0 if mode == 0 else _pack_byte_m1
+    width_bytes = TILE_SIZE // pixels_per_byte
+
+    checked = _checked_tile(image)
+    pixels = checked.load()
+    data = bytearray()
+    for y in range(TILE_SIZE):
+        for byte in range(width_bytes):
+            pens = []
+            for i in range(pixels_per_byte):
+                x = byte * pixels_per_byte + i
+                r, g, b, a = pixels[x, y]
+                pens.append(_nearest_pen((r, g, b), palette) if a >= ALPHA_THRESHOLD else 0)
+            data.append(pack_byte(*pens))
+    return PackedTile(bytes(data), width_bytes)

@@ -170,11 +170,46 @@ class TileValue(ChangeValue):
     id: str
     char: str
     art: str | None = None
+    #: What this terrain should look like, and so whether it is drawn at all
+    #: (`TileSpec.wants_art`). Mirrored here because a mirror missing a field is
+    #: a field no proposal can ever set: terrain artwork stayed unreachable
+    #: while the one stage that could describe it wrote every design.
+    art_note: str = ""
     colour: str | None = None
     traits: list[str] = Field(default_factory=list)
 
     def json_value(self) -> Any:
         return self.model_dump(mode="json")
+
+
+class PaletteEntryValue(BaseModel):
+    """Mirrors `PaletteEntry` in models.py: the design's own name for a colour,
+    and the prose that says what the colour is."""
+
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(pattern=r"^[a-z][a-z0-9_]{1,31}$")
+    colour: str
+
+
+class PaletteValue(ChangeValue):
+    """A whole `presentation.palette`.
+
+    Its own variant because a design's colours are the one thing `colour` on a
+    tile or an entity is allowed to name: `structure.py` refuses a document
+    whose `tile.colour` names an entry the palette does not declare, so a
+    proposal that cannot write the palette cannot use colour at all -- which is
+    why every finished game came out monochrome while both the field and the
+    machine's eight inks were there the whole time.
+
+    Written whole rather than one entry at a time for the same reason
+    `/mechanics` is: a design's colours are a short list decided together, and
+    the twenty changes a proposal gets are better spent elsewhere.
+    """
+
+    palette: list[PaletteEntryValue]
+
+    def json_value(self) -> Any:
+        return [entry.model_dump(mode="json") for entry in self.palette]
 
 
 class ObservableValue(ChangeValue):
@@ -207,7 +242,14 @@ class ObservableValue(ChangeValue):
 #: The anyOf `ProjectChange.value` declares. Order matters only to readers:
 #: every variant forbids the others' fields, so nothing here is ambiguous.
 AnyChangeValue = (
-    TextValue | NumberValue | RowsValue | SpawnsValue | EntityValue | TileValue | ObservableValue
+    TextValue
+    | NumberValue
+    | RowsValue
+    | SpawnsValue
+    | EntityValue
+    | TileValue
+    | PaletteValue
+    | ObservableValue
 )
 
 
@@ -293,7 +335,8 @@ class ResponsesProjectPlanner:
                 "presentation.style, a mechanic's sentence or an entity's notes, "
                 '{"number": ...} for integers such as an entity\'s count, '
                 '{"rows": [...]} for a screen\'s tiles (one string per row) or the '
-                'whole mechanics list, and {"spawns": [...]} for a screen\'s spawns. '
+                'whole mechanics list, {"spawns": [...]} for a screen\'s spawns, and '
+                '{"palette": [...]} for the design\'s whole colour list. '
                 "Leave `value` null for a remove, and set it for an add or a replace."
             ),
             user=f"REQUEST:\n{request}\n\nPROJECT:\n{project.model_dump_json(indent=2)}",

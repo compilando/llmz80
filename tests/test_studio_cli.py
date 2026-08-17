@@ -2,6 +2,7 @@ from pathlib import Path
 
 from llmz80.cli import main
 from llmz80.studio.store import ProjectStore
+from tests.conftest import FakeMessageStream
 
 
 def test_new_creates_a_valid_project_with_defaults(tmp_path: Path, capsys):
@@ -378,13 +379,20 @@ def test_reference_reports_rather_than_crashes_on_a_malformed_model_response(
     game_path = tmp_path / "malformed-response" / "game.yml"
 
     class _RaisingMessages:
-        def parse(self, **_kwargs):
+        def stream(self, **_kwargs):
             # Satisfies GameReference's JSON schema field-by-field but fails
             # its cross-field model_validator -- a shape a real model
             # response could take, and exactly what the SDK's own post-parse
             # step would raise on.
-            return GameReference.model_validate(
-                {"identified": True, "confidence": "high", "title": "Not Really", "sources": []}
+            return FakeMessageStream(
+                GameReference.model_validate(
+                    {
+                        "identified": True,
+                        "confidence": "high",
+                        "title": "Not Really",
+                        "sources": [],
+                    }
+                )
             )
 
     class _RaisingClient:
@@ -609,7 +617,7 @@ class _FakeImageGenerator:
         self.calls = 0
         self.messages = self
 
-    def parse(self, **_kwargs):
+    def stream(self, **_kwargs):
         from llmz80.studio.sprite_grid import (
             TRANSPARENT,
             SpriteFrameGrid,
@@ -622,7 +630,7 @@ class _FakeImageGenerator:
         grid = SpriteSheetGrid(
             frames=[SpriteFrameGrid(rows=[half] * SPRITE_SIZE) for _ in range(4)]
         )
-        return type("Response", (), {"parsed_output": grid})()
+        return FakeMessageStream(type("Response", (), {"parsed_output": grid})())
 
 
 def _stub_sprites_dependencies(monkeypatch, generator):

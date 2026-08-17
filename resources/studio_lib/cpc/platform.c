@@ -8,6 +8,7 @@
 #include "platform.h"
 #include "game_config.h"
 #include "sprites.h"
+#include "tiles.h"
 
 #if CPC_MODE == 0
 #define CELL_BYTES 4
@@ -68,6 +69,14 @@ unsigned char plat_wait_frame(void) {
     return 0;
 }
 
+/* Nothing to resynchronise: with the firmware disabled this machine has no
+ * free-running frame counter, so plat_wait_frame measures nothing and there is
+ * no accumulated gap to forgive. Present so one program compiles unchanged
+ * against either platform library -- the same reason plat_sound is a no-op
+ * here. */
+void plat_frame_baseline(void) {
+}
+
 unsigned char plat_input(void) {
     unsigned char keys = 0;
     cpct_scanKeyboard_f();
@@ -90,6 +99,58 @@ void plat_cell(unsigned char col, unsigned char row, char glyph) {
     text[0] = glyph;
     text[1] = 0;
     plat_text(col, row, text);
+}
+
+/* The pen characters and text are drawn in. Colour on this machine is a pen
+ * per pixel rather than an attribute per cell, so "the current ink" is the
+ * foreground pen cpct_setDrawCharM* is told to use, and switching it is a call
+ * to that same setter -- not a byte kept here and applied later. Pen 3 (white
+ * in apply_palette's four) is what plat_init already set, so a program that
+ * never calls this looks exactly as it did.
+ *
+ * The attribute a Spectrum program passes is accepted unchanged and read as a
+ * pen index, because that is what `palette.declared_attribute` hands back on
+ * this target: COLOUR_<ID> is a pen here and an attribute byte there, and the
+ * program says plat_ink(COLOUR_LADRILLO) on both. Anything outside the four
+ * pens is ignored rather than set, since cpct_setDrawCharM* would encode the
+ * low bits of a bad index into a colour nobody chose. */
+static u8 draw_pen = 3;
+
+unsigned char plat_ink(unsigned char attribute) {
+    u8 previous = draw_pen;
+    if (attribute < 4) {
+        draw_pen = attribute;
+        set_draw_char(draw_pen, 0);
+    }
+    return previous;
+}
+
+/* Draws a tile's own 8x8 block into one cell, through the *unmasked*
+ * cpct_drawSprite (~/cpctelera/cpctelera/src/sprites/cpct_drawSprite.asm).
+ * Unmasked is the point: terrain is the background, so there is nothing to
+ * keep and no mask to interleave -- which also makes a tile half the bytes a
+ * masked one would be.
+ *
+ * Bounds guard: one cell wide and one cell tall, so unlike plat_sprite the
+ * last legal column is (80 / CELL_BYTES) - 1 and the last legal row is 24.
+ * The crossing arithmetic plat_sprite's comment describes does not arise at
+ * all here: eight pixel lines starting at a character row boundary stay inside
+ * one 8-line block, which is exactly one cpct_getScreenPtr result plus the
+ * callee's own per-line stepping.
+ *
+ * TILE_BYTES_WIDE is CELL_BYTES by construction (spriting.pack_cpc_tile packs
+ * 8 pixels at the mode's pixels per byte, and a cell is 8 pixels), so the
+ * width passed is the tile's real byte width and not an assumption. */
+void plat_tile(unsigned char col, unsigned char row, unsigned char tile) {
+#if TILE_COUNT
+    u8 *screen;
+    if (tile >= TILE_COUNT) return;
+    if (col >= (80 / CELL_BYTES) || row >= 25) return;
+    screen = cpct_getScreenPtr(CPCT_VMEM_START, (u8)(col * CELL_BYTES), (u8)(row * 8));
+    cpct_drawSprite((void *)tile_data[tile], screen, TILE_BYTES_WIDE, TILE_HEIGHT);
+#else
+    (void)col; (void)row; (void)tile;
+#endif
 }
 
 /* The CPC target declares no audio, so this is deliberately silent. The design

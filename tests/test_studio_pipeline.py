@@ -568,3 +568,55 @@ def test_writing_refuses_a_design_that_does_not_pass_its_own_gate(tmp_path):
 
     with pytest.raises(ValueError, match="not ready to be written"):
         pipeline.write(service, project, directory, NeverCalled())
+
+
+class _FakeTerrainArtist(_FakeArtist):
+    """Also draws terrain, recording which tile it drew, so one fake can stand
+    in for the whole graphics stage the way the real artist pair does."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.tiles: list[str] = []
+
+    def draw_tile(self, project, tile, dossier=None, *, on_progress=None):
+        from PIL import Image
+
+        from llmz80.studio.spriting import TILE_SIZE
+
+        self.tiles.append(tile.id)
+        image = Image.new("RGBA", (TILE_SIZE, TILE_SIZE), (0, 0, 0, 0))
+        pixels = image.load()
+        for y in range(TILE_SIZE):
+            for x in range(TILE_SIZE):
+                if (x + y) % 2 == 0:
+                    pixels[x, y] = (200, 40, 40, 255)
+        return [image]
+
+
+def test_the_graphics_stage_draws_the_terrain_the_design_asked_for(opened):
+    """The stage is "the art this project is missing", and terrain is art. A
+    design whose tiles asked to be drawn and whose stage only drew actors is
+    how a finished game came out looking like text."""
+    service, project, directory = opened
+    project.tiles[0].art_note = "brickwork, mortar lines between courses"
+    service.save_project(project, directory)
+    artist = _FakeTerrainArtist()
+
+    pipeline.sprites(service, project, directory, artist)
+
+    assert artist.tiles == [project.tiles[0].id]
+    on_disk = service.open_project(directory)
+    tile = next(tile for tile in on_disk.tiles if tile.id == project.tiles[0].id)
+    assert tile.art == tile.id
+    assert any(asset.kind == "tileset" for asset in on_disk.assets)
+
+
+def test_a_design_that_asked_for_no_terrain_art_draws_none(opened):
+    service, project, directory = opened
+    assert all(not tile.wants_art for tile in project.tiles)
+    artist = _FakeTerrainArtist()
+
+    pipeline.sprites(service, project, directory, artist)
+
+    assert artist.tiles == []
+    assert artist.calls  # the actors were still drawn

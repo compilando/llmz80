@@ -53,7 +53,16 @@ Schema = TypeVar("Schema", bound=BaseModel)
 #: C program from `generator.ProgramSources` -- rather than a value tuned to
 #: the smallest. A verdict that needs a hundred tokens is not charged for
 #: the ceiling; a program truncated at one is a failed generation.
-DEFAULT_MAX_TOKENS = 16000
+#:
+#: **Thinking is charged to this budget too.** The 16000 this used to be was
+#: sized for the program alone, and a real run spent all 16000 of them
+#: reasoning: `stop_reason` came back `max_tokens` with a single empty
+#: thinking block and no program at all, so `parsed_output` was None and the
+#: writer reported "the model did not return program sources" -- a truncation
+#: wearing the mask of a refusal. The effort this model reasons at is the
+#: high default (see the module docstring), so the ceiling has to hold a
+#: full deliberation *and* the answer after it.
+DEFAULT_MAX_TOKENS = 64000
 
 #: How many times an answer the schema refuses is asked for again. Two, not
 #: more: the first attempt is the model guessing at a rule it was never shown
@@ -125,7 +134,17 @@ def structured(
         content = user if refusal is None else f"{user}\n\n{_schema_feedback(refusal)}"
         request["messages"] = [{"role": "user", "content": content}]
         try:
-            response = client.messages.parse(**request)
+            # Streamed, not awaited whole. The SDK refuses outright to make a
+            # non-streaming request whose `max_tokens` could keep the socket
+            # open past ten minutes ("Streaming is required for operations
+            # that may take longer than 10 minutes"), and the ceiling a
+            # deliberating model needs to write a C program is well over that
+            # line -- so `messages.parse` cannot be used at this size at all.
+            # `messages.stream` accepts the same `output_format` and its final
+            # message carries the same `parsed_output`, so only the call
+            # changes: nothing downstream knows the difference.
+            with client.messages.stream(**request) as stream:
+                response = stream.get_final_message()
         except ValidationError as exc:
             refusal = exc
             if attempt == max(1, attempts):
@@ -136,6 +155,15 @@ def structured(
 
         parsed = response.parsed_output
         if parsed is None:
+            # A truncated answer is not a missing one, and saying "the model
+            # did not return program sources" about a program cut off at the
+            # token ceiling sends whoever reads it looking at the prompt
+            # instead of at `max_tokens`.
+            if getattr(response, "stop_reason", None) == "max_tokens":
+                raise ValueError(
+                    f"{missing}: the answer hit the {max_tokens} token ceiling "
+                    "before it was finished"
+                )
             raise ValueError(missing)
         return parsed
     raise AssertionError("unreachable")  # pragma: no cover

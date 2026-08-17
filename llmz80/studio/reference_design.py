@@ -52,6 +52,13 @@ at what it is:
   /presentation/style       how it should look, in a short phrase, at most 80
                              characters -- the dossier's own visual_style can
                              run to 600; do not paste it in whole         -> {"text": ...}
+  /presentation/palette     the colours this game is drawn in, each an id and
+                             the colour in plain words                    -> {"palette": [...]}
+  /tiles/N/art_note         what that terrain looks like, in a few words, so it
+                             is drawn as artwork rather than as its
+                             character                                    -> {"text": ...}
+  /tiles/N/colour           which declared colour that terrain is         -> {"text": ...}
+  /entities/N/colour        which declared colour that actor is           -> {"text": ...}
 
 /entities/N/count is deliberately not on this list. It looks like
 presentation but it is how many of each actor there is -- exactly the kind
@@ -73,6 +80,11 @@ Rules:
   * There is no field value that means "none of this": to drop a whole
     element the design has -- a mechanic, a menu option, an asset -- propose
     removing it, not writing an empty string in its place.
+  * A colour on a tile or an actor names an entry of /presentation/palette, so
+    propose the palette in the same proposal or the change is refused. Leave
+    `art` and `sprite` alone -- they name image files drawn after this stage --
+    and use `art_note` to say what terrain should look like instead. Terrain
+    that is empty space keeps a blank note and stays its character.
   * Only propose what the dossier supports. Where it says nothing, leave the
     design alone.
   * Give each change a reason that cites what in the dossier motivates it.

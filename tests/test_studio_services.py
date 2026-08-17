@@ -26,6 +26,7 @@ from llmz80.studio.services import StudioService
 from llmz80.studio.sprite_artist import FRAMES_PER_SHEET, MAX_DRAW_ATTEMPTS, SpriteArtist
 from llmz80.studio.sprite_sheet import split_frames
 from llmz80.studio.spriting import SPRITE_SIZE, pack_spectrum
+from tests.conftest import FakeMessageStream
 
 
 
@@ -53,8 +54,8 @@ class _GridClient:
         self.grid = grid
         self.messages = self
 
-    def parse(self, **_kwargs):
-        return type("Response", (), {"parsed_output": self.grid})()
+    def stream(self, **_kwargs):
+        return FakeMessageStream(type("Response", (), {"parsed_output": self.grid})())
 
 
 def _figure_grid():

@@ -6,7 +6,7 @@ import json
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from PIL import Image
 
@@ -14,7 +14,7 @@ from llmz80.core.project_mode import create_project_layout
 from llmz80.core.build_quality import build_report, select_fresh_artifact, write_build_report
 from llmz80.utils.config import load_config
 
-from .acceptance import blitter_sprites, generation_prompt
+from .acceptance import blitter_sprites, generation_prompt, tile_art
 from .codegen import (
     library_sources,
     render_config_header,
@@ -23,9 +23,20 @@ from .codegen import (
 from .structure import playfield
 from .models import GameProject, TargetPlatform, VideoMode
 from .probes import contract_failures, write_probe_report
+from .palette import declared_attribute
 from .sprite_header import render_sprite_header, render_sprite_source
 from .sprite_sheet import split_frames
-from .spriting import PackedSprite, is_blitter_sprite, pack_cpc, pack_spectrum
+from .spriting import (
+    PackedSprite,
+    PackedTile,
+    is_blitter_sprite,
+    is_tile_art,
+    pack_cpc,
+    pack_cpc_tile,
+    pack_spectrum,
+    pack_spectrum_tile,
+)
+from .tile_header import render_tile_header, render_tile_source
 
 #: A palette to quantise CPC sprite pixels against (see `spriting.pack_cpc`).
 #: Two other sources were considered and rejected for now:
@@ -121,23 +132,36 @@ def packed_sprite_bytes(packed_sprites: dict[str, PackedSprite]) -> int:
     return sum(len(sprite.data) + len(sprite.mask) for sprite in packed_sprites.values())
 
 
-def validate_sprite_budget(project: GameProject, packed_sprites: dict[str, PackedSprite]) -> None:
-    """Refuse a design whose packed sprites alone blow the static data budget.
+def validate_sprite_budget(
+    project: GameProject,
+    packed_sprites: dict[str, PackedSprite],
+    packed_tiles: dict[str, PackedTile] | None = None,
+) -> None:
+    """Refuse a design whose packed artwork alone blows the static data budget.
 
-    Only sprites are weighed against their reserved share here -- see
-    `SPRITE_STATIC_DATA_SHARE` for why sprites cannot be allowed the whole
-    budget. Nothing else Studio scaffolds is sized against this ceiling; the
-    program's own tables are the program's business.
+    Artwork is weighed as one thing, sprites and terrain together, because the
+    ceiling they are measured against is the machine's rather than each kind's
+    own: eight bytes of brickwork and eight bytes of hero cost the same eight
+    bytes twice. See `SPRITE_STATIC_DATA_SHARE` for why artwork cannot be
+    allowed the whole budget. Nothing else Studio scaffolds is sized against
+    this ceiling; the program's own tables are the program's business.
+
+    `packed_tiles` is optional so the call sites and tests that predate
+    terrain artwork keep meaning what they meant -- a project with no tile art
+    weighs exactly what it used to.
     """
-    sprite_bytes = packed_sprite_bytes(packed_sprites)
-    sprite_budget = int(project.budgets.static_data_bytes * SPRITE_STATIC_DATA_SHARE)
-    if sprite_bytes > sprite_budget:
+    art_bytes = packed_sprite_bytes(packed_sprites) + sum(
+        len(tile.data) for tile in (packed_tiles or {}).values()
+    )
+    art_budget = int(project.budgets.static_data_bytes * SPRITE_STATIC_DATA_SHARE)
+    if art_bytes > art_budget:
         raise ValueError(
-            f"packed sprites are {sprite_bytes} bytes but the sprite budget is "
-            f"{sprite_budget} bytes -- {int(SPRITE_STATIC_DATA_SHARE * 100)}% of the "
+            f"packed artwork is {art_bytes} bytes but the artwork budget is "
+            f"{art_budget} bytes -- {int(SPRITE_STATIC_DATA_SHARE * 100)}% of the "
             f"{project.budgets.static_data_bytes} byte budgets.static_data_bytes, the rest "
             "reserved for the program's own tables, screen grids and generated config that "
-            "share the same budget. Drop a frame or an entity, or raise static_data_bytes."
+            "share the same budget. Drop a frame, an entity or a tile's art, or raise "
+            "static_data_bytes."
         )
 
 
@@ -230,6 +254,45 @@ def sprite_usage_errors(project: GameProject, sources: dict[str, str]) -> list[s
     ]
 
 
+#: A call to `plat_tile`, matched exactly as `_SPRITE_CALL_RE` matches the
+#: sprite blitter and for the same reason: a word boundary and an open paren, so
+#: a mention in a comment (already blanked) or a longer name cannot satisfy it.
+_TILE_CALL_RE = re.compile(r"\bplat_tile\s*\(")
+
+
+def tile_usage_errors(project: GameProject, sources: dict[str, str]) -> list[str]:
+    """Refuse a program that has terrain artwork and draws its terrain as text.
+
+    `sprite_usage_errors`' defect for the other kind of art, and the one that
+    made a finished, gate-passing Arkanoid look like a spreadsheet: the design
+    declared walls and bricks, artwork was packed for them, and the program
+    drew every one of them with `plat_cell` and a letter. Every gate passed --
+    the build compiled, the runtime probes read the state the program really
+    kept, the animation and attribute gates read a screen full of correctly
+    coloured characters -- because none of them asks whether the terrain art
+    was used.
+
+    Only tiles that really got a `TILE_<ID>` count (`acceptance.tile_art`), so
+    a design whose tiles are all still characters is never asked to draw one.
+    Same shallowness as the sprite check, deliberately: this is a source-level
+    grep after comments and string literals are blanked, so it cannot see a
+    call inside dead code. Proving a tile reached the screen needs the
+    emulator, which is `feel.py`'s business.
+    """
+    tiles = tile_art(project)
+    if not tiles:
+        return []
+    code = "\n".join(_blanked(body) for body in sources.values())
+    if _TILE_CALL_RE.search(code):
+        return []
+    names = ", ".join(f"TILE_{tile.id.upper()}" for tile, _ in tiles)
+    return [
+        f"this design has terrain artwork ({names}) packed into tiles.h, but the program "
+        "never calls plat_tile -- draw the terrain that has art with "
+        "plat_tile(col, row, tile) instead of plat_cell and a character."
+    ]
+
+
 def render_project(project: GameProject, output_dir: Path) -> SourceResult:
     """Scaffold a buildable project around the program the project owns.
 
@@ -296,7 +359,50 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
             if project.target.platform is TargetPlatform.SPECTRUM
             else pack_cpc(frames, mode=cpc_mode, palette=CPC_DEFAULT_PALETTE)
         )
-    validate_sprite_budget(project, packed_sprites)
+    # A design's declared colour is the designer's decision and outranks the
+    # artist's: `spriting._spectrum_attribute` reads an ink off the pixels,
+    # which is the right answer only when nobody said otherwise. Applied here,
+    # once, rather than inside the packers -- they know about pixels and two
+    # machines and deliberately nothing about which entity wears what (see
+    # spriting.py's module docstring), and a colour id is exactly that kind of
+    # provenance.
+    #
+    # Several entities may share one sprite id; the first that declares a
+    # colour wins, because the header has one attribute per sprite and cannot
+    # hold two. A design that wants two colours needs two sprites.
+    for entity in project.entities:
+        packed = packed_sprites.get(entity.sprite)
+        if packed is None:
+            continue
+        attribute = declared_attribute(project, entity.colour)
+        if attribute is not None and project.target.platform is TargetPlatform.SPECTRUM:
+            packed_sprites[entity.sprite] = replace(packed, attribute=attribute)
+
+    # tiles.h, like sprites.h, is written unconditionally: platform.c includes
+    # it because that is where plat_tile lives, so a design that gave no tile
+    # artwork still needs a TILE_COUNT-0 header to build. Keyed by tile id, not
+    # asset id -- see `acceptance.tile_art` for why the writer reads TILE_WALL
+    # rather than TILE_BRICKWORK_PNG.
+    tile_art_paths = {
+        asset.id: path for asset, path in zip(project.assets, asset_paths) if is_tile_art(asset)
+    }
+    packed_tiles: dict[str, PackedTile] = {}
+    for tile, asset in tile_art(project):
+        with Image.open(tile_art_paths[asset.id]) as art:
+            image = art.convert("RGBA")
+        packed_tile = (
+            pack_spectrum_tile(image)
+            if project.target.platform is TargetPlatform.SPECTRUM
+            else pack_cpc_tile(image, mode=cpc_mode, palette=CPC_DEFAULT_PALETTE)
+        )
+        attribute = declared_attribute(project, tile.colour)
+        if attribute is not None and project.target.platform is TargetPlatform.SPECTRUM:
+            packed_tile = replace(packed_tile, attribute=attribute)
+        packed_tiles[tile.id] = packed_tile
+
+    validate_sprite_budget(project, packed_sprites, packed_tiles)
+    (source_dir / "tiles.h").write_text(render_tile_header(packed_tiles), encoding="utf-8")
+    (source_dir / "tiles.c").write_text(render_tile_source(packed_tiles), encoding="utf-8")
     (source_dir / "sprites.h").write_text(render_sprite_header(packed_sprites), encoding="utf-8")
     # The tables sprites.h only declares `extern` are defined here, once. Both
     # target builds pick this up the same way they pick up every other file in
@@ -318,6 +424,8 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
         "game_state.h",
         "sprites.h",
         "sprites.c",
+        "tiles.h",
+        "tiles.c",
     }
     shadowing = sorted(path.name for path in owned if path.name in reserved)
     if shadowing:
@@ -401,8 +509,12 @@ def build_project(
             f"written. The contract they must satisfy is in build/CONTRACT.md"
         )
     platform = project.target.platform.value
-    sprite_errors = sprite_usage_errors(
-        project, {path.name: path.read_text(encoding="utf-8") for path in owned}
+    program_text = {path.name: path.read_text(encoding="utf-8") for path in owned}
+    # Both artwork gates, reported together: a program that drew neither its
+    # actors nor its terrain has two things to fix, and telling it about one at
+    # a time would spend two whole attempts of the repair loop learning that.
+    sprite_errors = sprite_usage_errors(project, program_text) + tile_usage_errors(
+        project, program_text
     )
     if sprite_errors:
         # Refused without spending a compile: the toolchain has nothing to add

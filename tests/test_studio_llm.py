@@ -6,14 +6,16 @@ four-line "was it None?" check with only the error message differing. They
 now all go through `structured`, so the shape of a request to the model is
 described once, and a fake client in a test stands in for all eight.
 
-No network call is made anywhere in this file: `client.messages.parse` is
-replaced by a fake that records the kwargs it received.
+No network call is made anywhere in this file: `client.messages.stream` is
+replaced by a fake that records the kwargs it received and hands back a final
+message, the way the real stream manager does.
 """
 
 import pytest
 from pydantic import BaseModel
 
-from llmz80.studio.llm import structured
+from llmz80.studio.llm import DEFAULT_MAX_TOKENS, structured
+from tests.conftest import FakeMessageStream
 
 
 class _Verdict(BaseModel):
@@ -21,15 +23,15 @@ class _Verdict(BaseModel):
 
 
 class _FakeMessages:
-    """Stands in for `client.messages`: records the kwargs `parse` received."""
+    """Stands in for `client.messages`: records the kwargs `stream` received."""
 
     def __init__(self, parsed):
         self.parsed = parsed
         self.calls = []
 
-    def parse(self, **kwargs):
+    def stream(self, **kwargs):
         self.calls.append(kwargs)
-        return type("Response", (), {"parsed_output": self.parsed})()
+        return FakeMessageStream(type("Response", (), {"parsed_output": self.parsed})())
 
 
 class _FakeClient:
@@ -154,12 +156,12 @@ class _ScriptedMessages:
         self.outcomes = list(outcomes)
         self.calls = []
 
-    def parse(self, **kwargs):
+    def stream(self, **kwargs):
         self.calls.append(kwargs)
         outcome = self.outcomes[min(len(self.calls), len(self.outcomes)) - 1]
         if isinstance(outcome, Exception):
-            raise outcome
-        return type("Response", (), {"parsed_output": outcome})()
+            return FakeMessageStream(outcome)
+        return FakeMessageStream(type("Response", (), {"parsed_output": outcome})())
 
 
 class _ScriptedClient:
@@ -172,7 +174,7 @@ def _too_long() -> Exception:
 
     The SDK strips `maxLength` out of the schema it sends and validates it
     client-side afterwards, so the model is never told the limit as a rule
-    and pydantic raises inside `messages.parse`. Reproduced here through the
+    and pydantic raises while the stream is finished. Reproduced here through the
     same pydantic model rather than a hand-built exception, so the message
     the retry feeds back is the message the API path really produces.
     """
@@ -222,3 +224,54 @@ def test_a_good_first_answer_is_never_asked_twice():
     structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
 
     assert len(client.messages.calls) == 1
+
+
+class _TruncatedMessages:
+    """A model that spent its whole budget thinking and answered nothing."""
+
+    def __init__(self):
+        self.calls = []
+
+    def stream(self, **kwargs):
+        self.calls.append(kwargs)
+        return FakeMessageStream(
+            type("Response", (), {"parsed_output": None, "stop_reason": "max_tokens"})()
+        )
+
+
+class _TruncatedClient:
+    def __init__(self):
+        self.messages = _TruncatedMessages()
+
+
+def test_a_truncated_answer_says_so_instead_of_reading_as_a_refusal():
+    """`stop_reason: max_tokens` is a ceiling to raise, not a prompt to fix.
+
+    A real run spent all of its output budget reasoning and came back with an
+    empty thinking block, so `parsed_output` was None and the program writer
+    reported "the model did not return program sources" -- which sent the
+    reader to the prompt rather than to `max_tokens`.
+    """
+    client = _TruncatedClient()
+
+    with pytest.raises(ValueError) as failure:
+        structured(
+            client,
+            "claude-opus-5",
+            system="s",
+            user="u",
+            schema=_Verdict,
+            missing="the model did not return program sources",
+            max_tokens=1234,
+        )
+
+    assert "the model did not return program sources" in str(failure.value)
+    assert "1234 token ceiling" in str(failure.value)
+
+
+def test_the_default_ceiling_holds_a_deliberation_and_a_program():
+    """Thinking tokens are charged to `max_tokens` at this model's effort.
+
+    16000 was sized for the C program alone and a whole run was lost to it.
+    """
+    assert DEFAULT_MAX_TOKENS >= 64000

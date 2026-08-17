@@ -15,6 +15,7 @@ from llmz80.studio.generator import (
 from llmz80.studio.models import TargetPlatform
 from llmz80.studio.samples import blank_project
 from llmz80.studio.reference import GameReference, ReferenceSource
+from tests.conftest import FakeMessageStream
 
 
 @pytest.fixture
@@ -556,9 +557,9 @@ class _FakeMessages:
         self.parsed = parsed
         self.calls = []
 
-    def parse(self, **kwargs):
+    def stream(self, **kwargs):
         self.calls.append(kwargs)
-        return type("Response", (), {"parsed_output": self.parsed})()
+        return FakeMessageStream(type("Response", (), {"parsed_output": self.parsed})())
 
 
 class _FakeClient:
