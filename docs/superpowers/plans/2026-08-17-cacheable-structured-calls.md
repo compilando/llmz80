@@ -4,7 +4,7 @@
 
 **Goal:** Make `llm.structured()` cache the stable half of a prompt and accept a per-call effort level, so the writer's five repair attempts stop re-paying for the same 19 000-token prefix.
 
-**Architecture:** `structured()` gains two optional parameters. `cached_prefix` moves the stable part of a request into a second `system` block carrying `cache_control`, leaving only the volatile part in the user turn; `effort` becomes `output_config={"effort": ...}`. Both default to today's exact behaviour, so every one of the eleven call sites keeps working untouched until it opts in. Only the program writer opts in within this plan — it is the caller with a repair loop, and therefore the only one that can read a cache it just wrote.
+**Architecture:** `structured()` gains two optional parameters. `cached_prefix` moves the stable part of a request into a second `system` block carrying `cache_control`, leaving only the volatile part in the user turn; `effort` becomes `output_config={"effort": ...}`. Both default to today's exact behaviour, so every one of the ten call sites keeps working untouched until it opts in. Only the program writer opts in within this plan — it is the caller with a repair loop, and therefore the only one that can read a cache it just wrote.
 
 **Tech Stack:** Python 3.12, `anthropic` 0.122.0 (`client.messages.stream` + `output_format`), pydantic v2, pytest. The fake client used by every test lives in `tests/conftest.py` as `FakeMessageStream` / `fake_message`.
 
@@ -35,7 +35,7 @@ expensive, not less.
 | File | Responsibility | Change |
 |---|---|---|
 | `llmz80/studio/llm.py` | The one place a structured request is built | Modify: add `cached_prefix`, `cache_ttl`, `effort` |
-| `tests/test_studio_llm.py` | Pins the request shape for all eleven call sites | Modify: add tests |
+| `tests/test_studio_llm.py` | Pins the request shape for all ten call sites | Modify: add tests |
 | `tests/test_studio_live_cache.py` | Proves against the real API that the shape is accepted and the cache is read | Create |
 | `llmz80/studio/generator.py` | The program writer, the only caller with a repair loop | Modify: opt in |
 | `tests/test_studio_generator.py` | Pins what the writer sends | Modify: add tests |
@@ -216,7 +216,7 @@ def test_the_prefix_defaults_to_the_one_hour_ttl_and_the_caller_may_override():
 
 
 def test_without_a_prefix_the_system_prompt_stays_a_plain_string():
-    """Ten of the eleven call sites pass no prefix, and their request must be
+    """Nine of the ten call sites pass no prefix, and their request must be
     byte-identical to what it is today -- a request that changed shape would
     invalidate any cache they do have and change what the model is sent."""
     client = _FakeClient(_Verdict(ok=True))
