@@ -185,13 +185,17 @@ Open an issue with:
   any CPC project that asks for sound. CPCtelera bundles Arkos Tracker, which
   is a music player rather than an effects API, so the first question is what
   five short effects should even be on an AY.
-- **Sub-cell movement.** Everything is positioned in character cells, so
-  nothing moves by less than eight pixels and nothing scrolls. Vertical is
-  nearly free -- `cpct_getScreenPtr` already takes a pixel row, and z88dk has
-  `zx_pxy2saddr` -- while horizontal needs pre-shifted sprite variants, which
-  `sprite_header.py`'s `sprite_frame_offset` table can already index. Note what
-  it breaks: the attribute gate assumes a sprite is cell-aligned, and the
-  pacing gate's one-frame tolerance was calibrated against cell blits.
+- **Horizontal sub-cell movement.** The vertical half is done
+  (`plat_sprite_py`); a column is still eight pixels. Moving by less needs
+  pre-shifted copies of each sprite -- eight on the Spectrum, two or four on
+  the CPC -- which `sprite_header.py`'s `sprite_frame_offset` table can already
+  index, so the work is in the packer and the memory budget rather than in the
+  blitter. Measure before assuming: `plat_sprite_py` is already slower per call
+  than `plat_sprite`, and the pacing gate allows one missed frame.
+- **Scrolling.** Neither machine has it. The CPC can do it in hardware with
+  `cpct_setVideoMemoryOffset`; the Spectrum has no hardware scroll at all, so
+  full-screen smooth scrolling is not realistic from C -- a windowed or
+  character-step scroll is.
 - **A colour gate for the CPC,** since the Spectrum attribute gate has no
   meaning there and the CPC now has sixteen pens to get wrong.
 - **More retrieval examples,** for either machine.

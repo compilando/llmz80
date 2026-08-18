@@ -295,6 +295,59 @@ void plat_sprite(unsigned char col, unsigned char row, unsigned char sprite,
 #endif
 }
 
+/* The same sprite, addressed by scanline.
+ *
+ * `zx_saddrpdown` is what makes this short. Stepping one *pixel* line down is
+ * `+256` only while the line stays inside its character row; at the eighth it
+ * wraps to the next character row, and at the sixty-fourth to the next screen
+ * third, which is a different bank of the display file altogether. That is
+ * the same non-linearity plat_sprite above dodges by converting afresh per
+ * half; here there is no cell to convert from, so the library routine that
+ * knows the layout does the stepping instead of arithmetic invented here.
+ *
+ * The guard is 176, not 191: the sprite is sixteen lines tall and the display
+ * is 192, so 176 is the last row whose sprite ends on the screen. Past it
+ * `zx_saddrpdown` would walk out of the display file and into whatever is
+ * above it, which on a 48K is the attribute area and then the system
+ * variables -- a corruption that shows up as the game dying, minutes later,
+ * somewhere else entirely.
+ *
+ * Attributes: the covered rows are those of the first and last scanline,
+ * `py >> 3` and `(py + 15) >> 3`, which is two rows when py is a multiple of
+ * eight and three when it is not. Written as a loop over that range rather
+ * than as the four fixed writes plat_sprite makes, because the count is not
+ * fixed: a sprite between cells that coloured only its first two rows would
+ * appear with its last third in whatever colour the background happened to
+ * be. */
+void plat_sprite_py(unsigned char col, unsigned char py, unsigned char sprite,
+                    unsigned char frame) {
+#if SPRITE_COUNT
+    const unsigned char *data;
+    const unsigned char *mask;
+    unsigned char *at;
+    unsigned char line;
+    unsigned char row;
+    unsigned char last;
+    if (sprite >= SPRITE_COUNT) return;
+    if (col > 30 || py > 176) return;
+    data = sprite_data[sprite] + sprite_frame_offset[sprite][frame];
+    mask = sprite_mask[sprite] + sprite_frame_offset[sprite][frame];
+    at = (unsigned char *)zx_pxy2saddr((unsigned char)(col << 3), py);
+    for (line = 0; line < 16; ++line) {
+        at[0] = (unsigned char)((at[0] & *mask++) | *data++);
+        at[1] = (unsigned char)((at[1] & *mask++) | *data++);
+        at = (unsigned char *)zx_saddrpdown(at);
+    }
+    last = (unsigned char)((py + 15) >> 3);
+    for (row = (unsigned char)(py >> 3); row <= last; ++row) {
+        *(unsigned char *)zx_cxy2aaddr(col, row) = sprite_attribute[sprite];
+        *(unsigned char *)zx_cxy2aaddr(col + 1, row) = sprite_attribute[sprite];
+    }
+#else
+    (void)col; (void)py; (void)sprite; (void)frame;
+#endif
+}
+
 /* Beeper effects through z88dk's certified bit_beep, kept short because the
  * call blocks: every millisecond spent here is a millisecond the game loop is
  * not running. AUDIO_EFFECT_MASK lets the design switch each effect off.

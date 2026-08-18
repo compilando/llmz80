@@ -82,6 +82,39 @@ unsigned char plat_ink(unsigned char attribute);
 void plat_sprite(unsigned char col, unsigned char row, unsigned char sprite,
                  unsigned char frame);
 
+/* The same sprite, at a pixel row instead of a character row: `py` is a
+ * scanline, so `py` and `py + 1` are one pixel apart rather than eight. The
+ * column is still a character column -- moving by less than one byte across
+ * needs a differently shifted copy of the sprite, which is a different piece
+ * of work with a real memory cost, and this one has none.
+ *
+ * Use it for anything a player watches move down or up: a jump, a fall, a
+ * lift, a ball. Use plat_sprite above for anything that sits on the grid --
+ * it is cheaper, and a thing that only ever appears in cells looks no better
+ * for being drawn through the slower path.
+ *
+ * Two costs to know about, both on the Spectrum and neither fatal:
+ *
+ * A sprite at a row that is not a multiple of eight covers three character
+ * rows rather than two, so it takes six attribute cells rather than four, and
+ * the two extra cells take the sprite's colour away from whatever was behind
+ * them. On a machine with one colour per cell that is the price of smooth
+ * vertical movement, and it is the same price every commercial game of the
+ * era paid.
+ *
+ * It is also slower than plat_sprite -- the address of each pixel line has to
+ * be stepped rather than derived by adding 256 -- so a program that moves
+ * many sprites this way should watch what plat_wait_frame reports.
+ *
+ * Erasing is the program's business either way, and a little more work here:
+ * the rows to repaint are the three the sprite covered, not two.
+ *
+ * `py` is bounded by the screen, not by the playfield: 0 to 176 on the
+ * Spectrum (192 lines less the sprite's 16) and 0 to 184 on the CPC. Out of
+ * range draws nothing rather than writing past the screen. */
+void plat_sprite_py(unsigned char col, unsigned char py, unsigned char sprite,
+                    unsigned char frame);
+
 /* Plays effect N, where N is the index the design gave it -- game_config.h
  * defines SOUND_<NAME> for each one it declared. What each index sounds like
  * is this library's business; what it is called is the design's. A target

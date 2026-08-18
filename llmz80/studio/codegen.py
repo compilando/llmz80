@@ -46,6 +46,29 @@ KEY_CODES: dict[TargetPlatform, dict[str, str]] = {
 }
 
 
+#: Scanlines each machine's display has. Not a design choice and not
+#: configurable: 192 on a Spectrum, 200 on a CPC.
+SCREEN_LINES: dict[TargetPlatform, int] = {
+    TargetPlatform.SPECTRUM: 192,
+    TargetPlatform.AMSTRAD_CPC: 200,
+}
+
+
+def max_sprite_py(platform: TargetPlatform) -> int:
+    """The last pixel row a 16-line sprite can start on and still fit.
+
+    Derived rather than written down twice, because it is written down in
+    three places that must agree: the guard in each `plat_sprite_py`, the
+    `MAX_SPRITE_PY` macro a program reads, and the sentence the writing prompt
+    puts in front of the model. A prompt naming 176 on a machine whose guard
+    says 184 costs the CPC eight rows of screen and says nothing about it; the
+    reverse silently draws nothing and looks like a broken blitter.
+    """
+    from .spriting import SPRITE_SIZE
+
+    return SCREEN_LINES[platform] - SPRITE_SIZE
+
+
 #: Targets whose `plat_wait_frame` actually counts the frames the previous
 #: iteration cost. `resources/studio_lib/spectrum/platform.c` reads the ROM
 #: frame counter at 23672; `resources/studio_lib/cpc/platform.c` builds the
@@ -185,6 +208,8 @@ def render_config_header(project: GameProject) -> str:
             ],
             "/* Only targets with a free-running frame clock report overruns. */",
             f"#define HAS_FRAME_CLOCK {1 if has_frame_clock(project.target.platform) else 0}",
+            "/* The last pixel row plat_sprite_py can start a sprite on. */",
+            f"#define MAX_SPRITE_PY {max_sprite_py(project.target.platform)}",
             *_cpc_palette_lines(project),
             # One per colour the design's palette named and this machine can
             # show. Resolved here rather than written into a prompt because the

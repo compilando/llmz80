@@ -277,11 +277,24 @@ The one CPC gap left is sound: `plat_sound` is a no-op and the design gate
 refuses any CPC project that asks for audio. CPCtelera bundles Arkos Tracker,
 which is where the fix starts.
 
-And a limit that is not about either machine: every position is a character
-cell on both, so nothing moves by less than eight pixels and nothing scrolls.
-Vertical sub-cell movement is close to free — `cpct_getScreenPtr` already takes
-a pixel row and z88dk has `zx_pxy2saddr` — while horizontal needs pre-shifted
-sprite variants, eight on the Spectrum and two or four on the CPC.
+### Movement
+
+Sprites move by the pixel **vertically** on both machines:
+`plat_sprite_py(col, py, sprite, frame)` takes a scanline instead of a
+character row, so a jump or a fall is smooth. It costs one thing on the
+Spectrum — a sprite between cells covers three character rows rather than two,
+so six attribute cells take its colour rather than four — and nothing on the
+CPC, whose colour lives in the pixels.
+
+**Horizontally** everything is still byte-aligned: a column is eight pixels.
+Moving by less needs pre-shifted copies of each sprite, eight on the Spectrum
+and two or four on the CPC depending on the mode, and the memory for them.
+`sprite_header.py`'s `sprite_frame_offset` table can already index the extra
+variants, so the work is the packer and the budget, not the blitter.
+
+**Scrolling** is not implemented on either. The CPC could do it in hardware
+(`cpct_setVideoMemoryOffset`); the Spectrum has none and would need a software
+blit.
 
 ---
 

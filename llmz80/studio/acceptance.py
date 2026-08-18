@@ -27,6 +27,7 @@ from typing import Any
 
 from llmz80.core.state_contract import contract_prompt
 
+from .codegen import max_sprite_py
 from .models import AssetSpec, GameProject, TileSpec
 from .observation import observation_script
 from .runtime_exam import (
@@ -472,9 +473,30 @@ def design_prompt(project: GameProject) -> str:
         lines.append(
             "Sprites: draw one with plat_sprite(col, row, sprite, frame). This is not "
             "optional once a design has sprites: a program that packs sprites below but "
-            "never calls plat_sprite fails verification (see compiler.py's "
+            "never draws with them fails verification (see compiler.py's "
             "check for it). Each sprite below is a SPRITE_<ID> constant and a frame "
             "count from sprites.h."
+        )
+        # The pixel-row blitter, offered as a choice with the cost stated
+        # rather than as the better option, because it is not always the
+        # better option: it is slower per call, and a thing that lives on the
+        # grid gains nothing from it. A writer told only "smooth is better"
+        # would put the whole screen through it.
+        lines.append(
+            "  plat_sprite_py(col, py, sprite, frame) is the same sprite at a pixel "
+            "row: py is a scanline, so py and py+1 are one pixel apart instead of "
+            "eight, and the column is still a character column. Use it for anything "
+            "the player watches rise or fall -- a jump, a fall, a lift, a ball -- and "
+            "keep plat_sprite for anything that sits on the grid, which is cheaper. "
+            f"py runs 0 to {max_sprite_py(project.target.platform)} on this machine "
+            "(also game_config.h's MAX_SPRITE_PY); out of range draws nothing."
+        )
+        lines.append(
+            "  A sprite at a py that is not a multiple of 8 covers three character "
+            "rows rather than two, so erase all three when it moves, and expect it to "
+            "take the colour of six cells rather than four. That is what smooth "
+            "vertical movement costs on this machine, and it is the cost every game "
+            "of the era paid."
         )
         # The footprint, stated because a real run got it wrong in a way that
         # compiled and passed every gate: a program drew its 16-pixel bat at
@@ -484,8 +506,9 @@ def design_prompt(project: GameProject) -> str:
         lines.append(
             "  Each sprite covers 2x2 character cells (16x16 pixels) from the cell you "
             "name, so two calls one column apart draw the same art overlapping itself by "
-            "half. Space sprites at least two columns and two rows apart; something wider "
-            "than 16 pixels needs one sprite per 2x2 block, not the same sprite drawn "
+            "half. Space sprites at least two columns and two rows apart -- or, with "
+            "plat_sprite_py, two columns and 16 pixel rows -- and give something wider "
+            "than 16 pixels one sprite per 2x2 block rather than the same sprite drawn "
             "again next door."
         )
         # The state contract already declares what `g_anim_frame` means and the
@@ -494,9 +517,10 @@ def design_prompt(project: GameProject) -> str:
         # left the counter at zero, and the gate could only report the number.
         lines.append(
             "  Advance g_anim_frame every time you redraw an actor that is moving, and "
-            "pass it (masked to the sprite's frame count) as plat_sprite's frame: it is "
-            "read straight out of memory while the game runs, and a program whose art "
-            "cycles while that number stands still fails verification."
+            "pass it (masked to the sprite's frame count) as the frame argument of "
+            "whichever of the two you call: it is read straight out of memory while the "
+            "game runs, and a program whose art cycles while that number stands still "
+            "fails verification."
         )
         for asset in sprites:
             wearers = [entity.id for entity in project.entities if entity.sprite == asset.id]

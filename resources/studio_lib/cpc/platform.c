@@ -342,18 +342,43 @@ void plat_sound(unsigned char effect) {
  * sprite's width in whole bytes, not pixels. */
 void plat_sprite(unsigned char col, unsigned char row, unsigned char sprite,
                  unsigned char frame) {
+    plat_sprite_py(col, (unsigned char)(row * 8), sprite, frame);
+}
+
+/* The same sprite, addressed by scanline -- and on this machine that is what
+ * the toolchain wanted all along.
+ *
+ * `cpct_getScreenPtr`'s third argument has always been a pixel line: its own
+ * formula is screen_start + 80*(y/8) + 2048*(y%8) + x, with y in scanlines
+ * (cpct_getScreenPtr.asm, Details). `plat_sprite` was passing `row * 8` and
+ * throwing that away, so the whole cost of vertical movement here is not
+ * multiplying. The interleaved-block crossing that makes the arithmetic look
+ * frightening is handled by the callee either way: cpct_drawSpriteMasked.asm's
+ * per-line loop detects every eighth line with `and #0x38` and repoints DE,
+ * whatever line it started on.
+ *
+ * There is no attribute work to do, unlike the Spectrum: colour on this
+ * machine lives in the pixel bytes, so a sprite straddling three character
+ * rows costs exactly what one straddling two costs.
+ *
+ * The guard is 184, not 199: the sprite is sixteen lines tall and the display
+ * is 200. Past it the callee, which does no bounds checking of its own (same
+ * file, "Known limitations"), would step forward through the bank and
+ * corrupt whatever follows the screen. */
+void plat_sprite_py(unsigned char col, unsigned char py, unsigned char sprite,
+                    unsigned char frame) {
 #if SPRITE_COUNT
     u8 *screen;
     const u8 *bytes;
     if (sprite >= SPRITE_COUNT) return;
-    if (col >= (80 / CELL_BYTES) - 1 || row >= 24) return;
-    screen = cpct_getScreenPtr(CPCT_VMEM_START, (u8)(col * CELL_BYTES), (u8)(row * 8));
+    if (col >= (80 / CELL_BYTES) - 1 || py > 184) return;
+    screen = cpct_getScreenPtr(CPCT_VMEM_START, (u8)(col * CELL_BYTES), py);
     bytes = sprite_data[sprite] + sprite_frame_offset[sprite][frame];
     /* SPRITE_BYTES_WIDE is 8 in mode 0 and 4 in mode 1: sixteen pixels across,
      * at the mode's pixels per byte. The mask travels interleaved inside the
      * data, which is what cpct_drawSpriteMasked expects. */
     cpct_drawSpriteMasked((void *)bytes, screen, SPRITE_BYTES_WIDE, 16);
 #else
-    (void)col; (void)row; (void)sprite; (void)frame;
+    (void)col; (void)py; (void)sprite; (void)frame;
 #endif
 }

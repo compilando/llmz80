@@ -18,7 +18,7 @@ from llmz80.utils.config import load_config
 
 from .acceptance import blitter_sprites, generation_prompt, tile_art
 from .codegen import library_sources, render_config_header, render_state_header
-from .models import GameProject, TargetPlatform, VideoMode
+from .models import GameProject, TargetPlatform
 from .palette import cpc_mode as mode_of
 from .palette import cpc_rgb, declared_attribute
 from .probes import contract_failures, write_probe_report
@@ -149,12 +149,19 @@ _COMMENT_OR_STRING_RE = re.compile(
     r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\n]*|/\*.*?\*/', re.DOTALL
 )
 
-#: A call to `plat_sprite`, the one function `resources/studio_lib/*/platform.c`
-#: exposes for drawing an entity's art (see `platform.h`'s declaration and
-#: `acceptance.py`'s "Sprites:" prompt line, which tells the writer this exact
-#: name). Matched with a word boundary and an open paren so a substring like
+#: A call to either function `resources/studio_lib/*/platform.c` exposes for
+#: drawing an entity's art: `plat_sprite`, which takes a character row, and
+#: `plat_sprite_py`, which takes a pixel row (see `platform.h`'s declarations
+#: and `acceptance.py`'s "Sprites:" prompt lines, which name both). Matched
+#: with a word boundary and an open paren so a substring like
 #: `my_plat_sprite_helper(` does not count.
-_SPRITE_CALL_RE = re.compile(r"\bplat_sprite\s*\(")
+#:
+#: Both, because this gate asks whether the art reached the screen and not by
+#: which of the two calls. A program that moves its actor smoothly and
+#: therefore never calls `plat_sprite` at all is the *better* program, and the
+#: first draft of this regex would have failed it with a diagnostic telling it
+#: to stop.
+_SPRITE_CALL_RE = re.compile(r"\bplat_sprite(?:_py)?\s*\(")
 
 
 def _blanked(code: str) -> str:
@@ -221,8 +228,9 @@ def sprite_usage_errors(project: GameProject, sources: dict[str, str]) -> list[s
     names = ", ".join(f"SPRITE_{asset.id.upper()}" for asset in sprites)
     return [
         f"this design has sprites ({names}) packed into sprites.h, but the program "
-        "never calls plat_sprite -- draw at least one entity with "
-        "plat_sprite(col, row, sprite, frame) instead of only plat_cell."
+        "never draws with them -- draw at least one entity with "
+        "plat_sprite(col, row, sprite, frame), or plat_sprite_py(col, py, sprite, "
+        "frame) if it moves smoothly up and down, instead of only plat_cell."
     ]
 
 
