@@ -170,3 +170,80 @@ class TestTheTwoHalvesCannotDriftAgain:
 
         assert len(palette.alphabet) == len(palette.pens)
         assert len(set(palette.alphabet)) == len(palette.alphabet)
+
+
+class TestPensPastNine:
+    """Mode 0's alphabet is `0123456789abcdef`, and two places read it back.
+
+    Found by generating a game. The drafter chose mode 0 for a Breakout whose
+    bricks are about colour, the artist drew a sheet using pen `f`, and the
+    run died with
+
+        invalid literal for int() with base 10: 'f'
+
+    `GridPalette.alphabet` grew hex digits when mode 0's sixteen pens became
+    reachable; `frames_from_grid` and `render_grid` went on calling `int()` on
+    the character. One of them crashed and the other -- guarded by `isdigit()`
+    -- would have quietly drawn every pen above 9 as transparent, which is the
+    worse of the two because it produces art rather than an error.
+    """
+
+    def _sheet(self, character):
+        from llmz80.studio.sprite_grid import SpriteFrameGrid, SpriteSheetGrid
+        from llmz80.studio.spriting import SPRITE_SIZE
+
+        row = character * SPRITE_SIZE
+        return SpriteSheetGrid(frames=[SpriteFrameGrid(rows=[row] * SPRITE_SIZE)])
+
+    def _mode_0_palette(self):
+        from llmz80.studio.sprite_grid import palette_for
+
+        project = blank_project("Pens", TargetPlatform.AMSTRAD_CPC)
+        project.target.video_mode = VideoMode.CPC_MODE_0
+        return palette_for(project)
+
+    @pytest.mark.parametrize("character,index", [("0", 0), ("9", 9), ("a", 10), ("f", 15)])
+    def test_a_character_resolves_to_its_pen(self, character, index):
+        palette = self._mode_0_palette()
+
+        assert palette.index_of(character) == index
+
+    def test_a_hex_pen_survives_being_turned_into_pixels(self):
+        from llmz80.studio.sprite_grid import frames_from_grid
+
+        palette = self._mode_0_palette()
+
+        frames = frames_from_grid(self._sheet("f"), palette)
+
+        assert frames[0].getpixel((0, 0)) == (*palette.pens[15], 255)
+
+    def test_a_hex_pen_is_drawn_in_the_preview_rather_than_dropped(self):
+        """`render_grid` is what a person looks at to judge the art. A pen it
+        skips reads as a hole in the sprite that is not in the sprite."""
+        from llmz80.studio.sprite_grid import render_grid
+
+        palette = self._mode_0_palette()
+
+        image = render_grid(self._sheet("a"), palette, scale=1)
+
+        assert image.getpixel((0, 0)) == (*palette.pens[10], 255)
+
+    def test_the_transparent_character_is_still_transparent(self):
+        from llmz80.studio.sprite_grid import TRANSPARENT, frames_from_grid
+
+        palette = self._mode_0_palette()
+
+        frames = frames_from_grid(self._sheet(TRANSPARENT), palette)
+
+        assert frames[0].getpixel((0, 0))[3] == 0
+
+    def test_a_character_the_mode_does_not_have_is_refused(self):
+        """Mode 1 has four pens, so `a` names nothing there and must not be
+        read as pen 10 of a palette that has four entries."""
+        from llmz80.studio.sprite_grid import palette_for
+
+        project = blank_project("Pens", TargetPlatform.AMSTRAD_CPC)
+        project.target.video_mode = VideoMode.CPC_MODE_1
+
+        with pytest.raises(ValueError):
+            palette_for(project).index_of("a")

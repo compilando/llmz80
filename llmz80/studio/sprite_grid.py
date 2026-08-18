@@ -71,6 +71,31 @@ class GridPalette:
     #: keeps a model from mixing them inside a frame.
     EXTRA_PENS = "abcdef"
 
+    def index_of(self, character: str) -> int:
+        """Which pen `character` names.
+
+        The one place a pen character is turned back into an index. It used to
+        be `int(character)` in two places, which was right while the alphabet
+        was "0" or "0123" and wrong the moment mode 0's sixteen pens made it
+        run to "f": `frames_from_grid` raised `invalid literal for int() with
+        base 10: 'f'` in the middle of a real run, and `render_grid`, guarded
+        by `isdigit()`, would have quietly drawn every pen past 9 as
+        transparent -- the worse of the two, because it produces art instead of
+        an error.
+
+        Raises for a character this palette does not have, rather than
+        answering some other pen: `grid_errors` has already refused a sheet
+        that uses one, so reaching here with a stranger means the two
+        disagree, and that is worth hearing about.
+        """
+        index = self.alphabet.find(character)
+        if index < 0:
+            raise ValueError(
+                f"{character!r} is not a pen this palette has; it offers "
+                f"{self.alphabet!r} and {TRANSPARENT!r}"
+            )
+        return index
+
     @property
     def alphabet(self) -> str:
         """The legal pen characters, in index order: "0", "0123", "0123456789abcdef"."""
@@ -208,10 +233,15 @@ def render_grid(
         origin = index * size
         for y, row in enumerate(frame.rows[:size]):
             for x, character in enumerate(row[:size]):
-                if character == TRANSPARENT or not character.isdigit():
+                if character == TRANSPARENT:
                     continue
-                pen = int(character)
-                if pen >= len(palette.pens):
+                try:
+                    pen = palette.index_of(character)
+                except ValueError:
+                    # A preview is drawn of rejected sheets too (see the
+                    # caller), so a character the palette does not have is
+                    # skipped rather than raised on -- this function's whole
+                    # job is to survive input `frames_from_grid` refuses.
                     continue
                 red, green, blue = palette.pens[pen]
                 for dy in range(scale):
@@ -245,7 +275,7 @@ def frames_from_grid(
             for x, character in enumerate(row):
                 if character == TRANSPARENT:
                     continue
-                red, green, blue = palette.pens[int(character)]
+                red, green, blue = palette.pens[palette.index_of(character)]
                 pixels[x, y] = (red, green, blue, 255)
         frames.append(image)
     return frames
