@@ -47,12 +47,40 @@ this project uses [Semantic Versioning](https://semver.org/).
 - `cli._project_command` bound one name to two different result types across
   two branches and read fields off whichever it got; `services.add_asset` took
   a `str` where a four-value `Literal` was required.
+- **Two initialised statics in the CPC platform library held garbage.** This
+  link does not initialise the DATA segment -- something `apply_palette` had
+  already recorded for itself -- so `baselines_left` came up zero and made
+  every `plat_frame_baseline()` call a no-op, and `draw_pen` made `plat_ink`
+  report a previous pen the program had never set. Both are assigned in
+  `plat_init` now.
 - The comment in `generator.py` explaining why CPC gates abstain had been wrong
   since ZEsarUX replaced Caprice32: three of the five behaviour gates really do
   watch a CPC game now.
 
+### Added
+
+- **The Amstrad CPC counts frames**, so the pacing gate judges it instead of
+  abstaining. `cpct_setInterruptHandler` installs a handler the machine calls
+  six times per display frame, and counting those sixths is the free-running
+  counter the Spectrum reads out of the ROM. Everything downstream mirrors
+  `spectrum/platform.c` constant for constant. Read back out of a real CPC: a
+  program that spins before its loop reports the gap, and the same program
+  with one `plat_frame_baseline()` call reports zero. Both read zero before.
+- **Mode 0's sixteen pens are reachable.** The library programmed four pens
+  whatever the mode, `plat_ink` refused any index above three, and the drawing
+  alphabet offered four characters -- so the only reason to choose mode 0 over
+  mode 1 was switched off in software.
+
 ### Changed
 
+- **One table decides the CPC's colours.** The RGB the packers quantise
+  against and the hardware bytes the library programs used to be written down
+  separately, in two files in two languages, and they had drifted: HW_BLUE was
+  recorded as (0, 0, 255), which is HW_BRIGHT_BLUE, and HW_WHITE as
+  (255, 255, 255), which is HW_BRIGHT_WHITE -- the CPC's "white" is grey. Half
+  of every CPC sprite was quantised against colours the machine never showed.
+  `palette.HARDWARE_COLOURS` is now the single source and a test pins the two
+  halves to each other.
 - **The CPC toolchain moved out of the legacy generator** into
   `llmz80/core/toolchain.py`, which was the single import keeping 1 591 retired
   lines in the live pipeline's graph. `vendor/cpctelera` joins the search path,

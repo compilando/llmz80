@@ -266,16 +266,22 @@ They are not at parity, and it is worth knowing where.
 | Artifact | `.tap` | `.dsk` |
 | Screen | 32×24 cells | 20×25 (mode 0) or 40×25 (mode 1) |
 | Colour | one attribute per 8×8 cell | pens in the pixels — no clash |
+| Pens | 8 inks × 2 brightnesses | 16 (mode 0) or 4 (mode 1) |
 | Sound | beeper, five effects | **none implemented** (`plat_sound` is a no-op) |
 | Build gate | ✅ | ✅ |
 | Acceptance / animation / state probe | ✅ | ✅ (ZEsarUX reads its memory over ZRCP) |
-| Pacing gate | ✅ | ⛔ abstains — with the firmware disabled the CPC has no free-running frame counter, so `plat_wait_frame` measures nothing |
+| Pacing gate | ✅ | ✅ (a 300 Hz interrupt handler counts the six ticks per frame) |
 | Attribute gate | ✅ | ⛔ abstains — a CPC screen has no attribute area; judging its colour wants a different gate |
 
-Two further CPC limits worth naming: the palette is four fixed pens on both
-video modes, so mode 0's sixteen colours are not reachable through the platform
-library; and every position is a character cell on both machines, so nothing
-moves by less than eight pixels and nothing scrolls.
+The one CPC gap left is sound: `plat_sound` is a no-op and the design gate
+refuses any CPC project that asks for audio. CPCtelera bundles Arkos Tracker,
+which is where the fix starts.
+
+And a limit that is not about either machine: every position is a character
+cell on both, so nothing moves by less than eight pixels and nothing scrolls.
+Vertical sub-cell movement is close to free — `cpct_getScreenPtr` already takes
+a pixel row and z88dk has `zx_pxy2saddr` — while horizontal needs pre-shifted
+sprite variants, eight on the Spectrum and two or four on the CPC.
 
 ---
 
@@ -363,7 +369,8 @@ which is not necessarily what the gates use. The artifact is in
 See [CONTRIBUTING.md](CONTRIBUTING.md). Areas that want help:
 
 - CPC audio, through CPCtelera's bundled Arkos Tracker
-- A CPC frame counter, so the pacing gate stops abstaining
+- A colour gate for the CPC, since the Spectrum attribute gate has no meaning
+  there
 - Sub-cell movement and scrolling (see the table above)
 - More retrieval examples, for both machines
 

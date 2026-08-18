@@ -182,15 +182,18 @@ Open an issue with:
 ## Areas that want help
 
 - **CPC audio.** `plat_sound` is a no-op on the CPC and the design gate refuses
-  any CPC project that asks for sound. CPCtelera bundles Arkos Tracker.
-- **A CPC frame counter,** so the pacing gate stops abstaining.
-  `cpct_count2VSYNC` and an interrupt handler are the pieces.
-- **The CPC palette.** Four fixed pens on both video modes, so mode 0's sixteen
-  colours are unreachable through the platform library.
-- **Sub-cell movement.** Everything is positioned in character cells, so nothing
-  moves by less than eight pixels and nothing scrolls.
+  any CPC project that asks for sound. CPCtelera bundles Arkos Tracker, which
+  is a music player rather than an effects API, so the first question is what
+  five short effects should even be on an AY.
+- **Sub-cell movement.** Everything is positioned in character cells, so
+  nothing moves by less than eight pixels and nothing scrolls. Vertical is
+  nearly free -- `cpct_getScreenPtr` already takes a pixel row, and z88dk has
+  `zx_pxy2saddr` -- while horizontal needs pre-shifted sprite variants, which
+  `sprite_header.py`'s `sprite_frame_offset` table can already index. Note what
+  it breaks: the attribute gate assumes a sprite is cell-aligned, and the
+  pacing gate's one-frame tolerance was calibrated against cell blits.
 - **A colour gate for the CPC,** since the Spectrum attribute gate has no
-  meaning there.
+  meaning there and the CPC now has sixteen pens to get wrong.
 - **More retrieval examples,** for either machine.
 
 ---
