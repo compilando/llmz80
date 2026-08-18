@@ -9,7 +9,6 @@ import pytest
 from llmz80.studio.models import EntitySpec, TargetPlatform, VideoMode
 from llmz80.studio.samples import blank_project
 from llmz80.studio.sprite_artist import (
-    FRAMES_PER_SHEET,
     ClaudeGridSheetSource,
     SpriteArtist,
     SpriteDrawFailure,
@@ -19,13 +18,27 @@ from llmz80.studio.sprite_grid import TRANSPARENT, SpriteFrameGrid, SpriteSheetG
 from llmz80.studio.spriting import SPRITE_SIZE
 from tests.conftest import FakeMessageStream
 
+#: Poses these fixtures draw. Four, because that is what every sprite used to
+#: be given and what these tests were written against -- but now because the
+#: entity they draw names four, which is how a design asks for a cycle.
+FIXTURE_POSES = ["walk_a", "walk_b", "walk_c", "walk_d"]
+
 
 def _project(platform=TargetPlatform.SPECTRUM, mode=None):
     return blank_project("Grid", platform, mode)
 
 
 def _entity(**overrides) -> EntitySpec:
-    fields = {"id": "hero", "kind": "perseguidor", "sprite": "hero", "notes": ""}
+    fields = {
+        "id": "hero",
+        "kind": "perseguidor",
+        "sprite": "hero",
+        "notes": "",
+        # These fixtures draw a four-pose cycle, so the entity they draw
+        # names four poses -- which is how a design asks for one now that
+        # nothing hands out four by default.
+        "poses": FIXTURE_POSES,
+    }
     fields.update(overrides)
     return EntitySpec(**fields)
 
@@ -33,7 +46,7 @@ def _entity(**overrides) -> EntitySpec:
 def _good(fill: str = "0") -> SpriteSheetGrid:
     half = fill * (SPRITE_SIZE // 2) + TRANSPARENT * (SPRITE_SIZE // 2)
     return SpriteSheetGrid(
-        frames=[SpriteFrameGrid(rows=[half] * SPRITE_SIZE) for _ in range(FRAMES_PER_SHEET)]
+        frames=[SpriteFrameGrid(rows=[half] * SPRITE_SIZE) for _ in range(len(FIXTURE_POSES))]
     )
 
 
@@ -108,7 +121,7 @@ def test_the_subject_carries_the_designs_own_words_for_this_actor():
 def test_the_grid_schema_is_what_the_model_is_asked_to_fill():
     source = ClaudeGridSheetSource(_FakeClient(_good()))
 
-    source.draw(_project(), "draw a hero")
+    source.draw(_project(), "draw a hero", frames=len(FIXTURE_POSES))
 
     call = source.client.messages.calls[0]
     assert call["output_format"] is SpriteSheetGrid
@@ -121,17 +134,17 @@ def test_the_grid_schema_is_what_the_model_is_asked_to_fill():
 def test_a_good_grid_becomes_frames_at_the_packers_size():
     source = ClaudeGridSheetSource(_FakeClient(_good()))
 
-    drawn = source.draw(_project(), "draw a hero")
+    drawn = source.draw(_project(), "draw a hero", frames=len(FIXTURE_POSES))
 
     assert drawn.reason is None
-    assert len(drawn.frames) == FRAMES_PER_SHEET
+    assert len(drawn.frames) == len(FIXTURE_POSES)
     assert all(frame.size == (SPRITE_SIZE, SPRITE_SIZE) for frame in drawn.frames)
 
 
 def test_a_malformed_grid_comes_back_as_a_reason_rather_than_an_exception():
     source = ClaudeGridSheetSource(_FakeClient(_short_row()))
 
-    drawn = source.draw(_project(), "draw a hero")
+    drawn = source.draw(_project(), "draw a hero", frames=len(FIXTURE_POSES))
 
     assert drawn.reason is not None
     assert "frame 2" in drawn.reason and "row 6" in drawn.reason
@@ -143,7 +156,7 @@ def test_a_rejected_attempt_still_leaves_a_picture_to_look_at():
     run worth having evidence for is precisely the one that failed."""
     source = ClaudeGridSheetSource(_FakeClient(_short_row()))
 
-    drawn = source.draw(_project(), "draw a hero")
+    drawn = source.draw(_project(), "draw a hero", frames=len(FIXTURE_POSES))
 
     assert drawn.sheet.size[0] > 0 and drawn.sheet.size[1] > 0
 
@@ -159,7 +172,7 @@ def test_a_bad_first_grid_is_redrawn_with_the_reason_appended():
 
     frames = artist.draw_frames(_project(), _entity())
 
-    assert len(frames) == FRAMES_PER_SHEET
+    assert len(frames) == len(FIXTURE_POSES)
     assert artist.source.client.messages.calls[1]["messages"][0]["content"].count("REJECTED") == 1
     assert "row 6" in artist.source.client.messages.calls[1]["messages"][0]["content"]
 
@@ -237,7 +250,8 @@ def _solid() -> SpriteSheetGrid:
     """Every pixel drawn: a 16x16 block, not a shape."""
     return SpriteSheetGrid(
         frames=[
-            SpriteFrameGrid(rows=["0" * SPRITE_SIZE] * SPRITE_SIZE) for _ in range(FRAMES_PER_SHEET)
+            SpriteFrameGrid(rows=["0" * SPRITE_SIZE] * SPRITE_SIZE)
+            for _ in range(len(FIXTURE_POSES))
         ]
     )
 
@@ -252,7 +266,7 @@ def test_a_solid_block_is_retried_and_the_feedback_names_the_problem():
 
     frames = artist.draw_frames(_project(), _entity())
 
-    assert len(frames) == FRAMES_PER_SHEET
+    assert len(frames) == len(FIXTURE_POSES)
     assert len(client.messages.calls) == 2, "the solid first attempt must be retried once"
     feedback = client.messages.calls[1]["messages"][0]["content"]
     assert "REJECTED" in feedback
@@ -273,7 +287,7 @@ def test_a_statically_repeated_pose_is_accepted_without_retrying():
 
     frames = artist.draw_frames(_project(), _entity(id="pellet", sprite="pellet"))
 
-    assert len(frames) == FRAMES_PER_SHEET
+    assert len(frames) == len(FIXTURE_POSES)
     assert len(client.messages.calls) == 1, "a correctly-static sprite must not be retried"
     assert frames.attempts == 1
     assert len({frame.tobytes() for frame in frames}) == 1, "identical is the point here"

@@ -30,7 +30,7 @@ from .reference_design import ReferenceDesigner, propose_and_apply
 from .release import export_release
 from .runtime_exam import RuntimeExaminer
 from .samples import blank_project
-from .sprite_artist import SpriteArtist, TileArtist
+from .sprite_artist import SpriteArtist, TileArtist, animates
 from .spriting import SPRITE_SIZE
 from .store import ProjectStore
 
@@ -628,7 +628,7 @@ class StudioService:
         report["state_probe"] = probes
         acceptance = self.acceptance_report(project, report, examiner)
         report["acceptance"] = acceptance
-        animation = animation_report(report)
+        animation = animation_report(report, animated=animates(project.entities))
         report["animation"] = animation
         pacing = pacing_report(report)
         report["pacing"] = pacing

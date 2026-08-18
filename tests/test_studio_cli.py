@@ -607,6 +607,19 @@ def _sprite_sheet_image():
     return sheet
 
 
+def _declare_a_cycle(workspace: Path, game_path: Path) -> None:
+    """Give the project's entity the four poses `_FakeImageGenerator` draws.
+
+    `blank_project` names none, and an entity naming none is now drawn as a
+    single still frame -- right for a ball, wrong for a fixture whose fake
+    model always answers with a four-frame sheet.
+    """
+    store = ProjectStore(workspace)
+    project = store.load(game_path)
+    project.entities[0].poses = ["run_a", "run_b", "run_c", "run_d"]
+    store.save(project, game_path.parent)
+
+
 class _FakeImageGenerator:
     """Stands in for the client `ClaudeGridSheetSource` draws through:
     returns a fixed, valid grid, makes no network call, and remembers how
@@ -657,6 +670,7 @@ def test_sprites_draws_and_registers_missing_art(tmp_path: Path, capsys, monkeyp
 
     generator = _FakeImageGenerator()
     _stub_sprites_dependencies(monkeypatch, generator)
+    _declare_a_cycle(tmp_path, game_path)
 
     code = main(["project", "sprites", str(game_path)])
 
@@ -682,6 +696,7 @@ def test_sprites_declining_an_overwrite_leaves_existing_art_untouched(
     game_path = directory / "game.yml"
 
     _stub_sprites_dependencies(monkeypatch, _FakeImageGenerator())
+    _declare_a_cycle(tmp_path, game_path)
     assert main(["project", "sprites", str(game_path)]) == 0
     capsys.readouterr()
     before_game = game_path.read_text()
@@ -716,6 +731,7 @@ def test_sprites_accepting_an_overwrite_redraws_the_existing_art(
     game_path = directory / "game.yml"
 
     _stub_sprites_dependencies(monkeypatch, _FakeImageGenerator())
+    _declare_a_cycle(tmp_path, game_path)
     assert main(["project", "sprites", str(game_path)]) == 0
     capsys.readouterr()
     before_project = ProjectStore(tmp_path).load(game_path)

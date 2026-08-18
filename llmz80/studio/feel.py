@@ -51,7 +51,7 @@ def _classify(hold: Any) -> str | None:
     return None
 
 
-def animation_report(runtime: dict[str, Any]) -> dict[str, Any]:
+def animation_report(runtime: dict[str, Any], *, animated: bool = True) -> dict[str, Any]:
     """Judge `g_anim_frame` against its declared meaning.
 
     Abstaining is not passing: when no step yields both a reading of the
@@ -89,6 +89,26 @@ def animation_report(runtime: dict[str, Any]) -> dict[str, Any]:
     state contract to expose the player's position, which is a contract change,
     a writer-prompt change and a regeneration of every program.
     """
+    if not animated:
+        # Nothing in the design has a second pose, so there is no animation to
+        # judge and no honest verdict to give. Demanding `g_anim_frame` change
+        # here is demanding a number move for no visible reason, and it is what
+        # refused a working Breakout three times: its ball and its paddle had
+        # been drawn with four poses each because nothing read the design's
+        # `poses: []`, and the program -- correctly -- never cycled them.
+        #
+        # Abstaining rather than passing, as everywhere else here: `release`
+        # refuses a build whose gates all abstained, so a still design still
+        # has to earn its acceptance from the gates that can see something.
+        return {
+            "schema_version": 1,
+            "observed": False,
+            "reason": "every entity in this design carries one pose, so there is no "
+            f"animation to judge and {_SYMBOL} has nothing to say",
+            "failures": [],
+            "quality_pass": None,
+        }
+
     entries: list[tuple[Any, int, str, Any]] = []
     for reading in runtime.get("step_readings") or []:
         read = reading.get("read") or {}

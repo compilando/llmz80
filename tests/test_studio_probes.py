@@ -192,6 +192,11 @@ def _degenerate_animation_readings():
 def test_runtime_tests_report_carries_the_animation_verdict(tmp_path, monkeypatch):
     service = StudioService.at(tmp_path)
     project = blank_project("Anim", TargetPlatform.SPECTRUM)
+    # A design with something to animate. `feel.animation_report` abstains
+    # on one whose entities all carry a single pose, and these tests are
+    # about the verdict rather than about that abstention.
+    project.entities[0].sprite = "actor"
+    project.entities[0].poses = ["walk_a", "walk_b"]
     fake_report = {
         "quality_pass": True,
         "probe_after": {},
@@ -212,6 +217,11 @@ def test_runtime_tests_report_carries_the_animation_verdict(tmp_path, monkeypatc
 def test_a_definite_animation_failure_lowers_the_overall_verdict(tmp_path, monkeypatch):
     service = StudioService.at(tmp_path)
     project = blank_project("Anim", TargetPlatform.SPECTRUM)
+    # A design with something to animate. `feel.animation_report` abstains
+    # on one whose entities all carry a single pose, and these tests are
+    # about the verdict rather than about that abstention.
+    project.entities[0].sprite = "actor"
+    project.entities[0].poses = ["walk_a", "walk_b"]
     fake_report = {
         "quality_pass": True,
         "probe_after": {},
@@ -231,6 +241,11 @@ def test_a_definite_animation_failure_lowers_the_overall_verdict(tmp_path, monke
 def test_an_animation_abstention_does_not_lower_the_overall_verdict(tmp_path, monkeypatch):
     service = StudioService.at(tmp_path)
     project = blank_project("Anim", TargetPlatform.SPECTRUM)
+    # A design with something to animate. `feel.animation_report` abstains
+    # on one whose entities all carry a single pose, and these tests are
+    # about the verdict rather than about that abstention.
+    project.entities[0].sprite = "actor"
+    project.entities[0].poses = ["walk_a", "walk_b"]
     # No `step_readings` at all -- what the CPC produces, since it has no
     # memory probe adapter -- so the gate abstains rather than judging.
     fake_report = {"quality_pass": True, "probe_after": {}}

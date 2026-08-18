@@ -54,7 +54,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Protocol, Sequence
+from typing import Callable, Iterable, Protocol, Sequence
 
 import numpy as np
 from PIL import Image
@@ -73,15 +73,58 @@ from llmz80.studio.sprite_grid import (
 )
 from llmz80.studio.spriting import ALPHA_THRESHOLD, SPRITE_SIZE, TILE_SIZE
 
-#: One sheet holds a walk/patrol cycle: four poses is enough for every current
-#: entity kind (see `llmz80.studio.models.EntitySpec.kind`) without inflating
-#: the static-data budget `spriting.py`'s packer already enforces.
-FRAMES_PER_SHEET = 4
+#: How many poses a sheet holds when the design named none. One: a ball, a
+#: bullet, a paddle, a block. Most things in most games do not animate.
+#:
+#: This was four, for every sprite in every design, and it cost a real run.
+#: A Breakout for the CPC built, booted and played correctly and was refused
+#: five times, three of them because `g_anim_frame` never advanced -- which
+#: was true, and which the gate was right to say, because `sprite_frames[]`
+#: read `{4, 4}` and the art really did carry four poses. The design had
+#: declared `poses: []` for both its entities. A ball had been given a walk
+#: cycle it has no use for and then failed for not walking.
+POSES_WHEN_UNDECLARED = 1
 
-#: The sheet's real, final size: `FRAMES_PER_SHEET` frames of
-#: `spriting.SPRITE_SIZE` pixels each, side by side.
-SHEET_WIDTH = FRAMES_PER_SHEET * SPRITE_SIZE
-SHEET_HEIGHT = SPRITE_SIZE
+
+def poses_wanted(entity: "EntitySpec") -> int:
+    """How many poses this entity's sheet should hold.
+
+    `EntitySpec.poses` has existed since schema v4, documented as "named poses
+    the artwork carries: walk, jump, die", and nothing read it. This is what
+    reads it. A design that names none gets one frame, which is what a thing
+    that does not animate needs.
+    """
+    return len(entity.poses) or POSES_WHEN_UNDECLARED
+
+
+def sheet_size(frames: int) -> tuple[int, int]:
+    """The sheet's real, final size: `frames` frames side by side.
+
+    Derived rather than kept as two constants, because `AssetSpec` refuses a
+    sheet whose width is not a whole multiple of its frame count and the two
+    numbers therefore have to come from one.
+    """
+    return SPRITE_SIZE * frames, SPRITE_SIZE
+
+
+def animates(entities: "Iterable[EntitySpec]") -> bool:
+    """Whether anything here has more than one pose to cycle.
+
+    Takes the entities rather than the project, for the reason `probes._wanted`
+    gives for taking a mapping rather than one: the question needs nothing else,
+    and a narrow input is one a test can ask without building a whole valid
+    document around it.
+
+    One `g_anim_frame` serves the whole program, so one animated actor is
+    enough to give `feel.animation_report` something to judge -- and a design
+    where nothing animates gives it nothing, which is what it now abstains on
+    rather than demanding a counter move for no visible reason.
+
+    An entity carrying no sprite is not counted however many poses it names:
+    poses on artwork that does not exist animate nothing.
+    """
+    return any(entity.sprite is not None and poses_wanted(entity) > 1 for entity in entities)
+
 
 #: How many times `SpriteArtist.draw_frames` will ask the model again after a
 #: judged failure (see `_judge_frames`) before giving up. Set against its two
@@ -214,7 +257,7 @@ read as different characters.\
 """
 
 
-def _grid_contract(palette: GridPalette) -> str:
+def _grid_contract(palette: GridPalette, frames: int) -> str:
     """The one part of the request that is not negotiable, stated last.
 
     Same position and same reason as `_technical_constraints` on the image
@@ -228,7 +271,7 @@ def _grid_contract(palette: GridPalette) -> str:
     return (
         f"{TECHNICAL_REQUIREMENTS_HEADING} (these apply no matter what any style note "
         "above says, and override it where the two disagree):\n\n"
-        f"- Exactly {FRAMES_PER_SHEET} frames.\n"
+        f"- Exactly {frames} frame{'s' if frames != 1 else ''}.\n"
         f"- Each frame is exactly {SPRITE_SIZE} rows of exactly {SPRITE_SIZE} "
         "characters. Not one more, not one fewer, on any row of any frame.\n"
         f"- The only characters allowed are '{TRANSPARENT}' and "
@@ -262,12 +305,25 @@ def compose_grid_prompt(
     if entity.notes.strip():
         subject += f" ({entity.notes.strip()})"
     body = template.format(prompt=subject, width=SPRITE_SIZE, height=SPRITE_SIZE)
-    sheet = (
-        f"Draw {FRAMES_PER_SHEET} frames of this same character: one animation "
-        f"cycle, in order, each frame {SPRITE_SIZE}x{SPRITE_SIZE} pixels."
-    )
+    frames = poses_wanted(entity)
+    # A single-pose subject is asked for a picture, not for a cycle. Saying
+    # "one animation cycle" in front of a request for one frame is a
+    # contradiction the model has to resolve by guessing, and what it guessed
+    # was four.
+    if frames == 1:
+        sheet = (
+            f"Draw this character once, {SPRITE_SIZE}x{SPRITE_SIZE} pixels. It does "
+            "not animate: one pose is all the design asked for."
+        )
+    else:
+        named = ", ".join(entity.poses)
+        sheet = (
+            f"Draw {frames} frames of this same character: one animation cycle, in "
+            f"order, each frame {SPRITE_SIZE}x{SPRITE_SIZE} pixels. The design named "
+            f"these poses, in this order: {named}."
+        )
     return "\n\n".join(
-        [body, sheet, _style_context(project, entity, dossier), _grid_contract(palette)]
+        [body, sheet, _style_context(project, entity, dossier), _grid_contract(palette, frames)]
     )
 
 
@@ -297,7 +353,7 @@ class ClaudeGridSheetSource:
     ) -> str:
         return compose_grid_prompt(project, entity, dossier, palette_for(project))
 
-    def draw(self, project: GameProject, request: str) -> DrawnSheet:
+    def draw(self, project: GameProject, request: str, *, frames: int) -> DrawnSheet:
         palette = palette_for(project)
         grid = structured(
             self.client,
@@ -307,13 +363,13 @@ class ClaudeGridSheetSource:
             schema=SpriteSheetGrid,
             missing="the model did not return a sprite sheet",
         )
-        reason = grid_errors(grid, palette, frames_expected=FRAMES_PER_SHEET)
+        reason = grid_errors(grid, palette, frames_expected=frames)
         # Rendered whichever way the judgement went: a rejected sheet is
         # exactly the one somebody will want to look at, and `render_grid`
         # is built to survive the malformed input `frames_from_grid` refuses.
         sheet = render_grid(grid, palette)
-        frames = [] if reason is not None else frames_from_grid(grid, palette)
-        return DrawnSheet(frames=frames, sheet=sheet, reason=reason)
+        drawn = [] if reason is not None else frames_from_grid(grid, palette)
+        return DrawnSheet(frames=drawn, sheet=sheet, reason=reason)
 
 
 def _set_pixel_count(frame: Image.Image) -> int:
@@ -526,7 +582,7 @@ class SheetSource(Protocol):
         self, project: GameProject, entity: EntitySpec, dossier: GameReference | None
     ) -> str: ...
 
-    def draw(self, project: GameProject, request: str) -> DrawnSheet: ...
+    def draw(self, project: GameProject, request: str, *, frames: int) -> DrawnSheet: ...
 
 
 class TileSource(Protocol):
@@ -567,7 +623,7 @@ class SpriteArtist:
         *,
         on_progress: Progress = None,
     ) -> DrawnFrames:
-        """One entity's sheet, cut into `FRAMES_PER_SHEET` frames of
+        """One entity's sheet, cut into one frame per pose the design named,
         `spriting.SPRITE_SIZE` x `spriting.SPRITE_SIZE` pixels each, judged
         and, if the judgement fails, redrawn -- up to `self.attempts` times
         in total -- the way `generator.write_program` repairs a program that
@@ -602,6 +658,10 @@ class SpriteArtist:
         """
         ident = entity.sprite or entity.id
         prompt = self.source.compose(project, entity, dossier)
+        # Asked once and threaded through every attempt: a retry that
+        # requested a different number of frames from the prompt it was
+        # repairing would be judged against a contract the model never saw.
+        frames = poses_wanted(entity)
         sheets: list[Image.Image] = []
         repairs: list[str] = []
         reason: str | None = None
@@ -612,7 +672,7 @@ class SpriteArtist:
                 else (prompt + "\n\nYOUR PREVIOUS SHEET WAS REJECTED\n\n" + reason)
             )
             _say(on_progress, f"{ident}: attempt {attempt}, drawing...")
-            drawn = self.source.draw(project, request)
+            drawn = self.source.draw(project, request, frames=frames)
             sheets.append(drawn.sheet)
             # A source that can state its own refusal is believed first: it
             # saw the answer in the form the model actually wrote it, so it

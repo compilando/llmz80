@@ -135,7 +135,8 @@ def grid_errors(
     """
     if len(sheet.frames) != frames_expected:
         return (
-            f"the sheet must hold exactly {frames_expected} frames, "
+            f"the sheet must hold exactly {frames_expected} "
+            f"frame{'s' if frames_expected != 1 else ''}, "
             f"and this one holds {len(sheet.frames)}"
         )
 

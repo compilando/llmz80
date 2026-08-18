@@ -67,6 +67,17 @@ one row, cell or spawn at a time:
   /entities/N/kind          what an actor already there is       -> {"text": ...}
   /entities/N/notes         what that actor does                 -> {"text": ...}
   /entities/N/count         how many of it there are             -> {"number": ...}
+  /entities/N/poses         the poses its artwork carries, named and in the
+                             order they cycle -- walk_a, walk_b, jump, die.
+                             Leave it alone for anything that does not
+                             animate: a ball, a bullet, a block, a paddle.
+                             Most things in most games do not. What you name
+                             here is drawn: two poses is two 16x16 frames of
+                             art, and the program is then required to cycle
+                             g_anim_frame through them while that actor moves
+                             -- so a pose you name and the game never shows is
+                             a gate failure, not a spare picture
+                                                                  -> {"rows": [...]}
   /tiles/-                  a whole new kind of terrain          -> {"id": ..., "char": ...}, add
   /tiles/N/art_note         what that terrain looks like, so it is drawn as
                              artwork instead of as its character  -> {"text": ...}
