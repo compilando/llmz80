@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from llmz80.core.cpc_toolchain import prepare_amstrad_cpc_build_project, resolve_cpct_path
+from llmz80.core.toolchain import prepare_amstrad_cpc_build_project, resolve_cpct_path
 from llmz80.core.runtime_contracts import archetype_contract, runtime_contract
 from llmz80.core.state_contract import PROBE_WIDTHS, SYMBOLS_BY_NAME, contract_prompt
 from llmz80.utils.helpers import apply_deterministic_cpc_fixes

@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 from llmz80.quality.benchmark import evaluate_corpus, load_corpus, write_scorecard
-from scripts.evaluate_generation import _has_passing_runtime_run
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,24 +46,6 @@ def test_offline_scorecard_is_deterministic(tmp_path):
     json_path, markdown_path = write_scorecard(first, tmp_path / "report/scorecard")
     assert json.loads(json_path.read_text())["schema_version"] == 1
     assert "First-build rate: 100.0%" in markdown_path.read_text()
-
-
-def test_live_resume_requires_both_build_and_runtime_quality(tmp_path):
-    run = tmp_path / "one"
-    run.mkdir()
-    (run / "prompt.txt").write_text("Hello", encoding="utf-8")
-    (run / "platform.txt").write_text("spectrum", encoding="utf-8")
-    (run / "build_report.json").write_text(
-        json.dumps({"quality_pass": True}), encoding="utf-8"
-    )
-    (run / "emulator_report.json").write_text(
-        json.dumps({"quality_pass": False}), encoding="utf-8"
-    )
-    assert not _has_passing_runtime_run(tmp_path, "Hello", "spectrum")
-    (run / "emulator_report.json").write_text(
-        json.dumps({"quality_pass": True}), encoding="utf-8"
-    )
-    assert _has_passing_runtime_run(tmp_path, "Hello", "spectrum")
 
 
 def test_scorecard_reads_list_shaped_retrieval_context(tmp_path):

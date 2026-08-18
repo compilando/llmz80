@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from PIL import Image
 
-from llmz80.core.cpc_toolchain import prepare_amstrad_cpc_build_project, resolve_cpct_path
+from llmz80.core.toolchain import prepare_amstrad_cpc_build_project, resolve_cpct_path
 from llmz80.core.project_mode import create_project_layout
 from llmz80.core.build_quality import build_report, select_fresh_artifact, write_build_report
 from llmz80.utils.config import load_config

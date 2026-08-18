@@ -1,16 +1,15 @@
-"""Finding CPCtelera, and laying a built directory out the way its build wants.
+"""Whether this machine can build for a target, and what CPCtelera needs first.
 
-Two facts, and the only two the Amstrad CPC build needs that are not about
-the program being built: where the toolchain lives, and what shape a directory
-has to be in before `make` will accept it.
+Everything about the *build environment* rather than about the program being
+built: where CPCtelera is, what shape a directory has to be in before `make`
+will accept it, and whether either target's toolchain is installed at all.
 
-They lived in `llm_z80.py` until now. That module is the legacy single-file
+These lived in `llm_z80.py` until now. That module is the legacy single-file
 generator, retired in favour of `llmz80.studio`, and `studio/compiler.py`
-importing these two names out of it was the one edge keeping 1591 lines of
-retired code inside the live pipeline's import graph -- so the legacy
-generator could not be deleted without taking the CPC build with it. Moving
-them here cuts that edge and nothing else: both functions keep the behaviour
-they had, apart from the two bugs noted on each.
+importing two names out of it was the one edge keeping 1591 lines of retired
+code inside the live pipeline's import graph -- so the legacy generator could
+not be deleted without taking the CPC build with it. The functions keep the
+behaviour they had apart from the bugs noted on each.
 """
 
 from __future__ import annotations
@@ -161,3 +160,38 @@ def prepare_amstrad_cpc_build_project(output_dir: Path, cpct_dir: Path) -> bool:
             target.write_text(content.replace("{{CPCT_PATH}}", cpct_path), encoding="utf-8")
 
     return True
+
+
+def validate_toolchain_environment(platform: str, config: dict) -> tuple[bool, str]:
+    """Whether `platform` can be built here, and what is missing if not.
+
+    Asked before an expensive step commits to a target: a run that will fail
+    at the link step should say so before it spends a model call, and `make
+    toolchain` reports both targets at once from this.
+
+    The CPC answer is now strictly stronger than it was. It used to check that
+    `make` was on the PATH and that `resolve_cpct_path` found something; the
+    second half of that no longer means "a directory that looks like
+    CPCtelera" but "a CPCtelera whose own SDCC has been built", so a clone
+    that was never set up is reported here rather than at exit code 127 in the
+    middle of a build.
+    """
+    if platform == "spectrum":
+        compiler = config.get("compiler", {}).get(platform, {}).get("c_compiler", "zcc")
+        if not shutil.which(compiler):
+            return False, f"the Spectrum compiler {compiler!r} is not on the PATH"
+        return True, ""
+
+    if platform == "amstrad_cpc":
+        if not shutil.which("make"):
+            return False, "make is not on the PATH"
+        if resolve_cpct_path(config) is None:
+            return False, (
+                "no set-up CPCtelera was found. Point CPCT_PATH or "
+                "compiler.amstrad_cpc.cpct_path at one, and check that its own SDCC "
+                "has been built -- a fresh clone needs CPCtelera's setup.sh before "
+                "it can compile anything"
+            )
+        return True, ""
+
+    return False, f"unsupported platform: {platform}"

@@ -53,7 +53,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from llmz80.core.cpc_toolchain import resolve_cpct_path
+from llmz80.core.toolchain import resolve_cpct_path
 from llmz80.quality.emulator_smoke import smoke_test
 from llmz80.studio import compiler as compiler_module
 from llmz80.studio.models import AssetSpec, TargetPlatform

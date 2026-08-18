@@ -9,10 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from llmz80.core.cpc_toolchain import (
+from llmz80.core.toolchain import (
     TEMPLATE_DIR,
     prepare_amstrad_cpc_build_project,
     resolve_cpct_path,
+    validate_toolchain_environment,
 )
 
 
@@ -45,10 +46,10 @@ def _no_ambient_cpctelera(tmp_path, monkeypatch):
     """
     monkeypatch.delenv("CPCT_PATH", raising=False)
     monkeypatch.setattr(
-        "llmz80.core.cpc_toolchain.VENDOR_DIR", tmp_path / "absent-vendor", raising=True
+        "llmz80.core.toolchain.VENDOR_DIR", tmp_path / "absent-vendor", raising=True
     )
     monkeypatch.setattr(
-        "llmz80.core.cpc_toolchain.SYSTEM_CANDIDATES", (tmp_path / "absent-opt",), raising=True
+        "llmz80.core.toolchain.SYSTEM_CANDIDATES", (tmp_path / "absent-opt",), raising=True
     )
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "absent-home"))
 
@@ -110,14 +111,14 @@ class TestResolveCpctPath:
         test above is the other half of.
         """
         vendored = _fake_cpctelera(tmp_path / "vendor" / "cpctelera" / "src" / "cpctelera")
-        monkeypatch.setattr("llmz80.core.cpc_toolchain.VENDOR_DIR", vendored, raising=True)
+        monkeypatch.setattr("llmz80.core.toolchain.VENDOR_DIR", vendored, raising=True)
 
         assert resolve_cpct_path({}) == vendored.resolve()
 
     def test_an_explicit_choice_still_beats_the_vendored_checkout(self, tmp_path, monkeypatch):
         vendored = _fake_cpctelera(tmp_path / "vendored")
         explicit = _fake_cpctelera(tmp_path / "explicit")
-        monkeypatch.setattr("llmz80.core.cpc_toolchain.VENDOR_DIR", vendored, raising=True)
+        monkeypatch.setattr("llmz80.core.toolchain.VENDOR_DIR", vendored, raising=True)
         monkeypatch.setenv("CPCT_PATH", str(explicit))
 
         assert resolve_cpct_path({}) == explicit.resolve()
@@ -135,7 +136,7 @@ class TestResolveCpctPath:
         _fake_cpctelera(tmp_path / "vendored", built=False)
         installed = _fake_cpctelera(tmp_path / "home" / "cpctelera" / "cpctelera")
         monkeypatch.setattr(
-            "llmz80.core.cpc_toolchain.VENDOR_DIR", tmp_path / "vendored", raising=True
+            "llmz80.core.toolchain.VENDOR_DIR", tmp_path / "vendored", raising=True
         )
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
 
@@ -228,3 +229,64 @@ def test_the_studio_compiler_does_not_import_these_from_the_legacy_generator(nam
 
     assert "from llm_z80 import" not in source
     assert name in source
+
+
+class TestValidateToolchainEnvironment:
+    def test_a_missing_spectrum_compiler_is_named(self, monkeypatch):
+        monkeypatch.setattr("llmz80.core.toolchain.shutil.which", lambda name: None)
+
+        ok, message = validate_toolchain_environment("spectrum", {})
+
+        assert not ok
+        assert "zcc" in message
+
+    def test_the_configured_spectrum_compiler_is_the_one_looked_for(self, monkeypatch):
+        seen = []
+        monkeypatch.setattr(
+            "llmz80.core.toolchain.shutil.which", lambda name: seen.append(name) or None
+        )
+
+        validate_toolchain_environment("spectrum", {"compiler": {"spectrum": {"c_compiler": "zx"}}})
+
+        assert seen == ["zx"]
+
+    def test_a_present_spectrum_compiler_passes_with_nothing_to_say(self, monkeypatch):
+        monkeypatch.setattr("llmz80.core.toolchain.shutil.which", lambda name: "/usr/bin/zcc")
+
+        assert validate_toolchain_environment("spectrum", {}) == (True, "")
+
+    def test_the_cpc_needs_make(self, monkeypatch):
+        monkeypatch.setattr("llmz80.core.toolchain.shutil.which", lambda name: None)
+
+        ok, message = validate_toolchain_environment("amstrad_cpc", {})
+
+        assert not ok
+        assert "make" in message
+
+    def test_an_unbuilt_cpctelera_is_reported_here_rather_than_by_make(self, tmp_path, monkeypatch):
+        """The whole point of asking before spending anything.
+
+        A clone that never ran CPCtelera's `setup.sh` used to pass this check
+        and then die at exit code 127 several minutes and one model call
+        later, with a diagnostic naming a missing `sdcc` binary and nothing
+        about setup.
+        """
+        monkeypatch.setattr("llmz80.core.toolchain.shutil.which", lambda name: "/usr/bin/make")
+        monkeypatch.setenv("CPCT_PATH", str(_fake_cpctelera(tmp_path / "clone", built=False)))
+
+        ok, message = validate_toolchain_environment("amstrad_cpc", {})
+
+        assert not ok
+        assert "setup.sh" in message
+
+    def test_a_working_cpc_toolchain_passes(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("llmz80.core.toolchain.shutil.which", lambda name: "/usr/bin/make")
+        monkeypatch.setenv("CPCT_PATH", str(_fake_cpctelera(tmp_path / "cpctelera")))
+
+        assert validate_toolchain_environment("amstrad_cpc", {}) == (True, "")
+
+    def test_an_unknown_platform_is_refused_by_name(self):
+        ok, message = validate_toolchain_environment("commodore_64", {})
+
+        assert not ok
+        assert "commodore_64" in message

@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from llmz80.core.cpc_toolchain import prepare_amstrad_cpc_build_project, resolve_cpct_path
+from llmz80.core.toolchain import prepare_amstrad_cpc_build_project, resolve_cpct_path
 from llmz80.core.project_mode import create_project_layout, pack_cpc, pack_spectrum
 
 
