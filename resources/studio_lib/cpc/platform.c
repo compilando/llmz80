@@ -440,3 +440,54 @@ void plat_scroll_to(unsigned int origin) {
     if (origin > MAX_SCROLL_ORIGIN) return;
     cpct_setVideoMemoryOffset((u8)(origin >> 1));
 }
+
+/* Save and restore what is behind a sprite.
+ *
+ * Shorter than the Spectrum's copy of the same pair, and for the reason that
+ * runs through this whole file: colour on this machine lives in the pixel
+ * bytes, so the pixels are the whole story -- there is no attribute area to
+ * remember alongside them.
+ *
+ * Each line is addressed afresh with `cpct_getScreenPtr`. The CPC lays its
+ * screen out in eight interleaved 8-line blocks (screen_start + 80*(y/8) +
+ * 2048*(y%8) + x, cpct_getScreenPtr.asm), so a naive `+= 80` per line walks
+ * into the wrong block at every eighth. `plat_sprite_py` gets that stepping
+ * for free because cpct_drawSpriteMasked does it internally; there is no
+ * CPCtelera routine that copies *out* of the screen, so this does it in C. */
+void plat_save_under(unsigned int px, unsigned char py, unsigned char *under) {
+#if SPRITE_COUNT
+    u8 *at;
+    unsigned char line;
+    unsigned char byte;
+    unsigned char col;
+    if (px > MAX_SPRITE_PX || py > MAX_SPRITE_PY) return;
+    col = (unsigned char)(px >> PIXELS_PER_BYTE_LOG);
+    for (line = 0; line < 16; ++line) {
+        at = cpct_getScreenPtr(CPCT_VMEM_START, col, (u8)(py + line));
+        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
+            *under++ = at[byte];
+        }
+    }
+#else
+    (void)px; (void)py; (void)under;
+#endif
+}
+
+void plat_restore_under(unsigned int px, unsigned char py, const unsigned char *under) {
+#if SPRITE_COUNT
+    u8 *at;
+    unsigned char line;
+    unsigned char byte;
+    unsigned char col;
+    if (px > MAX_SPRITE_PX || py > MAX_SPRITE_PY) return;
+    col = (unsigned char)(px >> PIXELS_PER_BYTE_LOG);
+    for (line = 0; line < 16; ++line) {
+        at = cpct_getScreenPtr(CPCT_VMEM_START, col, (u8)(py + line));
+        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
+            at[byte] = *under++;
+        }
+    }
+#else
+    (void)px; (void)py; (void)under;
+#endif
+}

@@ -177,6 +177,39 @@ void plat_sprite_px(unsigned int px, unsigned char py, unsigned char sprite,
  * it would jump. */
 void plat_scroll_to(unsigned int origin);
 
+/* Remembers what is on screen where a sprite is about to go, and puts it back.
+ *
+ *     unsigned char under[SPRITE_UNDER_BYTES];
+ *     ...
+ *     plat_restore_under(old_px, old_py, under);   // rub the sprite out
+ *     plat_save_under(px, py, under);              // remember the new place
+ *     plat_sprite_px(px, py, SPRITE_BALL, frame);  // and draw it there
+ *
+ * This is what a moving sprite should erase itself with. The obvious
+ * alternative -- repainting the terrain the sprite covered -- costs about
+ * twice the byte writes and only works when the background *is* terrain: it
+ * cannot put back text, another sprite, or anything a design draws that its
+ * tile map does not describe. The library can, because it reads the screen.
+ *
+ * `px` and `py` are the same coordinates `plat_sprite_px` takes, and the same
+ * ones a cell-aligned caller can compute: `px = col * 8`, `py = row * 8` on
+ * both machines whatever the video mode.
+ *
+ * The buffer belongs to the program, one per moving actor, and that is
+ * deliberate. Two actors need two backing stores, and a hidden buffer inside
+ * this library would silently hold only the last one saved.
+ *
+ * The one thing it cannot do: save-under saves whatever is on the screen, so
+ * a sprite drawn on top of another saves that other sprite as its background.
+ * Restore in the reverse of the order you drew, or the one underneath is left
+ * with a copy of the one above stamped on it.
+ *
+ * Nothing is saved or restored past the edge of the screen -- the same bounds
+ * `plat_sprite_px` refuses on, so a buffer taken at a legal position is always
+ * the size SPRITE_UNDER_BYTES says. */
+void plat_save_under(unsigned int px, unsigned char py, unsigned char *under);
+void plat_restore_under(unsigned int px, unsigned char py, const unsigned char *under);
+
 /* Plays effect N, where N is the index the design gave it -- game_config.h
  * defines SOUND_<NAME> for each one it declared. What each index sounds like
  * is this library's business; what it is called is the design's. A target

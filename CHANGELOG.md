@@ -59,6 +59,26 @@ this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`plat_save_under` / `plat_restore_under`**, so a moving sprite can be
+  rubbed out by putting back what was behind it. Found by watching a generated
+  CPC Breakout flicker: its loop erased the ball by repainting up to nine tiles
+  at the top and redrew it at the bottom, so the ball was absent from the
+  picture for the whole of the collision and scoring work between them. Both
+  halves were the contract's fault rather than the program's -- repainting
+  terrain was the only erase on offer, and nothing said when to draw.
+
+  The backing store belongs to the caller (`SPRITE_UNDER_BYTES`, published per
+  target), because two moving actors need two of them and a hidden buffer in
+  the library would silently hold only the last. It costs about half the byte
+  writes of a terrain repaint and works over anything on the screen, which a
+  terrain repaint cannot: text, another sprite, a scrolled backdrop. Proved on
+  a real 48K over a background written straight into the bitmap that no tile
+  map describes -- with a control build that does not restore, so the test
+  cannot pass on a sprite that never reached the screen.
+
+  The writing prompt now also says to draw in the lines straight after
+  `plat_wait_frame` and think afterwards, and to restore in reverse draw order
+  where actors overlap.
 - **Coarse hardware scrolling on the Amstrad CPC.** `plat_scroll_to(origin)`
   moves the whole picture by changing where the CRTC starts reading, which
   costs one register write and no memory movement. A design asks for it with

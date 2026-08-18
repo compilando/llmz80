@@ -198,6 +198,16 @@ Open an issue with:
   both. Per-sprite would mean a width table the blitter reads on every call, on
   the hottest path there is -- worth doing only with a measurement to justify
   it.
+- **Double buffering on the CPC.** Real and cheap to flip --
+  `cpct_setVideoMemoryPage(cpct_page40)` is one register write -- and three
+  things stand in the way, none of them small. Our programs load at 0x4000 and
+  run to about 0x5700, which is exactly where the back buffer goes, so
+  `Z80CODELOC` has to move. It costs 16K. And the back buffer holds the frame
+  before last, so a dirty-rectangle renderer like the ones Studio generates
+  has to apply every change to both buffers or redraw the whole screen each
+  frame -- 16000 byte writes on a CPC, far over a frame's budget. Double
+  buffering suits full-redraw engines; this is not one yet. The Spectrum has
+  no equivalent at all: its display file is fixed at 0x4000.
 - **Scrolling past 510 bytes.** `plat_scroll_to` covers the whole range R13
   can hold, and no further: the video *page* is a second register
   (`cpct_setVideoMemoryPage`) and using it means a plan for the wrap, because

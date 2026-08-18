@@ -423,6 +423,83 @@ void plat_scroll_to(unsigned int origin) {
     (void)origin;
 }
 
+/* Save and restore what is behind a sprite.
+ *
+ * Both halves walk the same addresses `plat_sprite_px` writes, in the same
+ * order, so the bytes come back exactly where they came from: SPRITE_BYTES_WIDE
+ * across and sixteen scanlines down with `zx_saddrpdown`, then the attribute
+ * cells of every character row the sprite covers.
+ *
+ * Three rows of attributes, not two. A sprite at a `py` that is not a multiple
+ * of eight straddles one more character row than a cell-aligned one, and the
+ * blitter colours all of them; saving two would leave the third wearing the
+ * sprite's ink for the rest of the game. `_ROWS_A_SPRITE_COVERS` in
+ * `codegen.py` sizes SPRITE_UNDER_BYTES for the same three.
+ *
+ * The pixels come first and the attributes after, which is only a convention
+ * -- but it is one both functions share, and the buffer is opaque to the
+ * program, so nothing outside this file depends on it. */
+static unsigned char *under_row(unsigned char col, unsigned char py) {
+    return (unsigned char *)zx_pxy2saddr((unsigned char)(col << 3), py);
+}
+
+void plat_save_under(unsigned int px, unsigned char py, unsigned char *under) {
+#if SPRITE_COUNT
+    unsigned char *at;
+    unsigned char line;
+    unsigned char byte;
+    unsigned char row;
+    unsigned char col;
+    if (px > MAX_SPRITE_PX || py > MAX_SPRITE_PY) return;
+    col = (unsigned char)(px >> PIXELS_PER_BYTE_LOG);
+    at = under_row(col, py);
+    for (line = 0; line < 16; ++line) {
+        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
+            *under++ = at[byte];
+        }
+        at = (unsigned char *)zx_saddrpdown(at);
+    }
+    for (row = 0; row < 3; ++row) {
+        unsigned char cell_row = (unsigned char)((py >> 3) + row);
+        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
+            *under++ = cell_row < 24 ? *(unsigned char *)zx_cxy2aaddr(col + byte, cell_row) : 0;
+        }
+    }
+#else
+    (void)px; (void)py; (void)under;
+#endif
+}
+
+void plat_restore_under(unsigned int px, unsigned char py, const unsigned char *under) {
+#if SPRITE_COUNT
+    unsigned char *at;
+    unsigned char line;
+    unsigned char byte;
+    unsigned char row;
+    unsigned char col;
+    if (px > MAX_SPRITE_PX || py > MAX_SPRITE_PY) return;
+    col = (unsigned char)(px >> PIXELS_PER_BYTE_LOG);
+    at = under_row(col, py);
+    for (line = 0; line < 16; ++line) {
+        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
+            at[byte] = *under++;
+        }
+        at = (unsigned char *)zx_saddrpdown(at);
+    }
+    for (row = 0; row < 3; ++row) {
+        unsigned char cell_row = (unsigned char)((py >> 3) + row);
+        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
+            if (cell_row < 24) {
+                *(unsigned char *)zx_cxy2aaddr(col + byte, cell_row) = *under;
+            }
+            ++under;
+        }
+    }
+#else
+    (void)px; (void)py; (void)under;
+#endif
+}
+
 /* Beeper effects through z88dk's certified bit_beep, kept short because the
  * call blocks: every millisecond spent here is a millisecond the game loop is
  * not running. AUDIO_EFFECT_MASK lets the design switch each effect off.

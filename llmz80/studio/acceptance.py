@@ -550,6 +550,34 @@ def design_prompt(project: GameProject) -> str:
         # `codegen.SPRITES_PER_FRAME` for the readings these come from.
         cell_budget = sprites_per_frame(project.target.platform, pixel_column=False)
         pixel_budget = sprites_per_frame(project.target.platform, pixel_column=True)
+        # Where the flicker came from, said before the budget: a real generated
+        # game put its erase at the top of the loop and its draw at the bottom,
+        # so the actor was missing from the picture for the whole of the
+        # collision and scoring work between them, and the beam caught the gap.
+        lines.append(
+            "  When to draw, and it matters more than which call you use: do all "
+            "your drawing in the few lines *straight after* plat_wait_frame, before "
+            "input and before any game logic. The screen is read out while your loop "
+            "runs, so an actor rubbed out at the top of the loop and redrawn at the "
+            "bottom is missing from the picture for everything in between, and it "
+            "flickers. Erase and redraw together, first; then think."
+        )
+        lines.append(
+            "  How to erase: save what is behind the sprite and put it back. Declare "
+            "`unsigned char under[SPRITE_UNDER_BYTES];` for each moving actor, then "
+            "every frame call plat_restore_under(old_px, old_py, under) to rub it "
+            "out, plat_save_under(px, py, under) to remember the new place, and then "
+            "draw. Do not repaint the terrain the actor covered instead: that costs "
+            "about twice the byte writes and only works while the background really "
+            "is terrain -- not text, not another sprite."
+        )
+        lines.append(
+            "  Restore in the reverse of the order you drew, wherever actors can "
+            "overlap. save_under saves whatever is on the screen, so a sprite drawn "
+            "over another saved that other one as its background, and putting them "
+            "back the wrong way round stamps a copy of the top one onto the one "
+            "underneath."
+        )
         lines.append(
             f"  How many you can move: about {cell_budget} sprites per frame with "
             f"plat_sprite or plat_sprite_py on this machine, and about {pixel_budget} "

@@ -96,6 +96,43 @@ def pixels_per_byte_log(platform: TargetPlatform, mode: VideoMode) -> int:
     return pixels_per_byte(platform, mode).bit_length() - 1
 
 
+#: Character rows a 16-pixel-tall sprite can cover. Three, not two: a sprite
+#: at a `py` that is not a multiple of eight straddles one more row than a
+#: cell-aligned one, and `plat_sprite_px` colours every row it covers. A
+#: backing store sized for two would restore two and leave the third wearing
+#: the sprite's ink for the rest of the game.
+_ROWS_A_SPRITE_COVERS = 3
+
+
+def sprite_under_bytes(project: GameProject) -> int:
+    """How much of the screen one sprite hides, in bytes.
+
+    The size of the backing store a program declares to save what is behind a
+    sprite before drawing it -- `plat_save_under` fills it and
+    `plat_restore_under` puts it back. Published as `SPRITE_UNDER_BYTES` so a
+    program can write `unsigned char under[SPRITE_UNDER_BYTES]` rather than
+    work the arithmetic out from the video mode.
+
+    Two machines, two answers, and the difference is where colour lives. The
+    CPC keeps it in the pixel bytes, so the pixels are the whole story. The
+    Spectrum keeps it in a separate attribute per cell, and `plat_sprite_px`
+    writes one for every cell it covers -- so a restore that put back only the
+    bitmap would leave a rectangle of the sprite's ink trailing the actor.
+    """
+    from .spriting import SPRITE_SIZE, shift_count
+
+    mode = project.target.video_mode
+    per_byte = _pixels_per_byte(project.target.platform, mode)
+    shifts = (
+        shift_count(project.target.platform, mode) if project.presentation.smooth_horizontal else 1
+    )
+    width = SPRITE_SIZE // per_byte + (1 if shifts > 1 else 0)
+    pixels = width * SPRITE_SIZE
+    if project.target.platform is TargetPlatform.SPECTRUM:
+        return pixels + width * _ROWS_A_SPRITE_COVERS
+    return pixels
+
+
 def max_sprite_px(project: GameProject) -> int:
     """The last pixel column a sprite can start at and still fit on screen.
 
@@ -382,6 +419,11 @@ def render_config_header(project: GameProject) -> str:
             f"#define PIXELS_PER_BYTE {_pixels_per_byte(project.target.platform, mode)}",
             f"#define PIXELS_PER_BYTE_LOG " f"{pixels_per_byte_log(project.target.platform, mode)}",
             f"#define MAX_SPRITE_PX {max_sprite_px(project)}",
+            "/* Bytes of screen one sprite hides. A program saves what is behind",
+            " * it with plat_save_under before drawing and puts it back with",
+            " * plat_restore_under, which is cheaper than repainting the terrain",
+            " * and works over anything -- tiles, text, another sprite. */",
+            f"#define SPRITE_UNDER_BYTES {sprite_under_bytes(project)}",
             "/* Hardware scrolling. SCROLL_STEP_BYTES is 0 on a machine that has",
             " * none, so `#if SCROLL_STEP_BYTES` compiles one source for both.",
             " * The step is coarse: 2 bytes is 4 pixels across in CPC mode 0 and 8",

@@ -293,6 +293,31 @@ Two things worth knowing from it: `plat_sprite_py` costs the same as
 draws about two and a half times as many, because its blitter is CPCtelera's
 hand-written assembly where the Spectrum's is C in this repository.
 
+### Drawing a moving sprite
+
+Two things the platform library gives a program, because getting them wrong is
+what makes a sprite flicker:
+
+**Draw straight after `plat_wait_frame`**, before input and before any game
+logic. The screen is read out while the loop runs, so an actor rubbed out at
+the top of the loop and redrawn at the bottom is missing from the picture for
+everything in between.
+
+**Erase by putting back what was there**, not by repainting the terrain:
+
+```c
+unsigned char under[SPRITE_UNDER_BYTES];   /* one per moving actor */
+
+plat_restore_under(old_px, old_py, under);   /* rub it out       */
+plat_save_under(px, py, under);              /* remember the new */
+plat_sprite_px(px, py, SPRITE_BALL, frame);  /* draw             */
+```
+
+About half the byte writes of repainting the tiles underneath, and it works
+over anything — text, another sprite, a scrolled backdrop — because the
+library reads it off the screen rather than reconstructing it from the design.
+Restore in the reverse of the order you drew when actors overlap.
+
 ### Movement
 
 Sprites move by the pixel **vertically** on both machines:
