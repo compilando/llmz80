@@ -16,7 +16,8 @@ def main() -> int:
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--platform", choices=("spectrum", "amstrad_cpc"))
     parser.add_argument(
-        "--full", action="store_true",
+        "--full",
+        action="store_true",
         help="require real emulator boot, framebuffer capture and scripted input",
     )
     parser.add_argument("--seconds", type=int, default=3, help="minimum observation time")

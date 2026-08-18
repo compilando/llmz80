@@ -20,8 +20,8 @@ import pytest
 
 from llmz80.studio.journal import Journal
 from llmz80.studio.models import TargetPlatform
-from llmz80.studio.reference import GameReference, ReferenceSource, save_reference
 from llmz80.studio.play import NotPlayable
+from llmz80.studio.reference import GameReference, ReferenceSource, save_reference
 from llmz80.studio.render import (
     brief_preview,
     pick_stage_detail,

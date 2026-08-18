@@ -124,9 +124,7 @@ def _attribute_address(col: int, row: int) -> int:
 
 def _read_byte(connection: socket.socket, address: int) -> int:
     answer = _zrcp_query(connection, f"read-memory {address} 1")
-    digits = "".join(
-        ch for ch in answer.split("command@")[0] if ch in "0123456789abcdefABCDEF"
-    )[:2]
+    digits = "".join(ch for ch in answer.split("command@")[0] if ch in "0123456789abcdefABCDEF")[:2]
     assert len(digits) == 2, f"no memory read back for {address:#06x}: {answer!r}"
     return int(digits, 16)
 

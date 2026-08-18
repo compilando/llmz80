@@ -240,10 +240,10 @@ def test_the_preview_renders_a_sheet_that_frames_from_grid_would_refuse():
 
     palette = palette_for(_project(TargetPlatform.SPECTRUM))
     sheet = _sheet()
-    sheet.frames[0].rows[0] = "0Z" + TRANSPARENT * 3      # illegal character
-    sheet.frames[1].rows[1] = "0"                          # far too short
-    sheet.frames[2].rows = sheet.frames[2].rows[:4]        # far too few rows
-    sheet.frames[3].rows[0] = "9" * SPRITE_SIZE            # pen this target lacks
+    sheet.frames[0].rows[0] = "0Z" + TRANSPARENT * 3  # illegal character
+    sheet.frames[1].rows[1] = "0"  # far too short
+    sheet.frames[2].rows = sheet.frames[2].rows[:4]  # far too few rows
+    sheet.frames[3].rows[0] = "9" * SPRITE_SIZE  # pen this target lacks
 
     image = render_grid(sheet, palette)
 

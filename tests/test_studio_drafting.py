@@ -3,12 +3,7 @@
 import pytest
 
 from llmz80.studio.design_exam import DesignCoherence
-from llmz80.studio.drafting import (
-    DraftRefused,
-    draft_and_apply,
-    drafting_prompt,
-    needs_drafting,
-)
+from llmz80.studio.drafting import DraftRefused, draft_and_apply, drafting_prompt, needs_drafting
 from llmz80.studio.editing import rename_project
 from llmz80.studio.models import TargetPlatform
 from llmz80.studio.planner import EntityValue, ProjectChange, ProjectProposal, RowsValue

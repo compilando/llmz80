@@ -8,7 +8,6 @@ from typing import Any
 
 import yaml
 
-
 SUPPORTED_PLATFORMS = {"spectrum", "amstrad_cpc"}
 
 
@@ -138,8 +137,7 @@ def evaluate_run(case: dict[str, Any], run_dir: Path | None) -> dict[str, Any]:
     api = _read_json(run_dir / "generation_metrics.json")
     if api:
         result["api"] = {
-            key: api.get(key)
-            for key in ("calls", "latency_ms", "input_tokens", "output_tokens")
+            key: api.get(key) for key in ("calls", "latency_ms", "input_tokens", "output_tokens")
         }
     return result
 
@@ -147,8 +145,13 @@ def evaluate_run(case: dict[str, Any], run_dir: Path | None) -> dict[str, Any]:
 def _aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
     evaluated = [item for item in results if item["status"] == "evaluated"]
     count = len(evaluated)
-    ratio = lambda key: (sum(bool(item[key]) for item in evaluated) / count if count else None)
-    recalls = [item["retrieval_recall"] for item in evaluated if item["retrieval_recall"] is not None]
+
+    def ratio(key: str) -> float | None:
+        return sum(bool(item[key]) for item in evaluated) / count if count else None
+
+    recalls = [
+        item["retrieval_recall"] for item in evaluated if item["retrieval_recall"] is not None
+    ]
     return {
         "total_cases": len(results),
         "evaluated_cases": count,

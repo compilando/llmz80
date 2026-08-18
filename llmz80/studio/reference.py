@@ -189,10 +189,7 @@ class ResponsesReferenceResearcher:
             self.client,
             self.model,
             system=RESEARCH_SYSTEM_PROMPT,
-            user=(
-                f"TARGET PLATFORM: {target}\n\n"
-                f"WHAT THE DESIGNER ASKED FOR:\n{brief}"
-            ),
+            user=(f"TARGET PLATFORM: {target}\n\n" f"WHAT THE DESIGNER ASKED FOR:\n{brief}"),
             schema=GameReference,
             missing="the model did not return a structured game reference",
             tools=[WEB_SEARCH_TOOL],

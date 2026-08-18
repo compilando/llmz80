@@ -53,11 +53,11 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from llmz80.core.state_contract import REQUIRED_SYMBOLS, SYMBOLS_BY_NAME, required_declarations
 from llmz80.core.toolchain import resolve_cpct_path
 from llmz80.quality.emulator_smoke import smoke_test
 from llmz80.studio import compiler as compiler_module
 from llmz80.studio.models import AssetSpec, TargetPlatform
-from llmz80.core.state_contract import SYMBOLS_BY_NAME, REQUIRED_SYMBOLS, required_declarations
 from llmz80.studio.services import StudioService
 from llmz80.studio.spriting import pack_spectrum
 
@@ -535,7 +535,7 @@ def _pre_split_render_sprite_header(sprites):
     prove the real toolchain rejects this shape, on purpose, when it comes
     back.
     """
-    from llmz80.studio.sprite_header import _checked_id, _c_byte_array
+    from llmz80.studio.sprite_header import _c_byte_array, _checked_id
 
     ids = [_checked_id(sprite_id) for sprite_id in sprites]
     count = len(ids)

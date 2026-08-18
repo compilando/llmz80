@@ -24,7 +24,6 @@ that draws the same screen and does not.
 from __future__ import annotations
 
 import shutil
-import socket
 import subprocess
 import time
 from pathlib import Path
@@ -103,7 +102,9 @@ def _build(tmp_path: Path, *, with_baseline: bool, spin: int = STARTUP_SPIN):
 def _worst_frame_cost(artifact: Path, output_dir: Path) -> int:
     """`g_worst_frame_cost`, read out of the running machine's memory."""
     address = None
-    for line in (output_dir / "output.map").read_text(encoding="utf-8", errors="ignore").splitlines():
+    for line in (
+        (output_dir / "output.map").read_text(encoding="utf-8", errors="ignore").splitlines()
+    ):
         if "_g_worst_frame_cost" in line:
             for token in line.split():
                 if token.startswith("$"):

@@ -15,12 +15,7 @@ from llmz80.studio.sprite_artist import (
     SpriteDrawFailure,
     compose_grid_prompt,
 )
-from llmz80.studio.sprite_grid import (
-    TRANSPARENT,
-    SpriteFrameGrid,
-    SpriteSheetGrid,
-    palette_for,
-)
+from llmz80.studio.sprite_grid import TRANSPARENT, SpriteFrameGrid, SpriteSheetGrid, palette_for
 from llmz80.studio.spriting import SPRITE_SIZE
 from tests.conftest import FakeMessageStream
 
@@ -165,9 +160,7 @@ def test_a_bad_first_grid_is_redrawn_with_the_reason_appended():
     frames = artist.draw_frames(_project(), _entity())
 
     assert len(frames) == FRAMES_PER_SHEET
-    assert artist.source.client.messages.calls[1]["messages"][0]["content"].count(
-        "REJECTED"
-    ) == 1
+    assert artist.source.client.messages.calls[1]["messages"][0]["content"].count("REJECTED") == 1
     assert "row 6" in artist.source.client.messages.calls[1]["messages"][0]["content"]
 
 
@@ -244,8 +237,7 @@ def _solid() -> SpriteSheetGrid:
     """Every pixel drawn: a 16x16 block, not a shape."""
     return SpriteSheetGrid(
         frames=[
-            SpriteFrameGrid(rows=["0" * SPRITE_SIZE] * SPRITE_SIZE)
-            for _ in range(FRAMES_PER_SHEET)
+            SpriteFrameGrid(rows=["0" * SPRITE_SIZE] * SPRITE_SIZE) for _ in range(FRAMES_PER_SHEET)
         ]
     )
 

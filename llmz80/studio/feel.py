@@ -168,9 +168,7 @@ def animation_report(runtime: dict[str, Any]) -> dict[str, Any]:
     else:
         broken = [step_id for step_id, held in zip(idle_ids, idle_held) if not held]
         if broken:
-            failures.append(
-                f"{_SYMBOL} changed while idle at step(s) {', '.join(broken)}"
-            )
+            failures.append(f"{_SYMBOL} changed while idle at step(s) {', '.join(broken)}")
 
     readings = [
         {"id": step_id, "read": value, "state": state} for step_id, value, state, _hold in entries

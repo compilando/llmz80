@@ -135,9 +135,7 @@ class TestResolveCpctPath:
         """
         _fake_cpctelera(tmp_path / "vendored", built=False)
         installed = _fake_cpctelera(tmp_path / "home" / "cpctelera" / "cpctelera")
-        monkeypatch.setattr(
-            "llmz80.core.toolchain.VENDOR_DIR", tmp_path / "vendored", raising=True
-        )
+        monkeypatch.setattr("llmz80.core.toolchain.VENDOR_DIR", tmp_path / "vendored", raising=True)
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
 
         assert resolve_cpct_path({}) == installed.resolve()

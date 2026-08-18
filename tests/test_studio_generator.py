@@ -13,8 +13,8 @@ from llmz80.studio.generator import (
     writing_prompt,
 )
 from llmz80.studio.models import TargetPlatform
-from llmz80.studio.samples import blank_project
 from llmz80.studio.reference import GameReference, ReferenceSource
+from llmz80.studio.samples import blank_project
 from tests.conftest import FakeMessageStream
 
 

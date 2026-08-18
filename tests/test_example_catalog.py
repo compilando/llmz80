@@ -2,9 +2,8 @@
 
 from pathlib import Path
 
-from llmz80.core.example_catalog import ExampleCatalog, MAIN_RE
+from llmz80.core.example_catalog import MAIN_RE, ExampleCatalog
 from llmz80.quality.benchmark import load_corpus
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -54,10 +53,13 @@ def test_cpc_catalog_keeps_support_context_for_complete_project():
 def test_every_entry_has_capability_metadata():
     catalogs = (
         ExampleCatalog("spectrum", REPO_ROOT / "examples" / "spectrum"),
-        ExampleCatalog("amstrad_cpc", [
-            REPO_ROOT / "examples" / "amstrad_cpc",
-            REPO_ROOT / "examples" / "amstrad_cpc_level2",
-        ]),
+        ExampleCatalog(
+            "amstrad_cpc",
+            [
+                REPO_ROOT / "examples" / "amstrad_cpc",
+                REPO_ROOT / "examples" / "amstrad_cpc_level2",
+            ],
+        ),
     )
     for catalog in catalogs:
         for entry in catalog.discover():
@@ -71,10 +73,13 @@ def test_benchmark_queries_retrieve_capability_evidence():
     corpus = load_corpus(REPO_ROOT / "benchmarks/prompts.yml")
     catalogs = {
         "spectrum": ExampleCatalog("spectrum", REPO_ROOT / "examples" / "spectrum"),
-        "amstrad_cpc": ExampleCatalog("amstrad_cpc", [
-            REPO_ROOT / "examples" / "amstrad_cpc",
-            REPO_ROOT / "examples" / "amstrad_cpc_level2",
-        ]),
+        "amstrad_cpc": ExampleCatalog(
+            "amstrad_cpc",
+            [
+                REPO_ROOT / "examples" / "amstrad_cpc",
+                REPO_ROOT / "examples" / "amstrad_cpc_level2",
+            ],
+        ),
     }
     for case in corpus["cases"]:
         examples = catalogs[case["platform"]].search(case["prompt"], limit=5)

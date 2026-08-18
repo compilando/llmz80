@@ -224,9 +224,7 @@ def _grid_contract(palette: GridPalette) -> str:
     expressed, so the contract is only about shape and alphabet, and every
     line of it is checked by `sprite_grid.grid_errors` rather than hoped for.
     """
-    pens = "\n".join(
-        f"  '{index}' = RGB{pen}" for index, pen in enumerate(palette.pens)
-    )
+    pens = "\n".join(f"  '{index}' = RGB{pen}" for index, pen in enumerate(palette.pens))
     return (
         f"{TECHNICAL_REQUIREMENTS_HEADING} (these apply no matter what any style note "
         "above says, and override it where the two disagree):\n\n"
@@ -725,9 +723,7 @@ class ClaudeGridTileSource:
         self.client = client
         self.model = model
 
-    def compose(
-        self, project: GameProject, tile: TileSpec, dossier: GameReference | None
-    ) -> str:
+    def compose(self, project: GameProject, tile: TileSpec, dossier: GameReference | None) -> str:
         return compose_tile_prompt(project, tile, dossier, palette_for(project))
 
     def draw(self, project: GameProject, request: str) -> DrawnSheet:
@@ -740,9 +736,7 @@ class ClaudeGridTileSource:
             schema=SpriteSheetGrid,
             missing="the model did not return a tile",
         )
-        reason = grid_errors(
-            grid, palette, frames_expected=1, size=TILE_SIZE, solid_allowed=True
-        )
+        reason = grid_errors(grid, palette, frames_expected=1, size=TILE_SIZE, solid_allowed=True)
         sheet = render_grid(grid, palette, size=TILE_SIZE)
         frames = [] if reason is not None else frames_from_grid(grid, palette, size=TILE_SIZE)
         return DrawnSheet(frames=frames, sheet=sheet, reason=reason)

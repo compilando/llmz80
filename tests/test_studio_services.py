@@ -29,7 +29,6 @@ from llmz80.studio.spriting import SPRITE_SIZE, pack_spectrum
 from tests.conftest import FakeMessageStream
 
 
-
 def _create_sprited_project(service: StudioService, title: str, platform=TargetPlatform.SPECTRUM):
     """`create_project` -> `blank_project`'s one entity ("actor") has no
     `sprite` id at all -- v4 has no fixed roster of roles to default one
@@ -62,7 +61,7 @@ def _figure_grid():
     """A silhouette worth losing: an outlined body with real transparent
     space inside its own bounding box, so a round trip through disk that
     damaged it would show."""
-    from llmz80.studio.sprite_grid import TRANSPARENT, SpriteFrameGrid, SpriteSheetGrid
+    from llmz80.studio.sprite_grid import SpriteFrameGrid, SpriteSheetGrid
 
     body = [
         "......0000......",
@@ -224,9 +223,7 @@ def test_draw_sprites_saves_every_attempts_raw_sheet_after_a_failure(tmp_path: P
     from llmz80.studio.sprite_artist import ClaudeGridSheetSource
     from llmz80.studio.sprite_grid import SpriteFrameGrid, SpriteSheetGrid
 
-    solid = SpriteSheetGrid(
-        frames=[SpriteFrameGrid(rows=["0" * 16] * 16) for _ in range(4)]
-    )
+    solid = SpriteSheetGrid(frames=[SpriteFrameGrid(rows=["0" * 16] * 16) for _ in range(4)])
     artist = SpriteArtist(source=ClaudeGridSheetSource(_GridClient(solid)))
 
     with pytest.raises(ValueError):

@@ -43,8 +43,7 @@ def main() -> int:
     print(f"JSON scorecard: {json_path}")
     print(f"Markdown scorecard: {markdown_path}")
     print(
-        f"Coverage: {report['summary']['evaluated_cases']}/"
-        f"{report['summary']['total_cases']}"
+        f"Coverage: {report['summary']['evaluated_cases']}/" f"{report['summary']['total_cases']}"
     )
     return 0
 

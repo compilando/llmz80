@@ -9,8 +9,8 @@ from llmz80.studio.acceptance import blitter_sprites
 from llmz80.studio.compiler import build_project, render_project
 from llmz80.studio.models import AssetSpec, TargetPlatform
 from llmz80.studio.samples import blank_project
-from llmz80.studio.spriting import pack_spectrum
 from llmz80.studio.sprite_sheet import split_frames
+from llmz80.studio.spriting import pack_spectrum
 
 REFERENCE = Path(__file__).resolve().parents[1] / "resources" / "studio_reference"
 

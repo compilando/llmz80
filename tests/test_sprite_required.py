@@ -288,9 +288,7 @@ def test_the_refusal_reaches_the_repair_loop_as_actionable_feedback(
             else:
                 assert feedback and "plat_sprite" in feedback, feedback
                 body = DRAWS_SPRITE_MAIN
-            return ProgramSources(
-                summary="stub", files=[ProgramFile(name="main.c", body=body)]
-            )
+            return ProgramSources(summary="stub", files=[ProgramFile(name="main.c", body=body)])
 
     def verify(project, directory):
         render_project(project, directory / "build")

@@ -1,7 +1,6 @@
 """Pytest configuration and fixtures for LLMZ80 tests."""
 
 
-
 class FakeMessageStream:
     """What `client.messages.stream` returns, for tests that fake a model.
 

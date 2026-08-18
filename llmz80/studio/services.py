@@ -2,36 +2,37 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable
+import json
 import re
 import shutil
 import tempfile
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Callable
 
-from llmz80.quality.emulator_smoke import smoke_test, write_smoke_report
 from PIL import Image
 
+from llmz80.quality.emulator_smoke import smoke_test, write_smoke_report
+
+from .acceptance import RuntimeExamination, runtime_examination, step_mismatches
+from .attributes import attribute_report
 from .compiler import BuildResult, SourceResult, build_project, render_project
 from .design_exam import DesignExaminer
-from .runtime_exam import RuntimeExaminer
-from .attributes import attribute_report
 from .feel import animation_report
+from .generator import write_program
 from .models import AssetSpec, EntitySpec, GameProject, TargetPlatform
 from .observation import observation_script
 from .pacing import pacing_report
-from .samples import blank_project
 from .planner import ProjectProposal, proposal_diff
+from .quality import RUNTIME_GATES, studio_quality_report
 from .reference import GameReference, ReferenceResearcher, load_reference, save_reference
 from .reference_design import ReferenceDesigner, propose_and_apply
+from .release import export_release
+from .runtime_exam import RuntimeExaminer
+from .samples import blank_project
 from .sprite_artist import SpriteArtist
 from .spriting import SPRITE_SIZE
 from .store import ProjectStore
-from .quality import RUNTIME_GATES, studio_quality_report
-from .acceptance import RuntimeExamination, runtime_examination, step_mismatches
-from .generator import write_program
-from .release import export_release
-import json
 
 #: Told what is happening while it happens. The three long jobs below take
 #: minutes and two of them spend money, and their reports only exist once they
@@ -209,7 +210,10 @@ class StudioService:
                 getattr(frames, "sheets", None),
                 winner=getattr(frames, "sheet", None),
             )
-            _say(on_progress, f"{tile.id}: terreno dibujado, {(directory / asset.source).stat().st_size} B")
+            _say(
+                on_progress,
+                f"{tile.id}: terreno dibujado, {(directory / asset.source).stat().st_size} B",
+            )
             drawn.append(asset)
         return drawn
 

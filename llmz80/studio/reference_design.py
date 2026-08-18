@@ -198,7 +198,8 @@ def propose_and_apply(
     `studio-projects/my-retro-game` both reached the writer with
     `mechanics: []` -- the second of them from a dossier that had correctly
     identified Harrier Attack! -- so the stage that is supposed to turn
-    research into a design had never once produced a design with mechanics. A refusal alone would only have closed a door in
+    research into a design had never once produced a design with mechanics. A
+    refusal alone would only have closed a door in
     front of that; feeding the gaps back as feedback is what gives the
     designer the chance to state them.
 

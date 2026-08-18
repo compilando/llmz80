@@ -9,11 +9,7 @@ from that prose to a Spectrum attribute byte and to a CPC pen.
 
 import pytest
 
-from llmz80.studio.models import (
-    GameProject,
-    PaletteEntry,
-    TargetPlatform,
-)
+from llmz80.studio.models import GameProject, PaletteEntry, TargetPlatform
 from llmz80.studio.palette import cpc_pen, declared_attribute, spectrum_attribute
 from llmz80.studio.samples import blank_project
 
@@ -42,7 +38,7 @@ def test_bright_lifts_the_ink_in_either_language():
 
 
 def test_word_order_does_not_matter():
-    """"bright cyan" and "cyan bright" name one colour; so does a comma."""
+    """ "bright cyan" and "cyan bright" name one colour; so does a comma."""
     assert spectrum_attribute("cyan, bright") == BRIGHT | INK_CYAN
 
 

@@ -7,7 +7,6 @@ from llmz80.studio import compiler as compiler_module
 from llmz80.studio.compiler import BuildResult, build_project
 from llmz80.studio.generator import repair_prompt
 from llmz80.studio.models import TargetPlatform
-from llmz80.studio.samples import blank_project
 from llmz80.studio.probes import (
     PROBE_SYMBOLS,
     contract_failures,
@@ -15,6 +14,7 @@ from llmz80.studio.probes import (
     parse_z88dk_map,
     write_probe_report,
 )
+from llmz80.studio.samples import blank_project
 from llmz80.studio.services import StudioService
 from llmz80.studio.store import ProjectStore
 

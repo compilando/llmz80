@@ -132,10 +132,7 @@ def grid_errors(
     allowed = set(palette.alphabet) | {TRANSPARENT}
     for number, frame in enumerate(sheet.frames, start=1):
         if len(frame.rows) != size:
-            return (
-                f"frame {number} must have exactly {size} rows, "
-                f"and it has {len(frame.rows)}"
-            )
+            return f"frame {number} must have exactly {size} rows, " f"and it has {len(frame.rows)}"
         for row_number, row in enumerate(frame.rows, start=1):
             if len(row) != size:
                 return (

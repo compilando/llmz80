@@ -7,7 +7,6 @@ import re
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-
 WARNING_RE = re.compile(r"\bwarning\b", re.IGNORECASE)
 WARNING_CODE_RE = re.compile(r"\bwarning\s+(\d+)\s*:", re.IGNORECASE)
 STRUCTURAL_PATTERNS = (
@@ -27,8 +26,7 @@ def select_fresh_artifact(canonical: Path, artifacts: Iterable[Path]) -> Path | 
     """Prefer the newest non-canonical build output over a stale canonical copy."""
     canonical_resolved = canonical.resolve()
     generated = [
-        path for path in artifacts
-        if path.is_file() and path.resolve() != canonical_resolved
+        path for path in artifacts if path.is_file() and path.resolve() != canonical_resolved
     ]
     if generated:
         return max(generated, key=lambda path: path.stat().st_mtime_ns)
@@ -168,25 +166,34 @@ def build_report(
         "resources": resources,
         "semantic_quality_pass": semantic_pass,
         "quality_pass": (
-            return_code == 0 and canonical_ok and unexpected_warning_count == 0
-            and not resource_errors and semantic_pass
+            return_code == 0
+            and canonical_ok
+            and unexpected_warning_count == 0
+            and not resource_errors
+            and semantic_pass
         ),
     }
 
 
 def quality_rejection_diagnostics(report: dict[str, Any]) -> list[str]:
     """Return actionable diagnostics for a successful compile rejected by policy."""
-    diagnostics = ["BUILD QUALITY REJECTION: compilation succeeded, but the result is not acceptable."]
+    diagnostics = [
+        "BUILD QUALITY REJECTION: compilation succeeded, but the result is not acceptable."
+    ]
     for group in ("source", "other"):
         diagnostics.extend(report.get("warnings", {}).get(group, []))
     diagnostics.extend(report.get("resources", {}).get("errors", []))
     if not report.get("semantic_quality_pass", True):
-        diagnostics.append("Semantic validation failed; inspect semantic_report.json and repair every error.")
+        diagnostics.append(
+            "Semantic validation failed; inspect semantic_report.json and repair every error."
+        )
     canonical = report.get("canonical_artifact", {})
     if not canonical.get("exists", False):
         diagnostics.append(f"Required artifact {canonical.get('path', 'output')} was not produced.")
     if len(diagnostics) == 1:
-        diagnostics.append("The build failed an unspecified quality condition; inspect build_report.json.")
+        diagnostics.append(
+            "The build failed an unspecified quality condition; inspect build_report.json."
+        )
     return diagnostics
 
 

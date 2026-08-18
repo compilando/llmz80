@@ -22,34 +22,40 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
     fixes: list[str] = []
     fixed = code
 
-    if re.search(r'\bcpct_[A-Za-z0-9_]+\s*\(', fixed) and not re.search(r'#include\s*<cpctelera\.h>', fixed):
-        fixed = '#include <cpctelera.h>\n' + fixed
+    if re.search(r"\bcpct_[A-Za-z0-9_]+\s*\(", fixed) and not re.search(
+        r"#include\s*<cpctelera\.h>", fixed
+    ):
+        fixed = "#include <cpctelera.h>\n" + fixed
         fixes.append("Añadido #include <cpctelera.h>")
 
-    main_match = re.search(r'\bvoid\s+main\s*\(\s*void\s*\)\s*\{', fixed)
-    if main_match and re.search(r'\bcpct_(?:setVideoMode|scanKeyboard|setPalette|draw|clearScreen)', fixed):
-        main_body = fixed[main_match.end():]
-        if not re.search(r'\bcpct_disableFirmware\s*\(', main_body):
+    main_match = re.search(r"\bvoid\s+main\s*\(\s*void\s*\)\s*\{", fixed)
+    if main_match and re.search(
+        r"\bcpct_(?:setVideoMode|scanKeyboard|setPalette|draw|clearScreen)", fixed
+    ):
+        main_body = fixed[main_match.end() :]
+        if not re.search(r"\bcpct_disableFirmware\s*\(", main_body):
             insert_at = _find_main_first_statement_offset(fixed, main_match.end())
             fixed = fixed[:insert_at] + "    cpct_disableFirmware();\n" + fixed[insert_at:]
             fixes.append("Añadido cpct_disableFirmware() al inicio de main()")
 
-    if re.search(r'\bcpct_isKeyPressed\s*\(', fixed) and not re.search(r'\bcpct_scanKeyboard(?:_f)?\s*\(', fixed):
-        key_match = re.search(r'^[^\n]*\bcpct_isKeyPressed\s*\(', fixed, flags=re.MULTILINE)
+    if re.search(r"\bcpct_isKeyPressed\s*\(", fixed) and not re.search(
+        r"\bcpct_scanKeyboard(?:_f)?\s*\(", fixed
+    ):
+        key_match = re.search(r"^[^\n]*\bcpct_isKeyPressed\s*\(", fixed, flags=re.MULTILINE)
         if key_match:
             line_start = key_match.start()
             fixed = fixed[:line_start] + "    cpct_scanKeyboard_f();\n" + fixed[line_start:]
             fixes.append("Añadido cpct_scanKeyboard_f() antes de cpct_isKeyPressed()")
 
     before_zx_cls = fixed
-    fixed = re.sub(r'\bzx_cls\s*\(\s*\)\s*;', 'cpct_clearScreen(0x00);', fixed)
+    fixed = re.sub(r"\bzx_cls\s*\(\s*\)\s*;", "cpct_clearScreen(0x00);", fixed)
     if fixed != before_zx_cls:
         fixes.append("Sustituido zx_cls() por cpct_clearScreen(0x00)")
 
     before_drawchar = fixed
-    pointer_variables = set(re.findall(
-        r"\b(?:const\s+)?(?:u8|char|void)\s*\*\s*([A-Za-z_]\w*)\b", fixed
-    ))
+    pointer_variables = set(
+        re.findall(r"\b(?:const\s+)?(?:u8|char|void)\s*\*\s*([A-Za-z_]\w*)\b", fixed)
+    )
 
     def fix_drawchar_args(match: re.Match) -> str:
         first = match.group(2).strip()
@@ -62,7 +68,7 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
         return match.group(0)
 
     fixed = re.sub(
-        r'\b(cpct_drawCharM[012])\s*\(\s*([^,\n]+?)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)',
+        r"\b(cpct_drawCharM[012])\s*\(\s*([^,\n]+?)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)",
         fix_drawchar_args,
         fixed,
     )
@@ -70,13 +76,13 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
         fixes.append("Corregido orden de argumentos cpct_drawCharM*()")
 
     before_random = fixed
-    fixed = re.sub(r'^\s*cpct_setRandom_lcg_u8\s*\(\s*\)\s*;\s*\n?', '', fixed, flags=re.MULTILINE)
-    fixed = re.sub(r'\bcpct_getRandom_lcg_u8\s*\(\s*\)', 'cpct_getRandom_glfsr16_u8()', fixed)
+    fixed = re.sub(r"^\s*cpct_setRandom_lcg_u8\s*\(\s*\)\s*;\s*\n?", "", fixed, flags=re.MULTILINE)
+    fixed = re.sub(r"\bcpct_getRandom_lcg_u8\s*\(\s*\)", "cpct_getRandom_glfsr16_u8()", fixed)
     if fixed != before_random:
         fixes.append("Corregido uso de random LCG inexistente/sin entropía")
 
     before_ascii = fixed
-    fixed = re.sub(r'\bcpct_getKeyASCII\s*\(\s*\)', 'cpct_getKeypressedAsASCII()', fixed)
+    fixed = re.sub(r"\bcpct_getKeyASCII\s*\(\s*\)", "cpct_getKeypressedAsASCII()", fixed)
     if fixed != before_ascii:
         fixes.append("Corregido cpct_getKeyASCII() por cpct_getKeypressedAsASCII()")
 
@@ -84,16 +90,16 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
     # warning 357 is triggered when generated code discards a const array's
     # code-space qualifier with an explicit (void*) cast. Passing the array
     # directly is the compile-proven CPCtelera form used by certified examples.
-    const_sprite_arrays = set(re.findall(
-        r"\b(?:static\s+)?const\s+(?:u8|uint8_t|unsigned\s+char)\s+"
-        r"([A-Za-z_]\w*)\s*\[",
-        fixed,
-    ))
+    const_sprite_arrays = set(
+        re.findall(
+            r"\b(?:static\s+)?const\s+(?:u8|uint8_t|unsigned\s+char)\s+" r"([A-Za-z_]\w*)\s*\[",
+            fixed,
+        )
+    )
     fixed_sprite_casts = 0
     for symbol in sorted(const_sprite_arrays):
         pattern = re.compile(
-            rf"(\bcpct_drawSprite\s*\(\s*)\(\s*void\s*\*\s*\)\s*"
-            rf"{re.escape(symbol)}\b"
+            rf"(\bcpct_drawSprite\s*\(\s*)\(\s*void\s*\*\s*\)\s*" rf"{re.escape(symbol)}\b"
         )
         fixed, count = pattern.subn(rf"\g<1>{symbol}", fixed)
         fixed_sprite_casts += count
@@ -117,14 +123,12 @@ def apply_deterministic_spectrum_fixes(code: str) -> tuple[str, list[str]]:
     for upper, lower in (("Q", "q"), ("A", "a"), ("O", "o"), ("P", "p")):
         before = fixed
         fixed = re.sub(
-            rf'\bIN_KEY_SCANCODE_{upper}\b',
-            f'IN_KEY_SCANCODE_{lower}',
+            rf"\bIN_KEY_SCANCODE_{upper}\b",
+            f"IN_KEY_SCANCODE_{lower}",
             fixed,
         )
         if fixed != before:
-            fixes.append(
-                f"Corregido IN_KEY_SCANCODE_{upper} por IN_KEY_SCANCODE_{lower}"
-            )
+            fixes.append(f"Corregido IN_KEY_SCANCODE_{upper} por IN_KEY_SCANCODE_{lower}")
 
     fixed, cast_count = _cast_high_byte_constants(fixed, macro_type="uint8_t")
     if cast_count:
@@ -143,7 +147,9 @@ def _cast_high_byte_constants(code: str, macro_type: str) -> tuple[str, int]:
         if not 128 <= value <= 255:
             return match.group(0)
         count += 1
-        return f"{match.group('prefix')}(({macro_type}){match.group('value')}){match.group('suffix')}"
+        return (
+            f"{match.group('prefix')}(({macro_type}){match.group('value')}){match.group('suffix')}"
+        )
 
     fixed = re.sub(
         r"^(?P<prefix>\s*#define\s+[A-Za-z_]\w*\s+)"
@@ -160,7 +166,10 @@ def _cast_high_byte_constants(code: str, macro_type: str) -> tuple[str, int]:
         if not 128 <= value <= 255:
             return match.group(0)
         count += 1
-        return f"{match.group('prefix')}({match.group('type')}){match.group('value')}{match.group('suffix')}"
+        return (
+            f"{match.group('prefix')}({match.group('type')})"
+            f"{match.group('value')}{match.group('suffix')}"
+        )
 
     fixed = re.sub(
         r"(?P<prefix>\b(?P<type>u8|uint8_t|unsigned\s+char)\s+[A-Za-z_]\w*\s*=\s*)"
@@ -203,76 +212,49 @@ def _find_main_first_statement_offset(code: str, main_body_start: int) -> int:
     """Find insertion offset after leading declarations in main()."""
     offset = main_body_start
     declaration_re = re.compile(
-        r'^\s*(?:const\s+|static\s+|volatile\s+)?'
-        r'(?:u8|u16|u32|i8|i16|i32|char|int|unsigned|signed|long|short|GameState|\w+\s*\*)'
-        r'[\w\s\*\[\],=+\-&|()<>.]*;\s*(?://.*)?$'
+        r"^\s*(?:const\s+|static\s+|volatile\s+)?"
+        r"(?:u8|u16|u32|i8|i16|i32|char|int|unsigned|signed|long|short|GameState|\w+\s*\*)"
+        r"[\w\s\*\[\],=+\-&|()<>.]*;\s*(?://.*)?$"
     )
 
     while offset < len(code):
-        line_end = code.find('\n', offset)
+        line_end = code.find("\n", offset)
         if line_end == -1:
             line_end = len(code)
-        line = code[offset:line_end + (1 if line_end < len(code) else 0)]
+        line = code[offset : line_end + (1 if line_end < len(code) else 0)]
         stripped = line.strip()
-        if not stripped or stripped.startswith("//") or stripped.startswith("/*") or declaration_re.match(line):
+        if (
+            not stripped
+            or stripped.startswith("//")
+            or stripped.startswith("/*")
+            or declaration_re.match(line)
+        ):
             offset = line_end + (1 if line_end < len(code) else 0)
             continue
         return offset
     return main_body_start
 
+
 def create_slug(text: str, max_length: int = 40) -> str:
     """Genera un slug URL-friendly a partir de un texto.
-    
+
     Args:
         text: Texto a convertir en slug
         max_length: Longitud máxima del slug
-        
+
     Returns:
         Slug generado
     """
     logging.debug(f"Creando slug desde texto: {text[:50]}...")
     slug = unicodedata.normalize("NFKD", text.lower())
     slug = slug.encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r'[^a-z0-9\s-]', '', slug)  # Eliminar caracteres no deseados
-    slug = re.sub(r'[-\s]+', '-', slug).strip('-')  # Reemplazar espacios/guiones por un solo guión
+    slug = re.sub(r"[^a-z0-9\s-]", "", slug)  # Eliminar caracteres no deseados
+    slug = re.sub(r"[-\s]+", "-", slug).strip("-")  # Reemplazar espacios/guiones por un solo guión
     slug = slug[:max_length]  # Truncar
     logging.debug(f"Slug creado: {slug}")
     return slug
 
+
 def slugify(text: str, max_length: int = 40) -> str:
     """Compatibility alias for create_slug."""
     return create_slug(text, max_length)
-
-def clean_api_response(raw_response: str) -> str:
-    """Intenta extraer solo el código C de la respuesta de la API.
-    
-    Args:
-        raw_response: Respuesta completa de la API
-        
-    Returns:
-        Código C limpio
-    """
-    logging.debug("Limpiando respuesta de la API...")
-    code = raw_response.strip()
-
-    # Intento 1: Regex para bloques de código markdown (non-greedy)
-    match = re.search(r'```\s*(?:c|C)?\s*\n?(.*?)```', code, re.DOTALL)
-    if match:
-        extracted_code = match.group(1).strip()
-        logging.info("✅ Código extraído usando regex de markdown.")
-        return extracted_code
-
-    # If the model prefixed an explanation, start at the first preprocessor
-    # directive.  Do not trim after main(): valid C may define functions later.
-    include_match = re.search(r'^\s*#\s*include\b', code, re.MULTILINE)
-    if include_match and include_match.start() > 0:
-        logging.info("Eliminando texto previo al primer #include de la respuesta.")
-        code = code[include_match.start():]
-
-    cleaned_code = code.replace("```c", "").replace("```C", "").replace("```", "").strip()
-    if len(cleaned_code) < 0.5 * len(raw_response):  # Umbral arbitrario
-        logging.warning("⚠️ La limpieza básica redujo significativamente la longitud del contenido. El resultado podría estar incompleto.")
-    elif not cleaned_code:
-        logging.warning("⚠️ La limpieza resultó en código vacío.")
-
-    return cleaned_code if cleaned_code else raw_response  # Devolver original si la limpieza falló gravemente 

@@ -1,13 +1,12 @@
 """Small real-toolchain contract tests (skipped when SDKs are unavailable)."""
 
-from pathlib import Path
 import shutil
 import subprocess
 
 import pytest
 
-from llmz80.core.toolchain import prepare_amstrad_cpc_build_project, resolve_cpct_path
 from llmz80.core.build_quality import classify_build_warnings
+from llmz80.core.toolchain import prepare_amstrad_cpc_build_project, resolve_cpct_path
 
 
 @pytest.mark.skipif(shutil.which("zcc") is None, reason="Z88DK is not installed")
@@ -27,8 +26,16 @@ void main(void) {
 
     result = subprocess.run(
         [
-            "zcc", "+zx", "-vn", "-O3", "-clib=sdcc_iy", "main.c",
-            "-o", "output", "-create-app", "-subtype=default",
+            "zcc",
+            "+zx",
+            "-vn",
+            "-O3",
+            "-clib=sdcc_iy",
+            "main.c",
+            "-o",
+            "output",
+            "-create-app",
+            "-subtype=default",
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -76,4 +83,4 @@ void main(void) {
     assembly = (tmp_path / "obj" / "main.asm").read_text(encoding="utf-8")
     clear_screen_call = assembly.index("call\t_cpct_memset")
     # ABI 0 must push the 0xC000 video-memory pointer before CPCtelera pops it.
-    assert "push\thl" in assembly[max(0, clear_screen_call - 250):clear_screen_call]
+    assert "push\thl" in assembly[max(0, clear_screen_call - 250) : clear_screen_call]

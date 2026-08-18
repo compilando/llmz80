@@ -32,7 +32,8 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from . import pipeline, wizard
-from .journal import FILENAME as JOURNAL_FILENAME, Journal
+from .journal import FILENAME as JOURNAL_FILENAME
+from .journal import Journal
 from .models import AssetSpec, GameProject, TargetPlatform
 from .play import how_to_play
 from .reference import GameReference

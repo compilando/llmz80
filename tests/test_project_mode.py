@@ -1,11 +1,11 @@
-from PIL import Image
 import shutil
 import subprocess
 
 import pytest
+from PIL import Image
 
-from llmz80.core.toolchain import prepare_amstrad_cpc_build_project, resolve_cpct_path
 from llmz80.core.project_mode import create_project_layout, pack_cpc, pack_spectrum
+from llmz80.core.toolchain import prepare_amstrad_cpc_build_project, resolve_cpct_path
 
 
 def test_spectrum_bitmap_packing_is_deterministic():
@@ -56,10 +56,25 @@ def test_spectrum_project_fixture_compiles(tmp_path):
     Image.new("1", (8, 8), 1).save(image)
     code = '#include <arch/zx.h>\n#include "assets.h"\nvoid main(void){zx_cls(7);while(1){}}\n'
     create_project_layout(tmp_path, "spectrum", code, [image])
-    result = subprocess.run([
-        "zcc", "+zx", "-vn", "-O3", "-clib=sdcc_iy", "src/main.c", "src/assets.c",
-        "-o", "output", "-create-app", "-subtype=default",
-    ], cwd=tmp_path, capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        [
+            "zcc",
+            "+zx",
+            "-vn",
+            "-O3",
+            "-clib=sdcc_iy",
+            "src/main.c",
+            "src/assets.c",
+            "-o",
+            "output",
+            "-create-app",
+            "-subtype=default",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert result.returncode == 0, result.stdout + result.stderr
     assert (tmp_path / "output.tap").stat().st_size > 0
 
@@ -71,13 +86,20 @@ def test_cpc_project_fixture_compiles(tmp_path):
         pytest.skip("CPCtelera is not installed")
     image = tmp_path / "dot.png"
     Image.new("L", (4, 2), 255).save(image)
-    code = ('#include <cpctelera.h>\n#include "assets.h"\n'
-            'void main(void){cpct_disableFirmware();cpct_setVideoMode(1);'
-            'cpct_drawSprite((void*)asset_dot,CPCT_VMEM_START,ASSET_DOT_WIDTH_BYTES,'
-            'ASSET_DOT_HEIGHT);while(1){}}\n')
+    code = (
+        '#include <cpctelera.h>\n#include "assets.h"\n'
+        "void main(void){cpct_disableFirmware();cpct_setVideoMode(1);"
+        "cpct_drawSprite((void*)asset_dot,CPCT_VMEM_START,ASSET_DOT_WIDTH_BYTES,"
+        "ASSET_DOT_HEIGHT);while(1){}}\n"
+    )
     create_project_layout(tmp_path, "amstrad_cpc", code, [image])
     assert prepare_amstrad_cpc_build_project(tmp_path, cpct_path)
-    result = subprocess.run(["make", f"CPCT_PATH={cpct_path}/"], cwd=tmp_path,
-                            capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        ["make", f"CPCT_PATH={cpct_path}/"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert result.returncode == 0, result.stdout + result.stderr
     assert any(path.stat().st_size > 0 for path in tmp_path.glob("*.dsk"))

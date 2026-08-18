@@ -17,15 +17,43 @@ from typing import Any, Iterable
 
 from .code_context import build_example_context, extract_descriptions, find_nearest_makefile
 
-
 MAIN_RE = re.compile(r"\b(?:void|int)\s+main\s*\(")
 WORD_RE = re.compile(r"[a-z0-9_]+")
 EXCLUDED_PARTS = {"build", "generated", "obj", "exp"}
 EXCLUSION_MARKER = ".llmz80-rag-exclude"
 STOP_WORDS = {
-    "a", "al", "and", "around", "con", "create", "crea", "de", "del", "el", "en", "for",
-    "la", "las", "los", "main", "mode", "modo", "program", "programa", "static",
-    "the", "un", "una", "using", "void", "with", "y", "que", "por", "para", "pantalla",
+    "a",
+    "al",
+    "and",
+    "around",
+    "con",
+    "create",
+    "crea",
+    "de",
+    "del",
+    "el",
+    "en",
+    "for",
+    "la",
+    "las",
+    "los",
+    "main",
+    "mode",
+    "modo",
+    "program",
+    "programa",
+    "static",
+    "the",
+    "un",
+    "una",
+    "using",
+    "void",
+    "with",
+    "y",
+    "que",
+    "por",
+    "para",
+    "pantalla",
 }
 
 # Bilingual intent vocabulary.  Expanding a small, explicit vocabulary is more
@@ -33,46 +61,189 @@ STOP_WORDS = {
 INTENT_GROUPS = (
     {"text", "texto", "string", "strings", "print", "printf", "hello", "hola", "menu"},
     {"keyboard", "teclado", "key", "keys", "tecla", "teclas", "input", "control", "qaop"},
-    {"sprite", "sprites", "player", "jugador", "ship", "nave", "character", "personaje", "flea", "pulga"},
+    {
+        "sprite",
+        "sprites",
+        "player",
+        "jugador",
+        "ship",
+        "nave",
+        "character",
+        "personaje",
+        "flea",
+        "pulga",
+    },
     {"graphic", "graphics", "grafico", "graficos", "draw", "dibuja", "pixel", "line", "screen"},
     {
-        "game", "juego", "arcade", "tetris", "pong", "snake", "tic", "tac", "toe",
-        "comecocos", "pacman", "pellet",
+        "game",
+        "juego",
+        "arcade",
+        "tetris",
+        "pong",
+        "snake",
+        "tic",
+        "tac",
+        "toe",
+        "comecocos",
+        "pacman",
+        "pellet",
     },
     {"sound", "sonido", "music", "musica", "beep", "audio"},
     {"random", "aleatorio", "azar", "procedural"},
     {
-        "tile", "tiles", "tilemap", "map", "mapa", "maze", "laberinto",
-        "scroll", "scrolling", "comecocos", "pacman",
+        "tile",
+        "tiles",
+        "tilemap",
+        "map",
+        "mapa",
+        "maze",
+        "laberinto",
+        "scroll",
+        "scrolling",
+        "comecocos",
+        "pacman",
     },
     {"colour", "color", "colores", "palette", "paleta", "ink", "border", "borde"},
-    {"animate", "animated", "animation", "animacion", "mueve", "move", "jump", "jumps", "salta", "rebota", "bounce"},
     {
-        "collision", "colision", "collide", "rebota", "bounce", "bounds", "bordes",
-        "wall", "walls", "muro", "muros", "comecocos", "pacman",
+        "animate",
+        "animated",
+        "animation",
+        "animacion",
+        "mueve",
+        "move",
+        "jump",
+        "jumps",
+        "salta",
+        "rebota",
+        "bounce",
     },
     {
-        "score", "puntuacion", "puntos", "marcador", "lives", "vidas", "hud",
-        "counter", "contador", "comecocos", "pacman",
+        "collision",
+        "colision",
+        "collide",
+        "rebota",
+        "bounce",
+        "bounds",
+        "bordes",
+        "wall",
+        "walls",
+        "muro",
+        "muros",
+        "comecocos",
+        "pacman",
     },
     {
-        "collect", "recoge", "recoger", "coin", "coins", "moneda", "monedas",
-        "object", "objeto", "pellet", "pellets", "comecocos", "pacman",
+        "score",
+        "puntuacion",
+        "puntos",
+        "marcador",
+        "lives",
+        "vidas",
+        "hud",
+        "counter",
+        "contador",
+        "comecocos",
+        "pacman",
+    },
+    {
+        "collect",
+        "recoge",
+        "recoger",
+        "coin",
+        "coins",
+        "moneda",
+        "monedas",
+        "object",
+        "objeto",
+        "pellet",
+        "pellets",
+        "comecocos",
+        "pacman",
     },
     {"platform", "platforms", "plataforma", "plataformas", "gravity", "gravedad"},
 )
 
 CAPABILITY_TOKENS = {
     "text": {"text", "texto", "print", "printf", "menu", "title"},
-    "input": {"keyboard", "teclado", "key", "tecla", "input", "control", "qaop", "playable", "jugable", "comecocos", "pacman"},
-    "sprite": {"sprite", "player", "jugador", "ship", "nave", "character", "personaje", "flea", "pulga", "comecocos", "pacman"},
-    "animation": {"animate", "animated", "animation", "animacion", "move", "mueve", "jump", "salta", "scroll", "comecocos", "pacman"},
-    "collision": {"collision", "colision", "collide", "bounce", "rebota", "platform", "plataforma", "wall", "muro", "comecocos", "pacman"},
+    "input": {
+        "keyboard",
+        "teclado",
+        "key",
+        "tecla",
+        "input",
+        "control",
+        "qaop",
+        "playable",
+        "jugable",
+        "comecocos",
+        "pacman",
+    },
+    "sprite": {
+        "sprite",
+        "player",
+        "jugador",
+        "ship",
+        "nave",
+        "character",
+        "personaje",
+        "flea",
+        "pulga",
+        "comecocos",
+        "pacman",
+    },
+    "animation": {
+        "animate",
+        "animated",
+        "animation",
+        "animacion",
+        "move",
+        "mueve",
+        "jump",
+        "salta",
+        "scroll",
+        "comecocos",
+        "pacman",
+    },
+    "collision": {
+        "collision",
+        "colision",
+        "collide",
+        "bounce",
+        "rebota",
+        "platform",
+        "plataforma",
+        "wall",
+        "muro",
+        "comecocos",
+        "pacman",
+    },
     "collect": {"collect", "recoge", "coin", "moneda", "pellet", "comecocos", "pacman"},
-    "hud": {"score", "puntuacion", "puntos", "marcador", "lives", "vidas", "hud", "counter", "contador", "comecocos", "pacman"},
+    "hud": {
+        "score",
+        "puntuacion",
+        "puntos",
+        "marcador",
+        "lives",
+        "vidas",
+        "hud",
+        "counter",
+        "contador",
+        "comecocos",
+        "pacman",
+    },
     "score": {"score", "puntuacion", "puntos", "marcador", "comecocos", "pacman"},
     "sound": {"sound", "sonido", "music", "musica", "beep", "audio"},
-    "tiles": {"tile", "tiles", "tilemap", "map", "mapa", "maze", "laberinto", "comecocos", "pacman"},
+    "tiles": {
+        "tile",
+        "tiles",
+        "tilemap",
+        "map",
+        "mapa",
+        "maze",
+        "laberinto",
+        "comecocos",
+        "pacman",
+    },
     "palette": {"colour", "color", "palette", "paleta", "ink"},
     "frame_pacing": {"vsync", "waitvsync", "intrinsic_halt", "frame"},
 }
@@ -103,14 +274,16 @@ def _expanded_query_tokens(query: str) -> set[str]:
 def infer_capabilities(text: str) -> list[str]:
     tokens = _expanded_query_tokens(text)
     normalised = _normalise(text)
-    capabilities = {
-        name for name, terms in CAPABILITY_TOKENS.items() if tokens & terms
-    }
+    capabilities = {name for name, terms in CAPABILITY_TOKENS.items() if tokens & terms}
     api_hints = {
-        "cpct_drawsprite": "sprite", "zx_pxy2saddr": "sprite",
-        "in_inkey": "input", "cpct_scankeyboard": "input",
-        "cpct_waitvsync": "frame_pacing", "intrinsic_halt": "frame_pacing",
-        "printf": "text", "cpct_drawstring": "text",
+        "cpct_drawsprite": "sprite",
+        "zx_pxy2saddr": "sprite",
+        "in_inkey": "input",
+        "cpct_scankeyboard": "input",
+        "cpct_waitvsync": "frame_pacing",
+        "intrinsic_halt": "frame_pacing",
+        "printf": "text",
+        "cpct_drawstring": "text",
     }
     for hint, capability in api_hints.items():
         if hint in normalised:
@@ -167,18 +340,19 @@ class ExampleCatalog:
                     continue
 
                 display_path = (
-                    f"{root.name}/{relative}" if multiple_roots and root != available_roots[0]
+                    f"{root.name}/{relative}"
+                    if multiple_roots and root != available_roots[0]
                     else str(relative)
                 )
                 desc_en, desc_es = extract_descriptions(source)
                 project_name = relative.parent.name if relative.stem == "main" else relative.stem
                 description = desc_en or desc_es or project_name.replace("_", " ")
-                searchable = "\n".join(
-                    (display_path, desc_en, desc_es, source[:12000])
-                )
+                searchable = "\n".join((display_path, desc_en, desc_es, source[:12000]))
                 capabilities = infer_capabilities(searchable)
                 apis = sorted(set(re.findall(r"\b(?:cpct|zx|in|intrinsic)_[A-Za-z0-9_]+", source)))
-                controls = [name for name in ("qaop", "cursor", "space") if name in _normalise(source)]
+                controls = [
+                    name for name in ("qaop", "cursor", "space") if name in _normalise(source)
+                ]
                 entries.append(
                     {
                         "path": display_path,
@@ -191,13 +365,27 @@ class ExampleCatalog:
                         "capabilities": capabilities,
                         "controls": controls,
                         "video_mode": (
-                            "mode_0" if "cpct_setVideoMode(0)" in source
-                            else "mode_1" if "cpct_setVideoMode(1)" in source
-                            else "spectrum_bitmap" if self.platform == "spectrum" else "unspecified"
+                            "mode_0"
+                            if "cpct_setVideoMode(0)" in source
+                            else (
+                                "mode_1"
+                                if "cpct_setVideoMode(1)" in source
+                                else (
+                                    "spectrum_bitmap"
+                                    if self.platform == "spectrum"
+                                    else "unspecified"
+                                )
+                            )
                         ),
                         "apis": apis,
-                        "has_assets": bool(re.search(r"SUPPORT FILE|\.h[>\"]|cpct_drawSprite", source)),
-                        "complexity": "small" if len(source) < 4000 else "medium" if len(source) < 12000 else "large",
+                        "has_assets": bool(
+                            re.search(r"SUPPORT FILE|\.h[>\"]|cpct_drawSprite", source)
+                        ),
+                        "complexity": (
+                            "small"
+                            if len(source) < 4000
+                            else "medium" if len(source) < 12000 else "large"
+                        ),
                         "quality_tier": "certified",
                     }
                 )
@@ -289,9 +477,7 @@ class ExampleCatalog:
         return results
 
     def _foundation_entry(self, entries: Iterable[dict[str, Any]]) -> dict[str, Any] | None:
-        preferred = (
-            "02_print.c" if self.platform == "spectrum" else "rag/base/src/main.c"
-        )
+        preferred = "02_print.c" if self.platform == "spectrum" else "rag/base/src/main.c"
         for entry in entries:
             if entry["path"] == preferred:
                 return entry

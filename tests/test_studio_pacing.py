@@ -14,10 +14,14 @@ def _runtime(readings):
 
 
 def test_a_loop_that_keeps_pace_passes():
-    report = pacing_report(_runtime([
-        ("hold_left_a", {"g_worst_frame_cost": 0}),
-        ("idle", {"g_worst_frame_cost": 0}),
-    ]))
+    report = pacing_report(
+        _runtime(
+            [
+                ("hold_left_a", {"g_worst_frame_cost": 0}),
+                ("idle", {"g_worst_frame_cost": 0}),
+            ]
+        )
+    )
 
     assert report["quality_pass"] is True
     assert report["worst"] == 0
@@ -32,10 +36,14 @@ def test_one_missed_frame_is_tolerated():
 
 
 def test_a_loop_that_does_not_fit_in_its_frame_fails_and_says_where():
-    report = pacing_report(_runtime([
-        ("hold_left_a", {"g_worst_frame_cost": 1}),
-        ("hold_right_b", {"g_worst_frame_cost": 7}),
-    ]))
+    report = pacing_report(
+        _runtime(
+            [
+                ("hold_left_a", {"g_worst_frame_cost": 1}),
+                ("hold_right_b", {"g_worst_frame_cost": 7}),
+            ]
+        )
+    )
 
     assert report["quality_pass"] is False
     assert "7" in report["failures"][0]

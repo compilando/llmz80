@@ -134,9 +134,9 @@ def test_a_tile_that_cannot_be_drawn_leaves_the_design_untouched(tmp_path: Path)
 
 
 def test_the_tile_prompt_says_what_the_terrain_is_and_asks_for_one_cell():
+    from llmz80.studio.samples import blank_project
     from llmz80.studio.sprite_artist import compose_tile_prompt
     from llmz80.studio.sprite_grid import palette_for
-    from llmz80.studio.samples import blank_project
 
     project = blank_project("Terrain", TargetPlatform.SPECTRUM)
     tile = TileSpec(
@@ -176,8 +176,8 @@ class _GridClient:
 def test_a_solid_tile_comes_back_accepted(tmp_path: Path):
     """A wall is a solid block. The sprite path refuses one and is right to;
     terrain is the case that rule was never about."""
-    from llmz80.studio.sprite_artist import ClaudeGridTileSource
     from llmz80.studio.samples import blank_project
+    from llmz80.studio.sprite_artist import ClaudeGridTileSource
 
     source = ClaudeGridTileSource(_GridClient(["0" * TILE_SIZE] * TILE_SIZE))
     project = blank_project("Wall", TargetPlatform.SPECTRUM)
@@ -190,8 +190,8 @@ def test_a_solid_tile_comes_back_accepted(tmp_path: Path):
 
 
 def test_a_blank_tile_is_refused_with_a_reason_the_next_attempt_can_act_on(tmp_path: Path):
-    from llmz80.studio.sprite_artist import ClaudeGridTileSource
     from llmz80.studio.samples import blank_project
+    from llmz80.studio.sprite_artist import ClaudeGridTileSource
 
     source = ClaudeGridTileSource(_GridClient(["." * TILE_SIZE] * TILE_SIZE))
     project = blank_project("Nothing", TargetPlatform.SPECTRUM)

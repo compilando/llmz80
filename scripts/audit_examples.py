@@ -6,17 +6,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from llmz80.core.code_context import find_nearest_makefile  # noqa: E402
 from llmz80.core.build_quality import classify_build_warnings  # noqa: E402
+from llmz80.core.code_context import find_nearest_makefile  # noqa: E402
 from llmz80.core.example_catalog import ExampleCatalog  # noqa: E402
 
 
@@ -38,8 +38,16 @@ def resolve_cpct_path() -> Path | None:
 def compile_spectrum(source: Path, work_dir: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
-            "zcc", "+zx", "-vn", "-O3", "-clib=sdcc_iy", str(source),
-            "-o", str(work_dir / "output"), "-create-app", "-subtype=default",
+            "zcc",
+            "+zx",
+            "-vn",
+            "-O3",
+            "-clib=sdcc_iy",
+            str(source),
+            "-o",
+            str(work_dir / "output"),
+            "-create-app",
+            "-subtype=default",
         ],
         cwd=work_dir,
         capture_output=True,
@@ -48,7 +56,9 @@ def compile_spectrum(source: Path, work_dir: Path) -> subprocess.CompletedProces
     )
 
 
-def compile_cpc(source: Path, examples_dir: Path, work_dir: Path, cpct_path: Path) -> subprocess.CompletedProcess[str]:
+def compile_cpc(
+    source: Path, examples_dir: Path, work_dir: Path, cpct_path: Path
+) -> subprocess.CompletedProcess[str]:
     makefile = find_nearest_makefile(source, examples_dir)
     if makefile is None:
         return subprocess.CompletedProcess([], 2, "", "No Makefile found")
@@ -65,9 +75,7 @@ def compile_cpc(source: Path, examples_dir: Path, work_dir: Path, cpct_path: Pat
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--platform", choices=("all", "spectrum", "amstrad_cpc"), default="all"
-    )
+    parser.add_argument("--platform", choices=("all", "spectrum", "amstrad_cpc"), default="all")
     parser.add_argument("--json", type=Path, help="Optional JSON report path")
     args = parser.parse_args()
 
@@ -107,7 +115,9 @@ def main() -> int:
                     "success": result.returncode == 0 and not warnings["structural"],
                     "returncode": result.returncode,
                     "warnings": warnings,
-                    "error_tail": "\n".join(combined.splitlines()[-20:]) if result.returncode else "",
+                    "error_tail": (
+                        "\n".join(combined.splitlines()[-20:]) if result.returncode else ""
+                    ),
                 }
                 report.append(item)
                 state = "PASS" if item["success"] else "FAIL"

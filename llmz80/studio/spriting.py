@@ -58,7 +58,9 @@ def is_blitter_sprite(asset: AssetSpec) -> bool:
     An asset that fails this falls back to the older, size-agnostic
     `assets.c` conversion and gets no `SPRITE_<ID>` constant at all.
     """
-    return asset.kind == "sprite" and asset.frame_width == SPRITE_SIZE and asset.height == SPRITE_SIZE
+    return (
+        asset.kind == "sprite" and asset.frame_width == SPRITE_SIZE and asset.height == SPRITE_SIZE
+    )
 
 
 def is_tile_art(asset: AssetSpec) -> bool:
@@ -75,6 +77,7 @@ def is_tile_art(asset: AssetSpec) -> bool:
     is not tile art: the design said what it was for.
     """
     return asset.kind == "tileset" and asset.frame_width == TILE_SIZE and asset.height == TILE_SIZE
+
 
 #: Ink and BRIGHT bits exactly as z88dk defines them in <arch/zx.h>, found on
 #: this machine at

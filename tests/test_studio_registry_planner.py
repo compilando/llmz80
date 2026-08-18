@@ -1,11 +1,9 @@
 from types import SimpleNamespace
 
+import pytest
 from openai.lib._pydantic import to_strict_json_schema
 
 from llmz80.studio.models import TargetPlatform
-from llmz80.studio.samples import blank_project
-import pytest
-
 from llmz80.studio.planner import (
     ProjectProposal,
     ResponsesProjectPlanner,
@@ -13,6 +11,7 @@ from llmz80.studio.planner import (
     proposal_diff,
 )
 from llmz80.studio.registry import target_registry
+from llmz80.studio.samples import blank_project
 from tests.conftest import FakeMessageStream
 
 
@@ -198,12 +197,7 @@ def test_a_whole_palette_can_be_proposed():
 
 def test_a_palette_proposal_applies_to_the_design():
     from llmz80.studio.models import TargetPlatform
-    from llmz80.studio.planner import (
-        PaletteValue,
-        ProjectChange,
-        ProjectProposal,
-        apply_proposal,
-    )
+    from llmz80.studio.planner import PaletteValue, ProjectChange, ProjectProposal, apply_proposal
     from llmz80.studio.samples import blank_project
 
     project = blank_project("Coloured", TargetPlatform.SPECTRUM)

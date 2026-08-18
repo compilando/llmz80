@@ -156,9 +156,7 @@ def render_sprite_header(sprites: dict[str, PackedSprite]) -> str:
     lines.append("/* Defined once, in sprites.c -- see that file for why. */")
     lines.append("extern const unsigned char *const sprite_data[];")
     lines.append("extern const unsigned char *const sprite_mask[];")
-    lines.append(
-        f"extern const unsigned int sprite_frame_offset[][{layout.max_frames}];"
-    )
+    lines.append(f"extern const unsigned int sprite_frame_offset[][{layout.max_frames}];")
     lines.append("extern const unsigned char sprite_frames[];")
     lines.append("extern const unsigned char sprite_attribute[];")
     lines.append("")

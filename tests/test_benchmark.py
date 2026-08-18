@@ -3,7 +3,6 @@ from pathlib import Path
 
 from llmz80.quality.benchmark import evaluate_corpus, load_corpus, write_scorecard
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -18,25 +17,40 @@ def test_offline_scorecard_is_deterministic(tmp_path):
     corpus = {
         "schema_version": 1,
         "name": "fixture",
-        "cases": [{
-            "id": "one", "platform": "spectrum", "language": "en",
-            "prompt": "Hello", "archetype": "static_display",
-            "required_capabilities": ["text"],
-        }],
+        "cases": [
+            {
+                "id": "one",
+                "platform": "spectrum",
+                "language": "en",
+                "prompt": "Hello",
+                "archetype": "static_display",
+                "required_capabilities": ["text"],
+            }
+        ],
     }
     run = tmp_path / "runs/20260101_hello"
     run.mkdir(parents=True)
     (run / "prompt.txt").write_text("Hello", encoding="utf-8")
     (run / "platform.txt").write_text("spectrum", encoding="utf-8")
-    (run / "build_report.json").write_text(json.dumps({
-        "quality_pass": True,
-        "unexpected_warning_count": 0,
-        "canonical_artifact": {"size_bytes": 321},
-        "program_binary": {"size_bytes": 123},
-    }), encoding="utf-8")
-    (run / "retrieval_context.json").write_text(json.dumps({
-        "examples": [{"path": "text.c", "capabilities": ["text"]}],
-    }), encoding="utf-8")
+    (run / "build_report.json").write_text(
+        json.dumps(
+            {
+                "quality_pass": True,
+                "unexpected_warning_count": 0,
+                "canonical_artifact": {"size_bytes": 321},
+                "program_binary": {"size_bytes": 123},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run / "retrieval_context.json").write_text(
+        json.dumps(
+            {
+                "examples": [{"path": "text.c", "capabilities": ["text"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     first = evaluate_corpus(corpus, tmp_path / "runs")
     second = evaluate_corpus(corpus, tmp_path / "runs")
@@ -52,20 +66,25 @@ def test_scorecard_reads_list_shaped_retrieval_context(tmp_path):
     corpus = {
         "schema_version": 1,
         "name": "list-context",
-        "cases": [{
-            "id": "one", "platform": "spectrum", "language": "en",
-            "prompt": "Hello", "archetype": "static_display",
-            "required_capabilities": ["text", "input"],
-        }],
+        "cases": [
+            {
+                "id": "one",
+                "platform": "spectrum",
+                "language": "en",
+                "prompt": "Hello",
+                "archetype": "static_display",
+                "required_capabilities": ["text", "input"],
+            }
+        ],
     }
     run = tmp_path / "runs/one"
     run.mkdir(parents=True)
     (run / "prompt.txt").write_text("Hello", encoding="utf-8")
     (run / "platform.txt").write_text("spectrum", encoding="utf-8")
     (run / "build_report.json").write_text(json.dumps({"quality_pass": True}), encoding="utf-8")
-    (run / "retrieval_context.json").write_text(json.dumps([
-        {"path": "example.c", "capabilities": ["text", "input"]}
-    ]), encoding="utf-8")
+    (run / "retrieval_context.json").write_text(
+        json.dumps([{"path": "example.c", "capabilities": ["text", "input"]}]), encoding="utf-8"
+    )
     report = evaluate_corpus(corpus, tmp_path / "runs")
     assert report["cases"][0]["retrieval_recall"] == 1.0
     assert report["cases"][0]["retrieval_sources"] == ["example.c"]

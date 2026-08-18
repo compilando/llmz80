@@ -28,10 +28,10 @@ def test_a_spectrum_frame_packs_two_bytes_per_row():
 def test_opaque_pixels_become_set_bits_and_a_clear_mask():
     packed = pack_spectrum([_square()])
 
-    assert packed.data[0] == 0xFF   # first row, left byte: eight opaque pixels
-    assert packed.mask[0] == 0x00   # nothing of the background survives there
-    assert packed.data[1] == 0x00   # right byte is transparent
-    assert packed.mask[1] == 0xFF   # so the background is kept whole
+    assert packed.data[0] == 0xFF  # first row, left byte: eight opaque pixels
+    assert packed.mask[0] == 0x00  # nothing of the background survives there
+    assert packed.data[1] == 0x00  # right byte is transparent
+    assert packed.mask[1] == 0xFF  # so the background is kept whole
 
 
 def test_transparent_rows_keep_the_background_everywhere():
@@ -48,7 +48,7 @@ def test_frames_are_concatenated_in_order():
     assert packed.frames == 2
     assert len(packed.data) == 2 * 16 * 2
     assert packed.data[0] == 0xFF
-    assert packed.data[2 * 16] == 0x00   # second frame starts fully transparent
+    assert packed.data[2 * 16] == 0x00  # second frame starts fully transparent
 
 
 def test_a_frame_that_is_not_sixteen_by_sixteen_is_refused():
@@ -112,9 +112,9 @@ def test_spectrum_pixel_on_row_one_lands_two_bytes_in_and_no_other_row_lights_up
     top-half fixture cannot."""
     packed = pack_spectrum([_dot(0, 1)])
 
-    assert packed.data[0] == 0x00   # row 0, left byte: untouched
-    assert packed.data[2] == 0x80   # row 1, left byte: the one lit pixel
-    assert packed.data[4] == 0x00   # row 2, left byte: untouched
+    assert packed.data[0] == 0x00  # row 0, left byte: untouched
+    assert packed.data[2] == 0x80  # row 1, left byte: the one lit pixel
+    assert packed.data[4] == 0x00  # row 2, left byte: untouched
 
 
 # --- Amstrad CPC -----------------------------------------------------------
@@ -192,9 +192,7 @@ def test_mode_zero_two_adjacent_pens_interleave_their_bits_not_their_nibbles():
     reason this encoding cannot be derived from first principles.
     """
     palette = [(0, 0, 0), (255, 255, 255), (0, 0, 255), (255, 0, 0)]
-    packed = pack_cpc(
-        [_pixels((0, 0, (0, 0, 255)), (1, 0, (255, 0, 0)))], mode=0, palette=palette
-    )
+    packed = pack_cpc([_pixels((0, 0, (0, 0, 255)), (1, 0, (255, 0, 0)))], mode=0, palette=palette)
 
     assert packed.data[0] == 0x00  # both pixels opaque: nothing of the background kept
     assert packed.data[1] == 0x4C

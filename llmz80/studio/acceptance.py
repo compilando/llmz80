@@ -162,7 +162,8 @@ def step_mismatches(step: dict[str, Any], readings: dict[str, dict[str, Any]]) -
             target = (readings.get(baseline) or {}).get(name)
             if target is None:
                 mismatches.append(
-                    f"{name}: nothing was read at {baseline}, so there is nothing to compare against"
+                    f"{name}: nothing was read at {baseline}, so there is nothing "
+                    "to compare against"
                 )
                 continue
         actual = read.get(name)
@@ -562,7 +563,9 @@ def design_prompt(project: GameProject) -> str:
             "platform.h documents what it offers.",
         ]
     )
-    mandatory = [name for name, needed in (("plat_sprite", sprites), ("plat_tile", drawn_tiles)) if needed]
+    mandatory = [
+        name for name, needed in (("plat_sprite", sprites), ("plat_tile", drawn_tiles)) if needed
+    ]
     if mandatory:
         lines.append(
             f"Use as much of it as helps, except {' and '.join(mandatory)}: this design's "

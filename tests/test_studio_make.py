@@ -532,8 +532,8 @@ def test_an_unknown_option_is_refused(capsys):
 
 
 def test_a_failed_run_exits_non_zero(monkeypatch):
-    from llmz80.cli import main
     import llmz80.studio.make as make_module
+    from llmz80.cli import main
 
     monkeypatch.setattr(
         make_module,
@@ -615,8 +615,8 @@ def test_make_without_the_flag_plays_nothing(monkeypatch, tmp_path: Path):
 def test_a_run_that_stopped_is_not_played(monkeypatch, tmp_path: Path):
     """There is nothing to play: the order stopped before an artifact
     existed, and `--play` is not a reason to pretend otherwise."""
-    from llmz80.cli import main
     import llmz80.studio.make as make_module
+    from llmz80.cli import main
 
     monkeypatch.setattr(
         make_module,

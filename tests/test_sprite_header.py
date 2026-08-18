@@ -11,8 +11,8 @@ those tables actually live, compiled exactly once.
 import pytest
 from PIL import Image
 
-from llmz80.studio.spriting import PackedSprite, pack_spectrum
 from llmz80.studio.sprite_header import render_sprite_header, render_sprite_source
+from llmz80.studio.spriting import PackedSprite, pack_spectrum
 
 
 def _packed(frames: int = 2, width_bytes: int = 2) -> PackedSprite:
@@ -89,11 +89,18 @@ def test_a_sprite_id_that_is_not_a_valid_c_identifier_is_rejected():
 def test_the_header_declares_the_tables_extern_and_defines_nothing():
     text = render_sprite_header({"hero": _packed(2), "enemy": _packed(1)})
 
-    for table in ("sprite_data", "sprite_mask", "sprite_frame_offset", "sprite_frames",
-                  "sprite_attribute"):
-        assert f"extern const unsigned char *const {table}[]" in text or (
-            f"extern const unsigned int {table}" in text
-        ) or f"extern const unsigned char {table}[]" in text, table
+    for table in (
+        "sprite_data",
+        "sprite_mask",
+        "sprite_frame_offset",
+        "sprite_frames",
+        "sprite_attribute",
+    ):
+        assert (
+            f"extern const unsigned char *const {table}[]" in text
+            or (f"extern const unsigned int {table}" in text)
+            or f"extern const unsigned char {table}[]" in text
+        ), table
     # None of the byte data itself, nor any array initialiser, appears in the
     # header -- those live in sprites.c only.
     assert "0x" not in text

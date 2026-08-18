@@ -12,15 +12,10 @@ was written; these tests are the start of that phase.
 from PIL import Image
 
 from llmz80.studio.models import AssetSpec
-from llmz80.studio.spriting import (
-    TILE_SIZE,
-    is_tile_art,
-    pack_cpc_tile,
-    pack_spectrum_tile,
-)
+from llmz80.studio.spriting import TILE_SIZE, is_tile_art, pack_cpc_tile, pack_spectrum_tile
 
 OPAQUE_WHITE = (255, 255, 255, 255)
-DIM_CYAN = (0, 205, 205, 255)   # the Spectrum's non-BRIGHT intensity
+DIM_CYAN = (0, 205, 205, 255)  # the Spectrum's non-BRIGHT intensity
 BRIGHT_CYAN = (0, 255, 255, 255)
 CLEAR = (0, 0, 0, 0)
 

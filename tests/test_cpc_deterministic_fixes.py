@@ -23,7 +23,9 @@ def test_deterministic_fix_adds_disable_firmware_for_hardware_calls():
 
 
 def test_deterministic_fix_preserves_leading_declarations():
-    code = "#include <cpctelera.h>\nvoid main(void) {\n    u8 x = 0;\n    cpct_setVideoMode(1);\n}\n"
+    code = (
+        "#include <cpctelera.h>\nvoid main(void) {\n    u8 x = 0;\n    cpct_setVideoMode(1);\n}\n"
+    )
 
     fixed, fixes = apply_deterministic_cpc_fixes(code)
 
@@ -33,7 +35,9 @@ def test_deterministic_fix_preserves_leading_declarations():
 
 
 def test_deterministic_fix_adds_keyboard_scan_before_key_check():
-    code = "#include <cpctelera.h>\nvoid main(void) {\n    if (cpct_isKeyPressed(Key_Space)) {}\n}\n"
+    code = (
+        "#include <cpctelera.h>\nvoid main(void) {\n    if (cpct_isKeyPressed(Key_Space)) {}\n}\n"
+    )
 
     fixed, fixes = apply_deterministic_cpc_fixes(code)
 
@@ -42,7 +46,14 @@ def test_deterministic_fix_adds_keyboard_scan_before_key_check():
 
 
 def test_deterministic_fix_reorders_draw_char_args():
-    code = "#include <cpctelera.h>\nvoid main(void) {\n    u8* pvmem;\n    cpct_drawCharM1('X', pvmem);\n    cpct_drawCharM1(ch, pvmem);\n}\n"
+    code = (
+        "#include <cpctelera.h>\n"
+        "void main(void) {\n"
+        "    u8* pvmem;\n"
+        "    cpct_drawCharM1('X', pvmem);\n"
+        "    cpct_drawCharM1(ch, pvmem);\n"
+        "}\n"
+    )
 
     fixed, fixes = apply_deterministic_cpc_fixes(code)
 
@@ -64,7 +75,13 @@ void draw(char ch) {
 
 
 def test_deterministic_fix_replaces_lcg_random_without_entropy():
-    code = "#include <cpctelera.h>\nvoid main(void) {\n    cpct_setRandom_lcg_u8();\n    r = cpct_getRandom_lcg_u8();\n}\n"
+    code = (
+        "#include <cpctelera.h>\n"
+        "void main(void) {\n"
+        "    cpct_setRandom_lcg_u8();\n"
+        "    r = cpct_getRandom_lcg_u8();\n"
+        "}\n"
+    )
 
     fixed, fixes = apply_deterministic_cpc_fixes(code)
 

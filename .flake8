@@ -1,0 +1,17 @@
+[flake8]
+max-line-length = 100
+max-complexity = 12
+extend-exclude = .git,.venv,local,examples,build,dist,vendor,studio-projects
+# E203 (whitespace before ':') is Black's own slicing style and PEP 8 agrees
+# with Black, not with pycodestyle, on it. Leaving it on means `make format`
+# and `make lint` disagree about the same line forever.
+# W503 is the same story for line breaks before a binary operator.
+extend-ignore = E203, W503
+# The two runner scripts insert the repository root into sys.path before
+# importing from it, which is the point of them being runnable from anywhere.
+per-file-ignores =
+    scripts/select_candidates.py:E402
+    scripts/smoke_test.py:E402
+    scripts/evaluate_generation.py:E402
+    scripts/audit_examples.py:E402
+    scripts/draw_sprite_probe.py:E402
