@@ -259,3 +259,74 @@ def test_the_per_sprite_byte_arrays_stay_static():
 
     assert "static const unsigned char sprite_hero_data[] = {" in text
     assert "static const unsigned char sprite_hero_mask[] = {" in text
+
+
+class TestPreShiftedLayout:
+    """What the header must say so a blitter can find one shifted copy.
+
+    Three facts, and only three: how many copies exist (`SPRITE_SHIFTS`), how
+    far apart they are (`SPRITE_SHIFT_STRIDE`), and where the frame they
+    belong to starts (`sprite_frame_offset`, unchanged). A copy is then
+    `sprite_data[s] + sprite_frame_offset[s][f] + shift * SPRITE_SHIFT_STRIDE`,
+    which is an add and a multiply by a constant -- no second offset table,
+    and no 16-bit multiply of the kind the CPCtelera link refuses.
+    """
+
+    def test_an_unshifted_project_says_one(self):
+        text = render_sprite_header({"hero": _packed()})
+
+        assert "#define SPRITE_SHIFTS 1" in text
+
+    def test_a_shifted_project_says_how_many_and_how_far(self):
+        packed = pack_spectrum([Image.new("RGBA", (16, 16), (255, 255, 255, 255))], shifts=8)
+
+        text = render_sprite_header({"hero": packed})
+
+        assert "#define SPRITE_SHIFTS 8" in text
+        assert f"#define SPRITE_SHIFT_STRIDE {packed.bytes_per_block}" in text
+        assert f"#define SPRITE_BYTES_WIDE {packed.width_bytes}" in text
+
+    def test_the_stride_is_a_whole_copy_of_one_frame(self):
+        packed = pack_spectrum([Image.new("RGBA", (16, 16), (255, 255, 255, 255))], shifts=8)
+
+        assert packed.bytes_per_block == packed.width_bytes * 16
+        assert packed.bytes_per_frame == packed.bytes_per_block * 8
+
+    def test_the_cpc_stride_counts_the_interleaved_mask(self):
+        """A CPC copy carries its mask inside `data`, so a stride that counted
+        only colour bytes would land the blitter half a copy short."""
+        from llmz80.studio.palette import cpc_rgb
+        from llmz80.studio.spriting import pack_cpc
+
+        packed = pack_cpc(
+            [Image.new("RGBA", (16, 16), (255, 255, 255, 255))],
+            mode=1,
+            palette=cpc_rgb(1),
+            shifts=4,
+        )
+
+        text = render_sprite_header({"hero": packed})
+
+        assert f"#define SPRITE_SHIFT_STRIDE {2 * packed.width_bytes * 16}" in text
+        assert "#define SPRITE_SHIFTS 4" in text
+
+    def test_frame_offsets_still_step_a_whole_frame(self):
+        """The offset table knows nothing about shifting, and must not: a
+        frame's copies sit together, so its start is still `frame *
+        bytes_per_frame` and `g_anim_frame` indexes it the way it always did.
+        """
+        packed = pack_spectrum([Image.new("RGBA", (16, 16), (255, 255, 255, 255))] * 3, shifts=8)
+
+        source = render_sprite_source({"hero": packed})
+        expected = [frame * packed.bytes_per_frame for frame in range(3)]
+
+        assert ", ".join(str(offset) for offset in expected) in source
+
+    def test_sprites_may_not_disagree_about_how_many_copies_they_have(self):
+        """Same rule as `SPRITE_BYTES_WIDE`, and for the same reason: one macro
+        cannot hold two answers, and a blitter reading the wrong one walks off
+        the end of a sprite."""
+        shifted = pack_spectrum([Image.new("RGBA", (16, 16), (255, 255, 255, 255))], shifts=8)
+
+        with pytest.raises(ValueError, match="SPRITE_SHIFTS"):
+            render_sprite_header({"hero": shifted, "enemy": _packed(frames=1, width_bytes=3)})

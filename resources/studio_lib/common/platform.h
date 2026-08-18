@@ -115,6 +115,39 @@ void plat_sprite(unsigned char col, unsigned char row, unsigned char sprite,
 void plat_sprite_py(unsigned char col, unsigned char py, unsigned char sprite,
                     unsigned char frame);
 
+/* The same sprite at a pixel column as well as a pixel row: `px` is a pixel,
+ * so `px` and `px + 1` are one pixel apart rather than eight.
+ *
+ * `px` is an int and not a char because CPC mode 1 is 320 pixels across and a
+ * char stops at 255. The Spectrum pays a byte it does not need so that one
+ * declaration is right on every target.
+ *
+ * This one is not free, and whether it moves by a pixel at all depends on the
+ * design. A byte of screen holds several pixels -- eight on the Spectrum, four
+ * in CPC mode 1, two in mode 0 -- so a figure whose left edge falls inside a
+ * byte has its bits in different positions, and the only way to draw it is to
+ * have packed a copy of the sprite for that position beforehand. Studio packs
+ * those copies when the design says `presentation.smooth_horizontal: true`,
+ * and sprites.h then reports SPRITE_SHIFTS above 1.
+ *
+ * When the design did not ask, SPRITE_SHIFTS is 1 and this rounds `px` down to
+ * the byte it falls in. A program written against it still runs and still
+ * draws; it steps by a byte. That is deliberate: one API whatever the design
+ * chose beats a call that vanishes, and a program cannot be broken by a
+ * decision taken in game.yml after it was written.
+ *
+ * The cost when it is asked for: every frame is packed once per position and
+ * each copy is a byte wider, so a Spectrum sheet takes twelve times the memory
+ * it took. `validate_sprite_budget` weighs that against
+ * budgets.static_data_bytes and refuses the project rather than letting it
+ * overflow, so this is a decision made at design time with a number attached.
+ *
+ * Bounds are MAX_SPRITE_PX and MAX_SPRITE_PY in game_config.h, and MAX_SPRITE_PX
+ * already accounts for the extra byte a shifted copy occupies. Out of range
+ * draws nothing. */
+void plat_sprite_px(unsigned int px, unsigned char py, unsigned char sprite,
+                    unsigned char frame);
+
 /* Plays effect N, where N is the index the design gave it -- game_config.h
  * defines SOUND_<NAME> for each one it declared. What each index sounds like
  * is this library's business; what it is called is the design's. A target

@@ -185,13 +185,17 @@ Open an issue with:
   any CPC project that asks for sound. CPCtelera bundles Arkos Tracker, which
   is a music player rather than an effects API, so the first question is what
   five short effects should even be on an AY.
-- **Horizontal sub-cell movement.** The vertical half is done
-  (`plat_sprite_py`); a column is still eight pixels. Moving by less needs
-  pre-shifted copies of each sprite -- eight on the Spectrum, two or four on
-  the CPC -- which `sprite_header.py`'s `sprite_frame_offset` table can already
-  index, so the work is in the packer and the memory budget rather than in the
-  blitter. Measure before assuming: `plat_sprite_py` is already slower per call
-  than `plat_sprite`, and the pacing gate allows one missed frame.
+- **Measuring what the pixel blitters cost.** `plat_sprite_py` and
+  `plat_sprite_px` are both slower per call than `plat_sprite`, and the pacing
+  gate allows one missed frame. Nobody has measured how many moving sprites a
+  real game can afford on either machine, so nothing in the writing prompt can
+  tell a model where the line is.
+- **Per-sprite shift counts.** `presentation.smooth_horizontal` is one flag for
+  the whole design, because `SPRITE_SHIFTS` and `SPRITE_BYTES_WIDE` are one
+  macro each. A game whose ball must slide and whose walls need not pays for
+  both. Per-sprite would mean a width table the blitter reads on every call, on
+  the hottest path there is -- worth doing only with a measurement to justify
+  it.
 - **Scrolling.** Neither machine has it. The CPC can do it in hardware with
   `cpct_setVideoMemoryOffset`; the Spectrum has no hardware scroll at all, so
   full-screen smooth scrolling is not realistic from C -- a windowed or

@@ -69,6 +69,70 @@ def max_sprite_py(platform: TargetPlatform) -> int:
     return SCREEN_LINES[platform] - SPRITE_SIZE
 
 
+#: Pixels each machine's display is across. Not a design choice: a Spectrum is
+#: 256, a CPC row is 80 bytes and therefore 160 pixels in mode 0 and 320 in
+#: mode 1. Mode 1's 320 is why `plat_sprite_px` takes an int -- a pixel column
+#: there does not fit in the `unsigned char` every other coordinate uses.
+SCREEN_PIXELS: dict[VideoMode, int] = {
+    VideoMode.SPECTRUM_BITMAP: 256,
+    VideoMode.CPC_MODE_0: 160,
+    VideoMode.CPC_MODE_1: 320,
+}
+
+
+def pixels_per_byte_log(platform: TargetPlatform, mode: VideoMode) -> int:
+    """The shift that divides a pixel column by `pixels_per_byte`.
+
+    Emitted as `PIXELS_PER_BYTE_LOG` so the blitter can shift rather than
+    divide: SDCC satisfies `/ 8` from its own routine, and the CPC link
+    refuses a routine built for the other `--sdcccall` ABI (see
+    `sprite_header.py`). Every value here is a power of two, so the shift is
+    exact rather than an approximation somebody has to remember to check --
+    and `test_preshifted_sprites` asserts `1 << log == pixels_per_byte` on
+    every target rather than trusting this table twice.
+    """
+    from .spriting import pixels_per_byte
+
+    return pixels_per_byte(platform, mode).bit_length() - 1
+
+
+def max_sprite_px(project: GameProject) -> int:
+    """The last pixel column a sprite can start at and still fit on screen.
+
+    Two corrections to the obvious "screen width less sixteen", both of which
+    only matter once a design asks for pre-shifted art, and both of which are
+    invisible until something at the right edge writes past the display file.
+
+    A shifted copy is one byte wider than the sprite, so the last legal *byte*
+    column moves one to the left. And every sub-byte position inside that byte
+    is reachable, so the last legal *pixel* column moves `shifts - 1` back to
+    the right. On the Spectrum that is 240 unshifted and 239 shifted; the two
+    corrections nearly cancel, which is exactly why writing either one alone
+    would look right.
+
+    Derived here rather than in the C for the same reason `max_sprite_py` is:
+    the number is stated in three places that must agree -- the guard, the
+    macro, and the sentence the writing prompt puts in front of the model --
+    and it differs per target *and* per design.
+    """
+    from .spriting import SPRITE_SIZE, shift_count
+
+    mode = project.target.video_mode
+    per_byte = _pixels_per_byte(project.target.platform, mode)
+    row_bytes = SCREEN_PIXELS[mode] // per_byte
+    shifts = (
+        shift_count(project.target.platform, mode) if project.presentation.smooth_horizontal else 1
+    )
+    sprite_bytes = SPRITE_SIZE // per_byte + (1 if shifts > 1 else 0)
+    return (row_bytes - sprite_bytes) * per_byte + shifts - 1
+
+
+def _pixels_per_byte(platform: TargetPlatform, mode: VideoMode) -> int:
+    from .spriting import pixels_per_byte
+
+    return pixels_per_byte(platform, mode)
+
+
 #: Targets whose `plat_wait_frame` actually counts the frames the previous
 #: iteration cost. `resources/studio_lib/spectrum/platform.c` reads the ROM
 #: frame counter at 23672; `resources/studio_lib/cpc/platform.c` builds the
@@ -185,6 +249,7 @@ def _cpc_palette_lines(project: GameProject) -> list[str]:
 def render_config_header(project: GameProject) -> str:
     """Target and design constants the platform library and a program can use."""
     cpc_mode = 0 if project.target.video_mode is VideoMode.CPC_MODE_0 else 1
+    mode = project.target.video_mode
     columns, rows = playfield(project)
     bits, entries = _binding_lines(project)
     # The last X-macro line must not carry a trailing backslash.
@@ -210,6 +275,12 @@ def render_config_header(project: GameProject) -> str:
             f"#define HAS_FRAME_CLOCK {1 if has_frame_clock(project.target.platform) else 0}",
             "/* The last pixel row plat_sprite_py can start a sprite on. */",
             f"#define MAX_SPRITE_PY {max_sprite_py(project.target.platform)}",
+            "/* How a pixel column becomes a byte column, and the rightmost one a",
+            " * sprite can start at. MAX_SPRITE_PX already allows for the extra byte",
+            " * a pre-shifted copy occupies, so it moves when smooth_horizontal does. */",
+            f"#define PIXELS_PER_BYTE {_pixels_per_byte(project.target.platform, mode)}",
+            f"#define PIXELS_PER_BYTE_LOG " f"{pixels_per_byte_log(project.target.platform, mode)}",
+            f"#define MAX_SPRITE_PX {max_sprite_px(project)}",
             *_cpc_palette_lines(project),
             # One per colour the design's palette named and this machine can
             # show. Resolved here rather than written into a prompt because the

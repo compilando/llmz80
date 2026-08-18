@@ -59,6 +59,48 @@ this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Sprites can sit on a pixel row.** `plat_sprite_py(col, py, sprite, frame)`
+  takes a scanline where `plat_sprite` takes a character row, so anything a
+  player watches rise or fall moves smoothly instead of in eight-pixel steps.
+  Neither machine needs a differently packed sprite for it: z88dk's
+  `zx_saddrpdown` steps one pixel line and crosses the Spectrum's non-linear
+  thirds by itself, and `cpct_getScreenPtr` had always taken its y in
+  scanlines -- `plat_sprite` was multiplying a row by eight to throw that away.
+  On the Spectrum a sprite between cells covers three character rows, so the
+  blitter colours six attribute cells rather than four. Proved by reading the
+  display file out of a running 48K: the sprite's bytes land at pixel row 59,
+  across a screen-third boundary.
+- **Sprites can move across by single pixels**, when the design asks with
+  `presentation.smooth_horizontal`. A byte of screen holds several pixels, so a
+  figure whose left edge falls inside a byte has its bits in different
+  positions; the packers now emit one copy of every frame per position -- eight
+  on the Spectrum, four in CPC mode 1, two in mode 0 -- and
+  `plat_sprite_px(px, py, sprite, frame)` picks between them.
+
+  One mechanism rather than three. A shifted copy is the packers' existing
+  pixel-by-pixel walk over a canvas one byte wider with the figure pasted `k`
+  pixels in, so the Spectrum's one-bit pixels and the CPC's interleaved pens
+  come out of the code that was already there with only `pixels_per_byte`
+  differing -- no byte rotation, no carry chains, no per-machine bit surgery.
+  The blitter finds a copy at
+  `sprite_frame_offset[s][f] + shift * SPRITE_SHIFT_STRIDE`, which needs no
+  second offset table and no 16-bit multiply.
+
+  It costs twelve times the art on the Spectrum, and `validate_sprite_budget`
+  already weighs that against `budgets.static_data_bytes` -- no new gate. A
+  design that did not ask still compiles against `plat_sprite_px`; it rounds
+  down to the byte, so a program cannot be broken by a decision taken in
+  game.yml after it was written. Proved on a real 48K: at pixel column 21 the
+  bytes on screen are the copy packed for offset 5, and the same program on a
+  design that did not ask draws the plain art five pixels left.
+- **`MAX_SPRITE_PY` and `MAX_SPRITE_PX`** in game_config.h, derived from each
+  machine's own screen so the library's guard, the macro and the writing
+  prompt cannot name three different numbers. `MAX_SPRITE_PX` also allows for
+  the extra byte a shifted copy occupies, which moves the bound in both
+  directions at once and is exactly the kind of arithmetic that looks right
+  when only half of it is written.
+- **`FlagValue`** in the planner, so a design can be asked for a yes or a no --
+  the first of them being `smooth_horizontal`.
 - **The Amstrad CPC counts frames**, so the pacing gate judges it instead of
   abstaining. `cpct_setInterruptHandler` installs a handler the machine calls
   six times per display frame, and counting those sixths is the free-running

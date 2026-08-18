@@ -33,6 +33,7 @@ from .spriting import (
     pack_cpc_tile,
     pack_spectrum,
     pack_spectrum_tile,
+    shift_count,
 )
 from .structure import playfield
 from .tile_header import render_tile_header, render_tile_source
@@ -149,19 +150,24 @@ _COMMENT_OR_STRING_RE = re.compile(
     r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\n]*|/\*.*?\*/', re.DOTALL
 )
 
-#: A call to either function `resources/studio_lib/*/platform.c` exposes for
-#: drawing an entity's art: `plat_sprite`, which takes a character row, and
-#: `plat_sprite_py`, which takes a pixel row (see `platform.h`'s declarations
-#: and `acceptance.py`'s "Sprites:" prompt lines, which name both). Matched
-#: with a word boundary and an open paren so a substring like
-#: `my_plat_sprite_helper(` does not count.
+#: The blitters `resources/studio_lib/*/platform.c` exposes for drawing an
+#: entity's art. `plat_sprite` takes a character cell, `plat_sprite_py` a pixel
+#: row, `plat_sprite_px` a pixel row and column; `platform.h` declares all
+#: three and `acceptance.py`'s "Sprites:" prompt lines name them.
+_SPRITE_BLITTERS = ("plat_sprite", "plat_sprite_py", "plat_sprite_px")
+
+#: A call to any of them. Matched with a word boundary and an open paren so a
+#: substring like `my_plat_sprite_helper(` does not count, and built from the
+#: tuple above rather than spelled out, because this gate has now been widened
+#: twice by adding a suffix to a regex and the third time should not need it.
 #:
-#: Both, because this gate asks whether the art reached the screen and not by
-#: which of the two calls. A program that moves its actor smoothly and
-#: therefore never calls `plat_sprite` at all is the *better* program, and the
-#: first draft of this regex would have failed it with a diagnostic telling it
-#: to stop.
-_SPRITE_CALL_RE = re.compile(r"\bplat_sprite(?:_py)?\s*\(")
+#: Any, because the question is whether the art reached the screen and not by
+#: which call. A program that moves its actor smoothly and therefore never
+#: calls `plat_sprite` at all is the *better* program, and the narrow version
+#: of this failed exactly that with a diagnostic telling it to stop.
+_SPRITE_CALL_RE = re.compile(
+    r"\b(?:" + "|".join(sorted(_SPRITE_BLITTERS, key=len, reverse=True)) + r")\s*\("
+)
 
 
 def _blanked(code: str) -> str:
@@ -228,9 +234,9 @@ def sprite_usage_errors(project: GameProject, sources: dict[str, str]) -> list[s
     names = ", ".join(f"SPRITE_{asset.id.upper()}" for asset in sprites)
     return [
         f"this design has sprites ({names}) packed into sprites.h, but the program "
-        "never draws with them -- draw at least one entity with "
-        "plat_sprite(col, row, sprite, frame), or plat_sprite_py(col, py, sprite, "
-        "frame) if it moves smoothly up and down, instead of only plat_cell."
+        "never draws with them -- draw at least one entity with one of "
+        + ", ".join(_SPRITE_BLITTERS)
+        + " instead of only plat_cell."
     ]
 
 
@@ -325,6 +331,16 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
     # valid, SPRITE_COUNT-0 header, and every project's platform.c includes
     # "sprites.h" (see plat_sprite), so a design with no sprite-kind assets
     # still needs one to build.
+    # One number for the whole project, from one place: how many sub-byte
+    # positions each sprite is packed for. `shift_count` is the target's own
+    # pixels-per-byte, so nothing here decides it per machine, and a design
+    # that did not ask gets 1 -- the unshifted sprite, byte for byte what it
+    # always was.
+    shifts = (
+        shift_count(project.target.platform, project.target.video_mode)
+        if project.presentation.smooth_horizontal
+        else 1
+    )
     packed_sprites: dict[str, PackedSprite] = {}
     for asset, source in zip(project.assets, asset_paths):
         if not is_blitter_sprite(asset):
@@ -335,9 +351,9 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
         with Image.open(source) as sheet:
             frames = split_frames(sheet.convert("RGBA"), asset.frames)
         packed_sprites[asset.id] = (
-            pack_spectrum(frames)
+            pack_spectrum(frames, shifts=shifts)
             if project.target.platform is TargetPlatform.SPECTRUM
-            else pack_cpc(frames, mode=cpc_mode, palette=cpc_rgb(cpc_mode))
+            else pack_cpc(frames, mode=cpc_mode, palette=cpc_rgb(cpc_mode), shifts=shifts)
         )
     # A design's declared colour is the designer's decision and outranks the
     # artist's: `spriting._spectrum_attribute` reads an ink off the pixels,

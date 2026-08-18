@@ -382,3 +382,34 @@ void plat_sprite_py(unsigned char col, unsigned char py, unsigned char sprite,
     (void)col; (void)py; (void)sprite; (void)frame;
 #endif
 }
+
+
+/* The same sprite at a pixel column. See the Spectrum copy of this function
+ * for why the shifting happened in Python and not here; the arithmetic is
+ * identical, and deliberately so -- the two machines differ in how many pixels
+ * a byte holds and in nothing else this cares about.
+ *
+ * What differs: `cpct_getScreenPtr` wants a byte offset into the row, which is
+ * what `px >> PIXELS_PER_BYTE_LOG` already is, so unlike every other function
+ * in this file there is no multiply by CELL_BYTES -- a character cell is two
+ * bytes in mode 1 and four in mode 0, but a byte is a byte. And there are no
+ * attributes to write, because colour here lives in the pixels. */
+void plat_sprite_px(unsigned int px, unsigned char py, unsigned char sprite,
+                    unsigned char frame) {
+#if SPRITE_COUNT
+    u8 *screen;
+    const u8 *bytes;
+    unsigned char col;
+    unsigned int block;
+    if (sprite >= SPRITE_COUNT) return;
+    if (px > MAX_SPRITE_PX || py > MAX_SPRITE_PY) return;
+    col = (unsigned char)(px >> PIXELS_PER_BYTE_LOG);
+    block = (unsigned int)(px & (PIXELS_PER_BYTE - 1) & (SPRITE_SHIFTS - 1))
+            * SPRITE_SHIFT_STRIDE;
+    screen = cpct_getScreenPtr(CPCT_VMEM_START, col, py);
+    bytes = sprite_data[sprite] + sprite_frame_offset[sprite][frame] + block;
+    cpct_drawSpriteMasked((void *)bytes, screen, SPRITE_BYTES_WIDE, 16);
+#else
+    (void)px; (void)py; (void)sprite; (void)frame;
+#endif
+}

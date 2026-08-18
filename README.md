@@ -286,11 +286,22 @@ Spectrum — a sprite between cells covers three character rows rather than two,
 so six attribute cells take its colour rather than four — and nothing on the
 CPC, whose colour lives in the pixels.
 
-**Horizontally** everything is still byte-aligned: a column is eight pixels.
-Moving by less needs pre-shifted copies of each sprite, eight on the Spectrum
-and two or four on the CPC depending on the mode, and the memory for them.
-`sprite_header.py`'s `sprite_frame_offset` table can already index the extra
-variants, so the work is the packer and the budget, not the blitter.
+**Horizontally**, `plat_sprite_px(px, py, sprite, frame)` takes a pixel column
+too — but only if the design paid for it. A byte of screen holds several pixels
+(8 / 4 / 2 depending on machine and mode), so a figure whose left edge falls
+inside a byte has its bits in different places, and the only way to draw it is
+to have packed a copy for that position beforehand. Set:
+
+```yaml
+presentation:
+  smooth_horizontal: true
+```
+
+and every sprite is packed once per position inside a byte. It is not free: on
+the Spectrum that is eight copies each a byte wider, so twelve times the art.
+The build weighs the result against `budgets.static_data_bytes` and refuses the
+design with the number rather than overflowing. A design that did not ask still
+compiles against `plat_sprite_px`; it simply steps by a byte.
 
 **Scrolling** is not implemented on either. The CPC could do it in hardware
 (`cpct_setVideoMemoryOffset`); the Spectrum has none and would need a software

@@ -72,6 +72,19 @@ one row, cell or spawn at a time:
                              artwork instead of as its character  -> {"text": ...}
   /presentation/palette     the colours this design names, so terrain and
                              actors can wear one                  -> {"palette": [...]}
+  /presentation/smooth_horizontal
+                            true if something in this game must slide across
+                             the screen a pixel at a time rather than a
+                             character at a time -- a ball, a ship, a car.
+                             Costs memory: every sprite is packed once per
+                             pixel position inside a byte, which is 12x the
+                             art on the Spectrum and 2-4x on the CPC, and the
+                             build refuses the design if that no longer fits
+                             budgets.static_data_bytes. Leave it alone for a
+                             game whose actors step from square to square --
+                             a maze, a board, a platformer on a tile grid --
+                             where nothing would look smoother for it
+                                                                  -> {"flag": true}
   /tiles/N/colour           which of those colours that terrain is -> {"text": ...}
   /entities/N/colour        which of those colours that actor is  -> {"text": ...}
   /screens/N/tiles          the room, as rows of the design's own

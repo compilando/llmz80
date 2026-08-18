@@ -342,3 +342,204 @@ def test_the_cpc_draws_something_at_a_pixel_row_between_cells(tmp_path: Path):
     frames = report["frames"]
     assert len(frames) >= 2, report
     assert frames[1]["non_dominant_pixels"] > 30, frames[1]["path"]
+
+
+# ---------------------------------------------------------------------------
+# Horizontal: the pre-shifted half.
+#
+# `plat_sprite_px` can only really move by a pixel when the design asked for
+# the shifted copies, so both cases are built: one project with
+# `smooth_horizontal` and one without, and the difference between them is the
+# whole feature.
+
+#: A pixel column that is deliberately not a multiple of 8. 21 is byte column 2
+#: plus five pixels, so the sprite's bits sit five places right of where an
+#: unshifted blitter could put them.
+SHIFT_PX = 21
+SHIFT_PY = 40
+
+
+def _build_spectrum_px(tmp_path: Path, *, smooth: bool):
+    workspace = tmp_path / ("smooth" if smooth else "blocky")
+    service = StudioService.at(workspace)
+    project, directory = service.create_project("PixelCol", TargetPlatform.SPECTRUM)
+    project.presentation.smooth_horizontal = smooth
+    # Room for eight copies of a three-byte sprite; the default budget is sized
+    # for unshifted art and would refuse this before it ever compiled.
+    project.budgets.static_data_bytes = 16384
+    service.save_project(project, directory)
+
+    sprite_path = tmp_path / f"hero_{smooth}.png"
+    _sprite_image().save(sprite_path)
+    service.add_asset(project, directory, sprite_path)
+
+    program_dir = directory / project.program_dir
+    program_dir.mkdir(parents=True, exist_ok=True)
+    (program_dir / "main.c").write_text(
+        f"""#include <arch/zx.h>
+#include "platform.h"
+
+{CONTRACT_STATE}
+void main(void) {{
+    plat_init();
+{CONTRACT_INIT}
+    plat_sprite_px({SHIFT_PX}, {SHIFT_PY}, 0, 0);
+    while (1) {{ }}
+}}
+""",
+        encoding="utf-8",
+    )
+    return service.build(project, directory)
+
+
+def _read_rows(artifact: Path, px_col_byte: int, py: int, width: int) -> bytearray:
+    port = _free_local_port()
+    process = subprocess.Popen(
+        [
+            "zesarux",
+            "--noconfigfile",
+            "--machine",
+            "48k",
+            "--vo",
+            "null",
+            "--ao",
+            "null",
+            "--fastautoload",
+            "--quickexit",
+            "--enable-remoteprotocol",
+            "--remoteprotocol-port",
+            str(port),
+            "--exit-after",
+            "16",
+            str(artifact),
+        ],
+        cwd=artifact.parent,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        connection = _connect_zrcp(port, time.monotonic() + 3.0)
+        with connection:
+            time.sleep(3.5)
+            _zrcp_query(connection, "get-version")
+            read = bytearray()
+            for line in range(16):
+                address = _pixel_row_address(px_col_byte, py + line)
+                answer = _zrcp_query(connection, f"read-memory {address} {width}")
+                digits = "".join(
+                    ch for ch in answer.split("command@")[0] if ch in "0123456789abcdefABCDEF"
+                )[: width * 2]
+                assert len(digits) == width * 2, f"{address:#06x}: {answer!r}"
+                for byte in range(width):
+                    read.append(int(digits[byte * 2 : byte * 2 + 2], 16))
+            return read
+    finally:
+        process.terminate()
+        try:
+            process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate(timeout=5)
+
+
+@zcc_missing
+def test_a_project_that_did_not_ask_for_shifting_still_compiles_against_px(tmp_path: Path):
+    """One API whatever the design chose. A program written for smooth motion
+    must not stop building because game.yml says no -- it steps by a byte."""
+    build = _build_spectrum_px(tmp_path, smooth=False)
+
+    assert build.success, build.report.get("stderr") or build.report.get("stdout")
+
+
+@zcc_missing
+def test_asking_for_shifting_packs_the_copies_and_still_links(tmp_path: Path):
+    build = _build_spectrum_px(tmp_path, smooth=True)
+
+    assert build.success, build.report.get("stderr") or build.report.get("stdout")
+    header = (build.output_dir / "src" / "sprites.h").read_text(encoding="utf-8")
+    assert "#define SPRITE_SHIFTS 8" in header
+    assert "#define SPRITE_BYTES_WIDE 3" in header
+
+
+@zcc_missing
+@zesarux_missing
+def test_the_sprite_lands_five_pixels_into_the_byte_it_was_given(tmp_path: Path):
+    """The claim, read off a running 48K: the bytes on screen are the copy
+    packed for offset 5, not the unshifted art.
+
+    Compared against what the packer produced for that offset rather than
+    against a hand-rotated expectation -- rotating a masked sprite by hand is
+    the very thing this feature exists so that nobody has to do, and a test
+    that did it would be asserting my arithmetic rather than the machine's.
+    """
+    from llmz80.studio.spriting import pack_spectrum as pack
+
+    build = _build_spectrum_px(tmp_path, smooth=True)
+    assert build.success, build.report.get("stderr") or build.report.get("stdout")
+    assert build.artifact is not None
+
+    packed = pack([_sprite_image()], shifts=8)
+    stride = packed.bytes_per_block
+    offset = SHIFT_PX % 8
+    expected = packed.data[offset * stride : (offset + 1) * stride]
+
+    # A cleared screen is all zeros, so `(screen & mask) | data` leaves exactly
+    # the data bytes behind.
+    assert bytes(_read_rows(build.artifact, SHIFT_PX // 8, SHIFT_PY, 3)) == expected
+
+
+@zcc_missing
+@zesarux_missing
+def test_without_shifting_the_same_call_draws_the_unshifted_art(tmp_path: Path):
+    """The other half of the comparison, and the reason the test above is not
+    just asserting that something was drawn: the identical program on a design
+    that did not ask puts the plain sprite at the byte, five pixels left."""
+    from llmz80.studio.spriting import pack_spectrum as pack
+
+    build = _build_spectrum_px(tmp_path, smooth=False)
+    assert build.success, build.report.get("stderr") or build.report.get("stdout")
+    assert build.artifact is not None
+
+    expected = pack([_sprite_image()]).data
+
+    assert bytes(_read_rows(build.artifact, SHIFT_PX // 8, SHIFT_PY, 2)) == expected
+
+
+@make_missing
+@cpctelera_missing
+def test_the_cpc_builds_shifted_art_too(tmp_path: Path):
+    workspace = tmp_path / "cpc_px"
+    service = StudioService.at(workspace)
+    project, directory = service.create_project("PixelCol", TargetPlatform.AMSTRAD_CPC)
+    project.presentation.smooth_horizontal = True
+    project.budgets.static_data_bytes = 16384
+    service.save_project(project, directory)
+
+    sprite_path = tmp_path / "hero_cpc_px.png"
+    _sprite_image().save(sprite_path)
+    service.add_asset(project, directory, sprite_path)
+
+    program_dir = directory / project.program_dir
+    program_dir.mkdir(parents=True, exist_ok=True)
+    (program_dir / "main.c").write_text(
+        f"""#include "platform.h"
+
+{CONTRACT_STATE}
+void main(void) {{
+    plat_init();
+{CONTRACT_INIT}
+    plat_sprite_px({SHIFT_PX}, {SHIFT_PY}, 0, 0);
+    while (1) {{ }}
+}}
+""",
+        encoding="utf-8",
+    )
+
+    build = service.build(project, directory)
+
+    assert build.success, build.report.get("stderr") or build.report.get("stdout")
+    header = (build.output_dir / "src" / "sprites.h").read_text(encoding="utf-8")
+    # Mode 1 is the CPC default: four pixels to a byte, so four copies.
+    assert "#define SPRITE_SHIFTS 4" in header
+    assert "#define SPRITE_BYTES_WIDE 5" in header

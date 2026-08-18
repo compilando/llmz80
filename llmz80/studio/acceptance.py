@@ -27,7 +27,7 @@ from typing import Any
 
 from llmz80.core.state_contract import contract_prompt
 
-from .codegen import max_sprite_py
+from .codegen import max_sprite_px, max_sprite_py
 from .models import AssetSpec, GameProject, TileSpec
 from .observation import observation_script
 from .runtime_exam import (
@@ -497,6 +497,27 @@ def design_prompt(project: GameProject) -> str:
             "take the colour of six cells rather than four. That is what smooth "
             "vertical movement costs on this machine, and it is the cost every game "
             "of the era paid."
+        )
+        # The horizontal blitter, and what it does when the design did not pay
+        # for it. Said plainly rather than left to be discovered: a program
+        # that used it expecting pixel steps on a project packed for one
+        # position would look like a broken blitter rather than like a design
+        # decision, and the writer cannot see game.yml.
+        smooth = project.presentation.smooth_horizontal
+        lines.append(
+            "  plat_sprite_px(px, py, sprite, frame) takes a pixel column too. "
+            + (
+                "This design asked for smooth horizontal movement, so the art is "
+                f"packed at every pixel position and px really does step by one; "
+                f"px runs 0 to {max_sprite_px(project)}."
+                if smooth
+                else "This design did not ask for smooth horizontal movement "
+                "(presentation.smooth_horizontal is false), so the art is packed "
+                "for one position only and px is rounded down to the byte it falls "
+                "in -- the call works and draws, it just steps by 8 pixels across. "
+                "Prefer plat_sprite or plat_sprite_py here; they say what is really "
+                "happening."
+            )
         )
         # The footprint, stated because a real run got it wrong in a way that
         # compiled and passed every gate: a program drew its 16-pixel bat at

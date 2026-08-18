@@ -551,6 +551,15 @@ def _pre_split_render_sprite_header(sprites):
         lines.append(f"#define SPRITE_{sprite_id.upper()} {index}")
     lines.append(f"#define SPRITE_COUNT {count}")
     lines.append(f"#define SPRITE_BYTES_WIDE {bytes_wide}")
+    # Not part of the shape this fixture reproduces -- they came later, with
+    # pre-shifted art -- but `platform.c` reads them, so a header without them
+    # fails to *compile* and never reaches the linker error this test is about.
+    # The fixture's job is to put the definitions back, not to also roll the
+    # library's interface back to the same date.
+    lines.append(f"#define SPRITE_SHIFTS {next(iter({p.shifts for p in sprites.values()}), 1)}")
+    lines.append(
+        "#define SPRITE_SHIFT_STRIDE " f"{next((p.bytes_per_block for p in sprites.values()), 0)}"
+    )
     lines.append("")
     if count == 0:
         lines.append("#endif")

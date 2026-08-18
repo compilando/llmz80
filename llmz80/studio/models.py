@@ -261,6 +261,28 @@ class PaletteEntry(StrictModel):
 class PresentationSpec(StrictModel):
     style: Prose = Field(default="classic arcade", min_length=1, max_length=80)
     palette: list[PaletteEntry] = Field(default_factory=list, max_length=16)
+    #: Whether this design wants its sprites to move across by single pixels
+    #: rather than by whole bytes.
+    #:
+    #: One flag for the whole design rather than one per entity, because the
+    #: header can hold one `SPRITE_SHIFTS` and one `SPRITE_BYTES_WIDE`: a
+    #: project draws at pixel positions or it does not. Per-entity would mean
+    #: a width table the blitter reads on every call, on the hottest path
+    #: there is, to save memory on sprites a design chose to have.
+    #:
+    #: Off by default, and the default is the honest one. Saying yes packs
+    #: every frame once per pixel position inside a byte -- eight copies on the
+    #: Spectrum, four in CPC mode 1, two in mode 0 -- each a byte wider than
+    #: the original, so a Spectrum sheet costs twelve times what it did. That
+    #: is affordable for a design with two or three sprites and not for one
+    #: with a dozen, which is why nothing here guesses: `validate_sprite_budget`
+    #: weighs the result against `budgets.static_data_bytes` and refuses with
+    #: the number, the same way it weighs everything else.
+    #:
+    #: Vertical movement is unaffected either way. `plat_sprite_py` takes a
+    #: scanline whatever this says, because moving down needs a different
+    #: address rather than differently packed pixels.
+    smooth_horizontal: bool = False
     show_score: bool = True
     show_lives: bool = True
     #: Character rows reserved at the top for a HUD. Two is what a score and

@@ -348,6 +348,67 @@ void plat_sprite_py(unsigned char col, unsigned char py, unsigned char sprite,
 #endif
 }
 
+/* The same sprite at a pixel column, drawn from the copy packed for that
+ * position inside a byte.
+ *
+ * There is no bit shifting here and there is not meant to be. Rotating a
+ * masked sprite right by n bits at run time costs a carry chain per byte per
+ * line -- 48 rotations for one 16x16 frame -- every frame it moves, which is
+ * the cost pre-shifted art exists to avoid and the reason the era paid for it
+ * in memory instead. `spriting._shift_plan` did the work once, in Python.
+ *
+ * Two numbers, and they are not the same number even though they are equal
+ * when this feature is switched on. PIXELS_PER_BYTE says how to turn a pixel
+ * column into a byte column, and is a property of the machine. SPRITE_SHIFTS
+ * says how many copies were packed, and is a property of the design. Masking
+ * the remainder by SPRITE_SHIFTS - 1 as well is what makes a design that
+ * packed one copy round down to the byte instead of indexing a copy that does
+ * not exist: `& 0` is 0, with no branch and no dead code.
+ *
+ * PIXELS_PER_BYTE_LOG rather than a division: SDCC would satisfy `/ 8` from
+ * its own routine, and the CPC half of this file must avoid exactly that (see
+ * sprite_header.py's note on --sdcccall). A power of two is a shift. */
+void plat_sprite_px(unsigned int px, unsigned char py, unsigned char sprite,
+                    unsigned char frame) {
+#if SPRITE_COUNT
+    const unsigned char *data;
+    const unsigned char *mask;
+    unsigned char *at;
+    unsigned char line;
+    unsigned char byte;
+    unsigned char row;
+    unsigned char last;
+    unsigned char col;
+    unsigned int block;
+    if (sprite >= SPRITE_COUNT) return;
+    if (px > MAX_SPRITE_PX || py > MAX_SPRITE_PY) return;
+    col = (unsigned char)(px >> PIXELS_PER_BYTE_LOG);
+    block = (unsigned int)(px & (PIXELS_PER_BYTE - 1) & (SPRITE_SHIFTS - 1))
+            * SPRITE_SHIFT_STRIDE;
+    data = sprite_data[sprite] + sprite_frame_offset[sprite][frame] + block;
+    mask = sprite_mask[sprite] + sprite_frame_offset[sprite][frame] + block;
+    at = (unsigned char *)zx_pxy2saddr((unsigned char)(col << 3), py);
+    for (line = 0; line < 16; ++line) {
+        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
+            at[byte] = (unsigned char)((at[byte] & *mask++) | *data++);
+        }
+        at = (unsigned char *)zx_saddrpdown(at);
+    }
+    /* SPRITE_BYTES_WIDE cells across, not a literal 2 or 3: shifted art is one
+     * byte wider and therefore covers one more column of attribute cells, and
+     * deriving the count from the same macro the loop above uses is what stops
+     * the two disagreeing. */
+    last = (unsigned char)((py + 15) >> 3);
+    for (row = (unsigned char)(py >> 3); row <= last; ++row) {
+        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
+            *(unsigned char *)zx_cxy2aaddr(col + byte, row) = sprite_attribute[sprite];
+        }
+    }
+#else
+    (void)px; (void)py; (void)sprite; (void)frame;
+#endif
+}
+
 /* Beeper effects through z88dk's certified bit_beep, kept short because the
  * call blocks: every millisecond spent here is a millisecond the game loop is
  * not running. AUDIO_EFFECT_MASK lets the design switch each effect off.

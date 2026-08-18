@@ -84,6 +84,12 @@ class _Layout:
     count: int
     bytes_wide: int
     max_frames: int
+    #: How many sub-byte horizontal copies every sprite here carries, and how
+    #: far apart they are. One macro each, so uniform across the header for
+    #: the same reason `bytes_wide` is: a blitter reading one number for a
+    #: sprite packed to another walks off the end of it.
+    shifts: int
+    shift_stride: int
 
 
 def _layout(sprites: dict[str, PackedSprite]) -> _Layout:
@@ -101,7 +107,29 @@ def _layout(sprites: dict[str, PackedSprite]) -> _Layout:
     # any placeholder is harmless. 2 (the Spectrum's own width) is as good as any.
     bytes_wide = next(iter(width_bytes_values), 2)
     max_frames = max((packed.frames for packed in sprites.values()), default=0)
-    return _Layout(ids=ids, count=len(ids), bytes_wide=bytes_wide, max_frames=max_frames)
+
+    shift_values = {packed.shifts for packed in sprites.values()}
+    if len(shift_values) > 1:
+        raise ValueError(
+            f"sprites disagree on how many shifted copies they carry ({sorted(shift_values)}); "
+            "SPRITE_SHIFTS can only hold one value, so a project draws all of its "
+            "sprites at pixel positions or none of them"
+        )
+    shifts = next(iter(shift_values), 1)
+    # One copy of one frame. Read off a real PackedSprite rather than computed
+    # from `bytes_wide`, because the two packers disagree about what a block is
+    # -- the Spectrum keeps its mask in a separate array and the CPC interleaves
+    # it into `data`, doubling the stride -- and `bytes_per_block` is where that
+    # difference is already decided once.
+    stride = next((packed.bytes_per_block for packed in sprites.values()), 0)
+    return _Layout(
+        ids=ids,
+        count=len(ids),
+        bytes_wide=bytes_wide,
+        max_frames=max_frames,
+        shifts=shifts,
+        shift_stride=stride,
+    )
 
 
 #: Shared banner, identical in both generated files so a reader can tell at a
@@ -145,6 +173,12 @@ def render_sprite_header(sprites: dict[str, PackedSprite]) -> str:
         lines.append(f"#define SPRITE_{sprite_id.upper()} {index}")
     lines.append(f"#define SPRITE_COUNT {layout.count}")
     lines.append(f"#define SPRITE_BYTES_WIDE {layout.bytes_wide}")
+    lines.append("/* Sub-byte horizontal positions each frame is packed for: 1 means the")
+    lines.append(" * sprite can only be drawn on a byte boundary. A copy is")
+    lines.append(" * sprite_data[s] + sprite_frame_offset[s][f] + shift * SPRITE_SHIFT_STRIDE,")
+    lines.append(" * which is why there is no second offset table and no 16-bit multiply. */")
+    lines.append(f"#define SPRITE_SHIFTS {layout.shifts}")
+    lines.append(f"#define SPRITE_SHIFT_STRIDE {layout.shift_stride}")
     lines.append("")
 
     if layout.count == 0:

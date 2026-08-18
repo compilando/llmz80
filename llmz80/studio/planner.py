@@ -102,6 +102,22 @@ class NumberValue(ChangeValue):
         return self.number
 
 
+class FlagValue(ChangeValue):
+    """A yes or no: `presentation.smooth_horizontal`, and whatever else a
+    design comes to answer with one.
+
+    A separate variant rather than `NumberValue` carrying 0 or 1, because the
+    document's field really is a boolean and pydantic would refuse the int --
+    the model would get a validation error for an answer that was right in
+    substance, which is the failure mode this whole anyOf exists to remove.
+    """
+
+    flag: bool
+
+    def json_value(self) -> Any:
+        return self.flag
+
+
 class RowsValue(ChangeValue):
     """A list of strings: a screen's terrain rows, or the whole `mechanics`
     list, one sentence per rule.
@@ -244,6 +260,7 @@ class ObservableValue(ChangeValue):
 AnyChangeValue = (
     TextValue
     | NumberValue
+    | FlagValue
     | RowsValue
     | SpawnsValue
     | EntityValue
