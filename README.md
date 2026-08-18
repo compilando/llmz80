@@ -277,6 +277,22 @@ The one CPC gap left is sound: `plat_sound` is a no-op and the design gate
 refuses any CPC project that asks for audio. CPCtelera bundles Arkos Tracker,
 which is where the fix starts.
 
+### How much a frame holds
+
+Measured on both machines, from a loop that draws N sprites and waits:
+
+| | `plat_sprite` / `_py` | `plat_sprite_px` |
+|---|---|---|
+| ZX Spectrum | 12 | 8 |
+| Amstrad CPC | 32 | 24 |
+
+Those are ceilings for a loop that does nothing else; the writing prompt gives
+a design two thirds of them, leaving room for input, collisions and terrain.
+Two things worth knowing from it: `plat_sprite_py` costs the same as
+`plat_sprite`, so smooth vertical movement is free in practice, and the CPC
+draws about two and a half times as many, because its blitter is CPCtelera's
+hand-written assembly where the Spectrum's is C in this repository.
+
 ### Movement
 
 Sprites move by the pixel **vertically** on both machines:

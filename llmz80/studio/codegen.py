@@ -133,6 +133,55 @@ def _pixels_per_byte(platform: TargetPlatform, mode: VideoMode) -> int:
     return pixels_per_byte(platform, mode)
 
 
+#: How many 16x16 sprites a loop can draw and still keep pace, measured.
+#:
+#: The gap this closes: the pixel blitters are slower than the cell one, the
+#: pacing gate allows one missed frame, and nothing could tell the writer where
+#: the line was because nobody had measured it. A model told smooth movement is
+#: available and not told what it costs writes a loop that moves twelve things
+#: and fails the gate with a number it cannot act on.
+#:
+#: Read out of `g_worst_frame_cost` on both real machines, from a loop that
+#: draws N sprites and waits and does nothing else:
+#:
+#:     Spectrum  plat_sprite     n=8  cost 0   n=12 cost 1   n=16 cost 2
+#:     Spectrum  plat_sprite_py  n=8  cost 0   n=12 cost 1   n=16 cost 2
+#:     Spectrum  plat_sprite_px  n=4  cost 0   n=8  cost 1   n=12 cost 3
+#:     CPC       plat_sprite     n=16 cost 0   n=24 cost 1   n=48 cost 3
+#:     CPC       plat_sprite_px  n=16 cost 0   n=24 cost 1   n=32 cost 2
+#:
+#: Two things fell out of it. `plat_sprite_py` costs the same as `plat_sprite`
+#: on the Spectrum, so smooth *vertical* movement is free in practice and not
+#: only in theory -- `zx_saddrpdown` per line is no dearer than converting an
+#: address twice. And the CPC draws roughly two and a half times as many, which
+#: is `cpct_drawSpriteMasked` being hand-written assembly against a blitter
+#: written here in C.
+#:
+#: What is published below is *not* those ceilings. A real game also reads the
+#: keyboard, moves what it drew, tests collisions and repaints terrain, and a
+#: budget set at the ceiling of an empty loop would fail every one of them. Two
+#: thirds, rounded down, is what these are.
+SPRITES_PER_FRAME: dict[TargetPlatform | str | None, dict[str, int]] = {
+    TargetPlatform.SPECTRUM: {"cell": 8, "pixel": 5},
+    TargetPlatform.AMSTRAD_CPC: {"cell": 20, "pixel": 16},
+}
+
+
+def sprites_per_frame(platform: TargetPlatform | str | None, *, pixel_column: bool) -> int:
+    """How many sprites a game on this target should move in one frame.
+
+    `pixel_column` asks about `plat_sprite_px`, the dearer of the blitters --
+    `plat_sprite` and `plat_sprite_py` measured the same, so they share a
+    figure. A target nobody has measured answers with the smaller of the two
+    machines' numbers rather than with a guess of its own.
+    """
+    key = "pixel" if pixel_column else "cell"
+    known = SPRITES_PER_FRAME.get(platform)
+    if known is None:
+        return min(row[key] for row in SPRITES_PER_FRAME.values())
+    return known[key]
+
+
 #: Bytes the picture moves for one step of a target's hardware scroll, and 0
 #: for a target that has none.
 #:

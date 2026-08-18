@@ -185,11 +185,13 @@ Open an issue with:
   any CPC project that asks for sound. CPCtelera bundles Arkos Tracker, which
   is a music player rather than an effects API, so the first question is what
   five short effects should even be on an AY.
-- **Measuring what the pixel blitters cost.** `plat_sprite_py` and
-  `plat_sprite_px` are both slower per call than `plat_sprite`, and the pacing
-  gate allows one missed frame. Nobody has measured how many moving sprites a
-  real game can afford on either machine, so nothing in the writing prompt can
-  tell a model where the line is.
+- **Raising the sprite budget.** Measured, and now published to the writer
+  through `codegen.SPRITES_PER_FRAME`: a loop that does nothing but draw keeps
+  pace with 12 sprites on the Spectrum and 32 on the CPC, or 8 and 24 through
+  `plat_sprite_px`. Two thirds of that is what a design is told it may move.
+  The gap between the machines is the Spectrum blitter being C where
+  `cpct_drawSpriteMasked` is hand-written assembly, so that is where an
+  improvement would come from.
 - **Per-sprite shift counts.** `presentation.smooth_horizontal` is one flag for
   the whole design, because `SPRITE_SHIFTS` and `SPRITE_BYTES_WIDE` are one
   macro each. A game whose ball must slide and whose walls need not pays for

@@ -177,3 +177,66 @@ class TestTheDesignCanAskForIt:
         prompt = generation_prompt(blank_project("Static", TargetPlatform.AMSTRAD_CPC))
 
         assert "plat_scroll_to" not in prompt
+
+
+class TestTheMeasuredSpriteBudget:
+    """What a loop can draw and still keep pace, from `codegen.SPRITES_PER_FRAME`.
+
+    The readings behind the numbers are in that constant's comment. These pin
+    the properties a reader would otherwise have to re-derive, not the figures
+    themselves -- a better blitter should be able to raise them without
+    rewriting the test that says the CPC is faster.
+    """
+
+    def test_the_pixel_column_blitter_is_the_dearer_one(self):
+        from llmz80.studio.codegen import sprites_per_frame
+
+        for platform in TargetPlatform:
+            cheap = sprites_per_frame(platform, pixel_column=False)
+            dear = sprites_per_frame(platform, pixel_column=True)
+
+            assert dear < cheap, platform
+
+    def test_the_cpc_draws_more_than_the_spectrum(self):
+        """`cpct_drawSpriteMasked` is hand-written assembly; the Spectrum
+        blitter is C in this repository."""
+        from llmz80.studio.codegen import sprites_per_frame
+
+        for pixel_column in (False, True):
+            assert sprites_per_frame(
+                TargetPlatform.AMSTRAD_CPC, pixel_column=pixel_column
+            ) > sprites_per_frame(TargetPlatform.SPECTRUM, pixel_column=pixel_column)
+
+    def test_a_target_nobody_measured_gets_the_most_cautious_answer(self):
+        from llmz80.studio.codegen import sprites_per_frame
+
+        unknown = sprites_per_frame("commodore_64", pixel_column=True)
+
+        assert unknown == sprites_per_frame(TargetPlatform.SPECTRUM, pixel_column=True)
+
+    def test_the_budget_is_below_the_measured_ceiling(self):
+        """The ceilings were 12 and 8 on the Spectrum, 32 and 24 on the CPC,
+        from a loop that did nothing but draw. A real game also reads keys,
+        moves things and tests collisions, so publishing the ceiling would fail
+        every program that used it."""
+        from llmz80.studio.codegen import sprites_per_frame
+
+        assert sprites_per_frame(TargetPlatform.SPECTRUM, pixel_column=False) < 12
+        assert sprites_per_frame(TargetPlatform.SPECTRUM, pixel_column=True) < 8
+        assert sprites_per_frame(TargetPlatform.AMSTRAD_CPC, pixel_column=False) < 32
+        assert sprites_per_frame(TargetPlatform.AMSTRAD_CPC, pixel_column=True) < 24
+
+    def test_the_writer_is_given_the_number(self):
+        from llmz80.studio.acceptance import generation_prompt
+        from llmz80.studio.codegen import sprites_per_frame
+        from llmz80.studio.models import AssetSpec
+
+        for platform in TargetPlatform:
+            project = blank_project("Budget", platform)
+            project.assets = [
+                AssetSpec(id="hero", kind="sprite", source="assets/hero.png", width=16, height=16)
+            ]
+
+            prompt = generation_prompt(project)
+
+            assert f"about {sprites_per_frame(platform, pixel_column=False)} sprites" in prompt

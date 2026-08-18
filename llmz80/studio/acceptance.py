@@ -34,6 +34,7 @@ from .codegen import (
     max_sprite_px,
     max_sprite_py,
     scrolls_in_hardware,
+    sprites_per_frame,
 )
 from .models import AssetSpec, GameProject, TileSpec, VideoMode
 from .observation import observation_script
@@ -544,6 +545,20 @@ def design_prompt(project: GameProject) -> str:
         # position would look like a broken blitter rather than like a design
         # decision, and the writer cannot see game.yml.
         smooth = project.presentation.smooth_horizontal
+        # The measured budget, because a writer told a call exists and not told
+        # what it costs will use it for everything on screen. See
+        # `codegen.SPRITES_PER_FRAME` for the readings these come from.
+        cell_budget = sprites_per_frame(project.target.platform, pixel_column=False)
+        pixel_budget = sprites_per_frame(project.target.platform, pixel_column=True)
+        lines.append(
+            f"  How many you can move: about {cell_budget} sprites per frame with "
+            f"plat_sprite or plat_sprite_py on this machine, and about {pixel_budget} "
+            "with plat_sprite_px, which is dearer. Measured on the real hardware, with "
+            "room left for your own logic. Past that the loop stops fitting in its "
+            "frame and the pacing gate refuses the program -- so if a design needs "
+            "more things on screen than that, move the few that a player watches and "
+            "draw the rest as terrain with plat_tile."
+        )
         lines.append(
             "  plat_sprite_px(px, py, sprite, frame) takes a pixel column too. "
             + (
