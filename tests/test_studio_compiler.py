@@ -179,7 +179,7 @@ def test_the_config_header_states_the_target_and_the_design(tmp_path: Path):
     assert "#define SOUND_BOOP 0" in header
     assert "#define CPC_MODE 1" in header
     assert "#define PLAYFIELD_COLS 40" in header
-    assert "#define HAS_FRAME_CLOCK 0" in header
+    assert "#define HAS_FRAME_CLOCK 1" in header
 
 
 def test_the_state_header_declares_what_every_program_has_and_offers_the_rest(

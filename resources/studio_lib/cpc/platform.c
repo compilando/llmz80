@@ -37,6 +37,131 @@ static void apply_palette(void) {
     cpct_setPalette(palette, 4);
 }
 
+/* ---- the frame clock -------------------------------------------------
+ *
+ * The CPC has no ROM frame counter to read the way the Spectrum reads 23672,
+ * and `cpct_disableFirmware()` above is what removes the firmware's own. So
+ * this builds one. The CPC raises an interrupt 300 times a second -- six per
+ * 50 Hz display frame -- and `cpct_setInterruptHandler` installs a handler it
+ * calls each time, with every register saved by CPCtelera's own wrapper
+ * (see ~/cpctelera/cpctelera/src/firmware/cpct_setInterruptHandler.s), so an
+ * ordinary C function is safe here. Counting the sixths gives exactly the
+ * free-running counter the other machine gets for nothing.
+ *
+ * This is what `pacing.pacing_report` used to abstain for. Its comment said
+ * "writing a frame counter for the CPC is real work; until it exists, silence
+ * is the honest reading", and it was right to abstain: `plat_wait_frame`
+ * returned a literal zero, and a gate reading that zero as a game keeping
+ * perfect time would have cleared every CPC program ever built. Now the two
+ * machines run the same measurement, `codegen.has_frame_clock` says so for
+ * both, and the gate judges both.
+ *
+ * Everything below this point mirrors `spectrum/platform.c` deliberately,
+ * constant for constant, because two machines reporting the same number
+ * differently is worse than either reporting nothing. The comments there
+ * carry the reasoning for RESYNC_FRAMES, SLOW_RUN and BASELINES_ALLOWED, and
+ * are not repeated here; what follows notes only where the CPC differs. */
+
+/* Interrupts per display frame on this machine. The CPC's interrupt is at
+ * 300 Hz and the display is 50 Hz. Not a tunable. */
+#define INTERRUPTS_PER_FRAME 6
+
+/* Whole frames since plat_init. `volatile` because the interrupt handler is
+ * the only writer and every reader is outside it; without it SDCC is free to
+ * hoist the read out of the wait loop below and spin forever.
+ *
+ * Read with interrupts left alone rather than disabled around the read. A
+ * 16-bit read is two instructions on a Z80 and an interrupt landing between
+ * them can tear the value -- but the interrupt increments this only once every
+ * six firings, the torn value can only ever be off by the one increment being
+ * written, and one frame of error in a counter whose gate tolerates one missed
+ * frame is beneath the resolution of the thing being measured. Disabling
+ * interrupts around it would cost more than the error it removes. */
+static volatile unsigned int frame_clock;
+
+/* Interrupts seen inside the current frame, 0..5. Only the handler touches
+ * it. */
+static unsigned char interrupt_tick;
+
+static void count_frame(void) {
+    if (++interrupt_tick >= INTERRUPTS_PER_FRAME) {
+        interrupt_tick = 0;
+        ++frame_clock;
+    }
+}
+
+/* The counter as the last wait left it, and whether that wait already saw an
+ * out-of-band gap. Both exactly as on the Spectrum. */
+static unsigned int frame_mark;
+static unsigned char out_of_band;
+
+/* Defined here, as on the Spectrum, so the linker map carries the contract
+ * symbol on both machines and no program has to keep the number itself. */
+unsigned char g_worst_frame_cost;
+
+#define RESYNC_FRAMES 8
+#define SLOW_RUN 4
+
+/* Waits for the next frame and returns what the previous iteration cost.
+ *
+ * The wait itself is `cpct_waitVSYNC()` rather than a spin on `frame_clock`,
+ * for two reasons. It is what this function already did, and it synchronises
+ * on the display rather than on our own count, which is the thing a program
+ * drawing to the screen actually wants. The counter is only ever asked how
+ * much time passed, never asked to end the wait, so a stopped interrupt makes
+ * the *measurement* useless without making the *wait* hang -- the opposite of
+ * the Spectrum, where the ROM counter drives both and the guard loop exists
+ * because of it. */
+unsigned char plat_wait_frame(void) {
+    unsigned int start = frame_clock;
+    unsigned int elapsed = (unsigned int)(start - frame_mark);
+    unsigned int missed = elapsed > 1 ? (unsigned int)(elapsed - 1) : 0;
+    unsigned char cost;
+    if (missed > RESYNC_FRAMES) {
+        if (out_of_band < 255) ++out_of_band;
+        cost = out_of_band >= SLOW_RUN ? (unsigned char)(RESYNC_FRAMES + 1) : 0;
+    } else {
+        out_of_band = 0;
+        cost = (unsigned char)missed;
+    }
+    if (cost > g_worst_frame_cost) {
+        g_worst_frame_cost = cost;
+    }
+    cpct_waitVSYNC();
+    frame_mark = frame_clock;
+    return cost;
+}
+
+#define BASELINES_ALLOWED 8
+
+/* Not initialised here, unlike the Spectrum's copy of the same counter.
+ *
+ * `apply_palette` above already records why: a file-scope initialised value
+ * lands in the DATA segment, and this link does not initialise that segment at
+ * run time, so the variable holds whatever was in memory. Measured on a real
+ * CPC before this was moved into `plat_init`: it came up zero, every call to
+ * `plat_frame_baseline` returned immediately, and a program that called it
+ * read the same `g_worst_frame_cost` of 2 as one that did not -- the baseline
+ * silently did nothing at all, on a machine where the counter it exists to
+ * reset had only just started working.
+ *
+ * The same hazard applies to every other piece of state in this file, which is
+ * why `frame_clock`, `interrupt_tick`, `frame_mark`, `out_of_band` and
+ * `g_worst_frame_cost` are all assigned in `plat_init` rather than declared
+ * with an initialiser. Zero-initialisation is not available here. */
+static unsigned char baselines_left;
+
+/* Resynchronise and forget, as on the Spectrum: the mark moves to now so the
+ * next wait measures its own iteration, `out_of_band` is cleared so a startup
+ * gap does not count towards the evidence for a genuinely slow loop, and
+ * `g_worst_frame_cost` is deliberately left alone. */
+void plat_frame_baseline(void) {
+    if (baselines_left == 0) return;
+    --baselines_left;
+    frame_mark = frame_clock;
+    out_of_band = 0;
+}
+
 void plat_init(void) {
     cpct_disableFirmware();
     cpct_setVideoMode(CPC_MODE);
@@ -44,6 +169,18 @@ void plat_init(void) {
     cpct_setBorder(HW_BLACK);
     cpct_clearScreen(0x00);
     set_draw_char(3, 0);
+    /* The frame clock, started here for the same reason the Spectrum's
+     * plat_init calls intrinsic_ei() and seeds frame_mark: a counter nobody
+     * started reads zero forever, and a mark left at zero makes the first
+     * wait of a run subtract from a counter that has been advancing since
+     * plat_init and report a cost the program never paid. */
+    interrupt_tick = 0;
+    frame_clock = 0;
+    frame_mark = 0;
+    out_of_band = 0;
+    g_worst_frame_cost = 0;
+    baselines_left = BASELINES_ALLOWED;
+    cpct_setInterruptHandler(count_frame);
 }
 
 void plat_clear(void) {
@@ -52,29 +189,6 @@ void plat_clear(void) {
 
 void plat_border(unsigned char colour) {
     cpct_setBorder(colour == 2 ? HW_RED : HW_BLACK);
-}
-
-/* With the firmware disabled the CPC has no free-running frame counter, so a
- * missed frame is indistinguishable from a met one here. HAS_FRAME_CLOCK is 0
- * on this target and the engine hides the overrun readout accordingly. */
-/* Defined here, as on the Spectrum, so the linker map carries the contract
- * symbol on both machines and no program has to keep the number itself. It
- * never moves: this target has no free-running frame counter to subtract, so
- * `HAS_FRAME_CLOCK` is 0 and `pacing.pacing_report` abstains rather than
- * reading this zero as a game that kept perfect time. */
-unsigned char g_worst_frame_cost;
-
-unsigned char plat_wait_frame(void) {
-    cpct_waitVSYNC();
-    return 0;
-}
-
-/* Nothing to resynchronise: with the firmware disabled this machine has no
- * free-running frame counter, so plat_wait_frame measures nothing and there is
- * no accumulated gap to forgive. Present so one program compiles unchanged
- * against either platform library -- the same reason plat_sound is a no-op
- * here. */
-void plat_frame_baseline(void) {
 }
 
 unsigned char plat_input(void) {

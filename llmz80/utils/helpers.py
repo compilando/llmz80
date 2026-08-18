@@ -12,7 +12,6 @@ own build does not apply them at all. That is a gap to close, not knowledge
 to throw away.
 """
 
-import logging
 import re
 import unicodedata
 

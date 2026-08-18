@@ -48,11 +48,19 @@ KEY_CODES: dict[TargetPlatform, dict[str, str]] = {
 
 #: Targets whose `plat_wait_frame` actually counts the frames the previous
 #: iteration cost. `resources/studio_lib/spectrum/platform.c` reads the ROM
-#: frame counter at 23672 and returns the elapsed count less the one frame the
-#: wait itself is worth; `resources/studio_lib/cpc/platform.c` calls
-#: `cpct_waitVSYNC()` and returns a literal zero, because with the firmware
-#: disabled the CPC has no free-running counter to subtract.
-_FRAME_CLOCK_PLATFORMS = frozenset({TargetPlatform.SPECTRUM.value})
+#: frame counter at 23672; `resources/studio_lib/cpc/platform.c` builds the
+#: equivalent out of `cpct_setInterruptHandler`, counting the six interrupts
+#: the CPC raises per display frame. Both then return the elapsed count less
+#: the one frame the wait itself is worth.
+#:
+#: The CPC was not on this list until the counter existed, and that was the
+#: honest state rather than an oversight: with the firmware disabled it had no
+#: free-running counter, `plat_wait_frame` returned a literal zero, and reading
+#: that zero as a game keeping perfect time would have cleared the whole
+#: platform on the strength of a number nobody computed.
+_FRAME_CLOCK_PLATFORMS = frozenset(
+    {TargetPlatform.SPECTRUM.value, TargetPlatform.AMSTRAD_CPC.value}
+)
 
 
 def has_frame_clock(platform: TargetPlatform | str | None) -> bool:
