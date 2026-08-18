@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from llm_z80 import prepare_amstrad_cpc_build_project, resolve_cpct_path
+from llmz80.core.cpc_toolchain import prepare_amstrad_cpc_build_project, resolve_cpct_path
 from llmz80.core.build_quality import classify_build_warnings
 
 

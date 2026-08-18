@@ -22,6 +22,7 @@ from llmz80.utils.helpers import (
     filter_compiler_output,
     hash_error_signature,
 )
+from llmz80.core.cpc_toolchain import prepare_amstrad_cpc_build_project, resolve_cpct_path
 from llmz80.core.validators import CodeValidator
 from llmz80.core.learning import LearningSystem
 from llmz80.core.code_context import (
@@ -370,27 +371,6 @@ Generate a concise, one-sentence description of what this code does."""
         # print(f"Error: {e}", file=sys.stderr)
         raise # Re-lanzar la excepción para que main() la capture si es necesario
 
-def resolve_cpct_path(config: dict | None = None) -> Path | None:
-    """Resolve CPCtelera portably from env, config, or conventional locations."""
-    configured = (config or {}).get("compiler", {}).get("amstrad_cpc", {}).get("cpct_path")
-    candidates = [
-        os.environ.get("CPCT_PATH"),
-        configured,
-        str(Path.home() / "cpctelera" / "cpctelera"),
-        str(Path.home() / "cpctelera"),
-        "/opt/cpctelera",
-    ]
-    for candidate in candidates:
-        if not candidate:
-            continue
-        path = Path(candidate).expanduser().resolve()
-        if (path / "src" / "cpctelera.h").exists() and (
-            path / "cfg" / "global_main_makefile.mk"
-        ).exists():
-            return path
-    return None
-
-
 def validate_toolchain_environment(platform: str, config: dict) -> tuple[bool, str]:
     """Fail before an API call when the requested real build cannot run."""
     if platform == "spectrum":
@@ -408,39 +388,6 @@ def validate_toolchain_environment(platform: str, config: dict) -> tuple[bool, s
         return True, ""
 
     return False, f"Plataforma no soportada: {platform}"
-
-
-def prepare_amstrad_cpc_build_project(output_dir: Path, cpct_dir: Path) -> bool:
-    """Prepara el directorio generado como proyecto CPCtelera compilable."""
-    if not (cpct_dir / "src" / "cpctelera.h").exists():
-        logging.error(f"❌ No se encontró CPCtelera en {cpct_dir}")
-        return False
-    cpct_path = str(cpct_dir.resolve()) + "/"
-
-    template_dir = Path("templates/amstrad_cpc")
-    template_makefile = template_dir / "Makefile"
-    template_cfg_dir = template_dir / "cfg"
-    if not template_makefile.exists() or not template_cfg_dir.exists():
-        logging.error("❌ No se encontraron templates/amstrad_cpc/Makefile o templates/amstrad_cpc/cfg")
-        return False
-
-    src_dir = output_dir / "src"
-    cfg_dir = output_dir / "cfg"
-    src_dir.mkdir(exist_ok=True)
-    cfg_dir.mkdir(exist_ok=True)
-
-    shutil.copy2(output_dir / "main.c", src_dir / "main.c")
-    shutil.copy2(template_makefile, output_dir / "Makefile")
-
-    for cfg_file in template_cfg_dir.glob("*.mk"):
-        target = cfg_dir / cfg_file.name
-        shutil.copy2(cfg_file, target)
-        if cfg_file.name == "build_config.mk":
-            content = target.read_text(encoding="utf-8", errors="ignore")
-            content = content.replace("{{CPCT_PATH}}", cpct_path.rstrip("/"))
-            target.write_text(content, encoding="utf-8")
-
-    return True
 
 
 def _run_version_command(command: list[str]) -> str:
