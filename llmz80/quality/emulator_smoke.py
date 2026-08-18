@@ -578,17 +578,20 @@ def scripted_run_seconds(
     screen_cost = exchange if steps and profile["reads_display_file"] else 0.0
     # Rounded up, not truncated: `int` shaved off up to a second from a figure
     # whose entire purpose is not being short.
-    return math.ceil(
-        max(6, seconds)
-        # What it costs to get the program running at all, which is nothing on
-        # a Spectrum -- its .tap autostarts -- and most of a CPC run's first
-        # quarter minute, because a .dsk has to be asked for at a BASIC prompt.
-        + profile["boot_seconds"]
-        + probe_cost
-        + hold_cost
-        + command_cost
-        + screen_cost
-        + _HARNESS_OVERHEAD
+    return int(
+        math.ceil(
+            max(6, seconds)
+            # What it costs to get the program running at all, which is nothing
+            # on a Spectrum -- its .tap autostarts -- and most of a CPC run's
+            # first quarter minute, because a .dsk has to be asked for at a
+            # BASIC prompt.
+            + profile["boot_seconds"]
+            + probe_cost
+            + hold_cost
+            + command_cost
+            + screen_cost
+            + _HARNESS_OVERHEAD
+        )
     )
 
 

@@ -47,6 +47,7 @@ dev = [
     "pylint>=3.3.2",
     "isort>=5.13.2",
     "pre-commit>=4.0.1",
+    "bandit[toml]>=1.8.0",
     "types-PyYAML>=6.0.12.20240917",
     "types-Pillow>=10.2.0.20240822",
     "sphinx>=8.1.3",
@@ -147,8 +148,24 @@ disable = [
 ]
 
 [tool.bandit]
-exclude_dirs = ["tests", "examples", "build", "local"]
-skips = ["B101", "B601"]
+exclude_dirs = ["tests", "examples", "build", "local", "vendor", "studio-projects"]
+# B101 assert, B601 paramiko: as before.
+#
+# B404 (importing subprocess) and B603 (calling it without shell=True) are the
+# job. This project's whole purpose is to run zcc, sdcc, make and an emulator
+# over sources it just wrote; every one of the six hits is one of those calls,
+# each with an argument list rather than a shell string, which is the safe
+# form B603 asks about and cannot tell apart from the unsafe one.
+#
+# B105 is a false positive twelve times over: it fires on string literals near
+# identifiers whose names look credential-ish, and here they are path tokens
+# in `planner._apply` and `"reason"`/`"quality_pass"` keys in the gate reports.
+# No credential is written down anywhere in this package -- the one key it
+# reads comes from the environment through `utils.config`.
+#
+# Everything at MEDIUM or HIGH still fails the build, which is the point of
+# leaving the step without continue-on-error.
+skips = ["B101", "B601", "B404", "B603", "B105"]
 
 [tool.pydocstyle]
 convention = "google"

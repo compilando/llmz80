@@ -20,7 +20,7 @@ the packers use, so no pixel is solid here and clear there.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from .spriting import ALPHA_THRESHOLD
 
@@ -57,7 +57,7 @@ def sprite_lines(sheet: Image) -> list[str]:
     return lines
 
 
-def print_sprite(sheet: Image, say=print) -> None:
+def print_sprite(sheet: Image, say: Callable[[str], object] = print) -> None:
     """Draw `sheet` through `say`, one line at a time."""
     for line in sprite_lines(sheet):
         say(line)

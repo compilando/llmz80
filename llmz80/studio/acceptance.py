@@ -166,7 +166,20 @@ def step_mismatches(step: dict[str, Any], readings: dict[str, dict[str, Any]]) -
                     "to compare against"
                 )
                 continue
-        actual = read.get(name)
+        elif target is None:
+            # An expectation that names neither a value nor a baseline has
+            # nothing to compare against, and `_satisfied` cannot say so: under
+            # `at_least` it evaluated `actual >= None` and raised `TypeError`
+            # out of the gate, which `services.runtime_test` does not catch, so
+            # one malformed rule ended the whole run instead of failing its own
+            # step. `is None` rather than a falsy test, because 0 is the
+            # commonest number a design asks a counter to be.
+            mismatches.append(
+                f"{name}: the expectation asks for {compare} but names no value "
+                "and no earlier step to compare against"
+            )
+            continue
+        actual: int | None = read.get(name)
         if actual is None:
             mismatches.append(f"{name}: expected {_said(compare, target, baseline)}, read nothing")
             continue

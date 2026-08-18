@@ -326,15 +326,15 @@ def _project_command(arguments: list[str]) -> int:
         from llmz80.studio import pipeline
         from llmz80.studio.reference import load_reference
 
-        dossier = load_reference(directory)
-        if dossier is not None and dossier.identified:
+        researched = load_reference(directory)
+        if researched is not None and researched.identified:
             # The publisher is not guaranteed -- magazine type-ins and
             # self-published titles legitimately have none -- so a blank
             # parenthetical is dropped rather than printed as "()".
-            on_publisher = f" ({dossier.publisher})" if dossier.publisher else ""
-            print(f"Writing as {dossier.title}{on_publisher}.")
+            on_publisher = f" ({researched.publisher})" if researched.publisher else ""
+            print(f"Writing as {researched.title}{on_publisher}.")
         try:
-            report = pipeline.write(service, project, directory, dossier=dossier, say=print)
+            report = pipeline.write(service, project, directory, dossier=researched, say=print)
         except ValueError as exc:
             # The design gate refusing to have this written is a verdict about
             # the design, not a crash, and reaches here before a penny is spent
@@ -389,17 +389,17 @@ def _project_command(arguments: list[str]) -> int:
             print(f"  {asset.id}: {directory / asset.source}")
         return 0
     if arguments[0] in {"scaffold", "generate"}:
-        result = service.generate_sources(project, directory)
-        print(result.output_dir)
+        sources = service.generate_sources(project, directory)
+        print(sources.output_dir)
         return 0
     if arguments[0] == "build":
         try:
-            result = service.build(project, directory)
+            build = service.build(project, directory)
         except FileNotFoundError as exc:
             print(f"ERROR: {exc}")
             return 2
-        print(result.artifact or result.output_dir / "build_report.json")
-        return 0 if result.success else 1
+        print(build.artifact or build.output_dir / "build_report.json")
+        return 0 if build.success else 1
     if arguments[0] == "test":
         from llmz80.studio import pipeline
 

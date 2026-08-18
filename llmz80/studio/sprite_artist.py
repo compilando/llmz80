@@ -54,7 +54,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Callable, Protocol, Sequence
 
 import numpy as np
 from PIL import Image
@@ -445,7 +445,7 @@ class DrawnFrames(list):
 
     def __init__(
         self,
-        frames: list[Image.Image] = (),
+        frames: Sequence[Image.Image] = (),
         *,
         sheet: Image.Image,
         sheets: list[Image.Image],
@@ -524,6 +524,22 @@ class SheetSource(Protocol):
 
     def compose(
         self, project: GameProject, entity: EntitySpec, dossier: GameReference | None
+    ) -> str: ...
+
+    def draw(self, project: GameProject, request: str) -> DrawnSheet: ...
+
+
+class TileSource(Protocol):
+    """Where a tile's 8x8 block comes from.
+
+    `SheetSource` one class over, for terrain instead of an entity. Two
+    protocols rather than one generic over the thing being drawn, because
+    the prompts differ in what they describe and the return types differ in
+    what they carry -- a tile has one pose and a sheet has a cycle.
+    """
+
+    def compose(
+        self, project: GameProject, tile: TileSpec, dossier: GameReference | None
     ) -> str: ...
 
     def draw(self, project: GameProject, request: str) -> DrawnSheet: ...
@@ -616,7 +632,8 @@ class SpriteArtist:
             _say(on_progress, f"{ident}: intento {attempt} rechazado, {_reason_summary(reason)}")
         raise SpriteDrawFailure(
             f"the sprite sheet could not be drawn in {self.attempts} attempt"
-            f"{'s' if self.attempts != 1 else ''}; the last reason was: " + reason,
+            f"{'s' if self.attempts != 1 else ''}; the last reason was: "
+            + (reason or "not recorded"),
             sheets=sheets,
             reasons=repairs,
         )
@@ -761,7 +778,7 @@ class TileArtist:
     solid cell -- is allowed there rather than re-refused here.
     """
 
-    def __init__(self, source: object, *, attempts: int = MAX_DRAW_ATTEMPTS) -> None:
+    def __init__(self, source: TileSource, *, attempts: int = MAX_DRAW_ATTEMPTS) -> None:
         self.source = source
         self.attempts = max(1, attempts)
 
@@ -799,7 +816,8 @@ class TileArtist:
             _say(on_progress, f"{tile.id}: intento {attempt} rechazado, {_reason_summary(reason)}")
         raise SpriteDrawFailure(
             f"the tile could not be drawn in {self.attempts} attempt"
-            f"{'s' if self.attempts != 1 else ''}; the last reason was: " + reason,
+            f"{'s' if self.attempts != 1 else ''}; the last reason was: "
+            + (reason or "not recorded"),
             sheets=sheets,
             reasons=repairs,
         )

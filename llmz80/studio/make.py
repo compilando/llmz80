@@ -445,7 +445,9 @@ def _retry_hint(stop: _Stopped, directory: Path) -> str:
 # ghost"), and a summary is the part worth reading a year later.
 
 
-def _research(stages: Stages, project: GameProject, directory: Path, diary: _Diary):
+def _research(
+    stages: Stages, project: GameProject, directory: Path, diary: _Diary
+) -> tuple[GameReference | None, str]:
     dossier = stages.research(project, directory, diary.say)
     if dossier is None or not dossier.identified:
         return dossier, "no game identified; the design keeps its typology"
@@ -460,7 +462,7 @@ def _draft(
     directory: Path,
     dossier: GameReference | None,
     diary: _Diary,
-):
+) -> tuple[GameProject, str]:
     """Decide what the game is, before anything dresses it or draws it.
 
     No SKIP branch, unlike `diseño`. `pipeline.draft` does abstain when a
@@ -479,7 +481,7 @@ def _draft(
 
 def _adapt(
     stages: Stages, project: GameProject, directory: Path, dossier: GameReference, diary: _Diary
-):
+) -> tuple[GameProject, str]:
     updated = stages.adapt(project, directory, dossier, diary.say)
     return updated, f"design adapted to {dossier.title}"
 
@@ -490,7 +492,7 @@ def _sprites(
     directory: Path,
     dossier: GameReference | None,
     diary: _Diary,
-):
+) -> tuple[list[AssetSpec], str]:
     drawn = stages.sprites(project, directory, dossier, diary.say)
     if not drawn:
         return drawn, "every entity already had its art"
@@ -503,7 +505,7 @@ def _write(
     directory: Path,
     dossier: GameReference | None,
     diary: _Diary,
-):
+) -> tuple[dict[str, Any], str]:
     report = stages.write(project, directory, dossier, diary.say)
     attempts = len(report.get("attempts") or [])
     if not report.get("accepted"):
@@ -518,7 +520,9 @@ def _write(
     return report, f"accepted after {attempts} attempt(s)"
 
 
-def _test(stages: Stages, project: GameProject, directory: Path, diary: _Diary):
+def _test(
+    stages: Stages, project: GameProject, directory: Path, diary: _Diary
+) -> tuple[dict[str, Any], str]:
     report = stages.test(project, directory, diary.say)
     if report.get("quality_pass") is False:
         # A gate that watched and refused. `None` is not a refusal -- the CPC

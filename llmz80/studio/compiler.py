@@ -369,6 +369,8 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
     # colour wins, because the header has one attribute per sprite and cannot
     # hold two. A design that wants two colours needs two sprites.
     for entity in project.entities:
+        if entity.sprite is None:
+            continue
         packed = packed_sprites.get(entity.sprite)
         if packed is None:
             continue

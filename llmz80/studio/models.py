@@ -373,6 +373,13 @@ class ObservableSpec(StrictModel):
     meaning: Prose = Field(min_length=1, max_length=160)
 
 
+#: What an asset is for. Named rather than written inline on `AssetSpec`
+#: so `services.add_asset`, which passes one through, can be checked
+#: against the same four words instead of accepting any string and
+#: leaving pydantic to refuse it one call later.
+AssetKind = Literal["sprite", "tileset", "font", "screen"]
+
+
 class SpawnSpec(StrictModel):
     entity: str = Field(pattern=ID_PATTERN)
     col: int = Field(ge=0, le=39)
@@ -455,7 +462,7 @@ class AudioSpec(StrictModel):
 
 class AssetSpec(StrictModel):
     id: str = Field(pattern=ID_PATTERN)
-    kind: Literal["sprite", "tileset", "font", "screen"] = "sprite"
+    kind: AssetKind = "sprite"
     source: str = Field(pattern=PATH_PATTERN)
     width: int = Field(ge=1, le=640)
     height: int = Field(ge=1, le=400)

@@ -57,7 +57,7 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
         re.findall(r"\b(?:const\s+)?(?:u8|char|void)\s*\*\s*([A-Za-z_]\w*)\b", fixed)
     )
 
-    def fix_drawchar_args(match: re.Match) -> str:
+    def fix_drawchar_args(match: re.Match[str]) -> str:
         first = match.group(2).strip()
         second = match.group(3).strip()
         first_is_literal = first.startswith(("'", '"'))
@@ -141,7 +141,7 @@ def _cast_high_byte_constants(code: str, macro_type: str) -> tuple[str, int]:
     """Silence SDCC warning 158 for checked 128..255 byte constants."""
     count = 0
 
-    def cast_macro(match: re.Match) -> str:
+    def cast_macro(match: re.Match[str]) -> str:
         nonlocal count
         value = int(match.group("value"), 0)
         if not 128 <= value <= 255:
@@ -160,7 +160,7 @@ def _cast_high_byte_constants(code: str, macro_type: str) -> tuple[str, int]:
         flags=re.MULTILINE,
     )
 
-    def cast_declaration(match: re.Match) -> str:
+    def cast_declaration(match: re.Match[str]) -> str:
         nonlocal count
         value = int(match.group("value"), 0)
         if not 128 <= value <= 255:
@@ -187,7 +187,7 @@ def _cast_high_byte_constants(code: str, macro_type: str) -> tuple[str, int]:
     if byte_variables:
         names = "|".join(re.escape(name) for name in sorted(byte_variables, key=len, reverse=True))
 
-        def cast_assignment(match: re.Match) -> str:
+        def cast_assignment(match: re.Match[str]) -> str:
             nonlocal count
             value = int(match.group("value"), 0)
             if not 128 <= value <= 255:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -20,8 +21,10 @@ def runtime_contract(platform: str) -> str:
     return runtime_header_path(platform).read_text(encoding="utf-8")
 
 
-def archetype_contract(archetype: str) -> dict[str, object]:
-    data = yaml.safe_load((ROOT / "resources/archetypes.yml").read_text(encoding="utf-8"))
+def archetype_contract(archetype: str) -> dict[str, Any]:
+    data: dict[str, dict[str, dict[str, Any]]] = yaml.safe_load(
+        (ROOT / "resources/archetypes.yml").read_text(encoding="utf-8")
+    )
     try:
         return data["archetypes"][archetype]
     except KeyError as exc:

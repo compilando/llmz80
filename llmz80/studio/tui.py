@@ -235,7 +235,8 @@ class StudioViewer(App[None]):
             except OSError:
                 return 0.0
 
-        return max(self._projects(), key=touched, default=None)
+        projects = list(self._projects())
+        return max(projects, key=touched) if projects else None
 
     def _follow(self, directory: Path | None) -> None:
         """Start again on another project: its diary from the top, its design

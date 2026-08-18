@@ -162,7 +162,12 @@ def _environment() -> dict[str, str]:
     return environment
 
 
-def plan(target: Path, *, config: Mapping | None = None, which=shutil.which) -> Launch:
+def plan(
+    target: Path,
+    *,
+    config: Mapping | None = None,
+    which: Callable[[str], str | None] = shutil.which,
+) -> Launch:
     """Everything needed to start the game, with nothing started.
 
     Refuses -- rather than starting a process that cannot work -- when there
@@ -257,7 +262,7 @@ def play(
     wait: bool = True,
     say: Callable[[str], None] = print,
     config: Mapping | None = None,
-    which=shutil.which,
+    which: Callable[[str], str | None] = shutil.which,
     start: Callable[..., int] = start,
 ) -> int:
     """Start the game and return the exit code the command should use.

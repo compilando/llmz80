@@ -20,7 +20,7 @@ from .compiler import BuildResult, SourceResult, build_project, render_project
 from .design_exam import DesignExaminer
 from .feel import animation_report
 from .generator import write_program
-from .models import AssetSpec, EntitySpec, GameProject, TargetPlatform
+from .models import AssetKind, AssetSpec, EntitySpec, GameProject, TargetPlatform
 from .observation import observation_script
 from .pacing import pacing_report
 from .planner import ProjectProposal, proposal_diff
@@ -30,7 +30,7 @@ from .reference_design import ReferenceDesigner, propose_and_apply
 from .release import export_release
 from .runtime_exam import RuntimeExaminer
 from .samples import blank_project
-from .sprite_artist import SpriteArtist
+from .sprite_artist import SpriteArtist, TileArtist
 from .spriting import SPRITE_SIZE
 from .store import ProjectStore
 
@@ -82,7 +82,7 @@ class StudioService:
         source: Path,
         *,
         frames: int = 1,
-        kind: str = "sprite",
+        kind: AssetKind = "sprite",
     ) -> AssetSpec:
         """Copy `source` into the project's `assets/`, derive its id from the
         filename, validate it against the design, and save the project.
@@ -145,7 +145,7 @@ class StudioService:
         self,
         project: GameProject,
         directory: Path,
-        artist: object,
+        artist: TileArtist,
         dossier: GameReference | None = None,
         *,
         on_progress: Progress = None,

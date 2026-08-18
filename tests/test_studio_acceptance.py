@@ -410,3 +410,43 @@ def test_the_writer_is_told_to_restart_the_frame_measurement_after_startup_work(
     prompt = design_prompt(project)
 
     assert "plat_frame_baseline" in prompt
+
+
+class TestExpectationWithNoValue:
+    """An expectation naming neither a value nor a baseline.
+
+    `predicate` hands back whatever dict was on disk, so a rule can reach
+    `step_mismatches` with `compare` set and `value` absent. Under `changed`
+    that read as "the reading differs from None", i.e. always satisfied; under
+    `at_least` it reached `actual >= None` and raised `TypeError` out of the
+    acceptance gate, which `services.runtime_test` does not catch -- so a
+    malformed expectation crashed the whole run rather than failing one step.
+    """
+
+    def test_an_ordered_comparison_with_no_value_is_a_mismatch_not_a_crash(self):
+        from llmz80.studio.acceptance import step_mismatches
+
+        step = {"id": "hold_left_a", "expect": {"g_score": {"compare": "at_least"}}}
+        readings = {"hold_left_a": {"g_score": 10}}
+
+        mismatches = step_mismatches(step, readings)
+
+        assert len(mismatches) == 1
+        assert "g_score" in mismatches[0]
+
+    def test_the_same_for_at_most(self):
+        from llmz80.studio.acceptance import step_mismatches
+
+        step = {"id": "one", "expect": {"g_lives": {"compare": "at_most"}}}
+
+        assert step_mismatches(step, {"one": {"g_lives": 3}})
+
+    def test_a_stated_value_of_zero_is_still_a_value(self):
+        """`if not target` would have made 0 look like an absent expectation,
+        and 0 is the commonest thing a design asks a counter to be."""
+        from llmz80.studio.acceptance import step_mismatches
+
+        step = {"id": "one", "expect": {"g_score": {"compare": "equals", "value": 0}}}
+
+        assert step_mismatches(step, {"one": {"g_score": 0}}) == []
+        assert step_mismatches(step, {"one": {"g_score": 7}})
