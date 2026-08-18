@@ -133,6 +133,58 @@ def _pixels_per_byte(platform: TargetPlatform, mode: VideoMode) -> int:
     return pixels_per_byte(platform, mode)
 
 
+#: Bytes the picture moves for one step of a target's hardware scroll, and 0
+#: for a target that has none.
+#:
+#: Two on the Amstrad CPC, and measured rather than quoted: CPCtelera's own
+#: examples disagree, `advanced/hwscroll` saying four bytes in a comment while
+#: `advanced/tilemap_hwscroll` advances its software pointer by two for the
+#: same unit. A probe drawing a bar exactly one byte wide -- so the bar's width
+#: in captured pixels is the unit being measured, whatever scale the emulator
+#: captured at -- read 2.00 bytes at offset 1 and 4.00 at offset 2 on a real
+#: machine. The tilemap example is right, which is what one would expect of the
+#: one whose arithmetic has to stay in step with the hardware to work at all.
+#:
+#: Zero for the Spectrum, which has no register for this at all. Zero rather
+#: than absent so a program can write `#if SCROLL_STEP_BYTES` and compile one
+#: source for both machines.
+SCROLL_STEP_BYTES: dict[TargetPlatform | str | None, int] = {
+    TargetPlatform.SPECTRUM: 0,
+    TargetPlatform.AMSTRAD_CPC: 2,
+}
+
+#: Bytes in one screen row, which is the vertical step: advancing the display
+#: start by a whole row moves the picture up by one character row. Measured on
+#: the same machine -- 40 steps of 2 bytes moved a full-width bar up by exactly
+#: one character row, and 80 steps by two.
+SCROLL_ROW_BYTES: dict[TargetPlatform | str | None, int] = {
+    TargetPlatform.SPECTRUM: 32,
+    TargetPlatform.AMSTRAD_CPC: 80,
+}
+
+#: Steps the CPC's offset register can hold. R13 is eight bits, so 255 -- and
+#: past that the *page* has to change, which is a second register
+#: (`cpct_setVideoMemoryPage`) and a wrap the game has to plan for. The bound
+#: is published rather than left to be discovered, because a scroller that ran
+#: off the end would not fail, it would jump.
+SCROLL_MAX_STEPS = 255
+
+
+def scrolls_in_hardware(platform: TargetPlatform | str | None) -> bool:
+    """Whether this target can move its picture without moving its pixels.
+
+    A `str` is accepted beside the enum for the same reason `has_frame_clock`
+    accepts one, and an unknown target answers no: a machine this project has
+    never heard of has not shown it can do this either.
+    """
+    return bool(SCROLL_STEP_BYTES.get(platform, 0))
+
+
+def max_scroll_origin(platform: TargetPlatform | str | None) -> int:
+    """The furthest byte `plat_scroll_to` can start the display at."""
+    return SCROLL_STEP_BYTES.get(platform, 0) * SCROLL_MAX_STEPS
+
+
 #: Targets whose `plat_wait_frame` actually counts the frames the previous
 #: iteration cost. `resources/studio_lib/spectrum/platform.c` reads the ROM
 #: frame counter at 23672; `resources/studio_lib/cpc/platform.c` builds the
@@ -281,6 +333,14 @@ def render_config_header(project: GameProject) -> str:
             f"#define PIXELS_PER_BYTE {_pixels_per_byte(project.target.platform, mode)}",
             f"#define PIXELS_PER_BYTE_LOG " f"{pixels_per_byte_log(project.target.platform, mode)}",
             f"#define MAX_SPRITE_PX {max_sprite_px(project)}",
+            "/* Hardware scrolling. SCROLL_STEP_BYTES is 0 on a machine that has",
+            " * none, so `#if SCROLL_STEP_BYTES` compiles one source for both.",
+            " * The step is coarse: 2 bytes is 4 pixels across in CPC mode 0 and 8",
+            " * in mode 1, and SCROLL_ROW_BYTES of it moves the picture up by one",
+            " * character row. */",
+            f"#define SCROLL_STEP_BYTES {SCROLL_STEP_BYTES.get(project.target.platform, 0)}",
+            f"#define SCROLL_ROW_BYTES {SCROLL_ROW_BYTES.get(project.target.platform, 0)}",
+            f"#define MAX_SCROLL_ORIGIN {max_scroll_origin(project.target.platform)}",
             *_cpc_palette_lines(project),
             # One per colour the design's palette named and this machine can
             # show. Resolved here rather than written into a prompt because the

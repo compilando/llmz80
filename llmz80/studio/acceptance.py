@@ -27,8 +27,15 @@ from typing import Any
 
 from llmz80.core.state_contract import contract_prompt
 
-from .codegen import max_sprite_px, max_sprite_py
-from .models import AssetSpec, GameProject, TileSpec
+from .codegen import (
+    SCROLL_ROW_BYTES,
+    SCROLL_STEP_BYTES,
+    max_scroll_origin,
+    max_sprite_px,
+    max_sprite_py,
+    scrolls_in_hardware,
+)
+from .models import AssetSpec, GameProject, TileSpec, VideoMode
 from .observation import observation_script
 from .runtime_exam import (
     RuntimeExam,
@@ -463,6 +470,39 @@ def design_prompt(project: GameProject) -> str:
         for observable in project.observables:
             ctype = "unsigned int" if observable.width == 2 else "unsigned char"
             lines.append(f"  {ctype} {observable.symbol};  {observable.meaning}")
+        lines.append("")
+
+    # Scrolling is offered only to a design that declared it, and only on a
+    # machine that has it -- `structure._fit_errors` has already refused the
+    # other combination, so reaching this line means both are true. Prompt
+    # space is not free and a call a design has no use for is one more thing
+    # for the writer to reach for by mistake.
+    if project.presentation.scrolling and scrolls_in_hardware(project.target.platform):
+        step = SCROLL_STEP_BYTES[project.target.platform]
+        row = SCROLL_ROW_BYTES[project.target.platform]
+        lines.append(
+            f"Scrolling: plat_scroll_to(origin) moves the whole picture. `origin` is a "
+            f"byte offset into video memory, rounded down to {step} bytes -- this "
+            "machine's hardware step -- and it costs one register write, not a redraw."
+        )
+        lines.append(
+            f"  What the step is worth: {step} bytes is "
+            f"{step * (2 if project.target.video_mode is VideoMode.CPC_MODE_0 else 4)} "
+            f"pixels across, and {row} bytes (one screen row) moves the picture up by "
+            "one character row. There is nothing finer; do not write a loop expecting "
+            "single pixels."
+        )
+        lines.append(
+            "  The edge that scrolls in is yours to draw. The hardware only changes "
+            "where the display starts reading, so the column or row arriving at the "
+            "far side shows whatever was already in that memory -- draw it before or "
+            f"as you scroll, or the game runs with a stripe of rubbish down one side."
+        )
+        lines.append(
+            f"  origin runs 0 to {max_scroll_origin(project.target.platform)}; past "
+            "that the video page would have to change too, which this library does not "
+            "do. Plan the playfield to fit inside that."
+        )
         lines.append("")
 
     # blitter_sprites(), not project.assets: only what it returns gets a real

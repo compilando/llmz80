@@ -202,9 +202,20 @@ def _reference_errors(project: "GameProject") -> list[str]:
 
 
 def _fit_errors(project: "GameProject") -> list[str]:
-    """What has to fit: a screen in its target's playfield, and a screen's
-    placed actors in the entity budget."""
+    """What has to fit: a screen in its target's playfield, a screen's placed
+    actors in the entity budget, and the design's demands in the machine's
+    capabilities."""
+    from .codegen import scrolls_in_hardware
+
     errors = []
+    if project.presentation.scrolling and not scrolls_in_hardware(project.target.platform):
+        errors.append(
+            f"this design scrolls, but {project.target.platform.value} has no hardware "
+            "scroll: its picture can only be moved by moving all 6912 bytes of it, "
+            "which no game loop written in C can afford every frame. Either target the "
+            "Amstrad CPC, whose CRTC keeps the address the display starts from, or "
+            "design a game whose screen changes all at once instead of sliding"
+        )
     columns, rows = playfield(project)
     for screen in project.screens:
         if screen.width > columns or screen.height > rows:

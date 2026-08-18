@@ -72,6 +72,17 @@ one row, cell or spawn at a time:
                              artwork instead of as its character  -> {"text": ...}
   /presentation/palette     the colours this design names, so terrain and
                              actors can wear one                  -> {"palette": [...]}
+  /presentation/scrolling   true if the playfield slides as a whole rather
+                             than changing a screen at a time -- a horizontally
+                             scrolling arcade, a vertical shooter. **Amstrad
+                             CPC only**: the ZX Spectrum has no hardware scroll
+                             and a design that asks for one there is refused.
+                             Coarse: the picture moves 4 pixels at a time
+                             across in mode 0, 8 in mode 1, and one character
+                             row at a time down. Worth it for a game built
+                             around sliding; worse than nothing for one whose
+                             actors step from square to square
+                                                                  -> {"flag": true}
   /presentation/smooth_horizontal
                             true if something in this game must slide across
                              the screen a pixel at a time rather than a

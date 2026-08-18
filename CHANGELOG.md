@@ -59,6 +59,26 @@ this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Coarse hardware scrolling on the Amstrad CPC.** `plat_scroll_to(origin)`
+  moves the whole picture by changing where the CRTC starts reading, which
+  costs one register write and no memory movement. A design asks for it with
+  `presentation.scrolling`, and a Spectrum design that asks is refused at
+  design time with the reason -- that machine has no such register and would
+  have to move 6912 bytes.
+
+  Both granularities were measured on a real CPC rather than taken from the
+  documentation, because CPCtelera's own examples disagree: one step is **2
+  bytes** (4 pixels across in mode 0, 8 in mode 1) and one screen row of them
+  moves the picture up by exactly one character row. `advanced/hwscroll`'s
+  comment saying four bytes is wrong; `advanced/tilemap_hwscroll` is right.
+
+  Coarse is all it is, and the API says so rather than pretending: sub-step
+  horizontal would need the background redrawn shifted and sub-row vertical the
+  CRTC's vertical adjust. `origin` reaches 510 bytes, the whole range an
+  eight-bit R13 holds, and past that is ignored rather than wrapped -- a
+  scroller that wrapped would not look broken, it would look like it jumped.
+  Nothing is copied, so drawing the incoming edge stays the program's job, and
+  the writing prompt says so.
 - **Sprites can sit on a pixel row.** `plat_sprite_py(col, py, sprite, frame)`
   takes a scanline where `plat_sprite` takes a character row, so anything a
   player watches rise or fall moves smoothly instead of in eight-pixel steps.

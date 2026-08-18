@@ -148,6 +148,35 @@ void plat_sprite_py(unsigned char col, unsigned char py, unsigned char sprite,
 void plat_sprite_px(unsigned int px, unsigned char py, unsigned char sprite,
                     unsigned char frame);
 
+/* Moves the whole picture, by changing where the display starts reading rather
+ * than by moving any pixels. `origin` is a byte offset into video memory,
+ * rounded down to SCROLL_STEP_BYTES.
+ *
+ * This is the one thing in this library only one of the two machines can do.
+ * The Amstrad CPC's CRTC keeps the display start address, so a scroll is one
+ * register write; the ZX Spectrum has no equivalent and would have to move
+ * 6912 bytes, which no C game loop can afford. game_config.h reports
+ * SCROLL_STEP_BYTES as 0 on a machine without it and this call does nothing
+ * there, so one source compiles for both -- but a design that says it scrolls
+ * is refused at design time on such a target rather than quietly not doing it.
+ *
+ * Coarse, and there is nothing finer. SCROLL_STEP_BYTES is 2 on the CPC: four
+ * pixels across in mode 0, eight in mode 1. SCROLL_ROW_BYTES of it (80 bytes,
+ * 40 steps) moves the picture up by exactly one character row. Both numbers
+ * were measured on a real machine, not read off a datasheet.
+ *
+ * What arrives at the far side is your problem. Nothing is copied, so the
+ * column or row scrolling into view shows whatever was already in that memory
+ * -- a scrolling game draws the incoming edge itself, as `tilemap_hwscroll` in
+ * the CPCtelera examples does.
+ *
+ * `origin` runs 0 to MAX_SCROLL_ORIGIN, which is 510 on the CPC because the
+ * offset register holds eight bits. Going further needs the video *page*
+ * changed as well, which this library does not do; anything past the bound is
+ * ignored rather than wrapped, because a scroller that wrapped would not fail,
+ * it would jump. */
+void plat_scroll_to(unsigned int origin);
+
 /* Plays effect N, where N is the index the design gave it -- game_config.h
  * defines SOUND_<NAME> for each one it declared. What each index sounds like
  * is this library's business; what it is called is the design's. A target

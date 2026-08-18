@@ -323,10 +323,27 @@ by two for the same unit. The second is right. So the granularity is:
 | Mode 1 (4 px/byte) | 8 pixels across | 40 units |
 
 Advancing by a whole row (40 units) scrolls vertically by one character row,
-i.e. 8 scanlines. So the CPC gets *coarse* scrolling for free in both axes and
-neither is pixel-smooth on its own: sub-unit horizontal needs the background
-redrawn shifted, and sub-row vertical needs the CRTC's vertical adjust (R5,
-reachable through `cpct_setCRTCReg`). Both are real work, neither is done.
+i.e. 8 scanlines.
+
+That coarse scrolling is available:
+
+```yaml
+presentation:
+  scrolling: true        # Amstrad CPC only
+```
+
+and the program calls `plat_scroll_to(origin)`, where `origin` is a byte offset
+into video memory rounded down to the step. On the Spectrum the call is a
+no-op and a design that declares `scrolling` is refused at design time with the
+reason, rather than building into a game where it silently does nothing.
+
+Two things it does not do. It is not pixel-smooth — sub-unit horizontal needs
+the background redrawn shifted, sub-row vertical needs the CRTC's vertical
+adjust (R5, reachable through `cpct_setCRTCReg`), and neither is implemented.
+And it copies nothing, so the column or row scrolling into view shows whatever
+was already in that memory: drawing the incoming edge is the program's job.
+`origin` reaches 510 bytes, because the offset register holds eight bits; past
+that the video page has to change too.
 
 ---
 

@@ -283,6 +283,22 @@ class PresentationSpec(StrictModel):
     #: scanline whatever this says, because moving down needs a different
     #: address rather than differently packed pixels.
     smooth_horizontal: bool = False
+    #: Whether this design's picture moves as a whole -- a scrolling playfield
+    #: rather than a screen that changes all at once.
+    #:
+    #: Only the Amstrad CPC can do this cheaply, through the CRTC register that
+    #: says where the display starts reading; the Spectrum has no equivalent and
+    #: would have to move 6912 bytes. So `structure._fit_errors` refuses a
+    #: Spectrum design that sets this, the same way a design is refused for
+    #: asking a machine for colours or a screen size it does not have -- at
+    #: design time, with the reason, rather than in a game where the call
+    #: silently does nothing.
+    #:
+    #: Coarse, and the design should be worth it at that granularity: the step
+    #: is two bytes, which is four pixels across in mode 0 and eight in mode 1,
+    #: and vertically one character row. Measured rather than assumed; see
+    #: `codegen.SCROLL_STEP_BYTES`.
+    scrolling: bool = False
     show_score: bool = True
     show_lives: bool = True
     #: Character rows reserved at the top for a HUD. Two is what a score and

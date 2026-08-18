@@ -413,3 +413,30 @@ void plat_sprite_px(unsigned int px, unsigned char py, unsigned char sprite,
     (void)px; (void)py; (void)sprite; (void)frame;
 #endif
 }
+
+/* Moves the picture by telling the CRTC where to start reading.
+ *
+ * `cpct_setVideoMemoryOffset` writes R13, and one unit of it is two bytes --
+ * measured on a real machine, because CPCtelera's own examples disagree:
+ * `advanced/hwscroll` comments "4-by-4 bytes" and `advanced/tilemap_hwscroll`
+ * moves its software pointer by two for the same unit. A bar exactly one byte
+ * wide, captured at offsets 0, 1 and 2, moved 2.00 and 4.00 bar-widths. The
+ * tilemap example is right, which is what one would expect of the one whose
+ * arithmetic has to line up with the hardware to work at all.
+ *
+ * Forty of those units is 80 bytes, one screen row, and moves the picture up
+ * by exactly one character row -- also measured, with a full-width bar at
+ * offsets 0, 40 and 80.
+ *
+ * So the offset is `origin / 2`, written as a shift: SDCC would satisfy the
+ * division from its own routine, and this link refuses a routine built for the
+ * other --sdcccall ABI (see sprite_header.py).
+ *
+ * Out of range is ignored rather than wrapped. R13 holds eight bits, so an
+ * origin past MAX_SCROLL_ORIGIN would silently come back round to the start of
+ * the screen: a scroller that did that would not look broken, it would look
+ * like it jumped, which is the harder thing to diagnose. */
+void plat_scroll_to(unsigned int origin) {
+    if (origin > MAX_SCROLL_ORIGIN) return;
+    cpct_setVideoMemoryOffset((u8)(origin >> 1));
+}

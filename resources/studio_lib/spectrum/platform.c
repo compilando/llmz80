@@ -409,6 +409,20 @@ void plat_sprite_px(unsigned int px, unsigned char py, unsigned char sprite,
 #endif
 }
 
+/* Deliberately does nothing. This machine has no display start register --
+ * the screen is at 0x4000 and stays there -- so the only way to move the
+ * picture is to move all 6912 bytes of it, which is not something a game loop
+ * written in C does at 50 Hz.
+ *
+ * A no-op rather than an absent function, for the same reason plat_sound is a
+ * no-op on the CPC: one program compiles against either library. And as there,
+ * the design gate is what stops a design quietly losing a feature -- a
+ * Spectrum design that declares `presentation.scrolling` is refused by
+ * `structure._fit_errors`, with the reason, before anything is built. */
+void plat_scroll_to(unsigned int origin) {
+    (void)origin;
+}
+
 /* Beeper effects through z88dk's certified bit_beep, kept short because the
  * call blocks: every millisecond spent here is a millisecond the game loop is
  * not running. AUDIO_EFFECT_MASK lets the design switch each effect off.
