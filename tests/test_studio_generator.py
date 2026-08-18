@@ -227,10 +227,10 @@ def test_write_program_narrates_before_a_slow_attempt_returns(tmp_path: Path, pr
         "the first progress line must arrive before the slow writer call it "
         "precedes finishes, not only before write_program returns"
     )
-    assert messages[0] == "intento 1: escribiendo..."
+    assert messages[0] == "attempt 1: writing..."
     assert messages[1] == (
-        "intento 1: build compiló, aceptación aprobada, animación sin observar, "
-        "ritmo sin observar, atributos sin observar, estado sin observar"
+        "attempt 1: build compiled, acceptance passed, animation not observed, "
+        "pacing not observed, attributes not observed, state not observed"
     )
 
 

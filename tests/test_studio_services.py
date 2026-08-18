@@ -344,11 +344,11 @@ def test_write_program_lets_runtime_test_narrate_from_inside_the_repair_loop(tmp
     service.write_program(project, directory, _Writer(), attempts=1, on_progress=messages.append)
 
     assert messages == [
-        "intento 1: escribiendo...",
+        "attempt 1: writing...",
         "compilando el programa",
         "arrancando el emulador",
-        "intento 1: build compiló, aceptación aprobada, animación aprobada, "
-        "ritmo sin observar, atributos sin observar, estado sin observar",
+        "attempt 1: build compiled, acceptance passed, animation passed, "
+        "pacing not observed, attributes not observed, state not observed",
     ], messages
 
 

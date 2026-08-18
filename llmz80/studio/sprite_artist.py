@@ -611,7 +611,7 @@ class SpriteArtist:
                 if reason is None
                 else (prompt + "\n\nYOUR PREVIOUS SHEET WAS REJECTED\n\n" + reason)
             )
-            _say(on_progress, f"{ident}: intento {attempt}, dibujando...")
+            _say(on_progress, f"{ident}: attempt {attempt}, drawing...")
             drawn = self.source.draw(project, request)
             sheets.append(drawn.sheet)
             # A source that can state its own refusal is believed first: it
@@ -629,7 +629,7 @@ class SpriteArtist:
                     repairs=repairs,
                 )
             repairs.append(reason)
-            _say(on_progress, f"{ident}: intento {attempt} rechazado, {_reason_summary(reason)}")
+            _say(on_progress, f"{ident}: attempt {attempt} refused, {_reason_summary(reason)}")
         raise SpriteDrawFailure(
             f"the sprite sheet could not be drawn in {self.attempts} attempt"
             f"{'s' if self.attempts != 1 else ''}; the last reason was: "
@@ -800,7 +800,7 @@ class TileArtist:
                 if reason is None
                 else (prompt + "\n\nYOUR PREVIOUS TILE WAS REJECTED\n\n" + reason)
             )
-            _say(on_progress, f"{tile.id}: intento {attempt}, dibujando terreno...")
+            _say(on_progress, f"{tile.id}: attempt {attempt}, drawing terrain...")
             drawn = self.source.draw(project, request)
             sheets.append(drawn.sheet)
             reason = drawn.reason
@@ -813,7 +813,10 @@ class TileArtist:
                     repairs=repairs,
                 )
             repairs.append(reason)
-            _say(on_progress, f"{tile.id}: intento {attempt} rechazado, {_reason_summary(reason)}")
+            _say(
+                on_progress,
+                f"{tile.id}: attempt {attempt} refused, {_reason_summary(reason)}",
+            )
         raise SpriteDrawFailure(
             f"the tile could not be drawn in {self.attempts} attempt"
             f"{'s' if self.attempts != 1 else ''}; the last reason was: "

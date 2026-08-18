@@ -26,7 +26,7 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
         r"#include\s*<cpctelera\.h>", fixed
     ):
         fixed = "#include <cpctelera.h>\n" + fixed
-        fixes.append("Añadido #include <cpctelera.h>")
+        fixes.append("added #include <cpctelera.h>")
 
     main_match = re.search(r"\bvoid\s+main\s*\(\s*void\s*\)\s*\{", fixed)
     if main_match and re.search(
@@ -36,7 +36,7 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
         if not re.search(r"\bcpct_disableFirmware\s*\(", main_body):
             insert_at = _find_main_first_statement_offset(fixed, main_match.end())
             fixed = fixed[:insert_at] + "    cpct_disableFirmware();\n" + fixed[insert_at:]
-            fixes.append("Añadido cpct_disableFirmware() al inicio de main()")
+            fixes.append("added cpct_disableFirmware() at the top of main()")
 
     if re.search(r"\bcpct_isKeyPressed\s*\(", fixed) and not re.search(
         r"\bcpct_scanKeyboard(?:_f)?\s*\(", fixed
@@ -45,12 +45,12 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
         if key_match:
             line_start = key_match.start()
             fixed = fixed[:line_start] + "    cpct_scanKeyboard_f();\n" + fixed[line_start:]
-            fixes.append("Añadido cpct_scanKeyboard_f() antes de cpct_isKeyPressed()")
+            fixes.append("added cpct_scanKeyboard_f() before cpct_isKeyPressed()")
 
     before_zx_cls = fixed
     fixed = re.sub(r"\bzx_cls\s*\(\s*\)\s*;", "cpct_clearScreen(0x00);", fixed)
     if fixed != before_zx_cls:
-        fixes.append("Sustituido zx_cls() por cpct_clearScreen(0x00)")
+        fixes.append("replaced zx_cls() with cpct_clearScreen(0x00)")
 
     before_drawchar = fixed
     pointer_variables = set(
@@ -79,12 +79,12 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
     fixed = re.sub(r"^\s*cpct_setRandom_lcg_u8\s*\(\s*\)\s*;\s*\n?", "", fixed, flags=re.MULTILINE)
     fixed = re.sub(r"\bcpct_getRandom_lcg_u8\s*\(\s*\)", "cpct_getRandom_glfsr16_u8()", fixed)
     if fixed != before_random:
-        fixes.append("Corregido uso de random LCG inexistente/sin entropía")
+        fixes.append("replaced a call to an LCG random that does not exist, or was never seeded")
 
     before_ascii = fixed
     fixed = re.sub(r"\bcpct_getKeyASCII\s*\(\s*\)", "cpct_getKeypressedAsASCII()", fixed)
     if fixed != before_ascii:
-        fixes.append("Corregido cpct_getKeyASCII() por cpct_getKeypressedAsASCII()")
+        fixes.append("replaced cpct_getKeyASCII() with cpct_getKeypressedAsASCII()")
 
     # CPCtelera's assembly sprite routine does not modify sprite data. SDCC
     # warning 357 is triggered when generated code discards a const array's
@@ -110,7 +110,7 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
 
     fixed, cast_count = _cast_high_byte_constants(fixed, macro_type="u8")
     if cast_count:
-        fixes.append(f"Añadidos casts explícitos a {cast_count} constantes byte altas")
+        fixes.append(f"added explicit casts to {cast_count} high byte constants")
 
     return fixed, fixes
 
@@ -128,7 +128,7 @@ def apply_deterministic_spectrum_fixes(code: str) -> tuple[str, list[str]]:
             fixed,
         )
         if fixed != before:
-            fixes.append(f"Corregido IN_KEY_SCANCODE_{upper} por IN_KEY_SCANCODE_{lower}")
+            fixes.append(f"lower-cased IN_KEY_SCANCODE_{upper} to IN_KEY_SCANCODE_{lower}")
 
     fixed, cast_count = _cast_high_byte_constants(fixed, macro_type="uint8_t")
     if cast_count:
@@ -236,23 +236,18 @@ def _find_main_first_statement_offset(code: str, main_body_start: int) -> int:
 
 
 def create_slug(text: str, max_length: int = 40) -> str:
-    """Genera un slug URL-friendly a partir de un texto.
+    """`text` as a directory-safe name.
 
-    Args:
-        text: Texto a convertir en slug
-        max_length: Longitud máxima del slug
-
-    Returns:
-        Slug generado
+    Accents transliterate rather than disappear, which matters because
+    `Metadata.language` defaults to "es" and `studio/samples.py` turns a
+    design's title straight into a directory name: an ascii-only filter made
+    "Nino espanol" out of one and "ni-o-espa-ol" out of the accented original.
     """
-    logging.debug(f"Creando slug desde texto: {text[:50]}...")
     slug = unicodedata.normalize("NFKD", text.lower())
     slug = slug.encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r"[^a-z0-9\s-]", "", slug)  # Eliminar caracteres no deseados
-    slug = re.sub(r"[-\s]+", "-", slug).strip("-")  # Reemplazar espacios/guiones por un solo guión
-    slug = slug[:max_length]  # Truncar
-    logging.debug(f"Slug creado: {slug}")
-    return slug
+    slug = re.sub(r"[^a-z0-9\s-]", "", slug)
+    slug = re.sub(r"[-\s]+", "-", slug).strip("-")
+    return slug[:max_length]
 
 
 def slugify(text: str, max_length: int = 40) -> str:

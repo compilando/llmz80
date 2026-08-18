@@ -1,184 +1,167 @@
 # Changelog
 
-Todos los cambios notables en este proyecto serán documentados en este archivo.
+Every notable change to this project is recorded here.
 
-El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
-y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
+this project uses [Semantic Versioning](https://semver.org/).
 
-## [Sin versionar] - 2026-08-16
+## [Unreleased] - 2026-08-18
 
-### Cambiado
-- **Studio piensa con Claude Opus 5, no con GPT-5.** Las ocho llamadas
-  estructuradas (`drafting`, `reference`, `reference_design`, `planner`, los
-  dos examinadores de diseño, `generator`, `runtime_exam`) pasan por un único
-  adaptador nuevo, `llmz80/studio/llm.py`, en vez de repetir la misma petición
-  ocho veces. `llm_z80.py` y `llmz80/api/generator.py` siguen en OpenAI.
-- **`config.yml` ya no lleva `temperature` en la sección de Studio**: el
-  modelo la rechaza con un 400 en vez de ignorarla. `reasoning_effort`
-  tampoco: su sustituto ya viene en el valor alto que Studio quiere.
-- La búsqueda web de `reference.py` usa la herramienta de servidor
-  `web_search_20260209`.
-- **`ANTHROPIC_API_KEY` es ahora la clave que Studio necesita.**
-  `OPENAI_API_KEY` sigue haciendo falta sólo para el generador antiguo.
+### Removed
 
-### Añadido
-- **Los sprites los dibuja el modelo como rejilla de índices de paleta**
-  (`llmz80/studio/sprite_grid.py`), no como una imagen de 1024x1024 de la que
-  haya que rescatar 16x16. Dos clases enteras de fallo dejan de ser posibles
-  en vez de detectarse: no hay carácter para un gris intermedio, así que no
-  hay antialiasing, y no hay carácter fuera del alfabeto de la máquina, así
-  que no hay color que no pueda mostrar. Un fallo de forma —una fila corta,
-  un frame vacío— vuelve como frase que nombra el frame y la fila, y alimenta
-  el mismo bucle de reintento que ya existía.
-- `SpriteArtist` gana un seam, `SheetSource`, con dos implementaciones: la
-  original por modelo de imagen (`ImageModelSheetSource`, intacta) y la nueva
-  (`ClaudeGridSheetSource`). El bucle de reintento, el juicio de los frames y
-  la conservación de cada intento son comunes a las dos.
-- Plantillas de prompt por máquina para el camino de rejilla
-  (`resources/sprite_grid_*.txt`), incluida la advertencia de que en modo 0
-  del CPC el píxel es el doble de ancho que de alto.
+- **The legacy generator, and everything only it reached.** `llm_z80.py`, its
+  OpenAI client (`llmz80/api/generator.py`), the whole embeddings and Qdrant
+  retrieval stack, the code validators, the learning system, the standalone
+  sprite image generators and four shell build scripts: about 11 000 lines.
+  Studio replaced it months ago and the newest run it ever wrote is dated
+  2026-08-11. `llmz80 <unknown-command>` used to fall through to it; it now
+  prints the help text and exits 2.
+- Eight runtime dependencies: `openai`, `scipy`, `requests`, `termcolor`,
+  `qdrant-client`, `fastembed` and both Google AI SDKs. What is left is
+  `anthropic`, `pydantic`, `textual`, `python-dotenv`, `Pillow`, `numpy` and
+  `PyYAML`.
+- Six `config.yml` sections nothing read (`examples`, `generation`, `logging`,
+  `output`, `paths`, `prompt_files`), `resources/platforms.yml`, and the two
+  legacy system prompts.
+- `scripts/evaluate_generation.py --live`, which shelled out to the deleted
+  generator. The scorecard still scores the archive of legacy runs, which its
+  docstring now says out loud.
+- 99 build artifacts that `.gitignore` already excluded but that were committed
+  before those rules existed.
 
-### Cambiado (embeddings)
-- **Los embeddings se calculan en esta máquina** con `fastembed`
-  (`BAAI/bge-small-en-v1.5`), sin clave de API ni llamada de red.
-  `llmz80/core/embedding_backend.py` es ahora el único sitio que decide qué
-  modelo y qué anchura.
-- ⚠️ **Los vectores pasan de 1536 a 384 dimensiones.** Cualquier colección de
-  Qdrant o caché en `local/embeddings` anterior a este cambio hay que
-  **recrearla**, no migrarla.
+### Fixed
 
-## [Sin versionar] - 2026-06-02
+- **`acceptance.step_mismatches` could crash a whole run.** An expectation
+  naming neither a `value` nor a `baseline` reached `actual >= None` and raised
+  `TypeError`, which nothing catches, so one malformed rule ended the run
+  instead of failing its own step.
+- **The CPC build depended on the working directory.** The CPCtelera project
+  templates were found through a cwd-relative path, so `llmz80 make` started
+  anywhere but the checkout root copied no `cfg/` and died inside `make`
+  complaining about a missing `build_config.mk`. The Spectrum half of this was
+  fixed in 76fd144; the CPC half was not.
+- **An unbuilt CPCtelera is now refused where it can be explained.** CPCtelera
+  compiles with the SDCC inside its own checkout, which `setup.sh` builds, so a
+  bare clone passed every check and then failed with exit code 127.
+  `resolve_cpct_path` requires the compiler to exist, and `make doctor` says so.
+- `cli._project_command` bound one name to two different result types across
+  two branches and read fields off whichever it got; `services.add_asset` took
+  a `str` where a four-value `Literal` was required.
+- The comment in `generator.py` explaining why CPC gates abstain had been wrong
+  since ZEsarUX replaced Caprice32: three of the five behaviour gates really do
+  watch a CPC game now.
 
-### Añadido
-- Informe de gaps y plan de mejora para Retro Vibe-Coding ASM Z80 en Amstrad CPC (`docs/RETRO_VIBE_CODING_GAP_REPORT.md`).
-- Sección en README sobre el estado real del soporte ASM Z80 y la dirección recomendada para `amstrad_cpc_asm`.
-- Contrato CPCtelera `main.c` autocontenido en prompt, validación y RAG.
-- Correcciones deterministas seguras para generación CPCtelera antes de compilar.
-- Registro de entorno de build y verificación de artefactos `.dsk`/`.tap`.
+### Changed
 
-### Cambiado
-- README actualizado para reflejar GPT-5/configuración actual, validación previa, aprendizaje local y alcance C/CPCtelera.
-- El validador CPCtelera ahora trata funciones `cpct_*` desconocidas, APIs estándar problemáticas, includes locales y errores de orden de inicialización como fallos críticos.
-- Los ejemplos RAG de Amstrad CPC se filtran para preferir snippets autocontenidos compatibles con el contrato `main.c`.
-- Corregidos falsos positivos del validador por comentarios con paréntesis, heurísticas de punto y coma y declaraciones previas a `cpct_disableFirmware()`.
-- Corregida documentación CPCtelera para `cpct_drawCharM*()` y funciones random reales de la instalación local.
+- **The CPC toolchain moved out of the legacy generator** into
+  `llmz80/core/toolchain.py`, which was the single import keeping 1 591 retired
+  lines in the live pipeline's graph. `vendor/cpctelera` joins the search path,
+  so the commit pinned in `ENGINE.json` can finally be what a build uses.
+- **Everything is in English** — code, comments, progress lines, the diary's
+  stage ids (`referencia` → `reference`, `redacción` → `drafting`, `diseño` →
+  `design`, `programa` → `program`), the README and this file. Linguistic data
+  stays bilingual on purpose: the Spanish stopwords in the retrieval catalogue,
+  the colour and comparison words the palette and runtime examiner match, and
+  the bilingual benchmark corpus. A design's own prose is still written in
+  whatever language it was briefed in.
+  ⚠️ A `studio.log` written before this change uses the old stage ids.
+- The sprite preview no longer quantises the sheet against a palette that is not
+  the one it was packed with. `studio/preview.py` paints the pixels as they are,
+  which is exact, because the sheet was drawn from the packer's own palette.
+- CI enforces what it used to only report. `black`, `isort`, `flake8`, `mypy`
+  and `bandit` all run over `llmz80`, `tests` and `scripts`, and none of them
+  are advisory any more. `black --check` and `isort --check-only` had in fact
+  been failing on every push. Flake8 goes from 688 findings to nine complexity
+  advisories; mypy from 103 errors to none.
+- The Makefile drops the legacy `generate*`, `run*` and `qdrant-*` targets for
+  `make game`, `make play` and `make format-check`.
 
-## [Sin versionar] - 2024-11-20
+## [Unreleased] - 2026-08-16
 
-### Añadido
-- Documentación completa para AI coding assistants (`.cline/cline_docs.md`)
-- Reglas de Cursor AI (`.cursorrules`) con guías de estilo y mejores prácticas
-- Guía de contribución (`CONTRIBUTING.md`) con instrucciones detalladas
-- Archivo de licencia MIT (`LICENSE`)
-- README.md mejorado con badges, ejemplos y documentación completa
-- Dependencias de desarrollo (`requirements-dev.txt`) con pytest, black, mypy, etc.
-- Este archivo CHANGELOG.md para rastrear cambios
+### Changed
 
-### Cambiado
-- `requirements.txt` actualizado con versiones más recientes y mejor organizado
-  - `python-dotenv`: 1.1.0 → 1.0.1
-  - `termcolor`: 3.0.1 → 2.5.0
-  - Añadidos comentarios para organizar dependencias por categoría
+- **Studio thinks with Claude Opus 5, not GPT-5.** The eight structured calls
+  (`drafting`, `reference`, `reference_design`, `planner`, both design
+  examiners, `generator`, `runtime_exam`) go through one new adapter,
+  `llmz80/studio/llm.py`, instead of repeating the same request eight times.
+- **`config.yml` no longer carries `temperature`** in the Studio section: the
+  model rejects it with a 400 rather than ignoring it. Nor `reasoning_effort`,
+  whose replacement already defaults to the high setting Studio wants.
+- `reference.py`'s web search uses the `web_search_20260209` server tool.
+- **`ANTHROPIC_API_KEY` is the key Studio needs.**
 
-### Mejorado
-- README.md completamente reescrito con:
-  - Badges de estado del proyecto
-  - Tabla de contenidos
-  - Instrucciones de instalación detalladas
-  - Ejemplos de uso con casos reales
-  - Diagramas de arquitectura
-  - Sección de solución de problemas ampliada
-  - Enlaces a recursos externos
+### Added
 
-## Versiones Anteriores
+- **Sprites are drawn by the model as a grid of palette indices**
+  (`llmz80/studio/sprite_grid.py`), not as a 1024×1024 image to rescue a 16×16
+  sprite from. Two whole classes of failure stop being possible rather than
+  being detected: there is no character for a mid grey, so no antialiasing, and
+  no character outside the machine's alphabet, so no colour it cannot show. A
+  shape failure — a short row, an empty frame — comes back as a sentence naming
+  the frame and the row, and feeds the retry loop that already existed.
+- `SpriteArtist` gains a seam, `SheetSource`, with two implementations. The
+  retry loop, the judging of frames and the keeping of every attempt are common
+  to both.
+- Per-machine prompt templates for the grid path (`resources/sprite_grid_*.txt`),
+  including the warning that a CPC mode 0 pixel is twice as wide as it is tall.
 
-### Características Implementadas
+### Changed (embeddings)
 
-#### Sistema de Generación de Código
-- ✅ Integración con OpenAI GPT-4 para generación de código C
-- ✅ Soporte para ZX Spectrum 48K (Z88DK)
-- ✅ Soporte para Amstrad CPC 464/6128 (CPCtelera)
-- ✅ Sistema de prompts específicos por plataforma
-- ✅ Compilación automática del código generado
-- ✅ Sugerencias de corrección cuando la compilación falla
+- Embeddings were computed locally with `fastembed`
+  (`BAAI/bge-small-en-v1.5`), no API key and no network call.
+- ⚠️ Vectors went from 1536 to 384 dimensions; older collections and caches had
+  to be recreated rather than migrated.
 
-#### Sistema RAG (Retrieval Augmented Generation)
-- ✅ Integración con Qdrant como base de datos vectorial
-- ✅ Generación de embeddings con OpenAI (text-embedding-3-small)
-- ✅ Búsqueda semántica de ejemplos relevantes
-- ✅ Sistema de caché de embeddings local
-- ✅ Carga y gestión de ejemplos de código
+*(Both entries are historical: the embeddings stack was removed on 2026-08-18.)*
 
-#### Generación de Sprites
-- ✅ Soporte para múltiples proveedores de IA:
-  - OpenAI DALL-E
-  - Google Gemini
-  - Vertex AI
-- ✅ Conversión automática a formato de sprite
-- ✅ Soporte para diferentes modos gráficos de Amstrad CPC
+## [Unreleased] - 2026-06-02
 
-#### Scripts de Compilación
-- ✅ `build_spectrum.sh`: Compilación para ZX Spectrum
-- ✅ `build_amstrad.sh`: Compilación para Amstrad CPC
-- ✅ Soporte para múltiples emuladores
-- ✅ Creación automática de estructura de proyecto
+### Added
 
-#### Utilidades
-- ✅ Sistema de logging configurable
-- ✅ Configuración centralizada en `config.yml`
-- ✅ Gestión de variables de entorno con `.env`
-- ✅ Helpers para limpieza de respuestas de API
-- ✅ Generación de slugs para nombres de directorios
+- A gap report and improvement plan for Z80 assembly retro vibe-coding on the
+  Amstrad CPC (`docs/RETRO_VIBE_CODING_GAP_REPORT.md`).
+- A self-contained CPCtelera `main.c` contract, in the prompt, the validation
+  and retrieval.
+- Safe deterministic fixes applied to generated CPCtelera code before compiling.
+- A record of the build environment, and verification of `.dsk` / `.tap`
+  artifacts.
 
-## [Planeado] - Roadmap
+### Changed
 
-### Alta Prioridad
-- [ ] Suite de tests unitarios con pytest
-- [ ] Tests de integración para compilación
-- [ ] CI/CD con GitHub Actions
-- [ ] Pre-commit hooks configurados
-- [ ] Configuración de mypy para type checking
+- The CPCtelera validator treats unknown `cpct_*` functions, problematic
+  standard APIs, local includes and initialisation-order errors as critical
+  failures.
+- Amstrad CPC retrieval examples are filtered towards self-contained snippets
+  compatible with the `main.c` contract.
+- Fixed validator false positives from comments containing parentheses,
+  semicolon heuristics, and declarations before `cpct_disableFirmware()`.
+- Corrected the CPCtelera documentation for `cpct_drawCharM*()` and for the
+  random functions the local install really has.
 
-### Media Prioridad
-- [ ] Soporte para más modelos LLM (Claude, Llama, etc.)
-- [ ] Interfaz web con Gradio o Streamlit
-- [ ] Exportación de proyectos completos
-- [ ] Sistema de plantillas de código
-- [ ] Documentación con Sphinx
+## [Unreleased] - 2024-11-20
 
-### Baja Prioridad
-- [ ] Soporte para MSX
-- [ ] Soporte para Commodore 64
-- [ ] Generación de música con AI
-- [ ] Editor visual de sprites
-- [ ] Marketplace de ejemplos comunitarios
+### Added
 
-## Notas de Versión
+- Documentation for AI coding assistants, a Cursor rules file, a contribution
+  guide, an MIT licence file, a rewritten README, development dependencies and
+  this changelog.
 
-### Convenciones de Commits
+### Changed
 
-Este proyecto usa [Conventional Commits](https://www.conventionalcommits.org/):
-
-- `feat`: Nueva funcionalidad
-- `fix`: Corrección de bug
-- `docs`: Cambios en documentación
-- `style`: Cambios de formato (no afectan el código)
-- `refactor`: Refactorización de código
-- `test`: Añadir o modificar tests
-- `chore`: Cambios en el proceso de build o herramientas
-
-### Proceso de Release
-
-1. Actualizar versión en archivos relevantes
-2. Actualizar este CHANGELOG.md
-3. Crear tag de git: `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
-4. Push de cambios y tags: `git push && git push --tags`
-5. Crear release en GitHub con notas del changelog
+- `requirements.txt` reorganised, with `python-dotenv` and `termcolor` pinned
+  to earlier releases.
 
 ---
 
-**Leyenda:**
-- ✅ Completado
-- 🚧 En progreso
-- 📋 Planeado
-- ❌ Cancelado/Pospuesto
+## Commit conventions
+
+[Conventional Commits](https://www.conventionalcommits.org/): `feat`, `fix`,
+`docs`, `style`, `refactor`, `test`, `chore`.
+
+## Release process
+
+1. Update the version where it appears
+2. Update this file
+3. `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
+4. `git push && git push --tags`
+5. Open a GitHub release with the notes from this file

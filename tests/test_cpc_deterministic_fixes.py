@@ -118,7 +118,7 @@ void reset_hud(void) {
     fixed, fixes = apply_deterministic_cpc_fixes(code)
 
     assert "hud_last_lives = (u8)0xFF;" in fixed
-    assert any("byte altas" in fix for fix in fixes)
+    assert any("high byte constants" in fix for fix in fixes)
 
 
 def test_deterministic_fix_uses_cpctelera_u8_for_high_macro():

@@ -1,455 +1,200 @@
 # Contributing to LLMZ80
 
-¡Gracias por tu interés en contribuir a LLMZ80! Este documento proporciona pautas para contribuir al proyecto.
+Thanks for wanting to. This is what you need to know.
 
-## Tabla de Contenidos
+## Contents
 
-- [Código de Conducta](#código-de-conducta)
-- [Cómo Puedo Contribuir](#cómo-puedo-contribuir)
-- [Configuración del Entorno de Desarrollo](#configuración-del-entorno-de-desarrollo)
-- [Proceso de Pull Request](#proceso-de-pull-request)
-- [Guías de Estilo](#guías-de-estilo)
-- [Estructura del Proyecto](#estructura-del-proyecto)
+- [Getting set up](#getting-set-up)
+- [The shape of the codebase](#the-shape-of-the-codebase)
+- [How this project writes code](#how-this-project-writes-code)
 - [Testing](#testing)
-- [Reportar Bugs](#reportar-bugs)
-- [Sugerir Mejoras](#sugerir-mejoras)
+- [Pull requests](#pull-requests)
+- [Reporting a bug](#reporting-a-bug)
+- [Areas that want help](#areas-that-want-help)
 
-## Código de Conducta
+---
 
-Este proyecto y todos los que participan en él se rigen por un código de conducta implícito de respeto y profesionalismo. Al participar, se espera que mantengas este estándar.
+## Getting set up
 
-## Cómo Puedo Contribuir
-
-### Reportar Bugs
-
-Los bugs se rastrean como issues en GitHub. Antes de crear un bug report:
-
-1. **Verifica** que no sea un duplicado buscando en los issues existentes
-2. **Determina** qué repositorio debería recibir el problema
-3. **Recopila** información sobre el problema:
-   - Usa el template de issue si está disponible
-   - Incluye los pasos para reproducir el problema
-   - Proporciona ejemplos específicos
-   - Describe el comportamiento observado vs el esperado
-   - Incluye capturas de pantalla si es relevante
-   - Incluye información del entorno (SO, versión de Python, etc.)
-
-### Sugerir Mejoras
-
-Las sugerencias de mejoras también se rastrean como GitHub issues. Al crear una sugerencia:
-
-1. **Usa un título claro y descriptivo**
-2. **Proporciona una descripción paso a paso** de la mejora sugerida
-3. **Proporciona ejemplos específicos** para demostrar los pasos
-4. **Describe el comportamiento actual** y explica qué comportamiento esperabas ver
-5. **Explica por qué esta mejora sería útil** para la mayoría de los usuarios de LLMZ80
-
-### Contribuir con Código
-
-#### Tipos de Contribuciones
-
-- **Corrección de bugs**: Corregir problemas existentes
-- **Nuevas funcionalidades**: Añadir nuevas capacidades
-- **Mejoras de rendimiento**: Optimizar código existente
-- **Documentación**: Mejorar o corregir documentación
-- **Ejemplos**: Añadir nuevos ejemplos de código para las plataformas
-- **Tests**: Añadir o mejorar tests
-
-## Configuración del Entorno de Desarrollo
-
-### Requisitos Previos
-
-- Python 3.10 o superior
-- Git
-- Docker (para Qdrant)
-- SDCC (para Amstrad CPC)
-- Z88DK (para ZX Spectrum)
-
-### Instalación
-
-1. **Fork el repositorio** en GitHub
-
-2. **Clona tu fork localmente:**
 ```bash
-git clone https://github.com/TU_USUARIO/llmz80.git
+git clone https://github.com/compilando/llmz80.git
 cd llmz80
+make install-dev
+cp .env.example .env        # then put your ANTHROPIC_API_KEY in it
+make doctor                 # tells you exactly what is missing
+make test
 ```
 
-3. **Añade el repositorio upstream:**
-```bash
-git remote add upstream https://github.com/compilando/llmz80.git
-```
+Python 3.10 – 3.13. `make doctor` checks the interpreter, the API key, both
+native toolchains and the emulators, and names whichever one is not there.
 
-4. **Crea un entorno virtual:**
-```bash
-python -m venv venv
-source venv/bin/activate  # En Linux/Mac
-# o
-venv\Scripts\activate  # En Windows
-```
+**You do not need an API key to work on most of this.** The whole test suite
+runs offline: every call to a model goes through `llmz80.studio.llm.structured`,
+and the tests hand it a fake client. You need a key only to run a real
+generation end to end.
 
-5. **Instala las dependencias:**
-```bash
-pip install -r requirements.txt
-```
+**You do not need both toolchains either.** Tests that need `zcc` or CPCtelera
+skip themselves when it is absent — but if you are touching the CPC path,
+install CPCtelera and *run its `setup.sh`*, or those tests will go on quietly
+skipping and you will not know whether your change works. See the README.
 
-6. **Instala dependencias de desarrollo (cuando estén disponibles):**
-```bash
-pip install -r requirements-dev.txt  # Si existe
-```
+---
 
-7. **Configura las variables de entorno:**
-```bash
-cp .env.example .env
-# Edita .env con tus API keys
-```
+## The shape of the codebase
 
-8. **Inicia Qdrant (base de datos vectorial):**
-```bash
-docker run -p 6333:6333 qdrant/qdrant
-```
+Two things are worth understanding before changing anything.
 
-9. **Inicializa la base de datos con ejemplos:**
-```bash
-python llm_z80.py --platform spectrum --populate-db
-python llm_z80.py --platform amstrad_cpc --populate-db
-```
+**The design is a document, not a prompt.** `llmz80/studio/models.py` defines
+schema v4: a design names its own tiles, entities, mechanics, observables and
+palette, and nothing here has an opinion about what any of them mean. There is
+no genre enum, no fixed tile alphabet, no list of allowed entity roles. If you
+find yourself adding one, that is the thing v4 exists to prevent — the pipeline
+should be able to make a game nobody anticipated.
 
-### Verifica tu Instalación
+**A gate measures or it abstains.** Every quality gate answers
+`quality_pass: True`, `False`, or `None`. `None` means "I could not watch this",
+and it is never treated as a pass: `generator.py` accepts an attempt only when
+nothing definitely refused it, and `release` additionally requires that at least
+one behaviour gate really did watch. If you add a gate, it must be able to say
+"I don't know" — and if you make an existing one able to judge a case it used to
+abstain on, say so in its docstring, because somebody reading the report needs
+to know what changed.
 
-```bash
-# Test básico
-python llm_z80.py --platform spectrum --log-level DEBUG --prompt "Change border color to red"
+Where things live:
 
-# Verifica compiladores
-which sdcc
-which zcc
+| I want to… | Go to |
+|---|---|
+| change what a design can say | `studio/models.py`, then `studio/structure.py` for cross-field rules |
+| change what the writer is told | `studio/acceptance.py` (`generation_prompt`) |
+| change the C the game is built against | `resources/studio_lib/`, and `studio/codegen.py` for the generated headers |
+| add or change a quality gate | `studio/{acceptance,feel,pacing,attributes}.py`, wired in `studio/services.py` |
+| change how sprites are drawn or packed | `studio/sprite_artist.py`, `studio/spriting.py` |
+| change how a target is built | `studio/compiler.py`, `core/toolchain.py` |
+| change what the emulator does | `quality/emulator_smoke.py`, `studio/observation.py` |
 
-# Test de compilación
-./build_spectrum.sh --example=01_border --no-emulator
-```
+`resources/studio_reference/` holds a complete maze game for each machine. It is
+not generated from anything and nothing generates from it: it exists so the
+gates can be proved both to pass a good program and to fail a sabotaged one. If
+you change a gate, sabotage the reference program and check that your gate
+notices.
 
-## Proceso de Pull Request
+---
 
-1. **Crea una rama para tu feature/fix:**
-```bash
-git checkout -b feature/descripcion-corta
-# o
-git checkout -b fix/descripcion-del-bug
-```
+## How this project writes code
 
-2. **Haz tus cambios siguiendo las guías de estilo**
+The house style is unusual and deliberate, so it is written down.
 
-3. **Añade tests** si es aplicable
-
-4. **Asegúrate de que los tests pasen:**
-```bash
-pytest  # Cuando haya tests
-```
-
-5. **Actualiza la documentación** si es necesario:
-   - README.md
-   - .cline/cline_docs.md
-   - Docstrings en el código
-
-6. **Commit tus cambios:**
-```bash
-git add .
-git commit -m "tipo: descripción breve
-
-Descripción más detallada del cambio si es necesario.
-
-Fixes #123"
-```
-
-Tipos de commit válidos:
-- `feat`: Nueva funcionalidad
-- `fix`: Corrección de bug
-- `docs`: Cambios en documentación
-- `style`: Cambios de formato (no afectan el código)
-- `refactor`: Refactorización de código
-- `test`: Añadir o modificar tests
-- `chore`: Cambios en el proceso de build o herramientas
-
-7. **Push a tu fork:**
-```bash
-git push origin feature/descripcion-corta
-```
-
-8. **Abre un Pull Request** en GitHub con:
-   - Título descriptivo
-   - Descripción detallada de los cambios
-   - Referencias a issues relacionados
-   - Capturas de pantalla si aplica
-
-### Revisión del Pull Request
-
-- Mantén la conversación profesional y constructiva
-- Responde a los comentarios de revisión
-- Realiza los cambios solicitados
-- Los PR son revisados cuando hay tiempo disponible
-
-## Guías de Estilo
-
-### Python
-
-**Seguir PEP 8 estrictamente**
+**Comments say why, and cite the run that taught it.** Not what the code does —
+the code does that. The comments here record the failure that produced the line:
+which program broke, what it reported, what was tried first and why it was
+worse. That is what stops the next person re-introducing the bug while tidying
+up. If you fix something a comment describes, update the comment; if you delete
+code a comment justifies, delete both.
 
 ```python
-# Bueno
-def generate_code(platform: str, prompt: str) -> str:
-    """Genera código C para la plataforma especificada.
-    
-    Args:
-        platform: Plataforma objetivo (spectrum o amstrad_cpc)
-        prompt: Solicitud del usuario
-        
-    Returns:
-        Código C generado
+#: Frames each step holds its key. Fifty is one second at 50 Hz: long enough
+#: that a program pacing itself on the frame clock has certainly moved.
+STEP_FRAMES = 50
+```
+
+**Tests are prose about behaviour.** Name them as sentences, and use the
+docstring to say what the test is protecting against, not what it does.
+
+```python
+def test_a_checkout_whose_toolchain_was_never_built_is_refused(self):
+    """The failure this predicate exists to move earlier.
+
+    A fresh clone has every source file and no compiler, so accepting it
+    hands `make` a path it cannot execute: exit code 127, and a diagnostic
+    that says nothing about setup never having been run.
     """
-    logger.info(f"Generando código para {platform}")
-    return generated_code
-
-# Malo
-def genCode(p, pr):
-    print("Generating...")  # No usar print en código principal
-    return code
 ```
 
-### Logging
+**Write the test first.** Every behaviour change in this repository has a test
+that failed before the change and passes after it. Run it red first — a test
+that never failed has not proved anything about the code.
 
-**NUNCA usar print() en el código principal:**
+**Formatting is not negotiated.** `make format` (isort, then black, line length
+100). CI fails on unformatted code, and on any mypy or bandit finding, so run
+`make quality-gate` before you push.
 
-```python
-# Bueno
-import logging
-logger = logging.getLogger(__name__)
-logger.info("Mensaje informativo")
-logger.debug("Mensaje de debug")
-logger.error("Mensaje de error")
+**Type everything.** `disallow_untyped_defs` is on and the tree is clean under
+it. `object` as a parameter type is a way of saying "unchecked" — write a
+`Protocol` instead; there are two in `studio/sprite_artist.py` to copy.
 
-# Malo
-print("Mensaje")  # Solo permitido en scripts shell
-```
+**English.** Code, comments, commit messages, diary lines, everything the
+interface prints. The exceptions are linguistic data: `core/example_catalog.py`
+holds Spanish stopwords and search terms, `studio/palette.py` and
+`studio/runtime_exam.py` match colour and comparison words in both languages,
+and `benchmarks/prompts.yml` is bilingual on purpose. A design's *own* prose is
+whatever language it was briefed in — `Metadata.language` defaults to `es`.
 
-### Type Hints
+**Commit messages** say what changed and why, in the imperative, with the
+reasoning in the body. Conventional Commits prefix (`feat`, `fix`, `refactor`,
+`test`, `docs`, `chore`, `style`).
 
-**Usar type hints siempre que sea posible:**
-
-```python
-# Bueno
-from typing import List, Dict, Optional
-from pathlib import Path
-
-def load_examples(directory: Path, limit: int = 10) -> List[Dict[str, str]]:
-    pass
-
-# Aceptable para casos simples
-def simple_func(x: int) -> int:
-    return x * 2
-```
-
-### Docstrings
-
-**Usar formato Google Style:**
-
-```python
-def complex_function(param1: str, param2: int, param3: bool = False) -> Dict[str, Any]:
-    """Breve descripción de una línea.
-    
-    Descripción más detallada si es necesario, puede ocupar
-    múltiples líneas.
-    
-    Args:
-        param1: Descripción del primer parámetro
-        param2: Descripción del segundo parámetro
-        param3: Descripción del tercer parámetro. Defaults to False.
-        
-    Returns:
-        Descripción del valor de retorno
-        
-    Raises:
-        ValueError: Cuándo se lanza esta excepción
-        TypeError: Cuándo se lanza esta otra excepción
-    """
-    pass
-```
-
-### Código C Generado
-
-**Los ejemplos de código C deben incluir:**
-
-```c
-// Description: Brief description in English
-// Descripcion: Breve descripción en español (sin tilde en el comentario)
-
-#include <appropriate_headers.h>
-
-void main(void) {
-    // Código compilable y funcional
-}
-```
-
-## Estructura del Proyecto
-
-```
-llmz80/
-├── .cline/                  # Documentación para AI assistants
-├── llmz80/                  # Código principal del paquete
-│   ├── api/                 # API de generación
-│   │   └── generator.py     # Clase principal LLMZ80Generator
-│   ├── core/                # Módulos core
-│   │   ├── embeddings.py    # Gestión de embeddings
-│   │   ├── cache_manager.py # Caché de embeddings
-│   │   └── examples_loader.py # Carga de ejemplos
-│   └── utils/               # Utilidades
-│       ├── config.py        # Configuración
-│       ├── logger.py        # Setup de logging
-│       └── helpers.py       # Funciones auxiliares
-├── generators/              # Generadores de sprites
-├── examples/                # Ejemplos por plataforma
-│   ├── spectrum/            # ZX Spectrum
-│   └── amstrad_cpc/         # Amstrad CPC
-├── resources/               # Recursos (prompts, configs)
-├── tests/                   # Tests (a crear)
-├── config.yml               # Configuración principal
-├── llm_z80.py              # Script principal
-└── vector_db.py            # Integración con Qdrant
-```
-
-### Dónde Añadir Código
-
-- **Nueva funcionalidad de generación**: `llmz80/api/generator.py`
-- **Utilidades de embeddings**: `llmz80/core/embeddings.py`
-- **Gestión de caché**: `llmz80/core/cache_manager.py`
-- **Helpers genéricos**: `llmz80/utils/helpers.py`
-- **Ejemplos nuevos**: `examples/{platform}/`
-- **Tests**: `tests/` (estructura a definir)
+---
 
 ## Testing
 
-### Ejecutar Tests
-
 ```bash
-# Cuando haya tests implementados
-pytest
-
-# Con cobertura
-pytest --cov=llmz80
-
-# Tests específicos
-pytest tests/test_generator.py
+make test                            # everything
+.venv/bin/pytest tests/test_studio_acceptance.py -v
+.venv/bin/pytest -k toolchain -rs    # -rs shows what skipped, and why
+make coverage
+make check                           # tests, plus compile every retrievable example
 ```
 
-### Escribir Tests
+`-rs` matters. A toolchain test that silently skips looks exactly like one that
+passes, and this repository has already been bitten by nine CPC tests skipping
+for months because no CPCtelera was installed.
 
-```python
-import pytest
-from llmz80.api.generator import LLMZ80Generator
+Tests that talk to a model use the `FakeMessageStream` and `fake_message`
+helpers in `tests/conftest.py`. Nothing in the suite makes a network call.
 
-def test_generator_initialization():
-    """Test que el generador se inicializa correctamente."""
-    generator = LLMZ80Generator("spectrum", mock_globals, mock_api_key)
-    assert generator.platform == "spectrum"
-    assert generator.model == "gpt-4o"
+---
 
-def test_code_generation_spectrum():
-    """Test generación de código para Spectrum."""
-    # Implementar test
-    pass
-```
+## Pull requests
 
-### Testing Manual
+1. Branch off `main`: `git checkout -b feat/what-it-does`
+2. Write the failing test, then the change
+3. `make quality-gate`
+4. Push and open a PR describing what changed, why, and how you know it works
 
-```bash
-# Test generación básica
-python llm_z80.py --platform spectrum --prompt "test"
+Keep a PR to one idea. A refactor and a behaviour change in the same diff is two
+PRs wearing a coat.
 
-# Test con debug
-python llm_z80.py --platform spectrum --log-level DEBUG --prompt "test"
+---
 
-# Test de compilación
-./build_spectrum.sh --example=01_border --no-emulator
-```
+## Reporting a bug
 
-## Reportar Bugs
+Open an issue with:
 
-### Template de Bug Report
+- What you ran, exactly
+- What happened, and what you expected
+- `make doctor` output
+- For a generation failure: the `build/build_report.json` and `studio.log` from
+  the project directory — they carry the compiler's own words and the diary of
+  the run, which is almost always enough to see the cause
 
-```markdown
-**Descripción del Bug**
-Descripción clara y concisa del bug.
+---
 
-**Pasos para Reproducir**
-1. Ejecuta '...'
-2. Con parámetros '...'
-3. Ver error
+## Areas that want help
 
-**Comportamiento Esperado**
-Qué esperabas que sucediera.
+- **CPC audio.** `plat_sound` is a no-op on the CPC and the design gate refuses
+  any CPC project that asks for sound. CPCtelera bundles Arkos Tracker.
+- **A CPC frame counter,** so the pacing gate stops abstaining.
+  `cpct_count2VSYNC` and an interrupt handler are the pieces.
+- **The CPC palette.** Four fixed pens on both video modes, so mode 0's sixteen
+  colours are unreachable through the platform library.
+- **Sub-cell movement.** Everything is positioned in character cells, so nothing
+  moves by less than eight pixels and nothing scrolls.
+- **A colour gate for the CPC,** since the Spectrum attribute gate has no
+  meaning there.
+- **More retrieval examples,** for either machine.
 
-**Comportamiento Actual**
-Qué sucedió en realidad.
+---
 
-**Capturas de Pantalla**
-Si aplica, añade capturas.
+## Licence
 
-**Entorno:**
-- OS: [e.g. Ubuntu 22.04, Windows 11]
-- Python: [e.g. 3.10.12]
-- Versión LLMZ80: [e.g. commit hash]
-- Compilador: [e.g. Z88DK 2.2, SDCC 4.2]
-
-**Logs**
-```
-Pega aquí logs relevantes
-```
-
-**Contexto Adicional**
-Cualquier otra información relevante.
-```
-
-## Sugerir Mejoras
-
-### Template de Feature Request
-
-```markdown
-**¿Tu feature request está relacionada con un problema?**
-Descripción clara del problema. Ej: "Siempre me frustro cuando [...]"
-
-**Describe la solución que te gustaría**
-Descripción clara y concisa de lo que quieres que suceda.
-
-**Describe alternativas que hayas considerado**
-Descripción de soluciones o features alternativas.
-
-**Contexto Adicional**
-Cualquier otra información o capturas sobre el feature request.
-```
-
-## Áreas que Necesitan Ayuda
-
-Contribuciones especialmente bienvenidas en:
-
-1. **Tests Unitarios**: El proyecto necesita cobertura de tests
-2. **Documentación**: Siempre se puede mejorar
-3. **Ejemplos**: Más ejemplos de código para ambas plataformas
-4. **Soporte de Plataformas**: Mejorar compatibilidad con diferentes OS
-5. **Optimización**: Mejorar rendimiento de generación y compilación
-6. **UI**: Interfaz web opcional con Gradio/Streamlit
-
-## Preguntas
-
-Si tienes preguntas sobre cómo contribuir:
-
-1. Revisa la documentación en `.cline/cline_docs.md`
-2. Busca en issues cerrados
-3. Abre un issue con la etiqueta `question`
-
-## Reconocimientos
-
-Todos los contribuidores serán reconocidos en el README.md
-
-## Licencia
-
-Al contribuir, aceptas que tus contribuciones serán licenciadas bajo la misma licencia MIT que el proyecto.
+Contributions are made under the MIT licence, the same as the project.

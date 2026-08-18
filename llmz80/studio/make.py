@@ -56,21 +56,21 @@ MAX_SAME_TITLE = 99
 
 #: What is said before anything is spent. Announcing is not asking: the order
 #: goes ahead, but nobody should discover afterwards that it made four rounds
-#: of paid API calls. `diseño` costs money *here* (it adapts the design to the
+#: of paid API calls. `design` costs money *here* (it adapts the design to the
 #: researched game) even though `wizard` marks it free -- there the stage is a
 #: person editing a map by hand.
-PAID_STAGES = ("referencia", "redacción", "diseño", "sprites", "programa")
+PAID_STAGES = ("reference", "drafting", "design", "sprites", "program")
 
 #: The `llmz80 project` subcommand that redoes each stage, for the one line a
 #: stopped run owes the person reading it: everything before the failure is on
 #: disk and stays there, so the way out is to retry that stage over the same
 #: project, not to run the whole order again and pay for all of it twice.
 RESUMES = {
-    "referencia": "reference",
-    "redacción": "draft",
-    "diseño": "adapt",
+    "reference": "reference",
+    "drafting": "draft",
+    "design": "adapt",
     "sprites": "sprites",
-    "programa": "write",
+    "program": "write",
     "gates": "test",
 }
 
@@ -117,7 +117,7 @@ class MakeResult:
     #: The tape or disk image, once the gates have seen it run. `None` while
     #: no build has produced one.
     artifact: Path | None = None
-    #: The stage id (`referencia`, `programa`, …) that stopped the order, or
+    #: The stage id (`reference`, `program`, …) that stopped the order, or
     #: "" when nothing did. Deliberately the id `wizard` and the diary use, so
     #: "it stopped at programa" means the same thing in the log, on screen and
     #: in a bug report.
@@ -320,7 +320,7 @@ def make_game(
     that is a stage with a beginning, an end and a duration.
     """
     if not idea.strip():
-        return MakeResult(project_dir=None, failed="proyecto", error="an idea is required")
+        return MakeResult(project_dir=None, failed="project", error="an idea is required")
     stages = stages or ServiceStages(StudioService.at(workspace))
     steps = {step.name: step for step in wizard.steps(None, None)}
 
@@ -333,7 +333,7 @@ def make_game(
         project, directory = stages.create(title, idea, platform)
     except Exception as exc:
         out(f"ERROR: {exc}")
-        return MakeResult(project_dir=None, failed="proyecto", error=str(exc))
+        return MakeResult(project_dir=None, failed="project", error=str(exc))
 
     diary = _Diary(Journal.for_project(directory), out)
     diary.out(
@@ -344,18 +344,18 @@ def make_game(
 
     try:
         dossier = diary.stage(
-            steps["referencia"],
+            steps["reference"],
             "searching for a real game like this",
             lambda: _research(stages, project, directory, diary),
         )
         project = diary.stage(
-            steps["redacción"],
+            steps["drafting"],
             "deciding what this game is",
             lambda: _draft(stages, project, directory, dossier, diary),
         )
         if dossier is not None and dossier.identified:
             project = diary.stage(
-                steps["diseño"],
+                steps["design"],
                 f"adapting the design to {dossier.title}",
                 lambda: _adapt(stages, project, directory, dossier, diary),
             )
@@ -363,14 +363,14 @@ def make_game(
             # Not a failure, and the one place this says so out loud: a game
             # need not be based on a real one, and the design simply keeps
             # the typology it was created with.
-            diary.skip(steps["diseño"], "no researched game to adapt to")
+            diary.skip(steps["design"], "no researched game to adapt to")
         diary.stage(
             steps["sprites"],
             "drawing the missing art",
             lambda: _sprites(stages, project, directory, dossier, diary),
         )
         diary.stage(
-            steps["programa"],
+            steps["program"],
             "writing the program against the compiler",
             lambda: _write(stages, project, directory, dossier, diary),
         )
@@ -465,7 +465,7 @@ def _draft(
 ) -> tuple[GameProject, str]:
     """Decide what the game is, before anything dresses it or draws it.
 
-    No SKIP branch, unlike `diseño`. `pipeline.draft` does abstain when a
+    No SKIP branch, unlike `design`. `pipeline.draft` does abstain when a
     design is already somebody's -- but `make_game` has just created this
     project from an idea it required to be non-empty, so through this order
     `needs_drafting` is always true and a SKIP here could never be printed.

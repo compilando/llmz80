@@ -8,7 +8,7 @@ from llmz80.studio.wizard import steps
 def test_without_a_project_nothing_is_done_yet():
     walked = steps(None, None)
     assert walked[0].number == 0
-    assert walked[0].name == "proyecto"
+    assert walked[0].name == "project"
     assert {step.state for step in walked} == {"pending"}
 
 
@@ -18,11 +18,11 @@ def test_with_a_project_step_zero_is_done_and_the_walk_begins():
     assert walked[0].number == 0
     assert walked[0].state == "done"
     assert [step.name for step in walked[1:]] == [
-        "referencia",
-        "redacción",
-        "diseño",
+        "reference",
+        "drafting",
+        "design",
         "sprites",
-        "programa",
+        "program",
         "gates",
     ]
 
@@ -30,7 +30,7 @@ def test_with_a_project_step_zero_is_done_and_the_walk_begins():
 def test_a_valid_design_reads_as_done_rather_than_pending(tmp_path):
     """The design stage is never `pending` -- it validates or it fails."""
     project = blank_project("Stop", TargetPlatform.SPECTRUM)
-    step = next(s for s in steps(project, tmp_path) if s.name == "diseño")
+    step = next(s for s in steps(project, tmp_path) if s.name == "design")
     assert step.state == "done"
 
 
@@ -41,7 +41,7 @@ def test_a_broken_design_reads_as_failed_and_says_why(tmp_path):
     )
     broken = project.model_copy(update={"screens": [wide]})
 
-    step = next(s for s in steps(broken, tmp_path) if s.name == "diseño")
+    step = next(s for s in steps(broken, tmp_path) if s.name == "design")
 
     assert step.state == "failed"
     assert step.detail
@@ -68,12 +68,12 @@ def test_a_step_keeps_its_id_and_carries_a_label_of_its_own(tmp_path):
     walked = steps(project, tmp_path)
 
     assert [step.name for step in walked] == [
-        "proyecto",
-        "referencia",
-        "redacción",
-        "diseño",
+        "project",
+        "reference",
+        "drafting",
+        "design",
         "sprites",
-        "programa",
+        "program",
         "gates",
     ]
     assert [step.title for step in walked] == [

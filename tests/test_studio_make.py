@@ -87,7 +87,7 @@ class _FakeStages:
 
     def draft(self, project, directory, dossier, say):
         """States rules the way the real stage does, and saves them, so a test
-        can read the design `programa` would have refused off disk."""
+        can read the design `program` would have refused off disk."""
         self._record("draft")
         updated = project.model_copy(
             update={"mechanics": ["el minero salta entre cornisas", "caer desde alto le mata"]}
@@ -152,7 +152,7 @@ def test_the_money_is_announced_before_anything_is_spent(tmp_path: Path):
     _run(tmp_path, printed)
 
     assert "Anthropic API in 5 stages" in printed[0]
-    assert "referencia" in printed[0] and "programa" in printed[0]
+    assert "reference" in printed[0] and "program" in printed[0]
 
 
 def test_an_unidentified_game_skips_the_adaptation_and_carries_on(tmp_path: Path):
@@ -162,7 +162,7 @@ def test_an_unidentified_game_skips_the_adaptation_and_carries_on(tmp_path: Path
 
     assert stages.calls == ["create", "research", "draft", "sprites", "write", "test"]
     assert result.ok
-    assert any("SKIP" in line and "diseño" in line for line in printed)
+    assert any("SKIP" in line and "design" in line for line in printed)
 
 
 def test_the_order_drafts_before_it_adapts():
@@ -170,15 +170,15 @@ def test_the_order_drafts_before_it_adapts():
     A dossier can only dress a design that already states something."""
     from llmz80.studio.make import PAID_STAGES
 
-    assert PAID_STAGES.index("redacción") < PAID_STAGES.index("diseño")
-    assert PAID_STAGES.index("referencia") < PAID_STAGES.index("redacción")
+    assert PAID_STAGES.index("drafting") < PAID_STAGES.index("design")
+    assert PAID_STAGES.index("reference") < PAID_STAGES.index("drafting")
 
 
 def test_an_unidentified_game_no_longer_dead_ends_the_order(tmp_path: Path):
-    """Research finding nothing used to mean `diseño` was skipped, `mechanics`
-    stayed empty, and `programa` refused three stages later while the order
+    """Research finding nothing used to mean `design` was skipped, `mechanics`
+    stayed empty, and `program` refused three stages later while the order
     warned about it here. Drafting runs from the brief alone, so the design
-    that reaches `programa` states its rules and the gate that used to refuse
+    that reaches `program` states its rules and the gate that used to refuse
     it passes -- which is why the warning that named that road is gone.
     """
     from llmz80.studio.quality import design_quality_report
@@ -212,7 +212,7 @@ def test_a_design_gate_refusal_names_the_file_to_edit_not_a_command_that_cannot_
 
     class _RealDesignGate(_FakeStages):
         def draft(self, project, directory, dossier, say):
-            # The one road left to `programa` with no mechanics: a drafting
+            # The one road left to `program` with no mechanics: a drafting
             # stage that came back with nothing. The real one raises instead,
             # which stops the order two stages earlier -- so this is the gate
             # being driven deliberately, not a route `make` can take.
@@ -236,7 +236,7 @@ def test_a_design_gate_refusal_names_the_file_to_edit_not_a_command_that_cannot_
         out=printed.append,
     )
 
-    assert result.failed == "programa"
+    assert result.failed == "program"
     assert result.project_dir is not None
     hint = printed[-1]
     assert "llmz80 project draft" in hint
@@ -278,7 +278,7 @@ def test_a_program_the_compiler_never_accepted_stops_the_order(tmp_path: Path):
     result, stages = _run(tmp_path, printed, accepted=False)
 
     assert "test" not in stages.calls
-    assert result.failed == "programa"
+    assert result.failed == "program"
     assert "the compiler said no" in result.error
 
 
@@ -313,11 +313,11 @@ def test_the_diary_records_every_stage_and_survives_the_run(tmp_path: Path):
     # makes the left margin of a diary scannable; these are the lines as they
     # are actually written, padding included.
     for stage in (
-        "1 referencia",
-        "2 redacción",
-        "3 diseño",
+        "1 reference",
+        "2 drafting",
+        "3 design",
         "4 sprites",
-        "5 programa",
+        "5 program",
         "6 gates",
     ):
         assert f"START   {stage}" in diary
@@ -464,7 +464,7 @@ def test_a_stage_that_crashes_is_reported_like_one_that_refused(tmp_path: Path):
     result = make_game("un minero", workspace=tmp_path, stages=stages, out=printed.append)
 
     assert stages.calls == ["create", "research"]
-    assert result.failed == "referencia"
+    assert result.failed == "reference"
     assert "connection reset by peer" in result.error
     assert any("ERROR" in line and "connection reset" in line for line in printed)
 
@@ -538,7 +538,7 @@ def test_a_failed_run_exits_non_zero(monkeypatch):
     monkeypatch.setattr(
         make_module,
         "make_game",
-        lambda *_a, **_k: MakeResult(project_dir=None, failed="programa", error="no"),
+        lambda *_a, **_k: MakeResult(project_dir=None, failed="program", error="no"),
     )
 
     assert main(["make", "una idea"]) == 1
@@ -621,7 +621,7 @@ def test_a_run_that_stopped_is_not_played(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
         make_module,
         "make_game",
-        lambda *_a, **_k: MakeResult(project_dir=tmp_path, failed="programa", error="no"),
+        lambda *_a, **_k: MakeResult(project_dir=tmp_path, failed="program", error="no"),
     )
     played = _capture_play(monkeypatch)
 

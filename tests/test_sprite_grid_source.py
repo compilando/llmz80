@@ -289,8 +289,8 @@ def test_the_artist_narrates_before_the_slow_call_rather_than_only_afterwards():
 
     artist.draw_frames(_project(), _entity(), on_progress=said.append)
 
-    assert any("intento 1" in line and "dibujando" in line for line in said)
-    assert any("rechazado" in line for line in said)
+    assert any("attempt 1" in line and "drawing" in line for line in said)
+    assert any("refused" in line for line in said)
 
 
 # ---------------------------------------------------------------------------

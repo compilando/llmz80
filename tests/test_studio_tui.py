@@ -117,7 +117,7 @@ async def test_the_diary_reaches_the_screen_as_it_is_written(tmp_path: Path):
         app.poll()
         assert "made game.yml · spectrum" in _log_view(app)
 
-        token = diary.start("4 programa — writing the program against the compiler")
+        token = diary.start("4 program — writing the program against the compiler")
         diary.note("attempt 1: asking the model")
         app.poll()
 
@@ -137,14 +137,14 @@ async def test_half_a_line_waits_for_the_rest_of_itself(tmp_path: Path):
     app = StudioViewer(tmp_path)
     async with app.run_test(size=(80, 24)):
         log = directory / "studio.log"
-        log.write_text("2026-08-13 10:00:00  START   4 programa — writ", encoding="utf-8")
+        log.write_text("2026-08-13 10:00:00  START   4 program — writ", encoding="utf-8")
         app.poll()
         assert app.lines == []
 
-        log.write_text("2026-08-13 10:00:00  START   4 programa — writing it\n", encoding="utf-8")
+        log.write_text("2026-08-13 10:00:00  START   4 program — writing it\n", encoding="utf-8")
         app.poll()
 
-        assert app.lines == ["2026-08-13 10:00:00  START   4 programa — writing it"]
+        assert app.lines == ["2026-08-13 10:00:00  START   4 program — writing it"]
 
 
 @pytest.mark.asyncio
@@ -164,22 +164,22 @@ async def test_the_verdict_names_where_the_game_landed(tmp_path: Path):
 async def test_the_verdict_names_what_stopped_the_run(tmp_path: Path):
     directory = _project(tmp_path)
     diary = Journal.for_project(directory)
-    diary.write("END", "4 programa — FAILED in 61 s.")
-    diary.write("ERROR", "programa: the compiler said no")
+    diary.write("END", "4 program — FAILED in 61 s.")
+    diary.write("ERROR", "program: the compiler said no")
 
     app = StudioViewer(tmp_path)
     async with app.run_test(size=(80, 24)):
-        assert "Stopped · programa: the compiler said no" in app.status_text
+        assert "Stopped · program: the compiler said no" in app.status_text
 
 
 @pytest.mark.asyncio
 async def test_the_verdict_says_what_the_run_is_busy_with(tmp_path: Path):
     directory = _project(tmp_path)
-    Journal.for_project(directory).start("4 programa — writing the program")
+    Journal.for_project(directory).start("4 program — writing the program")
 
     app = StudioViewer(tmp_path)
     async with app.run_test(size=(80, 24)):
-        assert "Working · 4 programa — writing the program" in app.status_text
+        assert "Working · 4 program — writing the program" in app.status_text
 
 
 @pytest.mark.asyncio
@@ -469,20 +469,20 @@ async def test_the_screen_fits_an_eighty_by_twentyfour_terminal(tmp_path: Path):
 
 def test_render_stage_marks_shows_one_icon_per_stage():
     stages = [
-        Stage("referencia", "done", "Zampa Bolas (System 4, 1990) · 8 sources"),
-        Stage("diseño", "done"),
+        Stage("reference", "done", "Zampa Bolas (System 4, 1990) · 8 sources"),
+        Stage("design", "done"),
         Stage("sprites", "failed", "0/2 accepted by the blitter"),
-        Stage("programa", "pending"),
+        Stage("program", "pending"),
     ]
 
     plain = render_stage_marks(stages, colour=False)
 
-    assert plain == "referencia ✓  diseño ✓  sprites ✗  programa —"
+    assert plain == "reference ✓  design ✓  sprites ✗  program —"
     assert "[red]" not in plain
 
 
 def test_render_stage_marks_colours_each_state():
-    stages = [Stage("gates", "done"), Stage("programa", "pending")]
+    stages = [Stage("gates", "done"), Stage("program", "pending")]
 
     coloured = render_stage_marks(stages, colour=True)
 
@@ -492,8 +492,8 @@ def test_render_stage_marks_colours_each_state():
 
 def test_pick_stage_detail_prefers_the_first_failure():
     stages = [
-        Stage("referencia", "done", "found it"),
-        Stage("diseño", "failed", "walls seal off 1 collectible"),
+        Stage("reference", "done", "found it"),
+        Stage("design", "failed", "walls seal off 1 collectible"),
         Stage("sprites", "failed", "0/2 accepted"),
     ]
 
@@ -501,13 +501,13 @@ def test_pick_stage_detail_prefers_the_first_failure():
 
 
 def test_pick_stage_detail_falls_back_to_a_done_stage_with_no_failure():
-    stages = [Stage("referencia", "done", "found it"), Stage("diseño", "done")]
+    stages = [Stage("reference", "done", "found it"), Stage("design", "done")]
 
     assert pick_stage_detail(stages) == "found it"
 
 
 def test_pick_stage_detail_is_empty_with_nothing_to_report():
-    assert pick_stage_detail([Stage("referencia", "pending")]) == ""
+    assert pick_stage_detail([Stage("reference", "pending")]) == ""
 
 
 def test_brief_preview_passes_a_short_brief_through_unchanged():
@@ -544,15 +544,15 @@ def test_the_play_offer_escapes_its_brackets_where_a_person_reads_it():
 def test_the_newest_line_decides_the_verdict():
     """A stopped run that is started again is running, not stopped, and a
     stale artifact from the run before never speaks for the one going on."""
-    stopped = ["2026-08-13 10:00:00  ERROR   programa: the compiler said no"]
-    working = stopped + ["2026-08-13 10:05:00  START   4 programa — writing it again"]
+    stopped = ["2026-08-13 10:00:00  ERROR   program: the compiler said no"]
+    working = stopped + ["2026-08-13 10:05:00  START   4 program — writing it again"]
 
-    assert render_verdict(stopped) == "Stopped · programa: the compiler said no"
+    assert render_verdict(stopped) == "Stopped · program: the compiler said no"
     assert render_verdict(stopped, Path("build/output.tap")) == (
-        "Stopped · programa: the compiler said no"
+        "Stopped · program: the compiler said no"
     )
     assert render_verdict(working, Path("build/output.tap")) == (
-        "Working · 4 programa — writing it again"
+        "Working · 4 program — writing it again"
     )
 
 

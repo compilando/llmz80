@@ -112,7 +112,7 @@ def verification_level(runtime: dict[str, Any] | None) -> str:
 #: The check that refuses a brief with nothing to implement. Named because
 #: three places ask about this one check by name -- the report builds it, the
 #: refusal sentence is looked up under it, and `make.py` asks whether skipping
-#: `diseño` has left the design in exactly this state -- and a slug spelled
+#: `design` has left the design in exactly this state -- and a slug spelled
 #: out four times is a slug that will be misspelled once.
 MECHANICS_CHECK = "design_states_the_mechanics_its_brief_asks_for"
 

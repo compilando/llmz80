@@ -527,7 +527,7 @@ def test_draft_declined_leaves_game_yml_byte_for_byte_unchanged(
 def test_draft_says_so_and_spends_nothing_on_a_design_that_is_already_somebodys(
     tmp_path: Path, capsys, monkeypatch
 ):
-    """The command a person reaches for after `programa` refused. Run against
+    """The command a person reaches for after `program` refused. Run against
     a design that already states its rules it must cost nothing and say why --
     proved by making the OpenAI client itself an error."""
     import anthropic

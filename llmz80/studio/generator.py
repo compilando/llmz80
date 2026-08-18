@@ -283,7 +283,7 @@ class Attempt:
     #: Whether the toolchain itself accepted the sources, as opposed to
     #: whether the build passed policy. A compile that succeeds and is then
     #: refused over its warnings is a different thing to fix from one that
-    #: never compiled, and the progress line used to call both "no compiló".
+    #: never compiled, and the progress line used to call both "did not compile".
     build_compiled: bool | None = None
     #: `None` means the animation gate abstained (no adapter, or the design
     #: never declared g_anim_frame) -- exactly as unobserved as `acceptance`'s
@@ -333,28 +333,28 @@ def _gate_verdict(passed: bool | None) -> str:
     """`True`/`False`/`None` (a gate that abstained -- no adapter, or nothing
     to judge) read out the way a person, not a parser, would ask for them."""
     if passed is None:
-        return "sin observar"
-    return "aprobada" if passed else "rechazada"
+        return "not observed"
+    return "passed" if passed else "refused"
 
 
 def _attempt_line(attempt: Attempt) -> str:
     """One attempt, as `Attempt` already recorded it: its number, whether the
     build compiled, and each gate's verdict."""
     if attempt.build_passed:
-        build = "compiló"
+        build = "compiled"
     elif attempt.build_compiled:
-        build = "compiló pero fue rechazado"
+        build = "compiled but was refused"
     else:
-        build = "no compiló"
+        build = "did not compile"
     acceptance = _gate_verdict(attempt.acceptance_passed)
     animation = _gate_verdict(attempt.animation_passed)
     pacing = _gate_verdict(attempt.pacing_passed)
     attributes = _gate_verdict(attempt.attributes_passed)
     state_probe = _gate_verdict(attempt.state_probe_passed)
     return (
-        f"intento {attempt.number}: build {build}, "
-        f"aceptación {acceptance}, animación {animation}, ritmo {pacing}, "
-        f"atributos {attributes}, estado {state_probe}"
+        f"attempt {attempt.number}: build {build}, "
+        f"acceptance {acceptance}, animation {animation}, pacing {pacing}, "
+        f"attributes {attributes}, state {state_probe}"
     )
 
 
@@ -415,7 +415,7 @@ def write_program(
     result = WriteResult(accepted=False)
     feedback: str | None = None
     for number in range(1, max(1, attempts) + 1):
-        _say(on_progress, f"intento {number}: escribiendo...")
+        _say(on_progress, f"attempt {number}: writing...")
         try:
             sources = writer.write(project, feedback)
         except Exception as exc:  # a writer failing is an outcome, not a crash
@@ -449,14 +449,26 @@ def write_program(
 
         # An unobservable target cannot confirm behaviour, so a clean build is
         # as far as the evidence goes; it is recorded as such, not as a pass.
-        # `is not False` treats an abstaining gate (`quality_pass: None`,
-        # which the CPC always produces since it has no memory probe adapter)
-        # the same way for acceptance, animation, pacing and attributes -- and
-        # both pacing and attributes abstain on the CPC twice over, since that
-        # target's plat_wait_frame returns zero without ever counting a frame
-        # and its harness dumps no display file at all: not a pass earned,
-        # but not a refusal either. Only a definite `False` -- a gate that
-        # actually watched and found something wrong -- blocks acceptance.
+        # `is not False` treats an abstaining gate (`quality_pass: None`) as
+        # neither: not a pass earned, but not a refusal either. Only a definite
+        # `False` -- a gate that actually watched and found something wrong --
+        # blocks acceptance.
+        #
+        # Which gates abstain is a property of the target, and on the CPC it is
+        # two of the five rather than all of them. That was not always true and
+        # this comment said so for longer than it was: the CPC used to be driven
+        # by Caprice32, which reads no memory, so every behaviour gate abstained.
+        # ZEsarUX drives it now over the same ZRCP as the Spectrum
+        # (`emulator_smoke._ZESARUX_PROFILES`), so acceptance, animation and the
+        # state probe all really watch a CPC game. The two that still abstain do
+        # so for reasons that are about the machine rather than the harness:
+        # `pacing` because a CPC with the firmware disabled has no free-running
+        # frame counter, so `plat_wait_frame` returns zero without measuring
+        # anything (`codegen.has_frame_clock`), and `attributes` because a CPC
+        # screen has no attribute area to judge -- its colour lives in the pixel
+        # bytes (`attributes.attribute_report`). The first is a gap somebody
+        # could close with `cpct_count2VSYNC`; the second wants a different gate,
+        # not this one aimed somewhere new.
         # All five gates `services.runtime_test` folds into its own verdict
         # are read here, and the same way: a gate that fails the run and not
         # the attempt gives one program two verdicts, with `release` refusing

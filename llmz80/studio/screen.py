@@ -54,7 +54,7 @@ class Stage:
 #: is, `llmz80 project release`. A strip carrying a stage the order never
 #: performs would read `Release —` forever on every game ever made, which
 #: teaches people not to read the strip.
-STAGE_NAMES = ("referencia", "redacción", "diseño", "sprites", "programa", "gates")
+STAGE_NAMES = ("reference", "drafting", "design", "sprites", "program", "gates")
 
 
 def stage_line(project: GameProject | None, directory: Path | None) -> list[Stage]:
@@ -105,24 +105,24 @@ def _reference_stage(directory: Path | None) -> Stage:
     detail text is what tells them apart for a person reading the screen.
     """
     if directory is None:
-        return Stage("referencia", "pending")
+        return Stage("reference", "pending")
     try:
         dossier = load_reference(directory)
     except ValueError as exc:
-        return Stage("referencia", "failed", f"reference.yml is unreadable: {exc}")
+        return Stage("reference", "failed", f"reference.yml is unreadable: {exc}")
     if dossier is None:
-        return Stage("referencia", "pending")
+        return Stage("reference", "pending")
     if not dossier.identified:
-        return Stage("referencia", "failed", "no matching game was found")
+        return Stage("reference", "failed", "no matching game was found")
     return Stage(
-        "referencia",
+        "reference",
         "done",
         f"{dossier.title} · {len(dossier.sources)} sources",
     )
 
 
 def _drafting_stage(project: GameProject) -> Stage:
-    """redacción -- whether this design states any rules of its own.
+    """drafting -- whether this design states any rules of its own.
 
     `mechanics` is the evidence, and it is the whole of it: it is what the
     drafting stage exists to fill, what `quality.design_quality_report`
@@ -136,14 +136,14 @@ def _drafting_stage(project: GameProject) -> Stage:
     from .drafting import needs_drafting
 
     if project.mechanics:
-        return Stage("redacción", "done", f"{len(project.mechanics)} rules stated")
+        return Stage("drafting", "done", f"{len(project.mechanics)} rules stated")
     if needs_drafting(project):
-        return Stage("redacción", "pending")
-    return Stage("redacción", "pending", "no brief to draft from")
+        return Stage("drafting", "pending")
+    return Stage("drafting", "pending", "no brief to draft from")
 
 
 def _design_stage(project: GameProject) -> Stage:
-    """diseño -- `editing_status`'s own verdict on the design in memory.
+    """design -- `editing_status`'s own verdict on the design in memory.
 
     Unlike every other stage, this one has no `pending`: a `GameProject`
     cannot exist without tiles, entities, screens and scenes already in
@@ -163,8 +163,8 @@ def _design_stage(project: GameProject) -> Stage:
     """
     status = editing_status(project)
     if status["ready"]:
-        return Stage("diseño", "done")
-    return Stage("diseño", "failed", status["backend_error"] or "")
+        return Stage("design", "done")
+    return Stage("design", "failed", status["backend_error"] or "")
 
 
 def _sprite_stage(project: GameProject) -> Stage:
@@ -212,19 +212,19 @@ def _program_stage(project: GameProject, directory: Path | None) -> Stage:
     regardless of what either report says.
     """
     if directory is None:
-        return Stage("programa", "pending")
+        return Stage("program", "pending")
     sources = program_sources(project, directory)
     if any(path.name == "main.c" for path in sources):
-        return Stage("programa", "done", f"{len(sources)} sources")
+        return Stage("program", "done", f"{len(sources)} sources")
     report_path = directory / "write_report.json"
     if not report_path.is_file():
-        return Stage("programa", "pending")
+        return Stage("program", "pending")
     try:
         report = json.loads(report_path.read_text(encoding="utf-8"))
         detail = report.get("last_error") or "the writer produced nothing usable"
     except (OSError, ValueError):
         detail = "write_report.json is unreadable"
-    return Stage("programa", "failed", detail)
+    return Stage("program", "failed", detail)
 
 
 def _gates_stage(directory: Path | None) -> Stage:
