@@ -54,33 +54,51 @@ def test_black_is_a_colour_a_design_may_name():
     assert spectrum_attribute("black") == 0x00
 
 
-def test_a_cpc_colour_resolves_to_the_nearest_pen_actually_packed():
-    """The CPC packs four pens (compiler.CPC_DEFAULT_PALETTE), so a named
-    colour has to land on one of those rather than on a hardware pen no
-    design ever sets."""
-    assert cpc_pen("black") == 0
-    assert cpc_pen("blue") == 1
-    assert cpc_pen("bright yellow") == 2
-    assert cpc_pen("white") == 3
+def test_a_cpc_colour_resolves_to_a_pen_the_mode_really_shows():
+    """A named colour has to land on a pen this mode programs, rather than on
+    a hardware colour no design ever sets."""
+    assert cpc_pen("black", mode=1) == 0
+    assert cpc_pen("blue", mode=1) == 1
+    assert cpc_pen("bright yellow", mode=1) == 2
+    assert cpc_pen("white", mode=1) == 3
 
 
 def test_a_named_colour_never_resolves_to_the_background_pen():
-    """Pen 0 is the paper every design draws on, so a red the palette cannot
-    show has to land on the nearest pen a player can *see* -- resolving it to
-    black would draw the design's brickwork in the colour of the background.
-    Euclidean distance alone ties black and yellow for pure red, and the tie
-    is exactly where the invisible answer would win."""
-    assert cpc_pen("red") == 2
+    """Pen 0 is the paper every design draws on, so a red four pens cannot
+    show has to land on *some* pen a player can see -- resolving it to black
+    would draw the design's brickwork in the colour of the background.
+
+    Which pen it lands on is deliberately not asserted. Mode 1 has no red and
+    no near-red: whichever of blue and yellow wins is an artefact of Euclidean
+    distance over a palette that cannot answer the question, and pinning the
+    winner would make this test fail every time one of the four pens is
+    corrected -- which is exactly what happened when HW_BLUE stopped being
+    written down as (0, 0, 255). What must never change is that the answer is
+    visible.
+    """
+    assert cpc_pen("red", mode=1) != 0
+
+
+def test_mode_0_does_not_have_to_approximate_that_red_at_all():
+    """The same prose, on the mode whose sixteen pens include red. This is
+    what the four-pen palette was costing every mode 0 design."""
+    from llmz80.studio.palette import cpc_palette
+
+    red, green, blue = cpc_palette(0)[cpc_pen("red", mode=0)].rgb
+
+    assert red > 0
+    assert (green, blue) == (0, 0)
 
 
 def test_black_still_resolves_to_the_background_pen():
     """The rule above is about colours the palette cannot show, not about a
     design that asked for black on purpose."""
-    assert cpc_pen("negro") == 0
+    assert cpc_pen("negro", mode=1) == 0
+    assert cpc_pen("negro", mode=0) == 0
 
 
 def test_an_unnamed_cpc_colour_resolves_to_nothing():
-    assert cpc_pen("something else entirely") is None
+    assert cpc_pen("something else entirely", mode=1) is None
 
 
 def _with_palette(platform: TargetPlatform) -> GameProject:

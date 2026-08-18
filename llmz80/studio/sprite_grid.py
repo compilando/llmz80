@@ -53,19 +53,29 @@ SPECTRUM_INK = (0, 0, 0)
 class GridPalette:
     """The pens a target really has, and the characters that name them.
 
-    "Really" is doing work here. The CPC in mode 0 can address sixteen pens,
-    but `compiler.py` packs every CPC sprite with `CPC_DEFAULT_PALETTE`,
-    which holds four -- so a sheet using pen 9 would name a colour nothing
-    downstream can resolve. This carries the palette that is actually
-    packed with, not the one the hardware could be set up for.
+    "Really" is doing work here: this carries the palette the art is actually
+    packed against, not the one the hardware could be set up for. The two used
+    to differ -- the CPC in mode 0 can address sixteen pens and `compiler.py`
+    packed every CPC sprite with four whatever the mode, so a sheet naming pen
+    9 named a colour nothing downstream could resolve. They agree now, and
+    `palette.cpc_palette` is the one place that decides.
     """
 
     pens: tuple[tuple[int, int, int], ...]
 
+    #: Pen characters past 9, so mode 0's sixteen pens each get one. Hex
+    #: digits rather than letters chosen freely: a reader already reads "a" as
+    #: ten after "9", and a grid is easier to check by eye when every pen is
+    #: one column wide -- which is also what `grid_errors` measures a row
+    #: against. Upper case is deliberately not accepted; one spelling per pen
+    #: keeps a model from mixing them inside a frame.
+    EXTRA_PENS = "abcdef"
+
     @property
     def alphabet(self) -> str:
-        """The legal pen characters, in index order: "0" or "0123"."""
-        return "".join(str(index) for index in range(len(self.pens)))
+        """The legal pen characters, in index order: "0", "0123", "0123456789abcdef"."""
+        digits = "0123456789" + self.EXTRA_PENS
+        return digits[: len(self.pens)]
 
 
 def palette_for(project: GameProject) -> GridPalette:
@@ -73,9 +83,9 @@ def palette_for(project: GameProject) -> GridPalette:
     if project.target.platform is TargetPlatform.SPECTRUM:
         return GridPalette(pens=(SPECTRUM_INK,))
 
-    from .compiler import CPC_DEFAULT_PALETTE
+    from .palette import cpc_mode, cpc_rgb
 
-    return GridPalette(pens=tuple(CPC_DEFAULT_PALETTE))
+    return GridPalette(pens=tuple(cpc_rgb(cpc_mode(project))))
 
 
 class SpriteFrameGrid(BaseModel):

@@ -19,7 +19,8 @@ from llmz80.utils.config import load_config
 from .acceptance import blitter_sprites, generation_prompt, tile_art
 from .codegen import library_sources, render_config_header, render_state_header
 from .models import GameProject, TargetPlatform, VideoMode
-from .palette import declared_attribute
+from .palette import cpc_mode as mode_of
+from .palette import cpc_rgb, declared_attribute
 from .probes import contract_failures, write_probe_report
 from .sprite_header import render_sprite_header, render_sprite_source
 from .sprite_sheet import split_frames
@@ -35,33 +36,6 @@ from .spriting import (
 )
 from .structure import playfield
 from .tile_header import render_tile_header, render_tile_source
-
-#: A palette to quantise CPC sprite pixels against (see `spriting.pack_cpc`).
-#: Two other sources were considered and rejected for now:
-#:
-#: - `PresentationSpec.palette` (models.py) is a list of raw ints with no
-#:   defined meaning yet -- it is explicitly documented as unused. Treating
-#:   it as RGB here would invent a contract before the task that owns colour
-#:   has written one.
-#: - The pre-Studio `image_utils.get_palette_for_platform` (repo root) lives
-#:   outside the `llmz80` package, pulls in numpy/scipy, calls `sys.exit(1)`
-#:   at import time if `resources/platforms.yml` is missing, and its own CPC
-#:   colour table has gaps (no RGB past firmware colour 21). Importing it
-#:   here would be a layering violation in exchange for an unreliable table.
-#:
-#: So this is a small fixed default, deliberately matching the four hardware
-#: pens `cpc/platform.c`'s `apply_palette()` actually programs at runtime
-#: (HW_BLACK, HW_BLUE, HW_BRIGHT_YELLOW, HW_WHITE): what the packer quantises
-#: sprites against is then what the machine really shows, in both CPC video
-#: modes (mode 1 uses exactly these four pens; mode 0 only ever produces
-#: these same four pen indices too, since no more hardware pens are actually
-#: set). Real per-design colour selection belongs to a later task.
-CPC_DEFAULT_PALETTE: list[tuple[int, int, int]] = [
-    (0, 0, 0),  # HW_BLACK
-    (0, 0, 255),  # HW_BLUE
-    (255, 255, 0),  # HW_BRIGHT_YELLOW
-    (255, 255, 255),  # HW_WHITE
-]
 
 
 @dataclass(frozen=True)
@@ -302,7 +276,7 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
     output_dir = output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     project_dir = output_dir.parent
-    cpc_mode = 0 if project.target.video_mode is VideoMode.CPC_MODE_0 else 1
+    cpc_mode = mode_of(project)
 
     source_assets = [project_dir / asset.source for asset in project.assets]
     missing = [str(path) for path in source_assets if not path.is_file()]
@@ -355,7 +329,7 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
         packed_sprites[asset.id] = (
             pack_spectrum(frames)
             if project.target.platform is TargetPlatform.SPECTRUM
-            else pack_cpc(frames, mode=cpc_mode, palette=CPC_DEFAULT_PALETTE)
+            else pack_cpc(frames, mode=cpc_mode, palette=cpc_rgb(cpc_mode))
         )
     # A design's declared colour is the designer's decision and outranks the
     # artist's: `spriting._spectrum_attribute` reads an ink off the pixels,
@@ -393,7 +367,7 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
         packed_tile = (
             pack_spectrum_tile(image)
             if project.target.platform is TargetPlatform.SPECTRUM
-            else pack_cpc_tile(image, mode=cpc_mode, palette=CPC_DEFAULT_PALETTE)
+            else pack_cpc_tile(image, mode=cpc_mode, palette=cpc_rgb(cpc_mode))
         )
         attribute = declared_attribute(project, tile.colour)
         if attribute is not None and project.target.platform is TargetPlatform.SPECTRUM:

@@ -9,9 +9,16 @@ appear on the television twice as wide as it looks in the grid below. Draw
 it *narrow* -- a standing figure wants roughly half the columns it would
 want on a square-pixel machine -- or it will come out squat and fat.
 
-You have four pens, and PENS lists exactly which. Use them for flat areas
-that mean something -- body, clothing, a held object -- not for shading a
-curve. Four flat colours read; four colours blended do not.
+You have sixteen pens, and PENS lists exactly which. That is what this mode
+is for -- mode 1 has four. Use them for flat areas that mean something --
+body, clothing, a held object -- not for shading a curve: flat colours read
+at this size and blended ones do not, however many are available.
+
+Sixteen is not a licence to use sixteen. A 16x16 figure that names four or
+five pens deliberately reads better than one that names twelve, because each
+pen then marks a part the eye can find. Spend the extra pens on things the
+four-pen machine could not say at all -- a green, an orange, a skin tone --
+rather than on three neighbouring shades of the same blue.
 
 What reads well at this size:
 - Bold shapes in flat colour, one pen per body part.

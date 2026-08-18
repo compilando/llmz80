@@ -20,21 +20,36 @@
 #define set_draw_char cpct_setDrawCharM1
 #endif
 
-/* Four pens, set explicitly so the result does not depend on whichever
- * palette the firmware left behind. Which pen means what is the design's
- * business, not this library's; mode 1 offers no more than these four.
+/* The pens this design's video mode uses, set explicitly so the result does
+ * not depend on whichever palette the firmware left behind.
+ *
+ * CPC_PEN_COUNT and CPC_PALETTE_PENS come from game_config.h, which Studio
+ * writes from `llmz80.studio.palette.HARDWARE_COLOURS` -- the same table the
+ * sprite and tile packers quantise pixels against. That is the point of them
+ * arriving from there rather than being written out here: the two used to be
+ * stated separately and had drifted, with HW_BLUE recorded on the Python side
+ * as (0, 0, 255) (which is HW_BRIGHT_BLUE) and HW_WHITE as (255, 255, 255)
+ * (which is HW_BRIGHT_WHITE -- the CPC's "white" is grey). Half the palette
+ * was quantised against colours this function never programmed.
+ *
+ * Sixteen pens in mode 0 and four in mode 1, which is what the pen's bit width
+ * allows. Four was programmed in both until now, so mode 0's colours -- the
+ * only reason to choose it over mode 1 -- were unreachable.
  *
  * Built on the stack on purpose. A file-scope initialised array lands in the
  * DATA segment, which this link does not initialise at run time, and a const
  * array would need a cast that raises SDCC warning 357. Either way the palette
- * would be filled with whatever happened to be in memory. */
+ * would be filled with whatever happened to be in memory. The same hazard the
+ * frame clock's `baselines_left` was caught by, one function down. */
+/* The pen every later plat_cell and plat_text is drawn in, tracked so
+ * plat_ink can hand back what it was. Declared here rather than beside
+ * plat_ink because plat_init assigns it and comes first; see plat_ink for why
+ * it carries no initialiser. */
+static u8 draw_pen;
+
 static void apply_palette(void) {
-    u8 palette[4];
-    palette[0] = HW_BLACK;
-    palette[1] = HW_BLUE;
-    palette[2] = HW_BRIGHT_YELLOW;
-    palette[3] = HW_WHITE;
-    cpct_setPalette(palette, 4);
+    u8 palette[CPC_PEN_COUNT] = { CPC_PALETTE_PENS };
+    cpct_setPalette(palette, CPC_PEN_COUNT);
 }
 
 /* ---- the frame clock -------------------------------------------------
@@ -168,7 +183,16 @@ void plat_init(void) {
     apply_palette();
     cpct_setBorder(HW_BLACK);
     cpct_clearScreen(0x00);
-    set_draw_char(3, 0);
+    /* The pen text is drawn in, and the matching `draw_pen` it is tracked by.
+     * Both assigned here rather than at file scope: an initialised static
+     * lands in the DATA segment, which this link does not initialise, so
+     * `draw_pen` came up holding whatever was in memory and the first
+     * `plat_ink` call reported a previous pen the program had never set.
+     * The last pen is the brightest in both modes' palettes, which is the
+     * white-on-black default a program that never mentions colour had before
+     * a design's colours were read at all. */
+    draw_pen = CPC_PEN_COUNT - 1;
+    set_draw_char(draw_pen, 0);
     /* The frame clock, started here for the same reason the Spectrum's
      * plat_init calls intrinsic_ei() and seeds frame_mark: a counter nobody
      * started reads zero forever, and a mark left at zero makes the first
@@ -225,14 +249,16 @@ void plat_cell(unsigned char col, unsigned char row, char glyph) {
  * The attribute a Spectrum program passes is accepted unchanged and read as a
  * pen index, because that is what `palette.declared_attribute` hands back on
  * this target: COLOUR_<ID> is a pen here and an attribute byte there, and the
- * program says plat_ink(COLOUR_LADRILLO) on both. Anything outside the four
- * pens is ignored rather than set, since cpct_setDrawCharM* would encode the
- * low bits of a bad index into a colour nobody chose. */
-static u8 draw_pen = 3;
-
+ * program says plat_ink(COLOUR_LADRILLO) on both. Anything outside the pens
+ * this mode programs is ignored rather than set, since cpct_setDrawCharM*
+ * would encode the low bits of a bad index into a colour nobody chose.
+ *
+ * The bound is CPC_PEN_COUNT rather than a literal 4. It was 4 in both modes,
+ * so a mode 0 design naming its twelfth colour had the call silently do
+ * nothing and drew in whatever pen was current. */
 unsigned char plat_ink(unsigned char attribute) {
     u8 previous = draw_pen;
-    if (attribute < 4) {
+    if (attribute < CPC_PEN_COUNT) {
         draw_pen = attribute;
         set_draw_char(draw_pen, 0);
     }

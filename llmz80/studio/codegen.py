@@ -127,6 +127,38 @@ def _colour_lines(project: GameProject) -> list[str]:
     return lines
 
 
+def _cpc_palette_lines(project: GameProject) -> list[str]:
+    """The hardware pens `cpc/platform.c` programs, or nothing on the Spectrum.
+
+    Written here rather than hard-coded in the C for the reason the two used
+    to get wrong: the packers quantise a drawn pixel against an RGB table in
+    Python, and `apply_palette` sets pens in C, and when those were written
+    down separately they drifted -- HW_BLUE recorded as (0, 0, 255), which is
+    HW_BRIGHT_BLUE, and HW_WHITE as (255, 255, 255), which is HW_BRIGHT_WHITE.
+    Half the palette quantised sprites against colours the machine was never
+    asked to show, and nothing could notice, because neither half knew the
+    other existed. Now one table (`palette.HARDWARE_COLOURS`) produces both.
+
+    It is also what makes mode 0's sixteen pens reachable at all: the C used
+    to program four whatever the mode.
+    """
+    if project.target.platform is not TargetPlatform.AMSTRAD_CPC:
+        return []
+    from .palette import cpc_mode, cpc_palette
+
+    pens = cpc_palette(cpc_mode(project))
+    values = ", ".join(f"0x{colour.hardware:02X}" for colour in pens)
+    names = ", ".join(colour.name for colour in pens)
+    return [
+        "/* The pens this design's video mode programs, from",
+        " * llmz80.studio.palette.HARDWARE_COLOURS -- the same table the sprite",
+        " * and tile packers quantise against, so what is drawn is what shows.",
+        f" * In order: {names}. */",
+        f"#define CPC_PEN_COUNT {len(pens)}",
+        f"#define CPC_PALETTE_PENS {values}",
+    ]
+
+
 def render_config_header(project: GameProject) -> str:
     """Target and design constants the platform library and a program can use."""
     cpc_mode = 0 if project.target.video_mode is VideoMode.CPC_MODE_0 else 1
@@ -153,6 +185,7 @@ def render_config_header(project: GameProject) -> str:
             ],
             "/* Only targets with a free-running frame clock report overruns. */",
             f"#define HAS_FRAME_CLOCK {1 if has_frame_clock(project.target.platform) else 0}",
+            *_cpc_palette_lines(project),
             # One per colour the design's palette named and this machine can
             # show. Resolved here rather than written into a prompt because the
             # value is target-specific -- a Spectrum attribute byte, a CPC pen

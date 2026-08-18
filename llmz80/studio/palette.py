@@ -40,8 +40,21 @@ distinction for the drawing side).
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
-from .models import GameProject, TargetPlatform
+from .models import GameProject, TargetPlatform, VideoMode
+
+
+def cpc_mode(project: GameProject) -> int:
+    """Which CPC video mode this project targets, as the packers number them.
+
+    Here rather than repeated at each call site: `compiler`, `codegen`,
+    `sprite_grid` and this module all need it, and four copies of
+    `0 if ... is VideoMode.CPC_MODE_0 else 1` is four places for a third mode
+    to be forgotten.
+    """
+    return 0 if project.target.video_mode is VideoMode.CPC_MODE_0 else 1
+
 
 #: Ink bits per colour name, in both languages a design is written in. The
 #: values are the Spectrum's own bit layout, quoted in full in `spriting.py`:
@@ -95,6 +108,127 @@ def _words(prose: str) -> list[str]:
     return [word.lower() for word in _WORDS.findall(prose)]
 
 
+# ---------------------------------------------------------------------------
+# The Amstrad CPC's hardware colours.
+#
+# One table, two consumers, and that is the whole point of it being here. The
+# packers need RGB, to quantise a drawn pixel against what the machine will
+# show; `codegen.render_config_header` needs the gate-array byte, to write the
+# pens `platform.c` programs at run time. Those two facts used to live apart --
+# RGB in `compiler.CPC_DEFAULT_PALETTE`, hardware names hard-coded in
+# `apply_palette` -- in two files in two languages, and they had drifted:
+# HW_BLUE was written down as (0, 0, 255), which is HW_BRIGHT_BLUE, and
+# HW_WHITE as (255, 255, 255), which is HW_BRIGHT_WHITE. The CPC's "white" is
+# grey. So half the four-pen palette quantised sprites against colours the
+# machine was never asked to show, and no test could see it, because neither
+# half of the pair knew the other existed.
+#
+# The values are CPCtelera's `CPCT_HW_Colour` (video/colours.h), and the RGB is
+# the CPC's own 3x3x3 space: every channel off, half or full.
+
+
+@dataclass(frozen=True)
+class HardwareColour:
+    """One of the CPC's 27 colours, under both the names it answers to."""
+
+    #: CPCtelera's constant, so a reader can check a row against colours.h.
+    name: str
+    #: What `cpct_setPalette` is given.
+    hardware: int
+    rgb: tuple[int, int, int]
+
+
+HARDWARE_COLOURS: tuple[HardwareColour, ...] = (
+    HardwareColour("HW_BLACK", 0x14, (0, 0, 0)),
+    HardwareColour("HW_BLUE", 0x04, (0, 0, 128)),
+    HardwareColour("HW_BRIGHT_BLUE", 0x15, (0, 0, 255)),
+    HardwareColour("HW_RED", 0x1C, (128, 0, 0)),
+    HardwareColour("HW_MAGENTA", 0x18, (128, 0, 128)),
+    HardwareColour("HW_MAUVE", 0x1D, (128, 0, 255)),
+    HardwareColour("HW_BRIGHT_RED", 0x0C, (255, 0, 0)),
+    HardwareColour("HW_PURPLE", 0x05, (255, 0, 128)),
+    HardwareColour("HW_BRIGHT_MAGENTA", 0x0D, (255, 0, 255)),
+    HardwareColour("HW_GREEN", 0x16, (0, 128, 0)),
+    HardwareColour("HW_CYAN", 0x06, (0, 128, 128)),
+    HardwareColour("HW_SKY_BLUE", 0x17, (0, 128, 255)),
+    HardwareColour("HW_YELLOW", 0x1E, (128, 128, 0)),
+    HardwareColour("HW_WHITE", 0x00, (128, 128, 128)),
+    HardwareColour("HW_PASTEL_BLUE", 0x1F, (128, 128, 255)),
+    HardwareColour("HW_ORANGE", 0x0E, (255, 128, 0)),
+    HardwareColour("HW_PINK", 0x07, (255, 128, 128)),
+    HardwareColour("HW_PASTEL_MAGENTA", 0x0F, (255, 128, 255)),
+    HardwareColour("HW_BRIGHT_GREEN", 0x12, (0, 255, 0)),
+    HardwareColour("HW_SEA_GREEN", 0x02, (0, 255, 128)),
+    HardwareColour("HW_BRIGHT_CYAN", 0x13, (0, 255, 255)),
+    HardwareColour("HW_LIME", 0x1A, (128, 255, 0)),
+    HardwareColour("HW_PASTEL_GREEN", 0x19, (128, 255, 128)),
+    HardwareColour("HW_PASTEL_CYAN", 0x1B, (128, 255, 255)),
+    HardwareColour("HW_BRIGHT_YELLOW", 0x0A, (255, 255, 0)),
+    HardwareColour("HW_PASTEL_YELLOW", 0x03, (255, 255, 128)),
+    HardwareColour("HW_BRIGHT_WHITE", 0x0B, (255, 255, 255)),
+)
+
+_BY_NAME = {colour.name: colour for colour in HARDWARE_COLOURS}
+
+
+def _pens(*names: str) -> tuple[HardwareColour, ...]:
+    return tuple(_BY_NAME[name] for name in names)
+
+
+#: Mode 1's four pens. The same four this project has always programmed, with
+#: two of them now carrying the colour the hardware actually produces rather
+#: than the one somebody assumed.
+_MODE_1_PENS = _pens("HW_BLACK", "HW_BLUE", "HW_BRIGHT_YELLOW", "HW_BRIGHT_WHITE")
+
+#: Mode 0's sixteen. Chosen to span the machine's colour space rather than to
+#: extend mode 1's four: the point of mode 0 is that a design can name green,
+#: orange or pink at all, and a palette that spent twelve of its pens on
+#: neighbours of the original four would give a drafter nothing new to say.
+#: Mode 1's four are all present, so a design moved between modes keeps every
+#: colour it had.
+#:
+#: Pen 0 is black in both, and that is load-bearing rather than aesthetic:
+#: `cpc_pen` will only hand pen 0 to prose that asked for black, because pen 0
+#: is the paper and painting brickwork in it draws the void behind the wall.
+_MODE_0_PENS = _pens(
+    "HW_BLACK",
+    "HW_BLUE",
+    "HW_BRIGHT_BLUE",
+    "HW_RED",
+    "HW_BRIGHT_RED",
+    "HW_BRIGHT_MAGENTA",
+    "HW_GREEN",
+    "HW_BRIGHT_GREEN",
+    "HW_CYAN",
+    "HW_BRIGHT_CYAN",
+    "HW_YELLOW",
+    "HW_BRIGHT_YELLOW",
+    "HW_ORANGE",
+    "HW_PINK",
+    "HW_WHITE",
+    "HW_BRIGHT_WHITE",
+)
+
+
+def cpc_palette(mode: int) -> tuple[HardwareColour, ...]:
+    """The pens this video mode really shows, in index order.
+
+    Sixteen in mode 0 and four in mode 1, which is what the pen's bit width
+    allows: `spriting.pack_cpc` encodes 4 bits per pen in mode 0 and 2 in mode
+    1, and a longer palette than that would alias two colours onto one pen.
+    """
+    if mode == 0:
+        return _MODE_0_PENS
+    if mode == 1:
+        return _MODE_1_PENS
+    raise ValueError(f"the CPC has no video mode {mode} this project supports; expected 0 or 1")
+
+
+def cpc_rgb(mode: int) -> list[tuple[int, int, int]]:
+    """`cpc_palette` as the plain RGB list the packers take."""
+    return [colour.rgb for colour in cpc_palette(mode)]
+
+
 def spectrum_attribute(prose: str) -> int | None:
     """`prose` as a Spectrum attribute byte, or `None` if it names no colour.
 
@@ -111,20 +245,19 @@ def spectrum_attribute(prose: str) -> int | None:
     return _PAPER_BLACK | ink | bright
 
 
-def cpc_pen(prose: str, palette: list[tuple[int, int, int]] | None = None) -> int | None:
-    """`prose` as an index into the palette the CPC packers really use.
+def cpc_pen(prose: str, *, mode: int) -> int | None:
+    """`prose` as an index into the palette this video mode really shows.
 
-    `palette` defaults to `compiler.CPC_DEFAULT_PALETTE`, imported inside the
-    call the way `sprite_grid.palette_for` does it: `compiler` imports this
-    module's neighbours, and a module-level import here would close that loop.
+    The mode is required rather than defaulted. It used to take an optional
+    palette that no caller ever passed, so every colour on this machine
+    resolved against four pens whatever mode the design had chosen -- which is
+    what made mode 0's sixteen unreachable from a design's own vocabulary.
+    A default here would have let that come back silently.
     """
     attribute = spectrum_attribute(prose)
     if attribute is None:
         return None
-    if palette is None:
-        from .compiler import CPC_DEFAULT_PALETTE
-
-        palette = CPC_DEFAULT_PALETTE
+    palette = cpc_rgb(mode)
     # The named colour as RGB, at whichever of the machine's two intensities
     # the prose asked for, and then the nearest pen actually packed. Going
     # through RGB rather than matching pen names means a palette that changes
@@ -136,7 +269,7 @@ def cpc_pen(prose: str, palette: list[tuple[int, int, int]] | None = None) -> in
         level if ink & 0x04 else 0,
         level if ink & 0x01 else 0,
     )
-    # Pen 0 is the paper (`CPC_DEFAULT_PALETTE` starts at HW_BLACK), so it is
+    # Pen 0 is the paper (every mode's palette starts at HW_BLACK), so it is
     # only a candidate for a colour that actually asked to be black. Without
     # this, a design's "bright red" -- a colour those four pens cannot show at
     # all -- ties black against yellow on Euclidean distance and the tie hands
@@ -168,4 +301,4 @@ def declared_attribute(project: GameProject, colour_id: str | None) -> int | Non
         return None
     if project.target.platform is TargetPlatform.SPECTRUM:
         return spectrum_attribute(entry.colour)
-    return cpc_pen(entry.colour)
+    return cpc_pen(entry.colour, mode=cpc_mode(project))

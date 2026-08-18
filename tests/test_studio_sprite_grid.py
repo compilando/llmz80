@@ -47,26 +47,34 @@ def test_the_spectrum_gets_exactly_one_pen():
     assert len(palette.pens) == 1
 
 
-@pytest.mark.parametrize("mode", [VideoMode.CPC_MODE_0, VideoMode.CPC_MODE_1])
-def test_the_cpc_gets_four_pens_in_both_modes(mode):
-    """Mode 0 addresses sixteen pens and mode 1 four -- but `compiler.py`
-    packs *both* with `CPC_DEFAULT_PALETTE`, which has four entries. Offering
-    the model sixteen would let it pick a pen the packer cannot resolve to a
-    colour, so the alphabet follows the palette that is really used rather
-    than the one the hardware could address.
+@pytest.mark.parametrize(
+    "mode,alphabet",
+    [(VideoMode.CPC_MODE_0, "0123456789abcdef"), (VideoMode.CPC_MODE_1, "0123")],
+)
+def test_the_cpc_alphabet_follows_the_mode_it_is_drawing_for(mode, alphabet):
+    """Mode 0 addresses sixteen pens and mode 1 four, and the alphabet the
+    model draws with is now each one's own.
+
+    Both modes used to get four, because `compiler.py` packed both with a
+    single four-entry table -- so a design choosing mode 0 for its colours got
+    mode 1's palette and no way to say so. Offering sixteen would still be
+    wrong if the packer could not resolve them, which is why the alphabet is
+    derived from `palette.cpc_palette` rather than from the hardware's own
+    limit.
     """
     palette = palette_for(_project(TargetPlatform.AMSTRAD_CPC, mode))
 
-    assert palette.alphabet == "0123"
-    assert len(palette.pens) == 4
+    assert palette.alphabet == alphabet
+    assert len(palette.pens) == len(alphabet)
 
 
-def test_the_cpc_palette_is_the_one_the_compiler_packs_with():
-    from llmz80.studio.compiler import CPC_DEFAULT_PALETTE
+@pytest.mark.parametrize("mode,number", [(VideoMode.CPC_MODE_0, 0), (VideoMode.CPC_MODE_1, 1)])
+def test_the_cpc_palette_is_the_one_the_compiler_packs_with(mode, number):
+    from llmz80.studio.palette import cpc_rgb
 
-    palette = palette_for(_project(TargetPlatform.AMSTRAD_CPC, VideoMode.CPC_MODE_0))
+    palette = palette_for(_project(TargetPlatform.AMSTRAD_CPC, mode))
 
-    assert list(palette.pens) == CPC_DEFAULT_PALETTE
+    assert list(palette.pens) == cpc_rgb(number)
 
 
 # --- is this answer a usable sheet ------------------------------------------
@@ -206,12 +214,12 @@ def test_the_spectrum_packer_accepts_what_comes_out():
 
 @pytest.mark.parametrize("mode,cpc_mode", [(VideoMode.CPC_MODE_0, 0), (VideoMode.CPC_MODE_1, 1)])
 def test_the_cpc_packer_accepts_what_comes_out(mode, cpc_mode):
-    from llmz80.studio.compiler import CPC_DEFAULT_PALETTE
+    from llmz80.studio.palette import cpc_rgb
 
     palette = palette_for(_project(TargetPlatform.AMSTRAD_CPC, mode))
 
     packed = pack_cpc(
-        frames_from_grid(_sheet("1"), palette), mode=cpc_mode, palette=CPC_DEFAULT_PALETTE
+        frames_from_grid(_sheet("1"), palette), mode=cpc_mode, palette=cpc_rgb(cpc_mode)
     )
 
     assert packed.frames == 4
