@@ -240,3 +240,69 @@ class TestTheMeasuredSpriteBudget:
             prompt = generation_prompt(project)
 
             assert f"about {sprites_per_frame(platform, pixel_column=False)} sprites" in prompt
+
+
+class TestADesignCanChooseTheVideoMode:
+    """Mode 0's sixteen pens are reachable in the library, and were reachable
+    by nothing else: `/target/platform` is protected and the drafting prompt
+    told the model the rest of `/target` was not its to touch, so a design
+    could only get mode 0 by somebody editing game.yml by hand.
+
+    Which mode a CPC game runs in is a design decision and not a fact about the
+    machine -- colour against width -- so it is the one part of `/target` a
+    design gets to make.
+    """
+
+    def test_the_drafter_is_offered_the_choice_with_the_trade(self):
+        from llmz80.studio.drafting import DRAFT_SYSTEM_PROMPT
+
+        assert "/target/video_mode" in DRAFT_SYSTEM_PROMPT
+        assert "cpc_mode_0" in DRAFT_SYSTEM_PROMPT
+        assert "16 colours" in DRAFT_SYSTEM_PROMPT
+        assert "20 columns" in DRAFT_SYSTEM_PROMPT
+
+    def test_the_planner_lets_it_through(self):
+        from llmz80.studio.models import VideoMode
+        from llmz80.studio.planner import ProjectChange, ProjectProposal, TextValue, apply_proposal
+
+        project = blank_project("Colourful", TargetPlatform.AMSTRAD_CPC)
+        assert project.target.video_mode is VideoMode.CPC_MODE_1
+
+        updated = apply_proposal(
+            project,
+            ProjectProposal(
+                summary="the bricks need colours",
+                changes=[
+                    ProjectChange(
+                        path="/target/video_mode",
+                        operation="replace",
+                        reason="this game is about telling coloured bricks apart",
+                        value=TextValue(text="cpc_mode_0"),
+                    )
+                ],
+            ),
+        )
+
+        assert updated.target.video_mode is VideoMode.CPC_MODE_0
+
+    def test_the_platform_itself_is_still_not_negotiable(self):
+        """A person chose the machine. The mode is a decision inside it."""
+        from llmz80.studio.planner import ProjectChange, ProjectProposal, TextValue, apply_proposal
+
+        project = blank_project("Colourful", TargetPlatform.AMSTRAD_CPC)
+
+        with pytest.raises(ValueError, match="protected"):
+            apply_proposal(
+                project,
+                ProjectProposal(
+                    summary="switch machines",
+                    changes=[
+                        ProjectChange(
+                            path="/target/platform",
+                            operation="replace",
+                            reason="no",
+                            value=TextValue(text="spectrum"),
+                        )
+                    ],
+                ),
+            )

@@ -72,6 +72,19 @@ one row, cell or spawn at a time:
                              artwork instead of as its character  -> {"text": ...}
   /presentation/palette     the colours this design names, so terrain and
                              actors can wear one                  -> {"palette": [...]}
+  /target/video_mode        **Amstrad CPC only**, and the one part of /target
+                             a design does get to choose, because it is a trade
+                             and not a fact about the machine:
+                               cpc_mode_1 -- 40 columns, 4 colours (the default)
+                               cpc_mode_0 -- 20 columns, 16 colours, and pixels
+                                             twice as wide as they are tall
+                             Choose cpc_mode_0 when what the game is about is
+                             colour -- distinct enemies, coloured terrain, a
+                             character you must recognise at a glance -- and
+                             stay in cpc_mode_1 when it needs the width, since
+                             20 columns is half a screen of room and every
+                             screen in this design has to fit in it
+                                                                  -> {"text": "cpc_mode_0"}
   /presentation/scrolling   true if the playfield slides as a whole rather
                              than changing a screen at a time -- a horizontally
                              scrolling arcade, a vertical shooter. **Amstrad
@@ -163,8 +176,8 @@ Out of bounds. Never propose a change to any of these:
   * /schema_version, /metadata/slug, /target/platform and /acceptance are
     protected and refused on apply; so is anything under /budgets, which the
     machine imposes and the design does not get to raise.
-  * /metadata/title, /metadata/brief and the rest of /target are not refused
-    for you, and are still not yours. A person wrote the title and the brief
+  * /metadata/title, /metadata/brief and the rest of /target (everything but
+    /target/video_mode above) are not refused for you, and are still not yours. A person wrote the title and the brief
     -- the brief is what this draft is measured against, so editing it would
     be marking your own exam -- and the video mode and frame rate were
     decided when the project was created.
