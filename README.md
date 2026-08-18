@@ -303,9 +303,30 @@ The build weighs the result against `budgets.static_data_bytes` and refuses the
 design with the number rather than overflowing. A design that did not ask still
 compiles against `plat_sprite_px`; it simply steps by a byte.
 
-**Scrolling** is not implemented on either. The CPC could do it in hardware
-(`cpct_setVideoMemoryOffset`); the Spectrum has none and would need a software
-blit.
+**Scrolling** is not implemented on either, and the two machines are not in
+the same position.
+
+The Spectrum has no hardware scroll at all: moving the picture means moving
+6912 bytes, so a full-screen smooth scroll is not realistic from C.
+
+The CPC does, through the CRTC's display start address
+(`cpct_setVideoMemoryOffset`, which writes R13) — but coarser than it is
+usually described. One unit of that offset moves the start by **2 bytes**,
+measured on a real machine rather than taken from the documentation, because
+CPCtelera's own two examples disagree about it: `advanced/hwscroll`'s comment
+says four bytes and `advanced/tilemap_hwscroll` advances its software pointer
+by two for the same unit. The second is right. So the granularity is:
+
+| | one offset unit | one screen row |
+|---|---|---|
+| Mode 0 (2 px/byte) | 4 pixels across | 40 units |
+| Mode 1 (4 px/byte) | 8 pixels across | 40 units |
+
+Advancing by a whole row (40 units) scrolls vertically by one character row,
+i.e. 8 scanlines. So the CPC gets *coarse* scrolling for free in both axes and
+neither is pixel-smooth on its own: sub-unit horizontal needs the background
+redrawn shifted, and sub-row vertical needs the CRTC's vertical adjust (R5,
+reachable through `cpct_setCRTCReg`). Both are real work, neither is done.
 
 ---
 

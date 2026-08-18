@@ -196,10 +196,26 @@ Open an issue with:
   both. Per-sprite would mean a width table the blitter reads on every call, on
   the hottest path there is -- worth doing only with a measurement to justify
   it.
-- **Scrolling.** Neither machine has it. The CPC can do it in hardware with
-  `cpct_setVideoMemoryOffset`; the Spectrum has no hardware scroll at all, so
-  full-screen smooth scrolling is not realistic from C -- a windowed or
-  character-step scroll is.
+- **Scrolling.** Neither machine has it, and they are not in the same
+  position. The Spectrum has no hardware scroll: moving the picture means
+  moving 6912 bytes, so full-screen smooth scrolling is not realistic from C --
+  a windowed or character-step scroll is.
+
+  The CPC has one, through the CRTC display start address
+  (`cpct_setVideoMemoryOffset`), and it is coarser than it is usually
+  described: one unit is **2 bytes**, which is 4 pixels in mode 0 and 8 in
+  mode 1, and a whole screen row is 40 units and scrolls vertically by one
+  character row. Measured on a real machine, because CPCtelera's own examples
+  disagree -- `advanced/hwscroll` says four bytes in a comment,
+  `advanced/tilemap_hwscroll` moves its pointer by two, and the second is the
+  one whose arithmetic has to line up with the hardware to work at all.
+
+  So coarse scrolling is nearly free on the CPC and pixel-smooth is not:
+  sub-unit horizontal wants the background redrawn shifted, sub-row vertical
+  wants the CRTC's vertical total adjust (R5, via `cpct_setCRTCReg`). Also
+  worth knowing before starting: R13 is eight bits, so the offset alone covers
+  512 bytes and anything further needs `cpct_setVideoMemoryPage` and a plan for
+  the wrap.
 - **A colour gate for the CPC,** since the Spectrum attribute gate has no
   meaning there and the CPC now has sixteen pens to get wrong.
 - **More retrieval examples,** for either machine.
