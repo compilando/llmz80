@@ -25,13 +25,55 @@ void plat_clear(void);
  * transition. Targets with no free-running frame clock always return zero, and
  * game_config.h reports which is which through HAS_FRAME_CLOCK. */
 unsigned char plat_wait_frame(void);
+
+/* Starts the frame measurement afresh, charging nobody for the gap that just
+ * closed. Call it after work that is not an iteration of the game loop:
+ * painting a screen when a level or a scene starts, or leaving a menu that
+ * polled tightly for a key.
+ *
+ * This is what makes the advice above have an effect. Ignoring what
+ * plat_wait_frame returns does not undo the number it already wrote into
+ * g_worst_frame_cost, and that number is a maximum kept for the whole
+ * session -- so a screen that took six frames to paint used to read, forever
+ * after, as a game loop that missed six frames. Ten consecutive program
+ * attempts were failed by exactly that, each one reading its worst cost at
+ * the step where its title screen handed over to the game and never at any
+ * later step.
+ *
+ * It is not a way to hide a slow loop: only a few gaps per run are forgiven
+ * (see the counter in each platform.c), which is enough for scene changes and
+ * menus and far too few for a loop that overruns every iteration. */
+void plat_frame_baseline(void);
 unsigned char plat_input(void);
 void plat_text(unsigned char col, unsigned char row, const char *text);
-/* Draws one character of the ROM font at a character cell. This is how terrain
- * is drawn until real tile artwork lands: a design's tile carries a character,
- * and this puts it on screen. */
+/* Draws one character of the ROM font at a character cell, in the current ink
+ * (see plat_ink). This is how terrain whose tile has no artwork is drawn: the
+ * design's tile carries a character, and this puts it on screen. A tile that
+ * *has* artwork is drawn with plat_tile below, and looks like terrain rather
+ * than like a letter. */
 void plat_cell(unsigned char col, unsigned char row, char glyph);
 void plat_border(unsigned char colour);
+
+/* Draws one 8x8 block of the design's own terrain artwork into the character
+ * cell at (col, row), in the colour that tile's art resolved to. Tiles come
+ * from tiles.h, which Studio generates beside your sources: it defines a
+ * TILE_<ID> for every tile the design gave art to, and TILE_COUNT is zero when
+ * it gave none -- and then this does nothing, so terrain falls back to
+ * plat_cell.
+ *
+ * Unlike plat_sprite this covers exactly one cell, because a tile is what a
+ * cell *is* rather than something drawn over it: there is no mask, and the
+ * whole cell is replaced. */
+void plat_tile(unsigned char col, unsigned char row, unsigned char tile);
+
+/* Sets the colour every later plat_cell and plat_text writes in, and returns
+ * what it was, so a caller can put it back. The value is one target attribute
+ * byte; game_config.h defines COLOUR_<ID> for each colour the design's palette
+ * named, so a program says plat_ink(COLOUR_LADRILLO) rather than picking a
+ * number. Until something calls this, cells and text are drawn in the
+ * library's own default (white on black), which is what every program got
+ * before a design's colours were read at all. */
+unsigned char plat_ink(unsigned char attribute);
 
 /* Draws one 16x16 masked sprite whose top-left corner sits at character cell
  * (col, row), so it covers two cells each way. Sprites come from sprites.h,
@@ -39,6 +81,134 @@ void plat_border(unsigned char colour);
  * design carries no artwork, and then this does nothing. */
 void plat_sprite(unsigned char col, unsigned char row, unsigned char sprite,
                  unsigned char frame);
+
+/* The same sprite, at a pixel row instead of a character row: `py` is a
+ * scanline, so `py` and `py + 1` are one pixel apart rather than eight. The
+ * column is still a character column -- moving by less than one byte across
+ * needs a differently shifted copy of the sprite, which is a different piece
+ * of work with a real memory cost, and this one has none.
+ *
+ * Use it for anything a player watches move down or up: a jump, a fall, a
+ * lift, a ball. Use plat_sprite above for anything that sits on the grid --
+ * it is cheaper, and a thing that only ever appears in cells looks no better
+ * for being drawn through the slower path.
+ *
+ * Two costs to know about, both on the Spectrum and neither fatal:
+ *
+ * A sprite at a row that is not a multiple of eight covers three character
+ * rows rather than two, so it takes six attribute cells rather than four, and
+ * the two extra cells take the sprite's colour away from whatever was behind
+ * them. On a machine with one colour per cell that is the price of smooth
+ * vertical movement, and it is the same price every commercial game of the
+ * era paid.
+ *
+ * It is also slower than plat_sprite -- the address of each pixel line has to
+ * be stepped rather than derived by adding 256 -- so a program that moves
+ * many sprites this way should watch what plat_wait_frame reports.
+ *
+ * Erasing is the program's business either way, and a little more work here:
+ * the rows to repaint are the three the sprite covered, not two.
+ *
+ * `py` is bounded by the screen, not by the playfield: 0 to 176 on the
+ * Spectrum (192 lines less the sprite's 16) and 0 to 184 on the CPC. Out of
+ * range draws nothing rather than writing past the screen. */
+void plat_sprite_py(unsigned char col, unsigned char py, unsigned char sprite,
+                    unsigned char frame);
+
+/* The same sprite at a pixel column as well as a pixel row: `px` is a pixel,
+ * so `px` and `px + 1` are one pixel apart rather than eight.
+ *
+ * `px` is an int and not a char because CPC mode 1 is 320 pixels across and a
+ * char stops at 255. The Spectrum pays a byte it does not need so that one
+ * declaration is right on every target.
+ *
+ * This one is not free, and whether it moves by a pixel at all depends on the
+ * design. A byte of screen holds several pixels -- eight on the Spectrum, four
+ * in CPC mode 1, two in mode 0 -- so a figure whose left edge falls inside a
+ * byte has its bits in different positions, and the only way to draw it is to
+ * have packed a copy of the sprite for that position beforehand. Studio packs
+ * those copies when the design says `presentation.smooth_horizontal: true`,
+ * and sprites.h then reports SPRITE_SHIFTS above 1.
+ *
+ * When the design did not ask, SPRITE_SHIFTS is 1 and this rounds `px` down to
+ * the byte it falls in. A program written against it still runs and still
+ * draws; it steps by a byte. That is deliberate: one API whatever the design
+ * chose beats a call that vanishes, and a program cannot be broken by a
+ * decision taken in game.yml after it was written.
+ *
+ * The cost when it is asked for: every frame is packed once per position and
+ * each copy is a byte wider, so a Spectrum sheet takes twelve times the memory
+ * it took. `validate_sprite_budget` weighs that against
+ * budgets.static_data_bytes and refuses the project rather than letting it
+ * overflow, so this is a decision made at design time with a number attached.
+ *
+ * Bounds are MAX_SPRITE_PX and MAX_SPRITE_PY in game_config.h, and MAX_SPRITE_PX
+ * already accounts for the extra byte a shifted copy occupies. Out of range
+ * draws nothing. */
+void plat_sprite_px(unsigned int px, unsigned char py, unsigned char sprite,
+                    unsigned char frame);
+
+/* Moves the whole picture, by changing where the display starts reading rather
+ * than by moving any pixels. `origin` is a byte offset into video memory,
+ * rounded down to SCROLL_STEP_BYTES.
+ *
+ * This is the one thing in this library only one of the two machines can do.
+ * The Amstrad CPC's CRTC keeps the display start address, so a scroll is one
+ * register write; the ZX Spectrum has no equivalent and would have to move
+ * 6912 bytes, which no C game loop can afford. game_config.h reports
+ * SCROLL_STEP_BYTES as 0 on a machine without it and this call does nothing
+ * there, so one source compiles for both -- but a design that says it scrolls
+ * is refused at design time on such a target rather than quietly not doing it.
+ *
+ * Coarse, and there is nothing finer. SCROLL_STEP_BYTES is 2 on the CPC: four
+ * pixels across in mode 0, eight in mode 1. SCROLL_ROW_BYTES of it (80 bytes,
+ * 40 steps) moves the picture up by exactly one character row. Both numbers
+ * were measured on a real machine, not read off a datasheet.
+ *
+ * What arrives at the far side is your problem. Nothing is copied, so the
+ * column or row scrolling into view shows whatever was already in that memory
+ * -- a scrolling game draws the incoming edge itself, as `tilemap_hwscroll` in
+ * the CPCtelera examples does.
+ *
+ * `origin` runs 0 to MAX_SCROLL_ORIGIN, which is 510 on the CPC because the
+ * offset register holds eight bits. Going further needs the video *page*
+ * changed as well, which this library does not do; anything past the bound is
+ * ignored rather than wrapped, because a scroller that wrapped would not fail,
+ * it would jump. */
+void plat_scroll_to(unsigned int origin);
+
+/* Remembers what is on screen where a sprite is about to go, and puts it back.
+ *
+ *     unsigned char under[SPRITE_UNDER_BYTES];
+ *     ...
+ *     plat_restore_under(old_px, old_py, under);   // rub the sprite out
+ *     plat_save_under(px, py, under);              // remember the new place
+ *     plat_sprite_px(px, py, SPRITE_BALL, frame);  // and draw it there
+ *
+ * This is what a moving sprite should erase itself with. The obvious
+ * alternative -- repainting the terrain the sprite covered -- costs about
+ * twice the byte writes and only works when the background *is* terrain: it
+ * cannot put back text, another sprite, or anything a design draws that its
+ * tile map does not describe. The library can, because it reads the screen.
+ *
+ * `px` and `py` are the same coordinates `plat_sprite_px` takes, and the same
+ * ones a cell-aligned caller can compute: `px = col * 8`, `py = row * 8` on
+ * both machines whatever the video mode.
+ *
+ * The buffer belongs to the program, one per moving actor, and that is
+ * deliberate. Two actors need two backing stores, and a hidden buffer inside
+ * this library would silently hold only the last one saved.
+ *
+ * The one thing it cannot do: save-under saves whatever is on the screen, so
+ * a sprite drawn on top of another saves that other sprite as its background.
+ * Restore in the reverse of the order you drew, or the one underneath is left
+ * with a copy of the one above stamped on it.
+ *
+ * Nothing is saved or restored past the edge of the screen -- the same bounds
+ * `plat_sprite_px` refuses on, so a buffer taken at a legal position is always
+ * the size SPRITE_UNDER_BYTES says. */
+void plat_save_under(unsigned int px, unsigned char py, unsigned char *under);
+void plat_restore_under(unsigned int px, unsigned char py, const unsigned char *under);
 
 /* Plays effect N, where N is the index the design gave it -- game_config.h
  * defines SOUND_<NAME> for each one it declared. What each index sounds like

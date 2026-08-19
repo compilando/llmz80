@@ -57,20 +57,20 @@ def test_a_fresh_project_with_no_directory_is_pending_except_its_design(project)
     stages = _by_name(stage_line(project, None))
 
     assert set(stages) == set(STAGE_NAMES)
-    assert stages["referencia"].state == "pending"
-    assert stages["diseño"].state == "done"  # blank_project starts solvable and structured
+    assert stages["reference"].state == "pending"
+    assert stages["design"].state == "done"  # blank_project starts solvable and structured
     assert stages["sprites"].state == "pending"
-    assert stages["programa"].state == "pending"
+    assert stages["program"].state == "pending"
     assert stages["gates"].state == "pending"
 
 
 def test_a_fresh_project_saved_to_an_empty_directory_reads_the_same_way(project, tmp_path):
     stages = _by_name(stage_line(project, tmp_path))
 
-    assert stages["referencia"].state == "pending"
-    assert stages["diseño"].state == "done"
+    assert stages["reference"].state == "pending"
+    assert stages["design"].state == "done"
     assert stages["sprites"].state == "pending"
-    assert stages["programa"].state == "pending"
+    assert stages["program"].state == "pending"
     assert stages["gates"].state == "pending"
 
 
@@ -84,14 +84,14 @@ def test_stage_order_matches_the_pipeline(project, tmp_path):
 
 
 def test_referencia_is_pending_without_a_directory(project):
-    stage = _by_name(stage_line(project, None))["referencia"]
+    stage = _by_name(stage_line(project, None))["reference"]
 
     assert stage.state == "pending"
     assert stage.detail == ""
 
 
 def test_referencia_is_pending_when_no_reference_file_exists(project, tmp_path):
-    stage = _by_name(stage_line(project, tmp_path))["referencia"]
+    stage = _by_name(stage_line(project, tmp_path))["reference"]
 
     assert stage.state == "pending"
 
@@ -99,7 +99,7 @@ def test_referencia_is_pending_when_no_reference_file_exists(project, tmp_path):
 def test_referencia_is_done_and_names_the_title_and_source_count(project, tmp_path):
     save_reference(_dossier(), tmp_path)
 
-    stage = _by_name(stage_line(project, tmp_path))["referencia"]
+    stage = _by_name(stage_line(project, tmp_path))["reference"]
 
     assert stage.state == "done"
     assert "Zampa Bolas" in stage.detail
@@ -109,7 +109,7 @@ def test_referencia_is_done_and_names_the_title_and_source_count(project, tmp_pa
 def test_referencia_is_failed_when_the_search_found_nothing(project, tmp_path):
     save_reference(_dossier(identified=False, confidence="low", title="", sources=[]), tmp_path)
 
-    stage = _by_name(stage_line(project, tmp_path))["referencia"]
+    stage = _by_name(stage_line(project, tmp_path))["reference"]
 
     assert stage.state == "failed"
 
@@ -119,16 +119,16 @@ def test_referencia_is_failed_rather_than_crashing_on_a_malformed_file(project, 
 
     stages = stage_line(project, tmp_path)  # must not raise
 
-    stage = _by_name(stages)["referencia"]
+    stage = _by_name(stages)["reference"]
     assert stage.state == "failed"
 
 
 def test_referencia_distinguishes_absent_from_unidentified(project, tmp_path):
     """An unsearched project and one that searched and found nothing are not the same state."""
-    absent = _by_name(stage_line(project, tmp_path))["referencia"]
+    absent = _by_name(stage_line(project, tmp_path))["reference"]
 
     save_reference(_dossier(identified=False, confidence="low", title="", sources=[]), tmp_path)
-    unidentified = _by_name(stage_line(project, tmp_path))["referencia"]
+    unidentified = _by_name(stage_line(project, tmp_path))["reference"]
 
     assert absent.state == "pending"
     assert unidentified.state == "failed"
@@ -139,7 +139,7 @@ def test_referencia_distinguishes_absent_from_unidentified(project, tmp_path):
 
 
 def test_diseno_is_done_for_a_solvable_structured_design(project):
-    stage = _by_name(stage_line(project, None))["diseño"]
+    stage = _by_name(stage_line(project, None))["design"]
 
     assert stage.state == "done"
 
@@ -165,12 +165,12 @@ def test_diseno_is_failed_when_a_screen_does_not_fit_the_target(project):
     """v4 has no notion of a design losing its "shape" any more -- solvability
     and terrain structure were retired along with the rules that only made
     sense for one kind of game (see `editing.editing_status`'s docstring).
-    The one thing `diseño` can still fail on is a screen too big for its
+    The one thing `design` can still fail on is a screen too big for its
     target's playable grid.
     """
     unfit = _oversized(project)
 
-    stage = _by_name(stage_line(unfit, None))["diseño"]
+    stage = _by_name(stage_line(unfit, None))["design"]
 
     assert stage.state == "failed"
     assert stage.detail  # names why, from editing_status's own backend_error
@@ -229,13 +229,13 @@ def test_sprites_ignores_non_sprite_assets(project):
 
 
 def test_programa_is_pending_with_no_directory(project):
-    stage = _by_name(stage_line(project, None))["programa"]
+    stage = _by_name(stage_line(project, None))["program"]
 
     assert stage.state == "pending"
 
 
 def test_programa_is_pending_with_an_empty_directory(project, tmp_path):
-    stage = _by_name(stage_line(project, tmp_path))["programa"]
+    stage = _by_name(stage_line(project, tmp_path))["program"]
 
     assert stage.state == "pending"
 
@@ -245,7 +245,7 @@ def test_programa_is_done_once_main_c_exists(project, tmp_path):
     program_dir.mkdir()
     (program_dir / "main.c").write_text("int main(void) { return 0; }\n")
 
-    stage = _by_name(stage_line(project, tmp_path))["programa"]
+    stage = _by_name(stage_line(project, tmp_path))["program"]
 
     assert stage.state == "done"
 
@@ -259,7 +259,7 @@ def test_programa_stays_done_even_if_a_later_gate_failed(project, tmp_path):
         json.dumps({"accepted": False, "last_error": "acceptance rejected"})
     )
 
-    stage = _by_name(stage_line(project, tmp_path))["programa"]
+    stage = _by_name(stage_line(project, tmp_path))["program"]
 
     assert stage.state == "done"
 
@@ -269,7 +269,7 @@ def test_programa_is_failed_when_the_writer_left_a_report_but_no_source(project,
         json.dumps({"accepted": False, "attempts": [], "last_error": "the API call failed"})
     )
 
-    stage = _by_name(stage_line(project, tmp_path))["programa"]
+    stage = _by_name(stage_line(project, tmp_path))["program"]
 
     assert stage.state == "failed"
     assert "the API call failed" in stage.detail
@@ -280,7 +280,7 @@ def test_programa_is_failed_rather_than_crashing_on_a_malformed_report(project, 
 
     stages = stage_line(project, tmp_path)  # must not raise
 
-    assert _by_name(stages)["programa"].state == "failed"
+    assert _by_name(stages)["program"].state == "failed"
 
 
 # --- gates ------------------------------------------------------------------

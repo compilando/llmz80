@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 from typing import Iterable, Optional
 
-
 DESCRIPTION_RE = re.compile(r"^//\s*(Description|Descripcion):\s*(.*)", re.IGNORECASE)
 LOCAL_INCLUDE_RE = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.MULTILINE)
 
@@ -36,7 +35,9 @@ def extract_descriptions(source_code: str) -> tuple[str, str]:
     return desc_en, desc_es
 
 
-def build_embedding_text(relative_path: str, source_code: str, support_files: Iterable[Path]) -> str:
+def build_embedding_text(
+    relative_path: str, source_code: str, support_files: Iterable[Path]
+) -> str:
     """Build a search document that includes behavior and compile-relevant signals."""
     desc_en, desc_es = extract_descriptions(source_code)
     parts = [relative_path.replace("/", " ").replace("_", " ")]
@@ -118,9 +119,7 @@ def build_example_context(
     keep_head = int(max_size * 0.75)
     keep_tail = max_size - keep_head
     return (
-        context[:keep_head]
-        + "\n/* ... compile context truncated ... */\n"
-        + context[-keep_tail:]
+        context[:keep_head] + "\n/* ... compile context truncated ... */\n" + context[-keep_tail:]
     )
 
 

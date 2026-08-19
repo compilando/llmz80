@@ -44,7 +44,7 @@ class Step:
     #: The stage's id, and never a label: `screen.stage_line` produces it and
     #: the diary records it. Two fields rather than one because a single one
     #: had to be both, and lost: the interface reads English and showed
-    #: `diseño`.
+    #: `design`.
     name: str
     #: What a person reads where this step is named, on the progress strip.
     #: Translating this translates the screen; translating `name` would
@@ -66,11 +66,11 @@ class Step:
 #: that cannot be searched, and a `studio.log` begun in one language and
 #: continued in another is a log nobody can read.
 _PIPELINE: tuple[tuple[str, str], ...] = (
-    ("referencia", "Reference"),
-    ("redacción", "Drafting"),
-    ("diseño", "Design"),
+    ("reference", "Reference"),
+    ("drafting", "Drafting"),
+    ("design", "Design"),
     ("sprites", "Sprites"),
-    ("programa", "Program"),
+    ("program", "Program"),
     ("gates", "Gates"),
 )
 
@@ -78,7 +78,7 @@ _PIPELINE: tuple[tuple[str, str], ...] = (
 #: and nothing about whether a project is open, because "I have a project
 #: open" is not evidence anybody leaves on disk. It is the one step whose
 #: state this module decides rather than reads.
-_PROJECT_STEP = Step(number=0, name="proyecto", title="Project", state="pending")
+_PROJECT_STEP = Step(number=0, name="project", title="Project", state="pending")
 
 
 def steps(project: GameProject | None, directory: Path | None) -> list[Step]:

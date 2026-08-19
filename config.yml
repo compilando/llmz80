@@ -1,75 +1,15 @@
 # The model Studio thinks with. `temperature` is deliberately absent: it was
 # removed from this model family and sending it is a 400, not a value that
-# gets ignored. So is `reasoning_effort` -- its replacement, `output_config.
-# effort`, already defaults to the high setting Studio wants, so naming it
-# here would only be restating the default.
+# gets ignored. So is `reasoning_effort` -- its replacement,
+# `output_config.effort`, already defaults to the high setting Studio wants,
+# so naming it here would only be restating the default.
 anthropic:
   model: claude-opus-5
 
-openai:
-  # Still read by the legacy generator (llm_z80.py, llmz80/api/generator.py)
-  # and by the embeddings/sprite paths, none of which Studio goes through any
-  # more. Everything here keeps the semantics it had for those callers.
-  model: gpt-5
-  # temperature ignored for reasoning models (gpt-5, o-series); kept for fallback to classic models
-  temperature: 0.3
-  # For reasoning models this maps to max_completion_tokens (includes reasoning tokens)
-  max_tokens: 16384
-  # Reasoning effort: minimal | low | medium | high | xhigh (only used by reasoning models)
-  reasoning_effort: medium
-  # There is no `image_model` any more. Sprites are drawn by the model as a
-  # grid of palette indices (see llmz80/studio/sprite_grid.py), so no image
-  # model is involved. `llm_sprites.py`, the standalone legacy script, still
-  # takes its own on the command line.
-
-examples:
-  max_examples: 8
-  truncate_size: 50000  # Reducido: Tamaño máximo para ejemplos (caracteres)
-  roots:
-    spectrum:
-      - examples/spectrum
-    amstrad_cpc:
-      - examples/amstrad_cpc
-      - examples/amstrad_cpc_level2
-
-generation:
-  # Includes the initial build. Compiler diagnostics are the source of truth.
-  max_attempts: 4
-
-embeddings:
-  # There is deliberately no `model` key. Embeddings are computed on this
-  # machine now, and which model does it is `llmz80/core/embedding_backend.py`'s
-  # decision, not configuration: the vector width has to agree with every
-  # Qdrant collection and every cached vector on disk, and a config key that
-  # can silently disagree with those is a key that will.
-  #
-  # Vectors are 384 wide, not the 1536 the previous, remote backend produced.
-  # Collections and caches built before that change must be recreated.
-  cache_dir: "local/embeddings"
-  max_chunk_size: 15000  # Reducido: Tamaño máximo de chunk para procesamiento de embeddings (caracteres)
-  token_limit: 8000  # Límite de tokens para embeddings
-  safety_margin: 0.8  # Factor de seguridad para evitar llegar al límite
-
-logging:
-  level: INFO  # DEBUG, INFO, WARNING, ERROR
-  log_dir: "local/logs"
-
-output:
-  base_dir: "local"
-  slug_max_length: 40  # Longitud máxima para el slug en nombres de carpetas
-
-paths:
-  # Rutas para archivos de plataformas
-  spectrum:
-    output_artifact: "output.tap"
-  amstrad_cpc:
-    output_artifact: "output.dsk"
-
-prompt_files:
-  spectrum: "resources/system_prompt_spectrum.txt"
-  amstrad_cpc: "resources/system_prompt_amstrad_cpc.txt"
-
-# Configuración del compilador (por plataforma)
+# The native toolchain for each target. `cpct_path` is optional under
+# `amstrad_cpc`: without it, `llmz80.core.toolchain.resolve_cpct_path` tries
+# $CPCT_PATH, then this repository's vendored checkout, then the conventional
+# install locations -- accepting only one whose own SDCC has been built.
 compiler:
   spectrum:
     c_compiler: "zcc"
@@ -81,7 +21,11 @@ compiler:
     # CPCtelera's prebuilt assembly bindings require the classic stack ABI.
     params: "-mz80 --sdcccall 0 --no-std-crt0"
 
-# Configuración del emulador (por plataforma)
+# The emulator `llmz80 play` starts, for a person to look at. This is *not*
+# what the quality gates drive: `quality/emulator_smoke.py` keeps its own
+# preference order, ZEsarUX first on both machines, because it is the only
+# emulator here that speaks a remote protocol the harness can read memory
+# through.
 emulator:
   spectrum:
     name: "zesarux"

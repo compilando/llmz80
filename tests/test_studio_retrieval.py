@@ -1,10 +1,7 @@
-from pathlib import Path
-
 import pytest
 
 from llmz80.studio.generator import writing_prompt
 from llmz80.studio.models import GameProject, TargetPlatform
-from llmz80.studio.samples import blank_project
 from llmz80.studio.retrieval import (
     MAX_EXAMPLE_CHARS,
     catalog_examples,
@@ -12,6 +9,7 @@ from llmz80.studio.retrieval import (
     reference_program,
     retrieval_query,
 )
+from llmz80.studio.samples import blank_project
 
 
 @pytest.fixture

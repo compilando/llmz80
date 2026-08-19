@@ -143,9 +143,7 @@ def contract_prompt() -> str:
     required = "\n".join(
         _declaration(s) for s in STATE_CONTRACT if s.required and not s.provided_by_library
     )
-    library = "\n".join(
-        _declaration(s) for s in STATE_CONTRACT if s.provided_by_library
-    )
+    library = "\n".join(_declaration(s) for s in STATE_CONTRACT if s.provided_by_library)
     optional = "\n".join(_declaration(s) for s in STATE_CONTRACT if not s.required)
     return f"""OBSERVABLE STATE CONTRACT
 

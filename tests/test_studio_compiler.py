@@ -9,8 +9,8 @@ from llmz80.studio.acceptance import blitter_sprites
 from llmz80.studio.compiler import build_project, render_project
 from llmz80.studio.models import AssetSpec, TargetPlatform
 from llmz80.studio.samples import blank_project
-from llmz80.studio.spriting import pack_spectrum
 from llmz80.studio.sprite_sheet import split_frames
+from llmz80.studio.spriting import pack_spectrum
 
 REFERENCE = Path(__file__).resolve().parents[1] / "resources" / "studio_reference"
 
@@ -179,7 +179,7 @@ def test_the_config_header_states_the_target_and_the_design(tmp_path: Path):
     assert "#define SOUND_BOOP 0" in header
     assert "#define CPC_MODE 1" in header
     assert "#define PLAYFIELD_COLS 40" in header
-    assert "#define HAS_FRAME_CLOCK 0" in header
+    assert "#define HAS_FRAME_CLOCK 1" in header
 
 
 def test_the_state_header_declares_what_every_program_has_and_offers_the_rest(
@@ -338,7 +338,7 @@ def test_sprites_over_the_static_data_budget_are_refused(tmp_path: Path):
     expected_budget = project.budgets.static_data_bytes // 2
     assert expected_total > expected_budget  # the case is real over-budget, not contrived
 
-    with pytest.raises(ValueError, match="packed sprites are") as excinfo:
+    with pytest.raises(ValueError, match="packed artwork is") as excinfo:
         render_project(project, directory / "build")
 
     message = str(excinfo.value)
@@ -370,3 +370,160 @@ def test_the_state_header_carries_the_designs_observables(tmp_path):
     result = render_project(GameProject.model_validate(document), tmp_path / "build")
     header = (result.output_dir / "src" / "game_state.h").read_text(encoding="utf-8")
     assert "g_keys" in header
+
+
+def _add_tile_asset(directory: Path, asset_id: str, colour=(255, 0, 0, 255)) -> AssetSpec:
+    """Write a real 8x8 tile image and the tileset AssetSpec that names it."""
+    assets_dir = directory / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    image = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+    pixels = image.load()
+    for y in range(8):
+        for x in range(8):
+            if (x + y) % 2 == 0:
+                pixels[x, y] = colour
+    filename = f"{asset_id}.png"
+    image.save(assets_dir / filename)
+    return AssetSpec(
+        id=asset_id, kind="tileset", source=f"assets/{filename}", width=8, height=8, frames=1
+    )
+
+
+def test_a_tile_with_art_reaches_tiles_h_under_its_own_design_id(tmp_path: Path):
+    """`TILE_<ID>` is named after the *tile*, not the asset: the writer reads
+    the design's terrain vocabulary in the prompt ("'B' is ladrillo"), so the
+    constant it is handed has to be spelled the same way."""
+    project = blank_project("Terrain", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
+    project.assets = [_add_tile_asset(directory, "brickwork")]
+    project.tiles[0].id = "ladrillo"
+    project.tiles[0].art = "brickwork"
+
+    result = render_project(project, directory / "build")
+
+    tiles_h = (result.output_dir / "src" / "tiles.h").read_text(encoding="utf-8")
+    tiles_c = (result.output_dir / "src" / "tiles.c").read_text(encoding="utf-8")
+    assert "#define TILE_LADRILLO 0" in tiles_h
+    assert "#define TILE_COUNT 1" in tiles_h
+    assert "0x" not in tiles_h  # no packed byte ever lands in a header
+    assert "const unsigned char *const tile_data[] = {" in tiles_c
+
+
+def test_a_design_with_no_tile_art_still_gets_a_tiles_header(tmp_path: Path):
+    """platform.c includes tiles.h unconditionally, so every project needs
+    one -- exactly as it needs a SPRITE_COUNT-0 sprites.h."""
+    project = blank_project("NoArt", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
+
+    result = render_project(project, directory / "build")
+
+    tiles_h = (result.output_dir / "src" / "tiles.h").read_text(encoding="utf-8")
+    assert "#define TILE_COUNT 0" in tiles_h
+
+
+def test_a_declared_tile_colour_overrides_the_ink_its_pixels_resolve_to(tmp_path: Path):
+    """The design gets the last word on colour. Without this the tile is drawn
+    in whatever `spriting._spectrum_attribute` read off the art, which is the
+    artist's guess rather than the designer's decision."""
+    from llmz80.studio.models import PaletteEntry
+
+    project = blank_project("Coloured", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
+    project.assets = [_add_tile_asset(directory, "brickwork", colour=(255, 0, 0, 255))]
+    project.presentation.palette = [PaletteEntry(id="ladrillo_cyan", colour="cian")]
+    project.tiles[0].art = "brickwork"
+    project.tiles[0].colour = "ladrillo_cyan"
+
+    result = render_project(project, directory / "build")
+
+    tiles_c = (result.output_dir / "src" / "tiles.c").read_text(encoding="utf-8")
+    assert "const unsigned char tile_attribute[] = {5};" in tiles_c  # PAPER_BLACK | INK_CYAN
+
+
+def test_a_declared_entity_colour_overrides_the_ink_its_sprite_resolves_to(tmp_path: Path):
+    """Same rule, one layer over: an entity's declared colour decides the
+    attribute its sprite's cells are drawn in."""
+    from llmz80.studio.models import PaletteEntry
+
+    project = blank_project("ColouredActor", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
+    project.assets = [_add_sprite_asset(directory, "hero", frames=1)]
+    project.presentation.palette = [PaletteEntry(id="hero_yellow", colour="amarillo brillante")]
+    project.entities[0].sprite = "hero"
+    project.entities[0].colour = "hero_yellow"
+
+    result = render_project(project, directory / "build")
+
+    sprites_c = (result.output_dir / "src" / "sprites.c").read_text(encoding="utf-8")
+    assert "const unsigned char sprite_attribute[] = {70};" in sprites_c  # BRIGHT | INK_YELLOW
+
+
+def test_a_program_may_not_shadow_the_generated_tile_files(tmp_path: Path):
+    project = blank_project("ShadowTiles", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
+    _with_program(project, directory, TargetPlatform.SPECTRUM)
+    (directory / project.program_dir / "tiles.c").write_text("/* mine */", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="tiles.c"):
+        render_project(project, directory / "build")
+
+
+def test_tile_art_counts_against_the_same_static_data_budget_as_sprites(tmp_path: Path):
+    """Tile bytes are static data like any other, and they are weighed
+    together with the sprites because the ceiling they share is the machine's
+    rather than each kind of artwork's own. Sized so the sprites alone fit and
+    the eight bytes of brickwork are what tips it over -- otherwise this would
+    pass for the reason the old sprite-only check already passed."""
+    project = blank_project("Cramped", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
+    project.budgets.static_data_bytes = 1024  # the model's floor; half is 512
+    sprite = _add_sprite_asset(directory, "hero", frames=8)  # exactly 512 bytes packed
+    project.assets = [sprite, _add_tile_asset(directory, "brickwork")]
+    project.entities[0].sprite = "hero"
+    project.tiles[0].art = "brickwork"
+
+    sprite_bytes = sum(
+        len(packed.data) + len(packed.mask)
+        for packed in (pack_spectrum(split_frames(_sprite_sheet(8), 8)),)
+    )
+    assert sprite_bytes == 512  # fits on its own; the tile is what breaks it
+
+    with pytest.raises(ValueError, match="packed artwork is 520 bytes"):
+        render_project(project, directory / "build")
+
+
+def test_a_project_with_tile_art_whose_program_never_draws_a_tile_is_refused(tmp_path: Path):
+    """The `sprite_usage_errors` defect, one kind of artwork over: a design
+    that had terrain art packed and a program that drew its terrain with
+    plat_cell anyway used to pass every gate -- and looked like text."""
+    from llmz80.studio.compiler import tile_usage_errors
+
+    project = blank_project("DrawnAsText", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
+    project.assets = [_add_tile_asset(directory, "brickwork")]
+    project.tiles[0].art = "brickwork"
+
+    problems = tile_usage_errors(
+        project, {"main.c": "void main(void){ plat_cell(0,0,'B'); /* plat_tile */ }"}
+    )
+
+    assert problems and "plat_tile" in problems[0]
+
+
+def test_a_program_that_draws_its_terrain_art_passes(tmp_path: Path):
+    from llmz80.studio.compiler import tile_usage_errors
+
+    project = blank_project("DrawnAsArt", TargetPlatform.SPECTRUM)
+    directory = _project_dir(tmp_path, project)
+    project.assets = [_add_tile_asset(directory, "brickwork")]
+    project.tiles[0].art = "brickwork"
+
+    assert tile_usage_errors(project, {"main.c": "plat_tile(0, 0, TILE_FLOOR);"}) == []
+
+
+def test_a_design_with_no_tile_art_is_never_asked_to_draw_one(tmp_path: Path):
+    from llmz80.studio.compiler import tile_usage_errors
+
+    project = blank_project("NoTerrainArt", TargetPlatform.SPECTRUM)
+
+    assert tile_usage_errors(project, {"main.c": "plat_cell(0, 0, '#');"}) == []

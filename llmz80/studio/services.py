@@ -2,36 +2,37 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable
+import json
 import re
 import shutil
 import tempfile
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Callable
 
-from llmz80.quality.emulator_smoke import smoke_test, write_smoke_report
 from PIL import Image
 
+from llmz80.quality.emulator_smoke import smoke_test, write_smoke_report
+
+from .acceptance import RuntimeExamination, runtime_examination, step_mismatches
+from .attributes import attribute_report
 from .compiler import BuildResult, SourceResult, build_project, render_project
 from .design_exam import DesignExaminer
-from .runtime_exam import RuntimeExaminer
-from .attributes import attribute_report
 from .feel import animation_report
-from .models import AssetSpec, EntitySpec, GameProject, TargetPlatform
+from .generator import write_program
+from .models import AssetKind, AssetSpec, EntitySpec, GameProject, TargetPlatform
 from .observation import observation_script
 from .pacing import pacing_report
-from .samples import blank_project
 from .planner import ProjectProposal, proposal_diff
+from .quality import RUNTIME_GATES, studio_quality_report
 from .reference import GameReference, ReferenceResearcher, load_reference, save_reference
 from .reference_design import ReferenceDesigner, propose_and_apply
-from .sprite_artist import SpriteArtist
+from .release import export_release
+from .runtime_exam import RuntimeExaminer
+from .samples import blank_project
+from .sprite_artist import SpriteArtist, TileArtist, animates
 from .spriting import SPRITE_SIZE
 from .store import ProjectStore
-from .quality import RUNTIME_GATES, studio_quality_report
-from .acceptance import RuntimeExamination, runtime_examination, step_mismatches
-from .generator import write_program
-from .release import export_release
-import json
 
 #: Told what is happening while it happens. The three long jobs below take
 #: minutes and two of them spend money, and their reports only exist once they
@@ -75,7 +76,13 @@ class StudioService:
         return render_project(project, directory / "build")
 
     def add_asset(
-        self, project: GameProject, directory: Path, source: Path, *, frames: int = 1
+        self,
+        project: GameProject,
+        directory: Path,
+        source: Path,
+        *,
+        frames: int = 1,
+        kind: AssetKind = "sprite",
     ) -> AssetSpec:
         """Copy `source` into the project's `assets/`, derive its id from the
         filename, validate it against the design, and save the project.
@@ -86,6 +93,12 @@ class StudioService:
         through so the registered `AssetSpec` (which has carried `frames`
         since it gained the field) states it correctly instead of silently
         claiming every sheet is one still frame.
+
+        `kind` defaults to `sprite` because an actor's artwork is what every
+        caller before terrain art imported. It is a parameter rather than
+        something inferred from the image's size: an 8x8 image is tile art
+        only if the design meant it as terrain, and `spriting.is_tile_art`
+        asks `kind` exactly so a small sprite is not silently reclassified.
         """
         source = source.expanduser().resolve()
         if not source.is_file():
@@ -109,6 +122,7 @@ class StudioService:
         shutil.copy2(source, destination)
         asset = AssetSpec(
             id=identifier,
+            kind=kind,
             source=f"assets/{destination.name}",
             width=width,
             height=height,
@@ -126,6 +140,82 @@ class StudioService:
         project.assets = candidate.assets
         self.store.save(project, directory)
         return asset
+
+    def draw_tiles(
+        self,
+        project: GameProject,
+        directory: Path,
+        artist: TileArtist,
+        dossier: GameReference | None = None,
+        *,
+        on_progress: Progress = None,
+    ) -> list[AssetSpec]:
+        """Draw the artwork every tile that asked for it is missing, and
+        register it.
+
+        `draw_sprites` for terrain, and the same shape for the same reasons:
+        one asset per tile that wants art and has none, `add_asset` reused
+        rather than a second path that also knows how to save a project, and
+        existing art left alone (a caller that wants terrain redrawn removes
+        the asset first, so from here that tile is simply missing art).
+
+        Which tiles are drawn is the design's decision and not this method's:
+        `TileSpec.wants_art` reads the note the designer wrote about how that
+        terrain should look. Empty space leaves that blank and stays the
+        character it carries -- drawing every declared tile would spend a
+        model call producing a cell with nothing in it.
+
+        The id an asset is registered under is the tile's own, so the
+        generated `TILE_<ID>` matches the terrain vocabulary the writer reads
+        in its prompt (see `acceptance.tile_art`). And like an entity's
+        sprite, `tile.art` is filled in beside the asset that backs it rather
+        than before: `structure.py` refuses a document naming an asset that
+        does not exist, so the only reachable order is both at once.
+        """
+        if dossier is None:
+            dossier = load_reference(directory)
+        have = {asset.id for asset in project.assets if asset.kind == "tileset"}
+        drawn: list[AssetSpec] = []
+        for tile in project.tiles:
+            if not tile.wants_art or tile.id in have:
+                continue
+            if not re.fullmatch(r"[a-z][a-z0-9_]{1,31}", tile.id):
+                # `TileSpec.id` already matches this, so this is a guard
+                # against the pattern changing under us rather than a case a
+                # valid design can reach -- the same guard `draw_sprites`
+                # keeps over `EntitySpec.sprite`, which really can carry
+                # anything.
+                raise ValueError(
+                    f"tile {tile.id!r} is not a valid asset identifier (expected "
+                    "lowercase letters, digits and underscores, starting with a letter)"
+                )
+            try:
+                frames = artist.draw_tile(project, tile, dossier, on_progress=on_progress)
+            except ValueError as exc:
+                # Every attempt's raw cell is worth keeping for exactly the
+                # run that produced no asset at all; see `draw_sprites`.
+                self._save_raw_sheets(directory, tile.id, getattr(exc, "sheets", None))
+                raise
+            with tempfile.TemporaryDirectory() as scratch:
+                staged = Path(scratch) / f"{tile.id}.png"
+                frames[0].save(staged)
+                asset = self.add_asset(project, directory, staged, kind="tileset")
+            # Set after the asset exists and before the save below, so the
+            # document that reaches disk has both halves or neither.
+            tile.art = asset.id
+            self.store.save(project, directory)
+            self._save_raw_sheets(
+                directory,
+                tile.id,
+                getattr(frames, "sheets", None),
+                winner=getattr(frames, "sheet", None),
+            )
+            _say(
+                on_progress,
+                f"{tile.id}: terreno dibujado, {(directory / asset.source).stat().st_size} B",
+            )
+            drawn.append(asset)
+        return drawn
 
     def draw_sprites(
         self,
@@ -538,7 +628,7 @@ class StudioService:
         report["state_probe"] = probes
         acceptance = self.acceptance_report(project, report, examiner)
         report["acceptance"] = acceptance
-        animation = animation_report(report)
+        animation = animation_report(report, animated=animates(project.entities))
         report["animation"] = animation
         pacing = pacing_report(report)
         report["pacing"] = pacing

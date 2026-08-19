@@ -1,24 +1,8 @@
 # Core dependencies
 anthropic>=0.122.0
-openai==1.75.0
 pydantic>=2.7.0,<3.0.0
 textual>=1.0.0
 python-dotenv==1.0.1
 Pillow==11.2.1
 numpy==2.2.4
 PyYAML==6.0.2
-scipy==1.15.2
-
-# AI/ML APIs
-google-generativeai==0.8.5
-google-cloud-aiplatform==1.89.0
-
-# Networking
-requests>=2.32.3
-
-# Vector database
-qdrant-client==1.18.0
-fastembed>=0.8.0
-
-# CLI utilities
-termcolor==2.5.0

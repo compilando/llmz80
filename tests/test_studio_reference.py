@@ -13,6 +13,7 @@ from llmz80.studio.reference import (
     reference_prompt,
     save_reference,
 )
+from tests.conftest import FakeMessageStream
 
 
 def _dossier(**overrides) -> GameReference:
@@ -161,9 +162,9 @@ class _FakeMessages:
         self.parsed = parsed
         self.calls = []
 
-    def parse(self, **kwargs):
+    def stream(self, **kwargs):
         self.calls.append(kwargs)
-        return type("Response", (), {"parsed_output": self.parsed})()
+        return FakeMessageStream(type("Response", (), {"parsed_output": self.parsed})())
 
 
 class _FakeClient:

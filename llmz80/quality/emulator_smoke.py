@@ -20,8 +20,10 @@ from PIL import Image
 
 def discover_adapter(platform: str) -> dict[str, Any]:
     candidates = (
-        [("zesarux", {"headless": True, "frames": True, "scripted_input": True}),
-         ("fuse", {"headless": False, "frames": False, "scripted_input": False})]
+        [
+            ("zesarux", {"headless": True, "frames": True, "scripted_input": True}),
+            ("fuse", {"headless": False, "frames": False, "scripted_input": False}),
+        ]
         if platform == "spectrum"
         # ZEsarUX first on the CPC too, and for the same reason it comes first
         # on the Spectrum: it is the only adapter here that reads emulated
@@ -29,10 +31,12 @@ def discover_adapter(platform: str) -> dict[str, Any]:
         # behind it rather than being dropped -- it takes screenshots and sends
         # virtual keys, so a host without ZEsarUX still gets the old evidence
         # instead of no evidence at all.
-        else [("zesarux", {"headless": True, "frames": True, "scripted_input": True}),
-              ("cap32", {"headless": True, "frames": True, "scripted_input": True}),
-              ("caprice32", {"headless": True, "frames": True, "scripted_input": True}),
-              ("cpcec", {"headless": False, "frames": False, "scripted_input": False})]
+        else [
+            ("zesarux", {"headless": True, "frames": True, "scripted_input": True}),
+            ("cap32", {"headless": True, "frames": True, "scripted_input": True}),
+            ("caprice32", {"headless": True, "frames": True, "scripted_input": True}),
+            ("cpcec", {"headless": False, "frames": False, "scripted_input": False}),
+        ]
     )
     for command, capabilities in candidates:
         executable = shutil.which(command)
@@ -60,14 +64,29 @@ def _artifact_valid(platform: str, artifact: Path) -> tuple[bool, str]:
 
 def _source_observations(source: str) -> tuple[bool, bool]:
     draw_calls = (
-        "printf", "zx_cls", "zx_pxy2saddr", "llmz80_draw_sprite8",
-        "cpct_drawSprite", "cpct_drawString", "cpct_drawSolidBox", "cpct_clearScreen",
+        "printf",
+        "zx_cls",
+        "zx_pxy2saddr",
+        "llmz80_draw_sprite8",
+        "cpct_drawSprite",
+        "cpct_drawString",
+        "cpct_drawSolidBox",
+        "cpct_clearScreen",
     )
     transition_tokens = (
-        "in_inkey", "in_key_pressed", "cpct_isKeyPressed", "++", "--", "+=", "-=",
-        "state =", "score =",
+        "in_inkey",
+        "in_key_pressed",
+        "cpct_isKeyPressed",
+        "++",
+        "--",
+        "+=",
+        "-=",
+        "state =",
+        "score =",
     )
-    return any(token in source for token in draw_calls), any(token in source for token in transition_tokens)
+    return any(token in source for token in draw_calls), any(
+        token in source for token in transition_tokens
+    )
 
 
 def _project_source(output_dir: Path) -> str:
@@ -124,14 +143,44 @@ def _image_observation(path: Path) -> dict[str, Any]:
 
 
 _SPECTRUM_ROWS = {
-    "v": (0, 4), "c": (0, 3), "x": (0, 2), "z": (0, 1),
-    "g": (1, 4), "f": (1, 3), "d": (1, 2), "s": (1, 1), "a": (1, 0),
-    "t": (2, 4), "r": (2, 3), "e": (2, 2), "w": (2, 1), "q": (2, 0),
-    "5": (3, 4), "4": (3, 3), "3": (3, 2), "2": (3, 1), "1": (3, 0),
-    "6": (4, 4), "7": (4, 3), "8": (4, 2), "9": (4, 1), "0": (4, 0),
-    "y": (5, 4), "u": (5, 3), "i": (5, 2), "o": (5, 1), "p": (5, 0),
-    "h": (6, 4), "j": (6, 3), "k": (6, 2), "l": (6, 1), "enter": (6, 0),
-    "b": (7, 4), "n": (7, 3), "m": (7, 2), "space": (7, 0),
+    "v": (0, 4),
+    "c": (0, 3),
+    "x": (0, 2),
+    "z": (0, 1),
+    "g": (1, 4),
+    "f": (1, 3),
+    "d": (1, 2),
+    "s": (1, 1),
+    "a": (1, 0),
+    "t": (2, 4),
+    "r": (2, 3),
+    "e": (2, 2),
+    "w": (2, 1),
+    "q": (2, 0),
+    "5": (3, 4),
+    "4": (3, 3),
+    "3": (3, 2),
+    "2": (3, 1),
+    "1": (3, 0),
+    "6": (4, 4),
+    "7": (4, 3),
+    "8": (4, 2),
+    "9": (4, 1),
+    "0": (4, 0),
+    "y": (5, 4),
+    "u": (5, 3),
+    "i": (5, 2),
+    "o": (5, 1),
+    "p": (5, 0),
+    "h": (6, 4),
+    "j": (6, 3),
+    "k": (6, 2),
+    "l": (6, 1),
+    "enter": (6, 0),
+    "b": (7, 4),
+    "n": (7, 3),
+    "m": (7, 2),
+    "space": (7, 0),
 }
 
 
@@ -281,7 +330,7 @@ def _read_probes(connection: socket.socket, probes: dict[str, Any]) -> dict[str,
         digits = "".join(re.findall(r"[0-9A-Fa-f]{2}", answer.split("command@")[0]))[: width * 2]
         if len(digits) < width * 2:
             continue
-        octets = [int(digits[index:index + 2], 16) for index in range(0, width * 2, 2)]
+        octets = [int(digits[index : index + 2], 16) for index in range(0, width * 2, 2)]
         # The Z80 is little endian, so a 16-bit probe arrives low byte first.
         values[name] = sum(byte << (8 * position) for position, byte in enumerate(octets))
     return values
@@ -529,23 +578,31 @@ def scripted_run_seconds(
     screen_cost = exchange if steps and profile["reads_display_file"] else 0.0
     # Rounded up, not truncated: `int` shaved off up to a second from a figure
     # whose entire purpose is not being short.
-    return math.ceil(
-        max(6, seconds)
-        # What it costs to get the program running at all, which is nothing on
-        # a Spectrum -- its .tap autostarts -- and most of a CPC run's first
-        # quarter minute, because a .dsk has to be asked for at a BASIC prompt.
-        + profile["boot_seconds"]
-        + probe_cost
-        + hold_cost
-        + command_cost
-        + screen_cost
-        + _HARNESS_OVERHEAD
+    return int(
+        math.ceil(
+            max(6, seconds)
+            # What it costs to get the program running at all, which is nothing
+            # on a Spectrum -- its .tap autostarts -- and most of a CPC run's
+            # first quarter minute, because a .dsk has to be asked for at a
+            # BASIC prompt.
+            + profile["boot_seconds"]
+            + probe_cost
+            + hold_cost
+            + command_cost
+            + screen_cost
+            + _HARNESS_OVERHEAD
+        )
     )
 
 
 def _run_zesarux(
-    adapter: dict[str, Any], artifact: Path, output_dir: Path, source: str, seconds: int,
-    probes: dict[str, Any] | None = None, script: list[dict[str, Any]] | None = None,
+    adapter: dict[str, Any],
+    artifact: Path,
+    output_dir: Path,
+    source: str,
+    seconds: int,
+    probes: dict[str, Any] | None = None,
+    script: list[dict[str, Any]] | None = None,
     platform: str = "spectrum",
 ) -> dict[str, Any]:
     """Drive one bounded ZEsarUX session and read the program's own memory.
@@ -569,15 +626,34 @@ def _run_zesarux(
         seconds=seconds, steps=steps, probes=probes, platform=platform
     )
     command = [
-        adapter["executable"], "--noconfigfile", "--machine", profile["machine"],
-        "--vo", "null", "--ao", "null", "--vofile", str(raw_frames),
-        "--vofilefps", "5", "--fastautoload", "--quickexit",
-        "--enable-remoteprotocol", "--remoteprotocol-port", str(port),
-        "--exit-after", str(run_seconds), str(artifact),
+        adapter["executable"],
+        "--noconfigfile",
+        "--machine",
+        profile["machine"],
+        "--vo",
+        "null",
+        "--ao",
+        "null",
+        "--vofile",
+        str(raw_frames),
+        "--vofilefps",
+        "5",
+        "--fastautoload",
+        "--quickexit",
+        "--enable-remoteprotocol",
+        "--remoteprotocol-port",
+        str(port),
+        "--exit-after",
+        str(run_seconds),
+        str(artifact),
     ]
     launched = time.monotonic()
     process = subprocess.Popen(
-        command, cwd=output_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        command,
+        cwd=output_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
     )
     input_name, press_command, release_command = profile["initial_input"](source)
     remote_error: str | None = None
@@ -613,7 +689,11 @@ def _run_zesarux(
             # state contract. Steps accumulate inside a single boot, so their
             # order is the order the design states them in.
             for step in steps:
-                reading: dict[str, Any] = {"id": step.get("id"), "hold": step.get("hold"), "read": {}}
+                reading: dict[str, Any] = {
+                    "id": step.get("id"),
+                    "hold": step.get("hold"),
+                    "read": {},
+                }
                 step_readings.append(reading)
                 key = step.get("key")
                 if key in profile["keys"]:
@@ -650,15 +730,17 @@ def _run_zesarux(
         remote_error = remote_error or "ZEsarUX exceeded its bounded runtime"
 
     screen_dump = capture_dir / "screen.bin"
-    observations = [
-        _image_observation(path) for path in (before, after, played) if path.is_file()
-    ]
+    observations = [_image_observation(path) for path in (before, after, played) if path.is_file()]
     raw = raw_frames.read_bytes() if raw_frames.exists() else b""
     chunk_size = max(1, len(raw) // 6)
-    raw_chunks = [
-        hashlib.sha256(raw[index:index + chunk_size]).hexdigest()
-        for index in range(0, len(raw), chunk_size)
-    ] if raw else []
+    raw_chunks = (
+        [
+            hashlib.sha256(raw[index : index + chunk_size]).hexdigest()
+            for index in range(0, len(raw), chunk_size)
+        ]
+        if raw
+        else []
+    )
     raw_frame_change = len(set(raw_chunks)) > 1
     # A reading taken from the program's own symbols can only have come from
     # the program: the tape loader does not define g_score. So once any step
@@ -678,7 +760,7 @@ def _run_zesarux(
     else:
         screenshot_change = False
         visual_change = raw_frame_change
-        non_blank = len(set(raw[::max(1, len(raw) // 4096)])) > 1 if raw else False
+        non_blank = len(set(raw[:: max(1, len(raw) // 4096)])) > 1 if raw else False
     result = {
         "command": command,
         "return_code": process.returncode,
@@ -715,19 +797,31 @@ def runtime_rejection_diagnostics(report: dict[str, Any]) -> list[str]:
     if report.get("emulator_error"):
         diagnostics.append(f"Emulator error: {report['emulator_error']}")
     for field in (
-        "runtime_verified", "boot", "program_loaded", "non_blank_output",
-        "visual_change", "scripted_input_sent", "input_transition",
+        "runtime_verified",
+        "boot",
+        "program_loaded",
+        "non_blank_output",
+        "visual_change",
+        "scripted_input_sent",
+        "input_transition",
     ):
         diagnostics.append(f"{field}: {bool(report.get(field, False))}")
     if report.get("scripted_input"):
         diagnostics.append(f"Scripted input: {report['scripted_input']}")
-    if report.get("program_loaded") and report.get("non_blank_output") and not report.get("visual_change"):
+    if (
+        report.get("program_loaded")
+        and report.get("non_blank_output")
+        and not report.get("visual_change")
+    ):
         diagnostics.append(
-            "The program is visible but remains visually static; ensure animation or the detected control "
+            "The program is visible but remains visually static; ensure animation "
+            "or the detected control "
             "changes pixels within a few frames and keep 50 Hz frame pacing."
         )
     elif not report.get("program_loaded"):
-        diagnostics.append("Ensure the generated artifact autostarts the program rather than remaining in BASIC.")
+        diagnostics.append(
+            "Ensure the generated artifact autostarts the program rather than remaining in BASIC."
+        )
     elif not report.get("non_blank_output"):
         diagnostics.append("Draw visible non-background pixels immediately after startup.")
     return diagnostics
@@ -764,18 +858,27 @@ def _cpc_input(source: str) -> tuple[str, str]:
 
 
 def _run_caprice32(
-    adapter: dict[str, Any], artifact: Path, output_dir: Path, source: str, seconds: int,
+    adapter: dict[str, Any],
+    artifact: Path,
+    output_dir: Path,
+    source: str,
+    seconds: int,
 ) -> dict[str, Any]:
     capture_dir = _frame_dir(output_dir, "amstrad_cpc")
     input_name, input_event = _cpc_input(source)
     delay_frames = max(50, min(150, max(1, seconds) * 25))
     command = [
         adapter["executable"],
-        "-O", f"file.sdump_dir={capture_dir}/",
-        "-O", "sound.enabled=0",
-        "-O", "video.scr_scale=1",
-        "-O", "video.scr_fps=0",
-        "-O", f"system.boot_time={delay_frames}",
+        "-O",
+        f"file.sdump_dir={capture_dir}/",
+        "-O",
+        "sound.enabled=0",
+        "-O",
+        "video.scr_scale=1",
+        "-O",
+        "video.scr_fps=0",
+        "-O",
+        f"system.boot_time={delay_frames}",
         # No host gamepad. `/etc/cap32.cfg` ships `joysticks=1`, and Caprice32
         # was observed holding the developer machine's pad open (its evdev
         # node stayed in the process's fd table for the whole run) while it
@@ -795,18 +898,28 @@ def _run_caprice32(
         # applies to the pad. `llmz80 play` builds its own command line
         # (`studio/play.py`) and is untouched, so a person playing a game
         # still has their joystick.
-        "-O", "system.joysticks=0",
-        "-a", "CAP32_SCRNSHOT",
-        "-a", 'run"program.bin"',
-        "-a", "CAP32_DELAY",
-        "-a", "CAP32_DELAY",
-        "-a", "CAP32_SCRNSHOT",
-        "-a", input_event,
+        "-O",
+        "system.joysticks=0",
+        "-a",
+        "CAP32_SCRNSHOT",
+        "-a",
+        'run"program.bin"',
+        "-a",
+        "CAP32_DELAY",
+        "-a",
+        "CAP32_DELAY",
+        "-a",
+        "CAP32_SCRNSHOT",
+        "-a",
+        input_event,
         # Caprice32 names screenshots with one-second resolution. Without a
         # delay the post-input capture can overwrite the application capture.
-        "-a", "CAP32_DELAY",
-        "-a", "CAP32_SCRNSHOT",
-        "-a", "CAP32_EXIT",
+        "-a",
+        "CAP32_DELAY",
+        "-a",
+        "CAP32_SCRNSHOT",
+        "-a",
+        "CAP32_EXIT",
         str(artifact),
     ]
     environment = os.environ.copy()
@@ -822,21 +935,24 @@ def _run_caprice32(
     # which costs more than the minute this margin can waste.
     timeout = max(90, seconds + 25)
     completed = subprocess.run(
-        command, cwd=output_dir, env=environment, capture_output=True, text=True,
-        timeout=timeout, check=False,
+        command,
+        cwd=output_dir,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
     )
-    screenshots = sorted(capture_dir.glob("screenshot_*.png"), key=lambda path: path.stat().st_mtime_ns)
+    screenshots = sorted(
+        capture_dir.glob("screenshot_*.png"), key=lambda path: path.stat().st_mtime_ns
+    )
     observations = [_image_observation(path) for path in screenshots]
     primary_observation_count = len(observations)
     boot_frame = observations[0] if len(observations) >= 1 else None
     app_frame = observations[1] if len(observations) >= 2 else None
     input_frame = observations[2] if len(observations) >= 3 else None
-    program_loaded = bool(
-        boot_frame and app_frame and boot_frame["sha256"] != app_frame["sha256"]
-    )
-    visual_change = bool(
-        app_frame and input_frame and app_frame["sha256"] != input_frame["sha256"]
-    )
+    program_loaded = bool(boot_frame and app_frame and boot_frame["sha256"] != app_frame["sha256"])
+    visual_change = bool(app_frame and input_frame and app_frame["sha256"] != input_frame["sha256"])
     fallback_command = None
     fallback_completed = None
     fallback_observations: list[dict[str, Any]] = []
@@ -848,24 +964,41 @@ def _run_caprice32(
         fallback_dir = _frame_dir(output_dir, "amstrad_cpc_input")
         fallback_command = [
             adapter["executable"],
-            "-O", f"file.sdump_dir={fallback_dir}/",
-            "-O", "sound.enabled=0",
-            "-O", "video.scr_scale=1",
-            "-O", "video.scr_fps=0",
-            "-O", f"system.boot_time={delay_frames}",
+            "-O",
+            f"file.sdump_dir={fallback_dir}/",
+            "-O",
+            "sound.enabled=0",
+            "-O",
+            "video.scr_scale=1",
+            "-O",
+            "video.scr_fps=0",
+            "-O",
+            f"system.boot_time={delay_frames}",
             # Same reason as the primary command above.
-            "-O", "system.joysticks=0",
-            "-a", 'run"program.bin"',
-            "-a", "CAP32_DELAY",
-            "-a", "CAP32_DELAY",
-            "-a", input_event,
-            "-a", "CAP32_SCRNSHOT",
-            "-a", "CAP32_EXIT",
+            "-O",
+            "system.joysticks=0",
+            "-a",
+            'run"program.bin"',
+            "-a",
+            "CAP32_DELAY",
+            "-a",
+            "CAP32_DELAY",
+            "-a",
+            input_event,
+            "-a",
+            "CAP32_SCRNSHOT",
+            "-a",
+            "CAP32_EXIT",
             str(artifact),
         ]
         fallback_completed = subprocess.run(
-            fallback_command, cwd=output_dir, env=environment, capture_output=True, text=True,
-            timeout=timeout, check=False,
+            fallback_command,
+            cwd=output_dir,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
         )
         fallback_screenshots = sorted(
             fallback_dir.glob("screenshot_*.png"), key=lambda path: path.stat().st_mtime_ns
@@ -890,8 +1023,7 @@ def _run_caprice32(
         "capture_dir": str(capture_dir),
         "stdout_tail": completed.stdout[-1000:],
         "stderr_tail": (
-            completed.stderr
-            + (fallback_completed.stderr if fallback_completed is not None else "")
+            completed.stderr + (fallback_completed.stderr if fallback_completed is not None else "")
         )[-1000:],
     }
 
@@ -935,9 +1067,9 @@ def smoke_test(
     # which harness runs. Caprice32 remains the CPC fallback for a host without
     # ZEsarUX, and it reads no memory: every behaviour gate abstains on it,
     # which is the honest reading of a run nobody could probe.
-    supported_full = (
-        adapter["name"] == "zesarux" and platform in _ZESARUX_PROFILES
-    ) or adapter["name"] in {"cap32", "caprice32"}
+    supported_full = (adapter["name"] == "zesarux" and platform in _ZESARUX_PROFILES) or adapter[
+        "name"
+    ] in {"cap32", "caprice32"}
     if full and supported_full and artifact_ok:
         try:
             if adapter["name"] == "zesarux":
@@ -949,7 +1081,9 @@ def smoke_test(
                 report["evidence"].append("bounded ZEsarUX framebuffer capture and ZRCP input")
             else:
                 report.update(_run_caprice32(adapter, artifact, output_dir, source, seconds))
-                report["evidence"].append("bounded Caprice32 internal screenshots and virtual input")
+                report["evidence"].append(
+                    "bounded Caprice32 internal screenshots and virtual input"
+                )
             report["mode"] = "emulator_headless"
             report["runtime_verified"] = True
         except (OSError, subprocess.SubprocessError, ValueError) as exc:

@@ -13,8 +13,9 @@ from llmz80.studio.generator import (
     writing_prompt,
 )
 from llmz80.studio.models import TargetPlatform
-from llmz80.studio.samples import blank_project
 from llmz80.studio.reference import GameReference, ReferenceSource
+from llmz80.studio.samples import blank_project
+from tests.conftest import FakeMessageStream
 
 
 @pytest.fixture
@@ -85,9 +86,9 @@ def test_the_writing_prompt_carries_contract_design_and_hazards(project):
 
 
 def test_platform_notes_differ_per_machine():
-    assert "sdcccall(1)" in platform_notes("amstrad_cpc")
-    assert "sdcccall(1)" not in platform_notes("spectrum")
-    assert "bit_beep" in platform_notes("spectrum")
+    assert "sdcccall(1)" in platform_notes(blank_project("N", TargetPlatform.AMSTRAD_CPC))
+    assert "sdcccall(1)" not in platform_notes(blank_project("N", TargetPlatform.SPECTRUM))
+    assert "bit_beep" in platform_notes(blank_project("N", TargetPlatform.SPECTRUM))
 
 
 def test_repair_prompt_prefers_the_most_specific_evidence():
@@ -226,10 +227,10 @@ def test_write_program_narrates_before_a_slow_attempt_returns(tmp_path: Path, pr
         "the first progress line must arrive before the slow writer call it "
         "precedes finishes, not only before write_program returns"
     )
-    assert messages[0] == "intento 1: escribiendo..."
+    assert messages[0] == "attempt 1: writing..."
     assert messages[1] == (
-        "intento 1: build compiló, aceptación aprobada, animación sin observar, "
-        "ritmo sin observar, atributos sin observar, estado sin observar"
+        "attempt 1: build compiled, acceptance passed, animation not observed, "
+        "pacing not observed, attributes not observed, state not observed"
     )
 
 
@@ -556,9 +557,9 @@ class _FakeMessages:
         self.parsed = parsed
         self.calls = []
 
-    def parse(self, **kwargs):
+    def stream(self, **kwargs):
         self.calls.append(kwargs)
-        return type("Response", (), {"parsed_output": self.parsed})()
+        return FakeMessageStream(type("Response", (), {"parsed_output": self.parsed})())
 
 
 class _FakeClient:

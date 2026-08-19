@@ -20,7 +20,9 @@ def test_build_example_context_includes_support_files_and_makefile(tmp_path):
         encoding="utf-8",
     )
     (src_dir / "sprites.h").write_text("extern const unsigned char sprite[];\n", encoding="utf-8")
-    (src_dir / "sprites.c").write_text("const unsigned char sprite[] = { 0x00 };\n", encoding="utf-8")
+    (src_dir / "sprites.c").write_text(
+        "const unsigned char sprite[] = { 0x00 };\n", encoding="utf-8"
+    )
     (project_dir / "Makefile").write_text("include cfg/build_config.mk\n", encoding="utf-8")
 
     context = build_example_context(main_c, examples_dir, max_size=20000)

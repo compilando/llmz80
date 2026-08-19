@@ -185,6 +185,10 @@ ejecutar yo.** Suite: 948 pasan, 0 fallan.
   `resources/messages/messages.py:1275-1283`), así que `effort` se puede
   añadir después sin reescribir nada. El adaptador no lo pasa porque el
   defecto ya es el valor alto.
+  *Corregido 2026-08-17: `structured()` ya no llama a `parse` sino a `stream`
+  (un `max_tokens` grande no se puede pedir sin streaming), y la fusión
+  equivalente en ese camino está en `messages.py:1156`. La cita de arriba
+  sigue siendo correcta para `parse`; no es el camino que Studio toma.*
 - **Búsqueda web y `output_format` conviven** en la misma llamada: `parse`
   acepta `tools` y `system` junto al esquema. Que el servidor lo acepte en
   vivo sigue sin comprobarse: hace falta una clave.

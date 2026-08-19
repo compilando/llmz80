@@ -288,9 +288,7 @@ def test_the_refusal_reaches_the_repair_loop_as_actionable_feedback(
             else:
                 assert feedback and "plat_sprite" in feedback, feedback
                 body = DRAWS_SPRITE_MAIN
-            return ProgramSources(
-                summary="stub", files=[ProgramFile(name="main.c", body=body)]
-            )
+            return ProgramSources(summary="stub", files=[ProgramFile(name="main.c", body=body)])
 
     def verify(project, directory):
         render_project(project, directory / "build")
@@ -304,3 +302,70 @@ def test_the_refusal_reaches_the_repair_loop_as_actionable_feedback(
     assert "plat_sprite" in result.attempts[0].feedback
     assert result.attempts[1].build_passed is True
     assert result.accepted is True
+
+
+# ---------------------------------------------------------------------------
+# The same rule for terrain artwork, which is where it was actually noticed.
+# ---------------------------------------------------------------------------
+
+DRAWS_TILE_MAIN = (
+    '#include "platform.h"\n'
+    '#include "tiles.h"\n\n' + CONTRACT_STATE + "\n"
+    "void main(void) {\n"
+    "    plat_init();\n"
+    "    plat_tile(0, 0, TILE_FLOOR);\n"
+    "    while (1) { }\n"
+    "}\n"
+)
+
+
+def _tile_asset(directory: Path, asset_id: str = "brickwork") -> AssetSpec:
+    assets_dir = directory / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    image = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+    pixels = image.load()
+    for y in range(8):
+        for x in range(8):
+            if (x + y) % 2 == 0:
+                pixels[x, y] = (255, 0, 0, 255)
+    filename = f"{asset_id}.png"
+    image.save(assets_dir / filename)
+    return AssetSpec(
+        id=asset_id, kind="tileset", source=f"assets/{filename}", width=8, height=8, frames=1
+    )
+
+
+def test_a_program_that_draws_its_terrain_as_letters_is_refused_without_compiling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The defect a finished Arkanoid shipped with: bricks packed as artwork,
+    bricks drawn as the character 'B', every gate green."""
+    calls = _fake_toolchain(monkeypatch)
+    project, directory = _project_with_program(
+        tmp_path, name="TextTerrain", main_c=NO_SPRITE_MAIN, with_sprite=False
+    )
+    project.assets = [_tile_asset(directory)]
+    project.tiles[0].art = "brickwork"
+
+    build = build_project(project, directory / "build")
+
+    assert build.success is False
+    assert build.report["quality_pass"] is False
+    assert "plat_tile" in build.report["stderr"]
+    assert calls == []  # never reached the toolchain
+
+
+def test_the_same_project_with_a_program_that_draws_its_tiles_builds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    calls = _fake_toolchain(monkeypatch)
+    project, directory = _project_with_program(
+        tmp_path, name="ArtTerrain", main_c=DRAWS_TILE_MAIN, with_sprite=False
+    )
+    project.assets = [_tile_asset(directory)]
+    project.tiles[0].art = "brickwork"
+
+    build = build_project(project, directory / "build")
+
+    assert build.success is True, build.report.get("stderr") or build.report.get("stdout")
+    assert len(calls) == 1

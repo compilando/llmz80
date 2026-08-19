@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from importlib.metadata import entry_points
 from typing import Generic, Iterable, TypeVar
-
-from dataclasses import dataclass
 
 from .models import GameProject, TargetPlatform, VideoMode
 

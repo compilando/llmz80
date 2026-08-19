@@ -54,13 +54,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Callable, Iterable, Protocol, Sequence
 
 import numpy as np
 from PIL import Image
 
 from llmz80.studio.llm import structured
-from llmz80.studio.models import EntitySpec, GameProject, TargetPlatform, VideoMode
+from llmz80.studio.models import EntitySpec, GameProject, TargetPlatform, TileSpec, VideoMode
 from llmz80.studio.reference import GameReference
 from llmz80.studio.sprite_grid import (
     TRANSPARENT,
@@ -71,17 +71,60 @@ from llmz80.studio.sprite_grid import (
     palette_for,
     render_grid,
 )
-from llmz80.studio.spriting import ALPHA_THRESHOLD, SPRITE_SIZE
+from llmz80.studio.spriting import ALPHA_THRESHOLD, SPRITE_SIZE, TILE_SIZE
 
-#: One sheet holds a walk/patrol cycle: four poses is enough for every current
-#: entity kind (see `llmz80.studio.models.EntitySpec.kind`) without inflating
-#: the static-data budget `spriting.py`'s packer already enforces.
-FRAMES_PER_SHEET = 4
+#: How many poses a sheet holds when the design named none. One: a ball, a
+#: bullet, a paddle, a block. Most things in most games do not animate.
+#:
+#: This was four, for every sprite in every design, and it cost a real run.
+#: A Breakout for the CPC built, booted and played correctly and was refused
+#: five times, three of them because `g_anim_frame` never advanced -- which
+#: was true, and which the gate was right to say, because `sprite_frames[]`
+#: read `{4, 4}` and the art really did carry four poses. The design had
+#: declared `poses: []` for both its entities. A ball had been given a walk
+#: cycle it has no use for and then failed for not walking.
+POSES_WHEN_UNDECLARED = 1
 
-#: The sheet's real, final size: `FRAMES_PER_SHEET` frames of
-#: `spriting.SPRITE_SIZE` pixels each, side by side.
-SHEET_WIDTH = FRAMES_PER_SHEET * SPRITE_SIZE
-SHEET_HEIGHT = SPRITE_SIZE
+
+def poses_wanted(entity: "EntitySpec") -> int:
+    """How many poses this entity's sheet should hold.
+
+    `EntitySpec.poses` has existed since schema v4, documented as "named poses
+    the artwork carries: walk, jump, die", and nothing read it. This is what
+    reads it. A design that names none gets one frame, which is what a thing
+    that does not animate needs.
+    """
+    return len(entity.poses) or POSES_WHEN_UNDECLARED
+
+
+def sheet_size(frames: int) -> tuple[int, int]:
+    """The sheet's real, final size: `frames` frames side by side.
+
+    Derived rather than kept as two constants, because `AssetSpec` refuses a
+    sheet whose width is not a whole multiple of its frame count and the two
+    numbers therefore have to come from one.
+    """
+    return SPRITE_SIZE * frames, SPRITE_SIZE
+
+
+def animates(entities: "Iterable[EntitySpec]") -> bool:
+    """Whether anything here has more than one pose to cycle.
+
+    Takes the entities rather than the project, for the reason `probes._wanted`
+    gives for taking a mapping rather than one: the question needs nothing else,
+    and a narrow input is one a test can ask without building a whole valid
+    document around it.
+
+    One `g_anim_frame` serves the whole program, so one animated actor is
+    enough to give `feel.animation_report` something to judge -- and a design
+    where nothing animates gives it nothing, which is what it now abstains on
+    rather than demanding a counter move for no visible reason.
+
+    An entity carrying no sprite is not counted however many poses it names:
+    poses on artwork that does not exist animate nothing.
+    """
+    return any(entity.sprite is not None and poses_wanted(entity) > 1 for entity in entities)
+
 
 #: How many times `SpriteArtist.draw_frames` will ask the model again after a
 #: judged failure (see `_judge_frames`) before giving up. Set against its two
@@ -214,7 +257,7 @@ read as different characters.\
 """
 
 
-def _grid_contract(palette: GridPalette) -> str:
+def _grid_contract(palette: GridPalette, frames: int) -> str:
     """The one part of the request that is not negotiable, stated last.
 
     Same position and same reason as `_technical_constraints` on the image
@@ -224,13 +267,11 @@ def _grid_contract(palette: GridPalette) -> str:
     expressed, so the contract is only about shape and alphabet, and every
     line of it is checked by `sprite_grid.grid_errors` rather than hoped for.
     """
-    pens = "\n".join(
-        f"  '{index}' = RGB{pen}" for index, pen in enumerate(palette.pens)
-    )
+    pens = "\n".join(f"  '{index}' = RGB{pen}" for index, pen in enumerate(palette.pens))
     return (
         f"{TECHNICAL_REQUIREMENTS_HEADING} (these apply no matter what any style note "
         "above says, and override it where the two disagree):\n\n"
-        f"- Exactly {FRAMES_PER_SHEET} frames.\n"
+        f"- Exactly {frames} frame{'s' if frames != 1 else ''}.\n"
         f"- Each frame is exactly {SPRITE_SIZE} rows of exactly {SPRITE_SIZE} "
         "characters. Not one more, not one fewer, on any row of any frame.\n"
         f"- The only characters allowed are '{TRANSPARENT}' and "
@@ -264,12 +305,25 @@ def compose_grid_prompt(
     if entity.notes.strip():
         subject += f" ({entity.notes.strip()})"
     body = template.format(prompt=subject, width=SPRITE_SIZE, height=SPRITE_SIZE)
-    sheet = (
-        f"Draw {FRAMES_PER_SHEET} frames of this same character: one animation "
-        f"cycle, in order, each frame {SPRITE_SIZE}x{SPRITE_SIZE} pixels."
-    )
+    frames = poses_wanted(entity)
+    # A single-pose subject is asked for a picture, not for a cycle. Saying
+    # "one animation cycle" in front of a request for one frame is a
+    # contradiction the model has to resolve by guessing, and what it guessed
+    # was four.
+    if frames == 1:
+        sheet = (
+            f"Draw this character once, {SPRITE_SIZE}x{SPRITE_SIZE} pixels. It does "
+            "not animate: one pose is all the design asked for."
+        )
+    else:
+        named = ", ".join(entity.poses)
+        sheet = (
+            f"Draw {frames} frames of this same character: one animation cycle, in "
+            f"order, each frame {SPRITE_SIZE}x{SPRITE_SIZE} pixels. The design named "
+            f"these poses, in this order: {named}."
+        )
     return "\n\n".join(
-        [body, sheet, _style_context(project, entity, dossier), _grid_contract(palette)]
+        [body, sheet, _style_context(project, entity, dossier), _grid_contract(palette, frames)]
     )
 
 
@@ -299,7 +353,7 @@ class ClaudeGridSheetSource:
     ) -> str:
         return compose_grid_prompt(project, entity, dossier, palette_for(project))
 
-    def draw(self, project: GameProject, request: str) -> DrawnSheet:
+    def draw(self, project: GameProject, request: str, *, frames: int) -> DrawnSheet:
         palette = palette_for(project)
         grid = structured(
             self.client,
@@ -309,13 +363,13 @@ class ClaudeGridSheetSource:
             schema=SpriteSheetGrid,
             missing="the model did not return a sprite sheet",
         )
-        reason = grid_errors(grid, palette, frames_expected=FRAMES_PER_SHEET)
+        reason = grid_errors(grid, palette, frames_expected=frames)
         # Rendered whichever way the judgement went: a rejected sheet is
         # exactly the one somebody will want to look at, and `render_grid`
         # is built to survive the malformed input `frames_from_grid` refuses.
         sheet = render_grid(grid, palette)
-        frames = [] if reason is not None else frames_from_grid(grid, palette)
-        return DrawnSheet(frames=frames, sheet=sheet, reason=reason)
+        drawn = [] if reason is not None else frames_from_grid(grid, palette)
+        return DrawnSheet(frames=drawn, sheet=sheet, reason=reason)
 
 
 def _set_pixel_count(frame: Image.Image) -> int:
@@ -447,7 +501,7 @@ class DrawnFrames(list):
 
     def __init__(
         self,
-        frames: list[Image.Image] = (),
+        frames: Sequence[Image.Image] = (),
         *,
         sheet: Image.Image,
         sheets: list[Image.Image],
@@ -528,6 +582,22 @@ class SheetSource(Protocol):
         self, project: GameProject, entity: EntitySpec, dossier: GameReference | None
     ) -> str: ...
 
+    def draw(self, project: GameProject, request: str, *, frames: int) -> DrawnSheet: ...
+
+
+class TileSource(Protocol):
+    """Where a tile's 8x8 block comes from.
+
+    `SheetSource` one class over, for terrain instead of an entity. Two
+    protocols rather than one generic over the thing being drawn, because
+    the prompts differ in what they describe and the return types differ in
+    what they carry -- a tile has one pose and a sheet has a cycle.
+    """
+
+    def compose(
+        self, project: GameProject, tile: TileSpec, dossier: GameReference | None
+    ) -> str: ...
+
     def draw(self, project: GameProject, request: str) -> DrawnSheet: ...
 
 
@@ -553,7 +623,7 @@ class SpriteArtist:
         *,
         on_progress: Progress = None,
     ) -> DrawnFrames:
-        """One entity's sheet, cut into `FRAMES_PER_SHEET` frames of
+        """One entity's sheet, cut into one frame per pose the design named,
         `spriting.SPRITE_SIZE` x `spriting.SPRITE_SIZE` pixels each, judged
         and, if the judgement fails, redrawn -- up to `self.attempts` times
         in total -- the way `generator.write_program` repairs a program that
@@ -588,6 +658,10 @@ class SpriteArtist:
         """
         ident = entity.sprite or entity.id
         prompt = self.source.compose(project, entity, dossier)
+        # Asked once and threaded through every attempt: a retry that
+        # requested a different number of frames from the prompt it was
+        # repairing would be judged against a contract the model never saw.
+        frames = poses_wanted(entity)
         sheets: list[Image.Image] = []
         repairs: list[str] = []
         reason: str | None = None
@@ -597,8 +671,8 @@ class SpriteArtist:
                 if reason is None
                 else (prompt + "\n\nYOUR PREVIOUS SHEET WAS REJECTED\n\n" + reason)
             )
-            _say(on_progress, f"{ident}: intento {attempt}, dibujando...")
-            drawn = self.source.draw(project, request)
+            _say(on_progress, f"{ident}: attempt {attempt}, drawing...")
+            drawn = self.source.draw(project, request, frames=frames)
             sheets.append(drawn.sheet)
             # A source that can state its own refusal is believed first: it
             # saw the answer in the form the model actually wrote it, so it
@@ -615,10 +689,198 @@ class SpriteArtist:
                     repairs=repairs,
                 )
             repairs.append(reason)
-            _say(on_progress, f"{ident}: intento {attempt} rechazado, {_reason_summary(reason)}")
+            _say(on_progress, f"{ident}: attempt {attempt} refused, {_reason_summary(reason)}")
         raise SpriteDrawFailure(
             f"the sprite sheet could not be drawn in {self.attempts} attempt"
-            f"{'s' if self.attempts != 1 else ''}; the last reason was: " + reason,
+            f"{'s' if self.attempts != 1 else ''}; the last reason was: "
+            + (reason or "not recorded"),
+            sheets=sheets,
+            reasons=repairs,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Terrain. Everything above draws an actor; the rest of this module draws the
+# ground it stands on. Kept in the same file because it is the same craft and
+# the same machinery -- one grid of pen characters per cell -- and separate
+# from `SpriteArtist` because almost every decision differs: one frame instead
+# of four, eight pixels instead of sixteen, a solid block is a correct answer
+# rather than a failure, and the subject is a kind of terrain rather than a
+# character in motion.
+# ---------------------------------------------------------------------------
+
+#: What a tile artist is told about its job. The sprite system prompt's advice
+#: about silhouettes and animation cycles is actively wrong here: terrain does
+#: not move, and it is read as a texture rather than as a shape.
+TILE_SYSTEM_PROMPT = """\
+You are a pixel artist for 8-bit home computers. You draw terrain directly, as
+grids of characters, one character per pixel -- not as pictures of terrain.
+
+You are drawing one character cell: the smallest unit of ground, wall or
+scenery the machine has. It will be repeated across a screen, next to copies of
+itself, so what you draw has to read as a texture rather than as a picture --
+and its edges have to meet the copy beside it without a visible seam, unless a
+seam is the point (mortar between bricks is a seam that belongs).
+
+Unlike a sprite, a filled cell is a legitimate answer: a solid wall is solid.
+A cell with nothing in it is not -- that is the empty space this design draws
+as a character, and it would not have asked you for artwork.\
+"""
+
+
+def _tile_contract(palette: GridPalette) -> str:
+    """The non-negotiable half of a tile request, stated last for the same
+    reason `_grid_contract` states it last: what is read last carries most
+    weight, and a reference game's style note must not be the final word.
+
+    Every line is checked by `sprite_grid.grid_errors` at tile size rather
+    than hoped for -- including the one rule that differs from a sprite's,
+    that a solid cell is allowed.
+    """
+    pens = "\n".join(f"  '{index}' = RGB{pen}" for index, pen in enumerate(palette.pens))
+    return (
+        f"{TECHNICAL_REQUIREMENTS_HEADING} (these apply no matter what any style note "
+        "above says, and override it where the two disagree):\n\n"
+        "- Exactly 1 frame. Terrain does not animate.\n"
+        f"- The frame is exactly {TILE_SIZE} rows of exactly {TILE_SIZE} characters. "
+        "Not one more, not one fewer, on any row.\n"
+        f"- The only characters allowed are '{TRANSPARENT}' and "
+        f"{', '.join(repr(character) for character in palette.alphabet)}.\n\n"
+        "PENS:\n"
+        f"  '{TRANSPARENT}' = transparent; the paper shows through\n"
+        f"{pens}\n\n"
+        "A completely filled cell is allowed -- a solid wall is solid. A completely "
+        "transparent one is not: it would draw nothing, and this design would not have "
+        "asked for artwork it did not want to see."
+    )
+
+
+def compose_tile_prompt(
+    project: GameProject,
+    tile: TileSpec,
+    dossier: GameReference | None,
+    palette: GridPalette,
+) -> str:
+    """The request `ClaudeGridTileSource` draws one tile's cell from.
+
+    The same four-part shape as `compose_grid_prompt` -- the machine, the thing
+    being asked for, what is known about how it should look, and last the
+    contract that has to win -- with the subject taken from the design's own
+    words for this terrain (`TileSpec.art_note`) and its traits, which are the
+    design's vocabulary and not Studio's (`solid` means whatever the program
+    decides it means, and the artist reads it exactly as loosely as that).
+    """
+    template = (_RESOURCES / _grid_template_filename(project)).read_text(encoding="utf-8")
+    subject = f"{tile.id}, terrain drawn as one character cell"
+    if tile.art_note.strip():
+        subject += f": {tile.art_note.strip()}"
+    if tile.traits:
+        subject += f" [{', '.join(tile.traits)}]"
+    body = template.format(prompt=subject, width=TILE_SIZE, height=TILE_SIZE)
+    ask = (
+        f"Draw 1 frame: one {TILE_SIZE}x{TILE_SIZE} pixel cell of this terrain, which will "
+        "be repeated across the screen beside copies of itself. Mind the edges where the "
+        "copies meet."
+    )
+    style = _dossier_style_block(dossier) if dossier is not None else ""
+    return "\n\n".join(part for part in [body, ask, style, _tile_contract(palette)] if part)
+
+
+class ClaudeGridTileSource:
+    """Asks the model for one tile's cell, as a grid of pen characters.
+
+    `ClaudeGridSheetSource` for terrain: the same absence of things to repair
+    (no background, no halo, no crop, no rescale, no illegal colour), checked
+    at `spriting.TILE_SIZE` with `solid_allowed=True`. It answers with the same
+    `DrawnSheet` the sprite source does, so the retry loop that consumes it
+    does not have to know which kind of art it is repairing.
+    """
+
+    def __init__(self, client: object, model: str = "claude-opus-5") -> None:
+        self.client = client
+        self.model = model
+
+    def compose(self, project: GameProject, tile: TileSpec, dossier: GameReference | None) -> str:
+        return compose_tile_prompt(project, tile, dossier, palette_for(project))
+
+    def draw(self, project: GameProject, request: str) -> DrawnSheet:
+        palette = palette_for(project)
+        grid = structured(
+            self.client,
+            self.model,
+            system=TILE_SYSTEM_PROMPT,
+            user=request,
+            schema=SpriteSheetGrid,
+            missing="the model did not return a tile",
+        )
+        reason = grid_errors(grid, palette, frames_expected=1, size=TILE_SIZE, solid_allowed=True)
+        sheet = render_grid(grid, palette, size=TILE_SIZE)
+        frames = [] if reason is not None else frames_from_grid(grid, palette, size=TILE_SIZE)
+        return DrawnSheet(frames=frames, sheet=sheet, reason=reason)
+
+
+class TileArtist:
+    """Draws one tile's cell, retrying a refusal with the reason for it.
+
+    `SpriteArtist`'s loop for terrain, and a separate class rather than a
+    parameter on that one: what it narrates, what it judges and what it asks
+    for all differ, and the shared part is fifteen lines of "ask, check, ask
+    again with the reason". Bending `SpriteArtist` around a second kind of art
+    would mean a `judge` parameter, a size parameter and a subject that is
+    sometimes an entity and sometimes a tile -- three knobs to keep straight
+    at every call site, to save a loop a reader can hold in their head.
+
+    There is no pixel judge here, unlike `SpriteArtist`'s `_judge_frames`.
+    That check exists to catch what an *image model* did to a sprite (a solid
+    or blank frame recovered from a picture); on the grid path the same two
+    failures are already named precisely by `sprite_grid.grid_errors`, in the
+    grid's own terms, and the one of them that is legitimate for terrain -- a
+    solid cell -- is allowed there rather than re-refused here.
+    """
+
+    def __init__(self, source: TileSource, *, attempts: int = MAX_DRAW_ATTEMPTS) -> None:
+        self.source = source
+        self.attempts = max(1, attempts)
+
+    def draw_tile(
+        self,
+        project: GameProject,
+        tile: TileSpec,
+        dossier: GameReference | None = None,
+        *,
+        on_progress: Progress = None,
+    ) -> DrawnFrames:
+        prompt = self.source.compose(project, tile, dossier)
+        sheets: list[Image.Image] = []
+        repairs: list[str] = []
+        reason: str | None = None
+        for attempt in range(1, self.attempts + 1):
+            request = (
+                prompt
+                if reason is None
+                else (prompt + "\n\nYOUR PREVIOUS TILE WAS REJECTED\n\n" + reason)
+            )
+            _say(on_progress, f"{tile.id}: attempt {attempt}, drawing terrain...")
+            drawn = self.source.draw(project, request)
+            sheets.append(drawn.sheet)
+            reason = drawn.reason
+            if reason is None:
+                return DrawnFrames(
+                    drawn.frames,
+                    sheet=drawn.sheet,
+                    sheets=sheets,
+                    attempts=attempt,
+                    repairs=repairs,
+                )
+            repairs.append(reason)
+            _say(
+                on_progress,
+                f"{tile.id}: attempt {attempt} refused, {_reason_summary(reason)}",
+            )
+        raise SpriteDrawFailure(
+            f"the tile could not be drawn in {self.attempts} attempt"
+            f"{'s' if self.attempts != 1 else ''}; the last reason was: "
+            + (reason or "not recorded"),
             sheets=sheets,
             reasons=repairs,
         )

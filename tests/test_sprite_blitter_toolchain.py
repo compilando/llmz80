@@ -53,11 +53,11 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from llm_z80 import resolve_cpct_path
+from llmz80.core.state_contract import REQUIRED_SYMBOLS, SYMBOLS_BY_NAME, required_declarations
+from llmz80.core.toolchain import resolve_cpct_path
 from llmz80.quality.emulator_smoke import smoke_test
 from llmz80.studio import compiler as compiler_module
 from llmz80.studio.models import AssetSpec, TargetPlatform
-from llmz80.core.state_contract import SYMBOLS_BY_NAME, REQUIRED_SYMBOLS, required_declarations
 from llmz80.studio.services import StudioService
 from llmz80.studio.spriting import pack_spectrum
 
@@ -535,7 +535,7 @@ def _pre_split_render_sprite_header(sprites):
     prove the real toolchain rejects this shape, on purpose, when it comes
     back.
     """
-    from llmz80.studio.sprite_header import _checked_id, _c_byte_array
+    from llmz80.studio.sprite_header import _c_byte_array, _checked_id
 
     ids = [_checked_id(sprite_id) for sprite_id in sprites]
     count = len(ids)
@@ -551,6 +551,15 @@ def _pre_split_render_sprite_header(sprites):
         lines.append(f"#define SPRITE_{sprite_id.upper()} {index}")
     lines.append(f"#define SPRITE_COUNT {count}")
     lines.append(f"#define SPRITE_BYTES_WIDE {bytes_wide}")
+    # Not part of the shape this fixture reproduces -- they came later, with
+    # pre-shifted art -- but `platform.c` reads them, so a header without them
+    # fails to *compile* and never reaches the linker error this test is about.
+    # The fixture's job is to put the definitions back, not to also roll the
+    # library's interface back to the same date.
+    lines.append(f"#define SPRITE_SHIFTS {next(iter({p.shifts for p in sprites.values()}), 1)}")
+    lines.append(
+        "#define SPRITE_SHIFT_STRIDE " f"{next((p.bytes_per_block for p in sprites.values()), 0)}"
+    )
     lines.append("")
     if count == 0:
         lines.append("#endif")

@@ -27,7 +27,18 @@ from typing import Any
 
 from llmz80.core.state_contract import contract_prompt
 
-from .models import AssetSpec, GameProject
+from .codegen import (
+    SCROLL_ROW_BYTES,
+    SCROLL_STEP_BYTES,
+    declared_colours,
+    max_scroll_origin,
+    max_sprite_px,
+    max_sprite_py,
+    scrolls_in_hardware,
+    sprites_per_frame,
+    unresolved_colours,
+)
+from .models import AssetSpec, GameProject, TileSpec, VideoMode
 from .observation import observation_script
 from .runtime_exam import (
     RuntimeExam,
@@ -38,7 +49,7 @@ from .runtime_exam import (
     examinable_symbols,
     usable_assertions,
 )
-from .spriting import is_blitter_sprite
+from .spriting import is_blitter_sprite, is_tile_art
 
 #: How a step's expectation compares the reading against what it expects.
 #:
@@ -68,6 +79,28 @@ def blitter_sprites(project: GameProject) -> list[AssetSpec]:
     that filter lives in `spriting.py` rather than being duplicated here.
     """
     return [asset for asset in project.assets if is_blitter_sprite(asset)]
+
+
+def tile_art(project: GameProject) -> list[tuple[TileSpec, AssetSpec]]:
+    """Every tile `render_project` will really emit a TILE_<ID> for, paired
+    with the artwork it wears.
+
+    `blitter_sprites`' rule for terrain, and it needs the pair rather than
+    just the asset because the constant is named after the *tile*: a design
+    reads its terrain as "'B' is ladrillo", so `TILE_LADRILLO` is the name the
+    writer can act on, while the asset id is a filename it never sees. Two
+    tiles are free to wear the same artwork -- each still gets its own
+    constant, and its own declared colour.
+
+    Filtered through `spriting.is_tile_art`, so this can never advertise a
+    constant the header will not define (see `is_blitter_sprite`).
+    """
+    art_by_id = {asset.id: asset for asset in project.assets if is_tile_art(asset)}
+    return [
+        (tile, art_by_id[tile.art])
+        for tile in project.tiles
+        if tile.art is not None and tile.art in art_by_id
+    ]
 
 
 def predicate(expectation: Any) -> dict[str, Any]:
@@ -140,10 +173,24 @@ def step_mismatches(step: dict[str, Any], readings: dict[str, dict[str, Any]]) -
             target = (readings.get(baseline) or {}).get(name)
             if target is None:
                 mismatches.append(
-                    f"{name}: nothing was read at {baseline}, so there is nothing to compare against"
+                    f"{name}: nothing was read at {baseline}, so there is nothing "
+                    "to compare against"
                 )
                 continue
-        actual = read.get(name)
+        elif target is None:
+            # An expectation that names neither a value nor a baseline has
+            # nothing to compare against, and `_satisfied` cannot say so: under
+            # `at_least` it evaluated `actual >= None` and raised `TypeError`
+            # out of the gate, which `services.runtime_test` does not catch, so
+            # one malformed rule ended the whole run instead of failing its own
+            # step. `is None` rather than a falsy test, because 0 is the
+            # commonest number a design asks a counter to be.
+            mismatches.append(
+                f"{name}: the expectation asks for {compare} but names no value "
+                "and no earlier step to compare against"
+            )
+            continue
+        actual: int | None = read.get(name)
         if actual is None:
             mismatches.append(f"{name}: expected {_said(compare, target, baseline)}, read nothing")
             continue
@@ -321,6 +368,24 @@ def design_prompt(project: GameProject) -> str:
             )
         lines.append("")
 
+    # Stated for every design, not only one with artwork: the gap this is
+    # about is left by any work that happens before the game loop -- painting a
+    # screen, building a level, waiting on a title -- and `plat_wait_frame`
+    # charges it to the loop's first iteration and keeps it as a maximum for the
+    # whole session. Ten consecutive program attempts across two runs were
+    # failed by the pacing gate for exactly that, each one reading its worst
+    # cost at the step where its title screen handed over to the game.
+    lines.append(
+        "Frame pacing. plat_wait_frame reports how many display frames the previous "
+        "iteration of your loop overran by, and the worst it ever sees is read out of "
+        "memory and refused above 1. Work done before the loop starts -- painting a "
+        "screen, building a level, polling tightly for a key on a title -- leaves a gap "
+        "that is charged to whoever calls plat_wait_frame next, so call "
+        "plat_frame_baseline() once after any of it and before the loop that follows. "
+        "It restarts the measurement and charges nobody for the gap it closes."
+    )
+    lines.append("")
+
     lines.append("Controls. game_config.h defines one bit per binding:")
     for name, key in project.controls.bindings.items():
         lines.append(f"  INPUT_{name.upper():<12} key {key}")
@@ -331,14 +396,50 @@ def design_prompt(project: GameProject) -> str:
     # the `if sprites` branch below, the way the sprite-only half of drawing
     # does. A design with no sprites (the common case: a new project starts
     # with none) still needs to be told how its screen gets drawn at all.
+    # `tile_art`, not `project.tiles`: only a tile whose artwork really packs
+    # gets a TILE_<ID> in tiles.h (see that function), and advertising a
+    # constant the header never defines is a prompt that lies to the writer.
+    drawn_tiles = {tile.id for tile, _ in tile_art(project)}
     lines.append(
         "Terrain characters, as they appear in the screens below. Draw one with "
         "plat_cell(col, row, character):"
     )
     for tile in project.tiles:
         traits = f" [{', '.join(tile.traits)}]" if tile.traits else ""
-        lines.append(f"  '{tile.char}' is {tile.id}{traits}")
+        art = (
+            f" -- has artwork: draw it with plat_tile(col, row, TILE_{tile.id.upper()})"
+            if tile.id in drawn_tiles
+            else ""
+        )
+        lines.append(f"  '{tile.char}' is {tile.id}{traits}{art}")
     lines.append("")
+    if drawn_tiles:
+        # Said as an obligation for the same reason the sprite section is: a
+        # program that packs terrain artwork and then draws its terrain as
+        # letters fails verification (compiler.tile_usage_errors), and that is
+        # exactly what a finished, gate-passing game did before this line
+        # existed -- brickwork drawn as the character 'B'.
+        lines.append(
+            "The terrain above that has artwork must be drawn with plat_tile, not with "
+            "plat_cell and its character: a tile covers exactly one character cell, so "
+            "one call per cell, and the character stays only as the design's way of "
+            "writing the screen down. This is mandatory, not optional -- a program that "
+            "packs terrain artwork and never calls plat_tile fails verification. Terrain "
+            "with no artwork listed keeps plat_cell."
+        )
+        # What terrain art costs, said where the obligation is given. A screenful
+        # of brickwork is a hundred cells of eight bytes and an attribute each,
+        # and a loop that repaints all of it every frame overruns its display
+        # frame -- which the pacing gate then reads out of the machine as a
+        # number, with nothing to say the terrain was the reason. A real run
+        # spent four attempts on exactly that.
+        lines.append(
+            "  Draw each cell once, when the screen is built or when that cell changes, "
+            "and never repaint the whole field inside the game loop: a screen of terrain "
+            "is a hundred or more cells, and repainting it every frame overruns the "
+            "display frame, which is measured and refused."
+        )
+        lines.append("")
 
     # "Actors" would presuppose every entity plays that role; `kind` is free
     # vocabulary a design coins for itself (a door, a switch, a collectible),
@@ -374,6 +475,39 @@ def design_prompt(project: GameProject) -> str:
             lines.append(f"  {ctype} {observable.symbol};  {observable.meaning}")
         lines.append("")
 
+    # Scrolling is offered only to a design that declared it, and only on a
+    # machine that has it -- `structure._fit_errors` has already refused the
+    # other combination, so reaching this line means both are true. Prompt
+    # space is not free and a call a design has no use for is one more thing
+    # for the writer to reach for by mistake.
+    if project.presentation.scrolling and scrolls_in_hardware(project.target.platform):
+        step = SCROLL_STEP_BYTES[project.target.platform]
+        row = SCROLL_ROW_BYTES[project.target.platform]
+        lines.append(
+            f"Scrolling: plat_scroll_to(origin) moves the whole picture. `origin` is a "
+            f"byte offset into video memory, rounded down to {step} bytes -- this "
+            "machine's hardware step -- and it costs one register write, not a redraw."
+        )
+        lines.append(
+            f"  What the step is worth: {step} bytes is "
+            f"{step * (2 if project.target.video_mode is VideoMode.CPC_MODE_0 else 4)} "
+            f"pixels across, and {row} bytes (one screen row) moves the picture up by "
+            "one character row. There is nothing finer; do not write a loop expecting "
+            "single pixels."
+        )
+        lines.append(
+            "  The edge that scrolls in is yours to draw. The hardware only changes "
+            "where the display starts reading, so the column or row arriving at the "
+            "far side shows whatever was already in that memory -- draw it before or "
+            f"as you scroll, or the game runs with a stripe of rubbish down one side."
+        )
+        lines.append(
+            f"  origin runs 0 to {max_scroll_origin(project.target.platform)}; past "
+            "that the video page would have to change too, which this library does not "
+            "do. Plan the playfield to fit inside that."
+        )
+        lines.append("")
+
     # blitter_sprites(), not project.assets: only what it returns gets a real
     # SPRITE_<ID> constant in sprites.h (see its own docstring), so advertising
     # anything wider here would promise a constant the header never defines.
@@ -382,9 +516,127 @@ def design_prompt(project: GameProject) -> str:
         lines.append(
             "Sprites: draw one with plat_sprite(col, row, sprite, frame). This is not "
             "optional once a design has sprites: a program that packs sprites below but "
-            "never calls plat_sprite fails verification (see compiler.py's "
+            "never draws with them fails verification (see compiler.py's "
             "check for it). Each sprite below is a SPRITE_<ID> constant and a frame "
             "count from sprites.h."
+        )
+        # The pixel-row blitter, offered as a choice with the cost stated
+        # rather than as the better option, because it is not always the
+        # better option: it is slower per call, and a thing that lives on the
+        # grid gains nothing from it. A writer told only "smooth is better"
+        # would put the whole screen through it.
+        lines.append(
+            "  plat_sprite_py(col, py, sprite, frame) is the same sprite at a pixel "
+            "row: py is a scanline, so py and py+1 are one pixel apart instead of "
+            "eight, and the column is still a character column. Use it for anything "
+            "the player watches rise or fall -- a jump, a fall, a lift, a ball -- and "
+            "keep plat_sprite for anything that sits on the grid, which is cheaper. "
+            f"py runs 0 to {max_sprite_py(project.target.platform)} on this machine "
+            "(also game_config.h's MAX_SPRITE_PY); out of range draws nothing."
+        )
+        lines.append(
+            "  A sprite at a py that is not a multiple of 8 covers three character "
+            "rows rather than two, so erase all three when it moves, and expect it to "
+            "take the colour of six cells rather than four. That is what smooth "
+            "vertical movement costs on this machine, and it is the cost every game "
+            "of the era paid."
+        )
+        # The horizontal blitter, and what it does when the design did not pay
+        # for it. Said plainly rather than left to be discovered: a program
+        # that used it expecting pixel steps on a project packed for one
+        # position would look like a broken blitter rather than like a design
+        # decision, and the writer cannot see game.yml.
+        smooth = project.presentation.smooth_horizontal
+        # The measured budget, because a writer told a call exists and not told
+        # what it costs will use it for everything on screen. See
+        # `codegen.SPRITES_PER_FRAME` for the readings these come from.
+        cell_budget = sprites_per_frame(project.target.platform, pixel_column=False)
+        pixel_budget = sprites_per_frame(project.target.platform, pixel_column=True)
+        moving_budget = sprites_per_frame(project.target.platform, pixel_column=True, moving=True)
+        # Where the flicker came from, said before the budget: a real generated
+        # game put its erase at the top of the loop and its draw at the bottom,
+        # so the actor was missing from the picture for the whole of the
+        # collision and scoring work between them, and the beam caught the gap.
+        lines.append(
+            "  When to draw, and it matters more than which call you use: do all "
+            "your drawing in the few lines *straight after* plat_wait_frame, before "
+            "input and before any game logic. The screen is read out while your loop "
+            "runs, so an actor rubbed out at the top of the loop and redrawn at the "
+            "bottom is missing from the picture for everything in between, and it "
+            "flickers. Erase and redraw together, first; then think."
+        )
+        lines.append(
+            "  How to erase: save what is behind the sprite and put it back. Declare "
+            "`unsigned char under[SPRITE_UNDER_BYTES];` for each moving actor, then "
+            "every frame call plat_restore_under(old_px, old_py, under) to rub it "
+            "out, plat_save_under(px, py, under) to remember the new place, and then "
+            "draw. Do not repaint the terrain the actor covered instead: that costs "
+            "about twice the byte writes and only works while the background really "
+            "is terrain -- not text, not another sprite."
+        )
+        lines.append(
+            "  Restore in the reverse of the order you drew, wherever actors can "
+            "overlap. save_under saves whatever is on the screen, so a sprite drawn "
+            "over another saved that other one as its background, and putting them "
+            "back the wrong way round stamps a copy of the top one onto the one "
+            "underneath."
+        )
+        lines.append(
+            f"  How many you can draw: about {cell_budget} sprites per frame with "
+            f"plat_sprite or plat_sprite_py on this machine, and about {pixel_budget} "
+            "with plat_sprite_px, which is dearer. Measured on the real hardware, with "
+            "room left for your own logic. Past that the loop stops fitting in its "
+            "frame and the pacing gate refuses the program -- so if a design needs "
+            "more things on screen than that, move the few that a player watches and "
+            "draw the rest as terrain with plat_tile."
+        )
+        lines.append(
+            f"  How many you can move: about {moving_budget}. A sprite that moves "
+            "costs far more than one that is drawn, because it must also put back "
+            "what it covered -- plat_save_under before it is drawn and "
+            "plat_restore_under before it moves away -- and that pair is the larger "
+            "half of the bill. The figure above is for drawing alone: use this one "
+            "for anything that changes position, and that one only for what stays "
+            "put. Both measured on the real hardware."
+        )
+        lines.append(
+            "  plat_sprite_px(px, py, sprite, frame) takes a pixel column too. "
+            + (
+                "This design asked for smooth horizontal movement, so the art is "
+                f"packed at every pixel position and px really does step by one; "
+                f"px runs 0 to {max_sprite_px(project)}."
+                if smooth
+                else "This design did not ask for smooth horizontal movement "
+                "(presentation.smooth_horizontal is false), so the art is packed "
+                "for one position only and px is rounded down to the byte it falls "
+                "in -- the call works and draws, it just steps by 8 pixels across. "
+                "Prefer plat_sprite or plat_sprite_py here; they say what is really "
+                "happening."
+            )
+        )
+        # The footprint, stated because a real run got it wrong in a way that
+        # compiled and passed every gate: a program drew its 16-pixel bat at
+        # `col` and again at `col + 1`, so the sprite overlapped itself by eight
+        # pixels and the bat reached the screen looking like a dumbbell.
+        # Nothing had told the writer a sprite is wider than a cell.
+        lines.append(
+            "  Each sprite covers 2x2 character cells (16x16 pixels) from the cell you "
+            "name, so two calls one column apart draw the same art overlapping itself by "
+            "half. Space sprites at least two columns and two rows apart -- or, with "
+            "plat_sprite_py, two columns and 16 pixel rows -- and give something wider "
+            "than 16 pixels one sprite per 2x2 block rather than the same sprite drawn "
+            "again next door."
+        )
+        # The state contract already declares what `g_anim_frame` means and the
+        # runtime gate already reads it, but nothing told the writer *when* to
+        # touch it. Three attempts of one run drew a correctly animated bat and
+        # left the counter at zero, and the gate could only report the number.
+        lines.append(
+            "  Advance g_anim_frame every time you redraw an actor that is moving, and "
+            "pass it (masked to the sprite's frame count) as the frame argument of "
+            "whichever of the two you call: it is read straight out of memory while the "
+            "game runs, and a program whose art cycles while that number stands still "
+            "fails verification."
         )
         for asset in sprites:
             wearers = [entity.id for entity in project.entities if entity.sprite == asset.id]
@@ -394,6 +646,36 @@ def design_prompt(project: GameProject) -> str:
                 f"  {asset.id}: SPRITE_{asset.id.upper()}, {asset.frames} {frame_word}{worn}"
             )
         lines.append("")
+
+    if project.presentation.palette:
+        # Terrain and sprite artwork already carry their declared colour --
+        # `compiler.render_project` bakes it into the attribute tables -- so
+        # what is left for the writer is everything it draws itself: the score
+        # line, a title, a tile still drawn as a character. plat_ink is how,
+        # and COLOUR_<ID> is what to pass it (game_config.h defines one per
+        # entry below).
+        lines.append(
+            "Colours this design named. plat_ink(COLOUR_<ID>) sets what every later "
+            "plat_cell and plat_text is drawn in, and returns the previous value so you "
+            "can put it back. Artwork already carries its own colour; this is for the "
+            "text and the cells you draw yourself:"
+        )
+        for entry, _ in declared_colours(project):
+            lines.append(f"  COLOUR_{entry.id.upper()}  {entry.colour}")
+        lines.append("")
+        # Named, and not offered. The design asked for a colour this machine
+        # cannot show, so no macro exists -- and the writer is told which
+        # rather than left to notice one missing from a list it never saw whole.
+        missing = unresolved_colours(project)
+        if missing:
+            lines.append(
+                "This design also named "
+                + ", ".join(f"{entry.id} ({entry.colour})" for entry in missing)
+                + ", which this machine cannot show: there is no macro for them and "
+                "nothing to pass plat_ink. Draw those things in one of the colours "
+                "above."
+            )
+            lines.append("")
 
     if project.audio.effects:
         lines.append(
@@ -438,19 +720,44 @@ def design_prompt(project: GameProject) -> str:
     # `generator.writing_prompt` appends this design prompt first and
     # `library_interface()` -- the actual header text -- later in the same
     # message. It orients the writer to what is coming, it does not repeat it.
+    # Listed, not alluded to. This block used to say "Studio writes
+    # game_config.h with these constants" and name none of them, so a Breakout
+    # attempt redefined FIELD_TOP -- which the header already defines -- and
+    # the redefinition warning failed the build. A macro the writer is not
+    # shown is a macro it will invent.
+    #
+    # Read back out of the rendered header rather than rebuilt from the fields
+    # it came from, so the two cannot list different things: this *is* the
+    # header, with the `#define` stripped.
+    from .codegen import render_config_header
+
+    drawn = bool(blitter_sprites(project))
+    lines.extend(["", "game_config.h defines these, and you must not redefine any of them:"])
+    for line in render_config_header(project).splitlines():
+        parts = line.split(maxsplit=2)
+        if len(parts) != 3 or parts[0] != "#define" or parts[1].startswith("LLMZ80_"):
+            continue
+        # A design with no artwork has no use for the sprite macros, and a
+        # writer shown SPRITE_UNDER_BYTES for a game with no sprites has been
+        # told about something it does not have.
+        if not drawn and "SPRITE" in parts[1]:
+            continue
+        lines.append(f"  {parts[1]} {parts[2]}")
     lines.extend(
         [
             "",
-            "Studio writes game_config.h with these constants, and game_state.h",
-            "declaring the contract and this design's observables, into the same",
-            "directory as your sources. A platform library is there too:",
+            "game_state.h declares the contract and this design's observables, in the",
+            "same directory as your sources. A platform library is there too:",
             "platform.h documents what it offers.",
         ]
     )
-    if sprites:
+    mandatory = [
+        name for name, needed in (("plat_sprite", sprites), ("plat_tile", drawn_tiles)) if needed
+    ]
+    if mandatory:
         lines.append(
-            "Use as much of it as helps, except plat_sprite: this design's sprites "
-            "make it mandatory, not optional (see above)."
+            f"Use as much of it as helps, except {' and '.join(mandatory)}: this design's "
+            "artwork makes them mandatory, not optional (see above)."
         )
     else:
         lines.append("Use it or don't.")

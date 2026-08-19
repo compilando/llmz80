@@ -37,7 +37,8 @@ def score_candidate(run_dir: Path) -> dict[str, Any]:
         and (runtime_pass if runtime_required else True)
     )
     return {
-        "run_dir": str(run_dir), "score": score,
+        "run_dir": str(run_dir),
+        "score": score,
         "quality_pass": quality_pass,
         "runtime_verified": bool(emulator.get("runtime_verified")),
         "program_binary_size": binary,
@@ -48,11 +49,13 @@ def select_candidate(run_dirs: Iterable[Path]) -> dict[str, Any]:
     candidates = [score_candidate(path) for path in run_dirs]
     if not candidates:
         raise ValueError("at least one candidate is required")
-    candidates.sort(key=lambda item: (
-        -item["score"],
-        item["program_binary_size"] if item["program_binary_size"] is not None else 10**9,
-        item["run_dir"],
-    ))
+    candidates.sort(
+        key=lambda item: (
+            -item["score"],
+            item["program_binary_size"] if item["program_binary_size"] is not None else 10**9,
+            item["run_dir"],
+        )
+    )
     return {"schema_version": 1, "selected": candidates[0], "candidates": candidates}
 
 

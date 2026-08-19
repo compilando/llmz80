@@ -6,53 +6,71 @@ import json
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+
 from PIL import Image
 
-from llmz80.core.project_mode import create_project_layout
 from llmz80.core.build_quality import build_report, select_fresh_artifact, write_build_report
+from llmz80.core.project_mode import create_project_layout
+from llmz80.core.toolchain import prepare_amstrad_cpc_build_project, resolve_cpct_path
 from llmz80.utils.config import load_config
 
-from .acceptance import blitter_sprites, generation_prompt
-from .codegen import (
-    library_sources,
-    render_config_header,
-    render_state_header,
-)
-from .structure import playfield
-from .models import GameProject, TargetPlatform, VideoMode
+from .acceptance import blitter_sprites, generation_prompt, tile_art
+from .codegen import library_sources, render_config_header, render_state_header
+from .models import GameProject, TargetPlatform
+from .palette import cpc_mode as mode_of
+from .palette import cpc_rgb, declared_attribute
 from .probes import contract_failures, write_probe_report
 from .sprite_header import render_sprite_header, render_sprite_source
 from .sprite_sheet import split_frames
-from .spriting import PackedSprite, is_blitter_sprite, pack_cpc, pack_spectrum
+from .spriting import (
+    PackedSprite,
+    PackedTile,
+    is_blitter_sprite,
+    is_tile_art,
+    pack_cpc,
+    pack_cpc_tile,
+    pack_spectrum,
+    pack_spectrum_tile,
+    shift_count,
+)
+from .structure import playfield
+from .tile_header import render_tile_header, render_tile_source
 
-#: A palette to quantise CPC sprite pixels against (see `spriting.pack_cpc`).
-#: Two other sources were considered and rejected for now:
-#:
-#: - `PresentationSpec.palette` (models.py) is a list of raw ints with no
-#:   defined meaning yet -- it is explicitly documented as unused. Treating
-#:   it as RGB here would invent a contract before the task that owns colour
-#:   has written one.
-#: - The pre-Studio `image_utils.get_palette_for_platform` (repo root) lives
-#:   outside the `llmz80` package, pulls in numpy/scipy, calls `sys.exit(1)`
-#:   at import time if `resources/platforms.yml` is missing, and its own CPC
-#:   colour table has gaps (no RGB past firmware colour 21). Importing it
-#:   here would be a layering violation in exchange for an unreliable table.
-#:
-#: So this is a small fixed default, deliberately matching the four hardware
-#: pens `cpc/platform.c`'s `apply_palette()` actually programs at runtime
-#: (HW_BLACK, HW_BLUE, HW_BRIGHT_YELLOW, HW_WHITE): what the packer quantises
-#: sprites against is then what the machine really shows, in both CPC video
-#: modes (mode 1 uses exactly these four pens; mode 0 only ever produces
-#: these same four pen indices too, since no more hardware pens are actually
-#: set). Real per-design colour selection belongs to a later task.
-CPC_DEFAULT_PALETTE: list[tuple[int, int, int]] = [
-    (0, 0, 0),  # HW_BLACK
-    (0, 0, 255),  # HW_BLUE
-    (255, 255, 0),  # HW_BRIGHT_YELLOW
-    (255, 255, 255),  # HW_WHITE
-]
+
+def prepare_program_source(source: str, platform: TargetPlatform) -> tuple[str, list[str]]:
+    """The program's own C, with the fixes this toolchain always needs applied.
+
+    Small, local, deterministic rewrites that no design decision depends on: a
+    byte constant between 128 and 255 given the cast SDCC wants, a CPCtelera
+    call spelled the way the installed CPCtelera spells it. `utils/helpers.py`
+    has held them since before Studio existed, `tests/test_runtime_contracts.py`
+    proves them against the real toolchain, and until now nothing called them.
+
+    That gap cost a run. A basketball game's fourth attempt compiled, produced
+    a DSK, and was refused for `warning 158: overflow in implicit constant
+    conversion` -- which is exactly what `_cast_high_byte_constants` exists to
+    silence. The writer then spent its last attempt on a warning the build
+    could have fixed itself.
+
+    Applied to the program's own sources only, never to the platform library:
+    the library is ours and already correct, and rewriting it would make a
+    diagnostic point at a line nobody wrote.
+
+    What changed is returned rather than done in silence. A build that quietly
+    rewrites the program it was handed is one whose line numbers no longer
+    match what the model sent, and `build_report` carries the list so a reader
+    can tell a fix from a coincidence.
+    """
+    from llmz80.utils.helpers import (
+        apply_deterministic_cpc_fixes,
+        apply_deterministic_spectrum_fixes,
+    )
+
+    if platform is TargetPlatform.SPECTRUM:
+        return apply_deterministic_spectrum_fixes(source)
+    return apply_deterministic_cpc_fixes(source)
 
 
 @dataclass(frozen=True)
@@ -121,23 +139,36 @@ def packed_sprite_bytes(packed_sprites: dict[str, PackedSprite]) -> int:
     return sum(len(sprite.data) + len(sprite.mask) for sprite in packed_sprites.values())
 
 
-def validate_sprite_budget(project: GameProject, packed_sprites: dict[str, PackedSprite]) -> None:
-    """Refuse a design whose packed sprites alone blow the static data budget.
+def validate_sprite_budget(
+    project: GameProject,
+    packed_sprites: dict[str, PackedSprite],
+    packed_tiles: dict[str, PackedTile] | None = None,
+) -> None:
+    """Refuse a design whose packed artwork alone blows the static data budget.
 
-    Only sprites are weighed against their reserved share here -- see
-    `SPRITE_STATIC_DATA_SHARE` for why sprites cannot be allowed the whole
-    budget. Nothing else Studio scaffolds is sized against this ceiling; the
-    program's own tables are the program's business.
+    Artwork is weighed as one thing, sprites and terrain together, because the
+    ceiling they are measured against is the machine's rather than each kind's
+    own: eight bytes of brickwork and eight bytes of hero cost the same eight
+    bytes twice. See `SPRITE_STATIC_DATA_SHARE` for why artwork cannot be
+    allowed the whole budget. Nothing else Studio scaffolds is sized against
+    this ceiling; the program's own tables are the program's business.
+
+    `packed_tiles` is optional so the call sites and tests that predate
+    terrain artwork keep meaning what they meant -- a project with no tile art
+    weighs exactly what it used to.
     """
-    sprite_bytes = packed_sprite_bytes(packed_sprites)
-    sprite_budget = int(project.budgets.static_data_bytes * SPRITE_STATIC_DATA_SHARE)
-    if sprite_bytes > sprite_budget:
+    art_bytes = packed_sprite_bytes(packed_sprites) + sum(
+        len(tile.data) for tile in (packed_tiles or {}).values()
+    )
+    art_budget = int(project.budgets.static_data_bytes * SPRITE_STATIC_DATA_SHARE)
+    if art_bytes > art_budget:
         raise ValueError(
-            f"packed sprites are {sprite_bytes} bytes but the sprite budget is "
-            f"{sprite_budget} bytes -- {int(SPRITE_STATIC_DATA_SHARE * 100)}% of the "
+            f"packed artwork is {art_bytes} bytes but the artwork budget is "
+            f"{art_budget} bytes -- {int(SPRITE_STATIC_DATA_SHARE * 100)}% of the "
             f"{project.budgets.static_data_bytes} byte budgets.static_data_bytes, the rest "
             "reserved for the program's own tables, screen grids and generated config that "
-            "share the same budget. Drop a frame or an entity, or raise static_data_bytes."
+            "share the same budget. Drop a frame, an entity or a tile's art, or raise "
+            "static_data_bytes."
         )
 
 
@@ -153,12 +184,24 @@ _COMMENT_OR_STRING_RE = re.compile(
     r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\n]*|/\*.*?\*/', re.DOTALL
 )
 
-#: A call to `plat_sprite`, the one function `resources/studio_lib/*/platform.c`
-#: exposes for drawing an entity's art (see `platform.h`'s declaration and
-#: `acceptance.py`'s "Sprites:" prompt line, which tells the writer this exact
-#: name). Matched with a word boundary and an open paren so a substring like
-#: `my_plat_sprite_helper(` does not count.
-_SPRITE_CALL_RE = re.compile(r"\bplat_sprite\s*\(")
+#: The blitters `resources/studio_lib/*/platform.c` exposes for drawing an
+#: entity's art. `plat_sprite` takes a character cell, `plat_sprite_py` a pixel
+#: row, `plat_sprite_px` a pixel row and column; `platform.h` declares all
+#: three and `acceptance.py`'s "Sprites:" prompt lines name them.
+_SPRITE_BLITTERS = ("plat_sprite", "plat_sprite_py", "plat_sprite_px")
+
+#: A call to any of them. Matched with a word boundary and an open paren so a
+#: substring like `my_plat_sprite_helper(` does not count, and built from the
+#: tuple above rather than spelled out, because this gate has now been widened
+#: twice by adding a suffix to a regex and the third time should not need it.
+#:
+#: Any, because the question is whether the art reached the screen and not by
+#: which call. A program that moves its actor smoothly and therefore never
+#: calls `plat_sprite` at all is the *better* program, and the narrow version
+#: of this failed exactly that with a diagnostic telling it to stop.
+_SPRITE_CALL_RE = re.compile(
+    r"\b(?:" + "|".join(sorted(_SPRITE_BLITTERS, key=len, reverse=True)) + r")\s*\("
+)
 
 
 def _blanked(code: str) -> str:
@@ -225,8 +268,48 @@ def sprite_usage_errors(project: GameProject, sources: dict[str, str]) -> list[s
     names = ", ".join(f"SPRITE_{asset.id.upper()}" for asset in sprites)
     return [
         f"this design has sprites ({names}) packed into sprites.h, but the program "
-        "never calls plat_sprite -- draw at least one entity with "
-        "plat_sprite(col, row, sprite, frame) instead of only plat_cell."
+        "never draws with them -- draw at least one entity with one of "
+        + ", ".join(_SPRITE_BLITTERS)
+        + " instead of only plat_cell."
+    ]
+
+
+#: A call to `plat_tile`, matched exactly as `_SPRITE_CALL_RE` matches the
+#: sprite blitter and for the same reason: a word boundary and an open paren, so
+#: a mention in a comment (already blanked) or a longer name cannot satisfy it.
+_TILE_CALL_RE = re.compile(r"\bplat_tile\s*\(")
+
+
+def tile_usage_errors(project: GameProject, sources: dict[str, str]) -> list[str]:
+    """Refuse a program that has terrain artwork and draws its terrain as text.
+
+    `sprite_usage_errors`' defect for the other kind of art, and the one that
+    made a finished, gate-passing Arkanoid look like a spreadsheet: the design
+    declared walls and bricks, artwork was packed for them, and the program
+    drew every one of them with `plat_cell` and a letter. Every gate passed --
+    the build compiled, the runtime probes read the state the program really
+    kept, the animation and attribute gates read a screen full of correctly
+    coloured characters -- because none of them asks whether the terrain art
+    was used.
+
+    Only tiles that really got a `TILE_<ID>` count (`acceptance.tile_art`), so
+    a design whose tiles are all still characters is never asked to draw one.
+    Same shallowness as the sprite check, deliberately: this is a source-level
+    grep after comments and string literals are blanked, so it cannot see a
+    call inside dead code. Proving a tile reached the screen needs the
+    emulator, which is `feel.py`'s business.
+    """
+    tiles = tile_art(project)
+    if not tiles:
+        return []
+    code = "\n".join(_blanked(body) for body in sources.values())
+    if _TILE_CALL_RE.search(code):
+        return []
+    names = ", ".join(f"TILE_{tile.id.upper()}" for tile, _ in tiles)
+    return [
+        f"this design has terrain artwork ({names}) packed into tiles.h, but the program "
+        "never calls plat_tile -- draw the terrain that has art with "
+        "plat_tile(col, row, tile) instead of plat_cell and a character."
     ]
 
 
@@ -241,7 +324,7 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
     output_dir = output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     project_dir = output_dir.parent
-    cpc_mode = 0 if project.target.video_mode is VideoMode.CPC_MODE_0 else 1
+    cpc_mode = mode_of(project)
 
     source_assets = [project_dir / asset.source for asset in project.assets]
     missing = [str(path) for path in source_assets if not path.is_file()]
@@ -282,6 +365,16 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
     # valid, SPRITE_COUNT-0 header, and every project's platform.c includes
     # "sprites.h" (see plat_sprite), so a design with no sprite-kind assets
     # still needs one to build.
+    # One number for the whole project, from one place: how many sub-byte
+    # positions each sprite is packed for. `shift_count` is the target's own
+    # pixels-per-byte, so nothing here decides it per machine, and a design
+    # that did not ask gets 1 -- the unshifted sprite, byte for byte what it
+    # always was.
+    shifts = (
+        shift_count(project.target.platform, project.target.video_mode)
+        if project.presentation.smooth_horizontal
+        else 1
+    )
     packed_sprites: dict[str, PackedSprite] = {}
     for asset, source in zip(project.assets, asset_paths):
         if not is_blitter_sprite(asset):
@@ -292,11 +385,56 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
         with Image.open(source) as sheet:
             frames = split_frames(sheet.convert("RGBA"), asset.frames)
         packed_sprites[asset.id] = (
-            pack_spectrum(frames)
+            pack_spectrum(frames, shifts=shifts)
             if project.target.platform is TargetPlatform.SPECTRUM
-            else pack_cpc(frames, mode=cpc_mode, palette=CPC_DEFAULT_PALETTE)
+            else pack_cpc(frames, mode=cpc_mode, palette=cpc_rgb(cpc_mode), shifts=shifts)
         )
-    validate_sprite_budget(project, packed_sprites)
+    # A design's declared colour is the designer's decision and outranks the
+    # artist's: `spriting._spectrum_attribute` reads an ink off the pixels,
+    # which is the right answer only when nobody said otherwise. Applied here,
+    # once, rather than inside the packers -- they know about pixels and two
+    # machines and deliberately nothing about which entity wears what (see
+    # spriting.py's module docstring), and a colour id is exactly that kind of
+    # provenance.
+    #
+    # Several entities may share one sprite id; the first that declares a
+    # colour wins, because the header has one attribute per sprite and cannot
+    # hold two. A design that wants two colours needs two sprites.
+    for entity in project.entities:
+        if entity.sprite is None:
+            continue
+        packed = packed_sprites.get(entity.sprite)
+        if packed is None:
+            continue
+        attribute = declared_attribute(project, entity.colour)
+        if attribute is not None and project.target.platform is TargetPlatform.SPECTRUM:
+            packed_sprites[entity.sprite] = replace(packed, attribute=attribute)
+
+    # tiles.h, like sprites.h, is written unconditionally: platform.c includes
+    # it because that is where plat_tile lives, so a design that gave no tile
+    # artwork still needs a TILE_COUNT-0 header to build. Keyed by tile id, not
+    # asset id -- see `acceptance.tile_art` for why the writer reads TILE_WALL
+    # rather than TILE_BRICKWORK_PNG.
+    tile_art_paths = {
+        asset.id: path for asset, path in zip(project.assets, asset_paths) if is_tile_art(asset)
+    }
+    packed_tiles: dict[str, PackedTile] = {}
+    for tile, asset in tile_art(project):
+        with Image.open(tile_art_paths[asset.id]) as art:
+            image = art.convert("RGBA")
+        packed_tile = (
+            pack_spectrum_tile(image)
+            if project.target.platform is TargetPlatform.SPECTRUM
+            else pack_cpc_tile(image, mode=cpc_mode, palette=cpc_rgb(cpc_mode))
+        )
+        attribute = declared_attribute(project, tile.colour)
+        if attribute is not None and project.target.platform is TargetPlatform.SPECTRUM:
+            packed_tile = replace(packed_tile, attribute=attribute)
+        packed_tiles[tile.id] = packed_tile
+
+    validate_sprite_budget(project, packed_sprites, packed_tiles)
+    (source_dir / "tiles.h").write_text(render_tile_header(packed_tiles), encoding="utf-8")
+    (source_dir / "tiles.c").write_text(render_tile_source(packed_tiles), encoding="utf-8")
     (source_dir / "sprites.h").write_text(render_sprite_header(packed_sprites), encoding="utf-8")
     # The tables sprites.h only declares `extern` are defined here, once. Both
     # target builds pick this up the same way they pick up every other file in
@@ -318,6 +456,8 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
         "game_state.h",
         "sprites.h",
         "sprites.c",
+        "tiles.h",
+        "tiles.c",
     }
     shadowing = sorted(path.name for path in owned if path.name in reserved)
     if shadowing:
@@ -325,11 +465,19 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
             "the program may not define these files -- Studio generates them: "
             + ", ".join(shadowing)
         )
+    fixes: list[str] = []
     for path in owned:
-        shutil.copy2(path, source_dir / path.name)
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if path.suffix == ".c":
+            text, applied = prepare_program_source(text, project.target.platform)
+            fixes += [f"{path.name}: {note}" for note in applied]
+        (source_dir / path.name).write_text(text, encoding="utf-8")
     main_c = next((path for path in owned if path.name == "main.c"), None)
     if main_c is not None:
-        shutil.copy2(main_c, output_dir / "main.c")
+        # The fixed copy, not the original: `build_quality` reads this file and
+        # a diagnostic that pointed at a line the compiler never saw would send
+        # the writer looking for something that is not there.
+        shutil.copy2(source_dir / "main.c", output_dir / "main.c")
 
     create_project_layout(
         output_dir,
@@ -354,6 +502,12 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
         "written_headers": ["game_config.h", "game_state.h"],
         "program": sorted(path.name for path in owned),
         "program_present": main_c is not None,
+        # What the copy loop above changed on its way past. Recorded here
+        # because rendering and building are two calls and `build_project`
+        # may not have run the loop itself, and recorded at all because a
+        # build that silently edits the program it was handed is one whose
+        # diagnostics cite line numbers the writer never wrote.
+        "source_fixes": fixes,
         "playfield_cells": list(playfield(project)),
     }
     (output_dir / "studio_manifest.json").write_text(
@@ -384,6 +538,24 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
     return SourceResult(output_dir=output_dir, main_c=output_dir / "main.c", files=files)
 
 
+def _recorded_source_fixes(output_dir: Path) -> list[str]:
+    """What `render_project` rewrote in the program before compiling it.
+
+    Read back from the manifest rather than passed along, because rendering and
+    building are separate calls: `build_project` renders only when there is no
+    main.c yet, so on every other path the loop that applied the fixes ran in
+    some earlier call whose return value is long gone.
+    """
+    manifest = output_dir / "studio_manifest.json"
+    if not manifest.exists():
+        return []
+    try:
+        recorded = json.loads(manifest.read_text(encoding="utf-8")).get("source_fixes")
+    except json.JSONDecodeError:
+        return []
+    return [str(note) for note in recorded] if isinstance(recorded, list) else []
+
+
 def build_project(
     project: GameProject, output_dir: Path, config_path: Path = Path("config.yml")
 ) -> BuildResult:
@@ -401,8 +573,13 @@ def build_project(
             f"written. The contract they must satisfy is in build/CONTRACT.md"
         )
     platform = project.target.platform.value
-    sprite_errors = sprite_usage_errors(
-        project, {path.name: path.read_text(encoding="utf-8") for path in owned}
+    source_fixes = _recorded_source_fixes(output_dir)
+    program_text = {path.name: path.read_text(encoding="utf-8") for path in owned}
+    # Both artwork gates, reported together: a program that drew neither its
+    # actors nor its terrain has two things to fix, and telling it about one at
+    # a time would spend two whole attempts of the repair loop learning that.
+    sprite_errors = sprite_usage_errors(project, program_text) + tile_usage_errors(
+        project, program_text
     )
     if sprite_errors:
         # Refused without spending a compile: the toolchain has nothing to add
@@ -424,6 +601,7 @@ def build_project(
         report["stdout"] = ""
         report["stderr"] = "\n".join(sprite_errors)
         report["sprite_usage_errors"] = sprite_errors
+        report["source_fixes"] = source_fixes
         write_build_report(report, output_dir / "build_report.json")
         return BuildResult(output_dir=output_dir, success=False, artifact=None, report=report)
     config = load_config(str(config_path))
@@ -437,8 +615,6 @@ def build_project(
         # -m emits output.map, which probes.json needs to locate engine state.
         command += [*sources, "-m", "-o", "output", "-create-app", "-subtype=default"]
     else:
-        from llm_z80 import prepare_amstrad_cpc_build_project, resolve_cpct_path
-
         cpct_path = resolve_cpct_path(config)
         if cpct_path is None:
             raise RuntimeError("CPCtelera was not found; configure CPCT_PATH")
@@ -483,6 +659,7 @@ def build_project(
         )
     report["stdout"] = process.stdout[-12000:]
     report["stderr"] = process.stderr[-12000:]
+    report["source_fixes"] = source_fixes
     if report["quality_pass"]:
         # The design's own observables travel with the contract's symbols, as
         # a mapping rather than as the project: see `probes._wanted` for why

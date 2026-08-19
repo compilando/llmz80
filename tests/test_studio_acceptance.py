@@ -260,3 +260,193 @@ def test_the_pellet_derivation_is_gone():
         "with_executable_scenarios",
     ):
         assert not hasattr(acceptance, name), f"{name} survives"
+
+
+def _with_tile_art(project: GameProject) -> GameProject:
+    """The design with 8x8 artwork registered for its first tile."""
+    document = project.model_dump(mode="json")
+    document["assets"] = [
+        {
+            "id": "brickwork",
+            "kind": "tileset",
+            "source": "assets/brickwork.png",
+            "width": 8,
+            "height": 8,
+            "frames": 1,
+        }
+    ]
+    document["tiles"][0]["id"] = "ladrillo"
+    document["tiles"][0]["art"] = "brickwork"
+    document["screens"][0]["tiles"] = [
+        row.replace(project.tiles[0].char, document["tiles"][0]["char"])
+        for row in document["screens"][0]["tiles"]
+    ]
+    return GameProject.model_validate(document)
+
+
+def test_a_tile_with_artwork_is_advertised_as_its_own_constant():
+    prompt = design_prompt(_with_tile_art(blank_project("Terrain", TargetPlatform.SPECTRUM)))
+
+    assert "TILE_LADRILLO" in prompt
+    assert "plat_tile" in prompt
+
+
+def test_terrain_artwork_makes_plat_tile_mandatory_not_optional():
+    """Same rule sprites already carry, for the same reason: `compiler.
+    tile_usage_errors` refuses a program that packs terrain art and draws its
+    terrain with a letter anyway, so the prompt must not read as a choice."""
+    prompt = design_prompt(_with_tile_art(blank_project("Terrain", TargetPlatform.SPECTRUM)))
+
+    assert "Use it or don't." not in prompt
+    assert "mandatory" in prompt
+
+
+def test_a_design_whose_tiles_are_all_characters_is_never_told_about_plat_tile():
+    project = blank_project("Bare", TargetPlatform.SPECTRUM)
+
+    prompt = design_prompt(project)
+
+    assert "plat_tile" not in prompt
+    assert "TILE_" not in prompt
+
+
+def test_the_prompt_states_the_footprint_a_sprite_covers():
+    """The real defect this closes: a finished program drew its 16x16 bat at
+    two adjacent columns, so the same sprite overlapped itself by eight
+    pixels and the bat came out looking like a dumbbell. Nothing in the
+    prompt had said a sprite is two cells wide."""
+    project = blank_project("Art", TargetPlatform.SPECTRUM)
+    document = project.model_dump(mode="json")
+    document["assets"] = [
+        {
+            "id": "hero",
+            "kind": "sprite",
+            "source": "assets/hero.png",
+            "width": 16,
+            "height": 16,
+            "frames": 1,
+        }
+    ]
+    document["entities"][0]["sprite"] = "hero"
+
+    prompt = design_prompt(GameProject.model_validate(document))
+
+    assert "2x2 character cells" in prompt
+    assert "at least two columns and two rows apart" in prompt
+
+
+def test_a_declared_colour_is_offered_to_the_writer_by_name():
+    """`plat_ink(COLOUR_<ID>)` is how a program colours the cells and text it
+    draws itself; a palette nobody is told about is a palette nobody uses."""
+    from llmz80.studio.models import PaletteEntry
+
+    project = blank_project("Coloured", TargetPlatform.SPECTRUM)
+    project.presentation.palette = [PaletteEntry(id="ladrillo_cyan", colour="cian")]
+
+    prompt = design_prompt(project)
+
+    assert "COLOUR_LADRILLO_CYAN" in prompt
+    assert "plat_ink" in prompt
+
+
+def test_a_design_with_no_palette_is_told_nothing_about_colour():
+    project = blank_project("Plain", TargetPlatform.SPECTRUM)
+    assert project.presentation.palette == []
+
+    prompt = design_prompt(project)
+
+    assert "COLOUR_" not in prompt
+
+
+def test_terrain_artwork_comes_with_the_warning_that_redrawing_it_costs_frames():
+    """Terrain art made a cheap mistake expensive. A screen of brickwork is a
+    hundred cells, each one eight bytes and an attribute, and a program that
+    repaints all of it every frame overruns its display frame -- which is what
+    the pacing gate then reads back out of the machine, four frames late, with
+    no idea that the terrain was the reason. Cheaper to say it here than to
+    spend an attempt of the repair loop learning it."""
+    project = _with_tile_art(blank_project("Terrain", TargetPlatform.SPECTRUM))
+
+    prompt = design_prompt(project)
+
+    assert "Draw each cell once" in prompt
+    assert "when that cell changes" in prompt
+    assert "overruns the display frame" in prompt
+
+
+def test_a_design_that_animates_is_told_the_frame_has_to_move():
+    """`g_anim_frame` is in the state contract with its rule attached, and the
+    runtime gate reads it directly -- but the contract states what the symbol
+    means, not that drawing an actor is the moment to advance it. Three
+    attempts of one run failed this gate with the sprite drawn correctly and
+    the counter never touched."""
+    project = blank_project("Art", TargetPlatform.SPECTRUM)
+    document = project.model_dump(mode="json")
+    document["assets"] = [
+        {
+            "id": "hero",
+            "kind": "sprite",
+            "source": "assets/hero.png",
+            "width": 64,
+            "height": 16,
+            "frames": 4,
+        }
+    ]
+    document["entities"][0]["sprite"] = "hero"
+
+    prompt = design_prompt(GameProject.model_validate(document))
+
+    assert "g_anim_frame" in prompt
+
+
+def test_the_writer_is_told_to_restart_the_frame_measurement_after_startup_work():
+    """Ten program attempts across two runs were failed by the pacing gate for
+    a gap left by work before the game loop -- painting a screen, waiting on a
+    title -- which `plat_wait_frame` charges to the loop's first iteration and
+    keeps as a maximum for the rest of the session. `plat_frame_baseline` ends
+    that, but only if the program calls it, so the prompt has to say when."""
+    project = blank_project("Paced", TargetPlatform.SPECTRUM)
+
+    prompt = design_prompt(project)
+
+    assert "plat_frame_baseline" in prompt
+
+
+class TestExpectationWithNoValue:
+    """An expectation naming neither a value nor a baseline.
+
+    `predicate` hands back whatever dict was on disk, so a rule can reach
+    `step_mismatches` with `compare` set and `value` absent. Under `changed`
+    that read as "the reading differs from None", i.e. always satisfied; under
+    `at_least` it reached `actual >= None` and raised `TypeError` out of the
+    acceptance gate, which `services.runtime_test` does not catch -- so a
+    malformed expectation crashed the whole run rather than failing one step.
+    """
+
+    def test_an_ordered_comparison_with_no_value_is_a_mismatch_not_a_crash(self):
+        from llmz80.studio.acceptance import step_mismatches
+
+        step = {"id": "hold_left_a", "expect": {"g_score": {"compare": "at_least"}}}
+        readings = {"hold_left_a": {"g_score": 10}}
+
+        mismatches = step_mismatches(step, readings)
+
+        assert len(mismatches) == 1
+        assert "g_score" in mismatches[0]
+
+    def test_the_same_for_at_most(self):
+        from llmz80.studio.acceptance import step_mismatches
+
+        step = {"id": "one", "expect": {"g_lives": {"compare": "at_most"}}}
+
+        assert step_mismatches(step, {"one": {"g_lives": 3}})
+
+    def test_a_stated_value_of_zero_is_still_a_value(self):
+        """`if not target` would have made 0 look like an absent expectation,
+        and 0 is the commonest thing a design asks a counter to be."""
+        from llmz80.studio.acceptance import step_mismatches
+
+        step = {"id": "one", "expect": {"g_score": {"compare": "equals", "value": 0}}}
+
+        assert step_mismatches(step, {"one": {"g_score": 0}}) == []
+        assert step_mismatches(step, {"one": {"g_score": 7}})

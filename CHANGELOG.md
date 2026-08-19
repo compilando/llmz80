@@ -1,184 +1,277 @@
 # Changelog
 
-Todos los cambios notables en este proyecto serán documentados en este archivo.
+Every notable change to this project is recorded here.
 
-El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
-y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
+this project uses [Semantic Versioning](https://semver.org/).
 
-## [Sin versionar] - 2026-08-16
+## [Unreleased] - 2026-08-18
 
-### Cambiado
-- **Studio piensa con Claude Opus 5, no con GPT-5.** Las ocho llamadas
-  estructuradas (`drafting`, `reference`, `reference_design`, `planner`, los
-  dos examinadores de diseño, `generator`, `runtime_exam`) pasan por un único
-  adaptador nuevo, `llmz80/studio/llm.py`, en vez de repetir la misma petición
-  ocho veces. `llm_z80.py` y `llmz80/api/generator.py` siguen en OpenAI.
-- **`config.yml` ya no lleva `temperature` en la sección de Studio**: el
-  modelo la rechaza con un 400 en vez de ignorarla. `reasoning_effort`
-  tampoco: su sustituto ya viene en el valor alto que Studio quiere.
-- La búsqueda web de `reference.py` usa la herramienta de servidor
-  `web_search_20260209`.
-- **`ANTHROPIC_API_KEY` es ahora la clave que Studio necesita.**
-  `OPENAI_API_KEY` sigue haciendo falta sólo para el generador antiguo.
+### Removed
 
-### Añadido
-- **Los sprites los dibuja el modelo como rejilla de índices de paleta**
-  (`llmz80/studio/sprite_grid.py`), no como una imagen de 1024x1024 de la que
-  haya que rescatar 16x16. Dos clases enteras de fallo dejan de ser posibles
-  en vez de detectarse: no hay carácter para un gris intermedio, así que no
-  hay antialiasing, y no hay carácter fuera del alfabeto de la máquina, así
-  que no hay color que no pueda mostrar. Un fallo de forma —una fila corta,
-  un frame vacío— vuelve como frase que nombra el frame y la fila, y alimenta
-  el mismo bucle de reintento que ya existía.
-- `SpriteArtist` gana un seam, `SheetSource`, con dos implementaciones: la
-  original por modelo de imagen (`ImageModelSheetSource`, intacta) y la nueva
-  (`ClaudeGridSheetSource`). El bucle de reintento, el juicio de los frames y
-  la conservación de cada intento son comunes a las dos.
-- Plantillas de prompt por máquina para el camino de rejilla
-  (`resources/sprite_grid_*.txt`), incluida la advertencia de que en modo 0
-  del CPC el píxel es el doble de ancho que de alto.
+- **The legacy generator, and everything only it reached.** `llm_z80.py`, its
+  OpenAI client (`llmz80/api/generator.py`), the whole embeddings and Qdrant
+  retrieval stack, the code validators, the learning system, the standalone
+  sprite image generators and four shell build scripts: about 11 000 lines.
+  Studio replaced it months ago and the newest run it ever wrote is dated
+  2026-08-11. `llmz80 <unknown-command>` used to fall through to it; it now
+  prints the help text and exits 2.
+- Eight runtime dependencies: `openai`, `scipy`, `requests`, `termcolor`,
+  `qdrant-client`, `fastembed` and both Google AI SDKs. What is left is
+  `anthropic`, `pydantic`, `textual`, `python-dotenv`, `Pillow`, `numpy` and
+  `PyYAML`.
+- Six `config.yml` sections nothing read (`examples`, `generation`, `logging`,
+  `output`, `paths`, `prompt_files`), `resources/platforms.yml`, and the two
+  legacy system prompts.
+- `scripts/evaluate_generation.py --live`, which shelled out to the deleted
+  generator. The scorecard still scores the archive of legacy runs, which its
+  docstring now says out loud.
+- 99 build artifacts that `.gitignore` already excluded but that were committed
+  before those rules existed.
 
-### Cambiado (embeddings)
-- **Los embeddings se calculan en esta máquina** con `fastembed`
-  (`BAAI/bge-small-en-v1.5`), sin clave de API ni llamada de red.
-  `llmz80/core/embedding_backend.py` es ahora el único sitio que decide qué
-  modelo y qué anchura.
-- ⚠️ **Los vectores pasan de 1536 a 384 dimensiones.** Cualquier colección de
-  Qdrant o caché en `local/embeddings` anterior a este cambio hay que
-  **recrearla**, no migrarla.
+### Fixed
 
-## [Sin versionar] - 2026-06-02
+- **`acceptance.step_mismatches` could crash a whole run.** An expectation
+  naming neither a `value` nor a `baseline` reached `actual >= None` and raised
+  `TypeError`, which nothing catches, so one malformed rule ended the run
+  instead of failing its own step.
+- **The CPC build depended on the working directory.** The CPCtelera project
+  templates were found through a cwd-relative path, so `llmz80 make` started
+  anywhere but the checkout root copied no `cfg/` and died inside `make`
+  complaining about a missing `build_config.mk`. The Spectrum half of this was
+  fixed in 76fd144; the CPC half was not.
+- **An unbuilt CPCtelera is now refused where it can be explained.** CPCtelera
+  compiles with the SDCC inside its own checkout, which `setup.sh` builds, so a
+  bare clone passed every check and then failed with exit code 127.
+  `resolve_cpct_path` requires the compiler to exist, and `make doctor` says so.
+- `cli._project_command` bound one name to two different result types across
+  two branches and read fields off whichever it got; `services.add_asset` took
+  a `str` where a four-value `Literal` was required.
+- **Two initialised statics in the CPC platform library held garbage.** This
+  link does not initialise the DATA segment -- something `apply_palette` had
+  already recorded for itself -- so `baselines_left` came up zero and made
+  every `plat_frame_baseline()` call a no-op, and `draw_pen` made `plat_ink`
+  report a previous pen the program had never set. Both are assigned in
+  `plat_init` now.
+- The comment in `generator.py` explaining why CPC gates abstain had been wrong
+  since ZEsarUX replaced Caprice32: three of the five behaviour gates really do
+  watch a CPC game now.
 
-### Añadido
-- Informe de gaps y plan de mejora para Retro Vibe-Coding ASM Z80 en Amstrad CPC (`docs/RETRO_VIBE_CODING_GAP_REPORT.md`).
-- Sección en README sobre el estado real del soporte ASM Z80 y la dirección recomendada para `amstrad_cpc_asm`.
-- Contrato CPCtelera `main.c` autocontenido en prompt, validación y RAG.
-- Correcciones deterministas seguras para generación CPCtelera antes de compilar.
-- Registro de entorno de build y verificación de artefactos `.dsk`/`.tap`.
+### Added
 
-### Cambiado
-- README actualizado para reflejar GPT-5/configuración actual, validación previa, aprendizaje local y alcance C/CPCtelera.
-- El validador CPCtelera ahora trata funciones `cpct_*` desconocidas, APIs estándar problemáticas, includes locales y errores de orden de inicialización como fallos críticos.
-- Los ejemplos RAG de Amstrad CPC se filtran para preferir snippets autocontenidos compatibles con el contrato `main.c`.
-- Corregidos falsos positivos del validador por comentarios con paréntesis, heurísticas de punto y coma y declaraciones previas a `cpct_disableFirmware()`.
-- Corregida documentación CPCtelera para `cpct_drawCharM*()` y funciones random reales de la instalación local.
+- **`plat_save_under` / `plat_restore_under`**, so a moving sprite can be
+  rubbed out by putting back what was behind it. Found by watching a generated
+  CPC Breakout flicker: its loop erased the ball by repainting up to nine tiles
+  at the top and redrew it at the bottom, so the ball was absent from the
+  picture for the whole of the collision and scoring work between them. Both
+  halves were the contract's fault rather than the program's -- repainting
+  terrain was the only erase on offer, and nothing said when to draw.
 
-## [Sin versionar] - 2024-11-20
+  The backing store belongs to the caller (`SPRITE_UNDER_BYTES`, published per
+  target), because two moving actors need two of them and a hidden buffer in
+  the library would silently hold only the last. It costs about half the byte
+  writes of a terrain repaint and works over anything on the screen, which a
+  terrain repaint cannot: text, another sprite, a scrolled backdrop. Proved on
+  a real 48K over a background written straight into the bitmap that no tile
+  map describes -- with a control build that does not restore, so the test
+  cannot pass on a sprite that never reached the screen.
 
-### Añadido
-- Documentación completa para AI coding assistants (`.cline/cline_docs.md`)
-- Reglas de Cursor AI (`.cursorrules`) con guías de estilo y mejores prácticas
-- Guía de contribución (`CONTRIBUTING.md`) con instrucciones detalladas
-- Archivo de licencia MIT (`LICENSE`)
-- README.md mejorado con badges, ejemplos y documentación completa
-- Dependencias de desarrollo (`requirements-dev.txt`) con pytest, black, mypy, etc.
-- Este archivo CHANGELOG.md para rastrear cambios
+  The writing prompt now also says to draw in the lines straight after
+  `plat_wait_frame` and think afterwards, and to restore in reverse draw order
+  where actors overlap.
+- **Coarse hardware scrolling on the Amstrad CPC.** `plat_scroll_to(origin)`
+  moves the whole picture by changing where the CRTC starts reading, which
+  costs one register write and no memory movement. A design asks for it with
+  `presentation.scrolling`, and a Spectrum design that asks is refused at
+  design time with the reason -- that machine has no such register and would
+  have to move 6912 bytes.
 
-### Cambiado
-- `requirements.txt` actualizado con versiones más recientes y mejor organizado
-  - `python-dotenv`: 1.1.0 → 1.0.1
-  - `termcolor`: 3.0.1 → 2.5.0
-  - Añadidos comentarios para organizar dependencias por categoría
+  Both granularities were measured on a real CPC rather than taken from the
+  documentation, because CPCtelera's own examples disagree: one step is **2
+  bytes** (4 pixels across in mode 0, 8 in mode 1) and one screen row of them
+  moves the picture up by exactly one character row. `advanced/hwscroll`'s
+  comment saying four bytes is wrong; `advanced/tilemap_hwscroll` is right.
 
-### Mejorado
-- README.md completamente reescrito con:
-  - Badges de estado del proyecto
-  - Tabla de contenidos
-  - Instrucciones de instalación detalladas
-  - Ejemplos de uso con casos reales
-  - Diagramas de arquitectura
-  - Sección de solución de problemas ampliada
-  - Enlaces a recursos externos
+  Coarse is all it is, and the API says so rather than pretending: sub-step
+  horizontal would need the background redrawn shifted and sub-row vertical the
+  CRTC's vertical adjust. `origin` reaches 510 bytes, the whole range an
+  eight-bit R13 holds, and past that is ignored rather than wrapped -- a
+  scroller that wrapped would not look broken, it would look like it jumped.
+  Nothing is copied, so drawing the incoming edge stays the program's job, and
+  the writing prompt says so.
+- **Sprites can sit on a pixel row.** `plat_sprite_py(col, py, sprite, frame)`
+  takes a scanline where `plat_sprite` takes a character row, so anything a
+  player watches rise or fall moves smoothly instead of in eight-pixel steps.
+  Neither machine needs a differently packed sprite for it: z88dk's
+  `zx_saddrpdown` steps one pixel line and crosses the Spectrum's non-linear
+  thirds by itself, and `cpct_getScreenPtr` had always taken its y in
+  scanlines -- `plat_sprite` was multiplying a row by eight to throw that away.
+  On the Spectrum a sprite between cells covers three character rows, so the
+  blitter colours six attribute cells rather than four. Proved by reading the
+  display file out of a running 48K: the sprite's bytes land at pixel row 59,
+  across a screen-third boundary.
+- **Sprites can move across by single pixels**, when the design asks with
+  `presentation.smooth_horizontal`. A byte of screen holds several pixels, so a
+  figure whose left edge falls inside a byte has its bits in different
+  positions; the packers now emit one copy of every frame per position -- eight
+  on the Spectrum, four in CPC mode 1, two in mode 0 -- and
+  `plat_sprite_px(px, py, sprite, frame)` picks between them.
 
-## Versiones Anteriores
+  One mechanism rather than three. A shifted copy is the packers' existing
+  pixel-by-pixel walk over a canvas one byte wider with the figure pasted `k`
+  pixels in, so the Spectrum's one-bit pixels and the CPC's interleaved pens
+  come out of the code that was already there with only `pixels_per_byte`
+  differing -- no byte rotation, no carry chains, no per-machine bit surgery.
+  The blitter finds a copy at
+  `sprite_frame_offset[s][f] + shift * SPRITE_SHIFT_STRIDE`, which needs no
+  second offset table and no 16-bit multiply.
 
-### Características Implementadas
+  It costs twelve times the art on the Spectrum, and `validate_sprite_budget`
+  already weighs that against `budgets.static_data_bytes` -- no new gate. A
+  design that did not ask still compiles against `plat_sprite_px`; it rounds
+  down to the byte, so a program cannot be broken by a decision taken in
+  game.yml after it was written. Proved on a real 48K: at pixel column 21 the
+  bytes on screen are the copy packed for offset 5, and the same program on a
+  design that did not ask draws the plain art five pixels left.
+- **`MAX_SPRITE_PY` and `MAX_SPRITE_PX`** in game_config.h, derived from each
+  machine's own screen so the library's guard, the macro and the writing
+  prompt cannot name three different numbers. `MAX_SPRITE_PX` also allows for
+  the extra byte a shifted copy occupies, which moves the bound in both
+  directions at once and is exactly the kind of arithmetic that looks right
+  when only half of it is written.
+- **`FlagValue`** in the planner, so a design can be asked for a yes or a no --
+  the first of them being `smooth_horizontal`.
+- **The Amstrad CPC counts frames**, so the pacing gate judges it instead of
+  abstaining. `cpct_setInterruptHandler` installs a handler the machine calls
+  six times per display frame, and counting those sixths is the free-running
+  counter the Spectrum reads out of the ROM. Everything downstream mirrors
+  `spectrum/platform.c` constant for constant. Read back out of a real CPC: a
+  program that spins before its loop reports the gap, and the same program
+  with one `plat_frame_baseline()` call reports zero. Both read zero before.
+- **Mode 0's sixteen pens are reachable.** The library programmed four pens
+  whatever the mode, `plat_ink` refused any index above three, and the drawing
+  alphabet offered four characters -- so the only reason to choose mode 0 over
+  mode 1 was switched off in software.
 
-#### Sistema de Generación de Código
-- ✅ Integración con OpenAI GPT-4 para generación de código C
-- ✅ Soporte para ZX Spectrum 48K (Z88DK)
-- ✅ Soporte para Amstrad CPC 464/6128 (CPCtelera)
-- ✅ Sistema de prompts específicos por plataforma
-- ✅ Compilación automática del código generado
-- ✅ Sugerencias de corrección cuando la compilación falla
+### Changed
 
-#### Sistema RAG (Retrieval Augmented Generation)
-- ✅ Integración con Qdrant como base de datos vectorial
-- ✅ Generación de embeddings con OpenAI (text-embedding-3-small)
-- ✅ Búsqueda semántica de ejemplos relevantes
-- ✅ Sistema de caché de embeddings local
-- ✅ Carga y gestión de ejemplos de código
+- **One table decides the CPC's colours.** The RGB the packers quantise
+  against and the hardware bytes the library programs used to be written down
+  separately, in two files in two languages, and they had drifted: HW_BLUE was
+  recorded as (0, 0, 255), which is HW_BRIGHT_BLUE, and HW_WHITE as
+  (255, 255, 255), which is HW_BRIGHT_WHITE -- the CPC's "white" is grey. Half
+  of every CPC sprite was quantised against colours the machine never showed.
+  `palette.HARDWARE_COLOURS` is now the single source and a test pins the two
+  halves to each other.
+- **The CPC toolchain moved out of the legacy generator** into
+  `llmz80/core/toolchain.py`, which was the single import keeping 1 591 retired
+  lines in the live pipeline's graph. `vendor/cpctelera` joins the search path,
+  so the commit pinned in `ENGINE.json` can finally be what a build uses.
+- **Everything is in English** — code, comments, progress lines, the diary's
+  stage ids (`referencia` → `reference`, `redacción` → `drafting`, `diseño` →
+  `design`, `programa` → `program`), the README and this file. Linguistic data
+  stays bilingual on purpose: the Spanish stopwords in the retrieval catalogue,
+  the colour and comparison words the palette and runtime examiner match, and
+  the bilingual benchmark corpus. A design's own prose is still written in
+  whatever language it was briefed in.
+  ⚠️ A `studio.log` written before this change uses the old stage ids.
+- The sprite preview no longer quantises the sheet against a palette that is not
+  the one it was packed with. `studio/preview.py` paints the pixels as they are,
+  which is exact, because the sheet was drawn from the packer's own palette.
+- CI enforces what it used to only report. `black`, `isort`, `flake8`, `mypy`
+  and `bandit` all run over `llmz80`, `tests` and `scripts`, and none of them
+  are advisory any more. `black --check` and `isort --check-only` had in fact
+  been failing on every push. Flake8 goes from 688 findings to nine complexity
+  advisories; mypy from 103 errors to none.
+- The Makefile drops the legacy `generate*`, `run*` and `qdrant-*` targets for
+  `make game`, `make play` and `make format-check`.
 
-#### Generación de Sprites
-- ✅ Soporte para múltiples proveedores de IA:
-  - OpenAI DALL-E
-  - Google Gemini
-  - Vertex AI
-- ✅ Conversión automática a formato de sprite
-- ✅ Soporte para diferentes modos gráficos de Amstrad CPC
+## [Unreleased] - 2026-08-16
 
-#### Scripts de Compilación
-- ✅ `build_spectrum.sh`: Compilación para ZX Spectrum
-- ✅ `build_amstrad.sh`: Compilación para Amstrad CPC
-- ✅ Soporte para múltiples emuladores
-- ✅ Creación automática de estructura de proyecto
+### Changed
 
-#### Utilidades
-- ✅ Sistema de logging configurable
-- ✅ Configuración centralizada en `config.yml`
-- ✅ Gestión de variables de entorno con `.env`
-- ✅ Helpers para limpieza de respuestas de API
-- ✅ Generación de slugs para nombres de directorios
+- **Studio thinks with Claude Opus 5, not GPT-5.** The eight structured calls
+  (`drafting`, `reference`, `reference_design`, `planner`, both design
+  examiners, `generator`, `runtime_exam`) go through one new adapter,
+  `llmz80/studio/llm.py`, instead of repeating the same request eight times.
+- **`config.yml` no longer carries `temperature`** in the Studio section: the
+  model rejects it with a 400 rather than ignoring it. Nor `reasoning_effort`,
+  whose replacement already defaults to the high setting Studio wants.
+- `reference.py`'s web search uses the `web_search_20260209` server tool.
+- **`ANTHROPIC_API_KEY` is the key Studio needs.**
 
-## [Planeado] - Roadmap
+### Added
 
-### Alta Prioridad
-- [ ] Suite de tests unitarios con pytest
-- [ ] Tests de integración para compilación
-- [ ] CI/CD con GitHub Actions
-- [ ] Pre-commit hooks configurados
-- [ ] Configuración de mypy para type checking
+- **Sprites are drawn by the model as a grid of palette indices**
+  (`llmz80/studio/sprite_grid.py`), not as a 1024×1024 image to rescue a 16×16
+  sprite from. Two whole classes of failure stop being possible rather than
+  being detected: there is no character for a mid grey, so no antialiasing, and
+  no character outside the machine's alphabet, so no colour it cannot show. A
+  shape failure — a short row, an empty frame — comes back as a sentence naming
+  the frame and the row, and feeds the retry loop that already existed.
+- `SpriteArtist` gains a seam, `SheetSource`, with two implementations. The
+  retry loop, the judging of frames and the keeping of every attempt are common
+  to both.
+- Per-machine prompt templates for the grid path (`resources/sprite_grid_*.txt`),
+  including the warning that a CPC mode 0 pixel is twice as wide as it is tall.
 
-### Media Prioridad
-- [ ] Soporte para más modelos LLM (Claude, Llama, etc.)
-- [ ] Interfaz web con Gradio o Streamlit
-- [ ] Exportación de proyectos completos
-- [ ] Sistema de plantillas de código
-- [ ] Documentación con Sphinx
+### Changed (embeddings)
 
-### Baja Prioridad
-- [ ] Soporte para MSX
-- [ ] Soporte para Commodore 64
-- [ ] Generación de música con AI
-- [ ] Editor visual de sprites
-- [ ] Marketplace de ejemplos comunitarios
+- Embeddings were computed locally with `fastembed`
+  (`BAAI/bge-small-en-v1.5`), no API key and no network call.
+- ⚠️ Vectors went from 1536 to 384 dimensions; older collections and caches had
+  to be recreated rather than migrated.
 
-## Notas de Versión
+*(Both entries are historical: the embeddings stack was removed on 2026-08-18.)*
 
-### Convenciones de Commits
+## [Unreleased] - 2026-06-02
 
-Este proyecto usa [Conventional Commits](https://www.conventionalcommits.org/):
+### Added
 
-- `feat`: Nueva funcionalidad
-- `fix`: Corrección de bug
-- `docs`: Cambios en documentación
-- `style`: Cambios de formato (no afectan el código)
-- `refactor`: Refactorización de código
-- `test`: Añadir o modificar tests
-- `chore`: Cambios en el proceso de build o herramientas
+- A gap report and improvement plan for Z80 assembly retro vibe-coding on the
+  Amstrad CPC (`docs/RETRO_VIBE_CODING_GAP_REPORT.md`).
+- A self-contained CPCtelera `main.c` contract, in the prompt, the validation
+  and retrieval.
+- Safe deterministic fixes applied to generated CPCtelera code before compiling.
+- A record of the build environment, and verification of `.dsk` / `.tap`
+  artifacts.
 
-### Proceso de Release
+### Changed
 
-1. Actualizar versión en archivos relevantes
-2. Actualizar este CHANGELOG.md
-3. Crear tag de git: `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
-4. Push de cambios y tags: `git push && git push --tags`
-5. Crear release en GitHub con notas del changelog
+- The CPCtelera validator treats unknown `cpct_*` functions, problematic
+  standard APIs, local includes and initialisation-order errors as critical
+  failures.
+- Amstrad CPC retrieval examples are filtered towards self-contained snippets
+  compatible with the `main.c` contract.
+- Fixed validator false positives from comments containing parentheses,
+  semicolon heuristics, and declarations before `cpct_disableFirmware()`.
+- Corrected the CPCtelera documentation for `cpct_drawCharM*()` and for the
+  random functions the local install really has.
+
+## [Unreleased] - 2024-11-20
+
+### Added
+
+- Documentation for AI coding assistants, a Cursor rules file, a contribution
+  guide, an MIT licence file, a rewritten README, development dependencies and
+  this changelog.
+
+### Changed
+
+- `requirements.txt` reorganised, with `python-dotenv` and `termcolor` pinned
+  to earlier releases.
 
 ---
 
-**Leyenda:**
-- ✅ Completado
-- 🚧 En progreso
-- 📋 Planeado
-- ❌ Cancelado/Pospuesto
+## Commit conventions
+
+[Conventional Commits](https://www.conventionalcommits.org/): `feat`, `fix`,
+`docs`, `style`, `refactor`, `test`, `chore`.
+
+## Release process
+
+1. Update the version where it appears
+2. Update this file
+3. `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
+4. `git push && git push --tags`
+5. Open a GitHub release with the notes from this file

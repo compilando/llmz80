@@ -16,11 +16,8 @@ def split_frames(sheet: Image.Image, frames: int) -> list[Image.Image]:
     if frames < 1:
         raise ValueError("a sheet holds at least one frame")
     if sheet.width % frames:
-        raise ValueError(
-            f"a sheet {sheet.width} wide does not divide into {frames} whole frames"
-        )
+        raise ValueError(f"a sheet {sheet.width} wide does not divide into {frames} whole frames")
     width = sheet.width // frames
     return [
-        sheet.crop((index * width, 0, (index + 1) * width, sheet.height))
-        for index in range(frames)
+        sheet.crop((index * width, 0, (index + 1) * width, sheet.height)) for index in range(frames)
     ]

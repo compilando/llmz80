@@ -91,8 +91,16 @@ def test_a_screen_carries_its_exits():
         name="SALA 1",
         width=8,
         height=8,
-        tiles=["########", "#......#", "#......#", "#......#",
-               "#......#", "#......#", "#......#", "########"],
+        tiles=[
+            "########",
+            "#......#",
+            "#......#",
+            "#......#",
+            "#......#",
+            "#......#",
+            "#......#",
+            "########",
+        ],
         spawns=[{"entity": "hero", "col": 1, "row": 1}],
         exits={"right": "sala_2"},
     )
@@ -106,8 +114,16 @@ def test_a_screen_row_that_is_not_its_declared_width_is_refused():
             name="ROTA",
             width=8,
             height=8,
-            tiles=["#######", "#......#", "#......#", "#......#",
-                   "#......#", "#......#", "#......#", "########"],
+            tiles=[
+                "#######",
+                "#......#",
+                "#......#",
+                "#......#",
+                "#......#",
+                "#......#",
+                "#......#",
+                "########",
+            ],
             spawns=[{"entity": "hero", "col": 1, "row": 1}],
         )
 
@@ -121,9 +137,17 @@ def test_a_screen_with_the_wrong_number_of_rows_is_refused():
             name="FILAS DE MAS",
             width=8,
             height=8,
-            tiles=["########", "#......#", "#......#", "#......#",
-                   "#......#", "#......#", "#......#", "#......#",
-                   "########"],
+            tiles=[
+                "########",
+                "#......#",
+                "#......#",
+                "#......#",
+                "#......#",
+                "#......#",
+                "#......#",
+                "#......#",
+                "########",
+            ],
             spawns=[{"entity": "hero", "col": 1, "row": 1}],
         )
 
@@ -135,8 +159,16 @@ def test_a_spawn_outside_the_grid_is_refused():
             name="SPAWN FUERA",
             width=8,
             height=8,
-            tiles=["########", "#......#", "#......#", "#......#",
-                   "#......#", "#......#", "#......#", "########"],
+            tiles=[
+                "########",
+                "#......#",
+                "#......#",
+                "#......#",
+                "#......#",
+                "#......#",
+                "#......#",
+                "########",
+            ],
             spawns=[{"entity": "hero", "col": 20, "row": 1}],
         )
 
@@ -164,9 +196,18 @@ def test_audio_effects_must_be_unique():
 def test_the_removed_vocabulary_is_really_gone():
     import llmz80.studio.models as models
 
-    for name in ("GenreId", "ProjectKind", "ProjectScope", "GameplaySpec",
-                 "LevelSpec", "AcceptanceScenario", "TILE_WALL", "TILE_FLOOR",
-                 "SceneKind", "AUDIO_EFFECTS"):
+    for name in (
+        "GenreId",
+        "ProjectKind",
+        "ProjectScope",
+        "GameplaySpec",
+        "LevelSpec",
+        "AcceptanceScenario",
+        "TILE_WALL",
+        "TILE_FLOOR",
+        "SceneKind",
+        "AUDIO_EFFECTS",
+    ):
         assert not hasattr(models, name), f"{name} survives the v4 cut"
 
 

@@ -4,12 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from llmz80.studio.engines import (
-    ALLOWED_LICENCES,
-    EngineClass,
-    EnginePack,
-    engine_registry,
-)
+from llmz80.studio.engines import ALLOWED_LICENCES, EngineClass, EnginePack, engine_registry
 from llmz80.studio.models import TargetPlatform
 
 

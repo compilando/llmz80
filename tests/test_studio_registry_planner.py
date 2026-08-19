@@ -1,11 +1,9 @@
 from types import SimpleNamespace
 
+import pytest
 from openai.lib._pydantic import to_strict_json_schema
 
 from llmz80.studio.models import TargetPlatform
-from llmz80.studio.samples import blank_project
-import pytest
-
 from llmz80.studio.planner import (
     ProjectProposal,
     ResponsesProjectPlanner,
@@ -13,6 +11,8 @@ from llmz80.studio.planner import (
     proposal_diff,
 )
 from llmz80.studio.registry import target_registry
+from llmz80.studio.samples import blank_project
+from tests.conftest import FakeMessageStream
 
 
 def _iter_property_schemas(schema: dict):
@@ -97,10 +97,10 @@ def test_responses_planner_requests_typed_proposal():
     )
 
     class FakeMessages:
-        def parse(self, **kwargs):
+        def stream(self, **kwargs):
             assert kwargs["output_format"] is ProjectProposal
             assert "Never emit C code" in kwargs["system"]
-            return SimpleNamespace(parsed_output=proposal)
+            return FakeMessageStream(SimpleNamespace(parsed_output=proposal))
 
     planner = ResponsesProjectPlanner(SimpleNamespace(messages=FakeMessages()))
     project = blank_project("Maze", TargetPlatform.SPECTRUM)
@@ -160,3 +160,60 @@ def test_budget_change_requires_explicit_approval():
     assert (
         apply_proposal(project, proposal, allow_budget_changes=True).budgets.binary_bytes == 30000
     )
+
+
+# ---------------------------------------------------------------------------
+# Colour and terrain artwork: the two things a design could describe and no
+# stage could ever propose.
+# ---------------------------------------------------------------------------
+
+
+def test_a_tile_can_be_proposed_with_the_note_that_asks_for_artwork():
+    """`TileValue` mirrors `TileSpec`, and a mirror missing a field is a field
+    no proposal can ever set -- which is how terrain artwork stayed
+    unreachable while the model that could describe it wrote every design."""
+    from llmz80.studio.planner import TileValue
+
+    value = TileValue(id="ladrillo", char="B", art_note="brickwork, mortar lines")
+
+    assert value.json_value()["art_note"] == "brickwork, mortar lines"
+
+
+def test_a_whole_palette_can_be_proposed():
+    """A design's colours are a list of named entries, and an entity's or
+    tile's `colour` may only name one the design declares (`structure.py`), so
+    a proposal that cannot write the palette cannot use colour at all."""
+    from llmz80.studio.planner import PaletteValue
+
+    value = PaletteValue(
+        palette=[{"id": "ladrillo", "colour": "cian"}, {"id": "pala", "colour": "amarillo"}]
+    )
+
+    assert value.json_value() == [
+        {"id": "ladrillo", "colour": "cian"},
+        {"id": "pala", "colour": "amarillo"},
+    ]
+
+
+def test_a_palette_proposal_applies_to_the_design():
+    from llmz80.studio.models import TargetPlatform
+    from llmz80.studio.planner import PaletteValue, ProjectChange, ProjectProposal, apply_proposal
+    from llmz80.studio.samples import blank_project
+
+    project = blank_project("Coloured", TargetPlatform.SPECTRUM)
+    proposal = ProjectProposal(
+        summary="give the design its colours",
+        changes=[
+            ProjectChange(
+                path="/presentation/palette",
+                operation="replace",
+                reason="the brief asks for cyan brickwork",
+                value=PaletteValue(palette=[{"id": "ladrillo", "colour": "cian"}]),
+            )
+        ],
+    )
+
+    updated = apply_proposal(project, proposal)
+
+    assert [entry.id for entry in updated.presentation.palette] == ["ladrillo"]
+    assert updated.presentation.palette[0].colour == "cian"

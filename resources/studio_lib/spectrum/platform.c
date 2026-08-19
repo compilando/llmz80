@@ -4,6 +4,7 @@
  * stays small and drawing is fully deterministic under the emulator harness.
  */
 #include <arch/zx.h>
+#include <string.h>
 #include <input.h>
 #include <intrinsic.h>
 #include <sound.h>
@@ -11,6 +12,7 @@
 #include "platform.h"
 #include "game_config.h"
 #include "sprites.h"
+#include "tiles.h"
 
 #define ROM_FONT ((const unsigned char *)0x3D00)
 /* The ROM frame counter: three bytes at 23672, bumped by the 50 Hz interrupt.
@@ -38,6 +40,18 @@ static unsigned char out_of_band;
  * leaves the program nothing to get wrong, and the linker map carries the
  * symbol either way. */
 unsigned char g_worst_frame_cost;
+
+/* The colour plat_cell and plat_text write in, until a program says otherwise
+ * with plat_ink. White on black is what this library hardcoded at every call
+ * site before a design's declared colours were read at all, so it stays the
+ * default: a program that never mentions colour looks exactly as it did. */
+static unsigned char ink = PAPER_BLACK | INK_WHITE;
+
+unsigned char plat_ink(unsigned char attribute) {
+    unsigned char previous = ink;
+    ink = attribute;
+    return previous;
+}
 
 static void put_glyph(unsigned char col, unsigned char row, const unsigned char *glyph,
                       unsigned char attribute) {
@@ -168,6 +182,30 @@ unsigned char plat_wait_frame(void) {
     return cost;
 }
 
+/* How many gaps plat_frame_baseline will forgive in one run. A game changes
+ * scene, paints a screen and leaves a menu a handful of times; a loop that
+ * overruns does it every iteration, thousands of times, and runs out of
+ * forgiveness immediately. Eight is generous for the first and useless for the
+ * second, which is the only property that matters here. */
+#define BASELINES_ALLOWED 8
+
+static unsigned char baselines_left = BASELINES_ALLOWED;
+
+void plat_frame_baseline(void) {
+    if (baselines_left == 0) return;
+    --baselines_left;
+    /* Resynchronise and forget: the mark moves to now, so the next
+     * plat_wait_frame measures its own iteration and not the work that came
+     * before this call. out_of_band is cleared for the same reason -- a
+     * startup gap must not count towards the "slow for SLOW_RUN iterations in
+     * a row" evidence that reports a genuinely slow loop. g_worst_frame_cost
+     * is deliberately left alone rather than reset: a loop that really did
+     * overrun before this call keeps its number, and only the gap being
+     * closed here goes uncharged. */
+    frame_mark = FRAME_CLOCK;
+    out_of_band = 0;
+}
+
 unsigned char plat_input(void) {
     unsigned char keys = 0;
 #define X(bit, code) if (in_key_pressed(code)) keys |= bit;
@@ -180,8 +218,7 @@ void plat_text(unsigned char col, unsigned char row, const char *text) {
     while (*text != 0 && col < 32) {
         unsigned char code = (unsigned char)*text;
         if (code >= 32) {
-            put_glyph(col, row, ROM_FONT + (((unsigned int)(code - 32)) << 3),
-                      PAPER_BLACK | INK_WHITE);
+            put_glyph(col, row, ROM_FONT + (((unsigned int)(code - 32)) << 3), ink);
         }
         ++col;
         ++text;
@@ -195,11 +232,29 @@ void plat_cell(unsigned char col, unsigned char row, char glyph) {
     static const unsigned char blank[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     if (col >= 32 || row >= 24) return;
     if (code < 32 || code > 127) {
-        put_glyph(col, row, blank, PAPER_BLACK | INK_WHITE);
+        put_glyph(col, row, blank, ink);
         return;
     }
-    put_glyph(col, row, ROM_FONT + (((unsigned int)(code - 32)) << 3),
-              PAPER_BLACK | INK_WHITE);
+    put_glyph(col, row, ROM_FONT + (((unsigned int)(code - 32)) << 3), ink);
+}
+
+/* Draws a tile's own eight bytes into a cell, in the colour its art resolved
+ * to. This is put_glyph with the bitmap coming from tiles.c instead of the ROM
+ * font -- deliberately the same shape, because a tile occupies exactly what a
+ * character occupies, which is what makes terrain art a drop-in replacement
+ * for the character a design's tile carries.
+ *
+ * tile_data[] is indexed with the tile number and nothing else: a tile has one
+ * pose, so there is no frame offset to add and no multiply for SDCC to satisfy
+ * out of a library built for the wrong ABI (see sprite_header.py). */
+void plat_tile(unsigned char col, unsigned char row, unsigned char tile) {
+#if TILE_COUNT
+    if (tile >= TILE_COUNT) return;
+    if (col >= 32 || row >= 24) return;
+    put_glyph(col, row, tile_data[tile], tile_attribute[tile]);
+#else
+    (void)col; (void)row; (void)tile;
+#endif
 }
 
 /* Draws one 16x16 masked sprite as four character cells: two cells wide,
@@ -238,6 +293,212 @@ void plat_sprite(unsigned char col, unsigned char row, unsigned char sprite,
     *(unsigned char *)zx_cxy2aaddr(col + 1, row + 1) = sprite_attribute[sprite];
 #else
     (void)col; (void)row; (void)sprite; (void)frame;
+#endif
+}
+
+/* The same sprite, addressed by scanline.
+ *
+ * `zx_saddrpdown` is what makes this short. Stepping one *pixel* line down is
+ * `+256` only while the line stays inside its character row; at the eighth it
+ * wraps to the next character row, and at the sixty-fourth to the next screen
+ * third, which is a different bank of the display file altogether. That is
+ * the same non-linearity plat_sprite above dodges by converting afresh per
+ * half; here there is no cell to convert from, so the library routine that
+ * knows the layout does the stepping instead of arithmetic invented here.
+ *
+ * The guard is 176, not 191: the sprite is sixteen lines tall and the display
+ * is 192, so 176 is the last row whose sprite ends on the screen. Past it
+ * `zx_saddrpdown` would walk out of the display file and into whatever is
+ * above it, which on a 48K is the attribute area and then the system
+ * variables -- a corruption that shows up as the game dying, minutes later,
+ * somewhere else entirely.
+ *
+ * Attributes: the covered rows are those of the first and last scanline,
+ * `py >> 3` and `(py + 15) >> 3`, which is two rows when py is a multiple of
+ * eight and three when it is not. Written as a loop over that range rather
+ * than as the four fixed writes plat_sprite makes, because the count is not
+ * fixed: a sprite between cells that coloured only its first two rows would
+ * appear with its last third in whatever colour the background happened to
+ * be. */
+void plat_sprite_py(unsigned char col, unsigned char py, unsigned char sprite,
+                    unsigned char frame) {
+#if SPRITE_COUNT
+    const unsigned char *data;
+    const unsigned char *mask;
+    unsigned char *at;
+    unsigned char line;
+    unsigned char row;
+    unsigned char last;
+    if (sprite >= SPRITE_COUNT) return;
+    if (col > 30 || py > 176) return;
+    data = sprite_data[sprite] + sprite_frame_offset[sprite][frame];
+    mask = sprite_mask[sprite] + sprite_frame_offset[sprite][frame];
+    at = (unsigned char *)zx_pxy2saddr((unsigned char)(col << 3), py);
+    for (line = 0; line < 16; ++line) {
+        at[0] = (unsigned char)((at[0] & *mask++) | *data++);
+        at[1] = (unsigned char)((at[1] & *mask++) | *data++);
+        at = (unsigned char *)zx_saddrpdown(at);
+    }
+    last = (unsigned char)((py + 15) >> 3);
+    for (row = (unsigned char)(py >> 3); row <= last; ++row) {
+        *(unsigned char *)zx_cxy2aaddr(col, row) = sprite_attribute[sprite];
+        *(unsigned char *)zx_cxy2aaddr(col + 1, row) = sprite_attribute[sprite];
+    }
+#else
+    (void)col; (void)py; (void)sprite; (void)frame;
+#endif
+}
+
+/* The same sprite at a pixel column, drawn from the copy packed for that
+ * position inside a byte.
+ *
+ * There is no bit shifting here and there is not meant to be. Rotating a
+ * masked sprite right by n bits at run time costs a carry chain per byte per
+ * line -- 48 rotations for one 16x16 frame -- every frame it moves, which is
+ * the cost pre-shifted art exists to avoid and the reason the era paid for it
+ * in memory instead. `spriting._shift_plan` did the work once, in Python.
+ *
+ * Two numbers, and they are not the same number even though they are equal
+ * when this feature is switched on. PIXELS_PER_BYTE says how to turn a pixel
+ * column into a byte column, and is a property of the machine. SPRITE_SHIFTS
+ * says how many copies were packed, and is a property of the design. Masking
+ * the remainder by SPRITE_SHIFTS - 1 as well is what makes a design that
+ * packed one copy round down to the byte instead of indexing a copy that does
+ * not exist: `& 0` is 0, with no branch and no dead code.
+ *
+ * PIXELS_PER_BYTE_LOG rather than a division: SDCC would satisfy `/ 8` from
+ * its own routine, and the CPC half of this file must avoid exactly that (see
+ * sprite_header.py's note on --sdcccall). A power of two is a shift. */
+void plat_sprite_px(unsigned int px, unsigned char py, unsigned char sprite,
+                    unsigned char frame) {
+#if SPRITE_COUNT
+    const unsigned char *data;
+    const unsigned char *mask;
+    unsigned char *at;
+    unsigned char line;
+    unsigned char byte;
+    unsigned char row;
+    unsigned char last;
+    unsigned char col;
+    unsigned int block;
+    if (sprite >= SPRITE_COUNT) return;
+    if (px > MAX_SPRITE_PX || py > MAX_SPRITE_PY) return;
+    col = (unsigned char)(px >> PIXELS_PER_BYTE_LOG);
+    block = (unsigned int)(px & (PIXELS_PER_BYTE - 1) & (SPRITE_SHIFTS - 1))
+            * SPRITE_SHIFT_STRIDE;
+    data = sprite_data[sprite] + sprite_frame_offset[sprite][frame] + block;
+    mask = sprite_mask[sprite] + sprite_frame_offset[sprite][frame] + block;
+    at = (unsigned char *)zx_pxy2saddr((unsigned char)(col << 3), py);
+    for (line = 0; line < 16; ++line) {
+        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
+            at[byte] = (unsigned char)((at[byte] & *mask++) | *data++);
+        }
+        at = (unsigned char *)zx_saddrpdown(at);
+    }
+    /* SPRITE_BYTES_WIDE cells across, not a literal 2 or 3: shifted art is one
+     * byte wider and therefore covers one more column of attribute cells, and
+     * deriving the count from the same macro the loop above uses is what stops
+     * the two disagreeing. */
+    last = (unsigned char)((py + 15) >> 3);
+    for (row = (unsigned char)(py >> 3); row <= last; ++row) {
+        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
+            *(unsigned char *)zx_cxy2aaddr(col + byte, row) = sprite_attribute[sprite];
+        }
+    }
+#else
+    (void)px; (void)py; (void)sprite; (void)frame;
+#endif
+}
+
+/* Deliberately does nothing. This machine has no display start register --
+ * the screen is at 0x4000 and stays there -- so the only way to move the
+ * picture is to move all 6912 bytes of it, which is not something a game loop
+ * written in C does at 50 Hz.
+ *
+ * A no-op rather than an absent function, for the same reason plat_sound is a
+ * no-op on the CPC: one program compiles against either library. And as there,
+ * the design gate is what stops a design quietly losing a feature -- a
+ * Spectrum design that declares `presentation.scrolling` is refused by
+ * `structure._fit_errors`, with the reason, before anything is built. */
+void plat_scroll_to(unsigned int origin) {
+    (void)origin;
+}
+
+/* Save and restore what is behind a sprite.
+ *
+ * Both halves walk the same addresses `plat_sprite_px` writes, in the same
+ * order, so the bytes come back exactly where they came from: SPRITE_BYTES_WIDE
+ * across and sixteen scanlines down with `zx_saddrpdown`, then the attribute
+ * cells of every character row the sprite covers.
+ *
+ * Three rows of attributes, not two. A sprite at a `py` that is not a multiple
+ * of eight straddles one more character row than a cell-aligned one, and the
+ * blitter colours all of them; saving two would leave the third wearing the
+ * sprite's ink for the rest of the game. `_ROWS_A_SPRITE_COVERS` in
+ * `codegen.py` sizes SPRITE_UNDER_BYTES for the same three.
+ *
+ * The pixels come first and the attributes after, which is only a convention
+ * -- but it is one both functions share, and the buffer is opaque to the
+ * program, so nothing outside this file depends on it. */
+static unsigned char *under_row(unsigned char col, unsigned char py) {
+    return (unsigned char *)zx_pxy2saddr((unsigned char)(col << 3), py);
+}
+
+void plat_save_under(unsigned int px, unsigned char py, unsigned char *under) {
+#if SPRITE_COUNT
+    unsigned char *at;
+    unsigned char line;
+    unsigned char row;
+    unsigned char col;
+    if (px > MAX_SPRITE_PX || py > MAX_SPRITE_PY) return;
+    col = (unsigned char)(px >> PIXELS_PER_BYTE_LOG);
+    at = under_row(col, py);
+    for (line = 0; line < 16; ++line) {
+        memcpy(under, at, SPRITE_BYTES_WIDE);
+        under += SPRITE_BYTES_WIDE;
+        at = (unsigned char *)zx_saddrpdown(at);
+    }
+    for (row = 0; row < 3; ++row) {
+        unsigned char cell_row = (unsigned char)((py >> 3) + row);
+        if (cell_row < 24) {
+            /* One address for the row, not one per byte: a row of attributes
+             * is 32 contiguous bytes, so the cells this sprite covers are
+             * side by side and zx_cxy2aaddr had nothing to work out after the
+             * first. */
+            memcpy(under, (unsigned char *)zx_cxy2aaddr(col, cell_row), SPRITE_BYTES_WIDE);
+        } else {
+            memset(under, 0, SPRITE_BYTES_WIDE);
+        }
+        under += SPRITE_BYTES_WIDE;
+    }
+#else
+    (void)px; (void)py; (void)under;
+#endif
+}
+
+void plat_restore_under(unsigned int px, unsigned char py, const unsigned char *under) {
+#if SPRITE_COUNT
+    unsigned char *at;
+    unsigned char line;
+    unsigned char row;
+    unsigned char col;
+    if (px > MAX_SPRITE_PX || py > MAX_SPRITE_PY) return;
+    col = (unsigned char)(px >> PIXELS_PER_BYTE_LOG);
+    at = under_row(col, py);
+    for (line = 0; line < 16; ++line) {
+        memcpy(at, under, SPRITE_BYTES_WIDE);
+        under += SPRITE_BYTES_WIDE;
+        at = (unsigned char *)zx_saddrpdown(at);
+    }
+    for (row = 0; row < 3; ++row) {
+        unsigned char cell_row = (unsigned char)((py >> 3) + row);
+        if (cell_row < 24) {
+            memcpy((unsigned char *)zx_cxy2aaddr(col, cell_row), under, SPRITE_BYTES_WIDE);
+        }
+        under += SPRITE_BYTES_WIDE;
+    }
+#else
+    (void)px; (void)py; (void)under;
 #endif
 }
 

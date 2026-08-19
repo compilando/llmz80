@@ -23,7 +23,9 @@ def test_deterministic_fix_adds_disable_firmware_for_hardware_calls():
 
 
 def test_deterministic_fix_preserves_leading_declarations():
-    code = "#include <cpctelera.h>\nvoid main(void) {\n    u8 x = 0;\n    cpct_setVideoMode(1);\n}\n"
+    code = (
+        "#include <cpctelera.h>\nvoid main(void) {\n    u8 x = 0;\n    cpct_setVideoMode(1);\n}\n"
+    )
 
     fixed, fixes = apply_deterministic_cpc_fixes(code)
 
@@ -33,7 +35,9 @@ def test_deterministic_fix_preserves_leading_declarations():
 
 
 def test_deterministic_fix_adds_keyboard_scan_before_key_check():
-    code = "#include <cpctelera.h>\nvoid main(void) {\n    if (cpct_isKeyPressed(Key_Space)) {}\n}\n"
+    code = (
+        "#include <cpctelera.h>\nvoid main(void) {\n    if (cpct_isKeyPressed(Key_Space)) {}\n}\n"
+    )
 
     fixed, fixes = apply_deterministic_cpc_fixes(code)
 
@@ -42,7 +46,14 @@ def test_deterministic_fix_adds_keyboard_scan_before_key_check():
 
 
 def test_deterministic_fix_reorders_draw_char_args():
-    code = "#include <cpctelera.h>\nvoid main(void) {\n    u8* pvmem;\n    cpct_drawCharM1('X', pvmem);\n    cpct_drawCharM1(ch, pvmem);\n}\n"
+    code = (
+        "#include <cpctelera.h>\n"
+        "void main(void) {\n"
+        "    u8* pvmem;\n"
+        "    cpct_drawCharM1('X', pvmem);\n"
+        "    cpct_drawCharM1(ch, pvmem);\n"
+        "}\n"
+    )
 
     fixed, fixes = apply_deterministic_cpc_fixes(code)
 
@@ -64,7 +75,13 @@ void draw(char ch) {
 
 
 def test_deterministic_fix_replaces_lcg_random_without_entropy():
-    code = "#include <cpctelera.h>\nvoid main(void) {\n    cpct_setRandom_lcg_u8();\n    r = cpct_getRandom_lcg_u8();\n}\n"
+    code = (
+        "#include <cpctelera.h>\n"
+        "void main(void) {\n"
+        "    cpct_setRandom_lcg_u8();\n"
+        "    r = cpct_getRandom_lcg_u8();\n"
+        "}\n"
+    )
 
     fixed, fixes = apply_deterministic_cpc_fixes(code)
 
@@ -101,13 +118,36 @@ void reset_hud(void) {
     fixed, fixes = apply_deterministic_cpc_fixes(code)
 
     assert "hud_last_lives = (u8)0xFF;" in fixed
-    assert any("byte altas" in fix for fix in fixes)
+    assert any("high byte constants" in fix for fix in fixes)
 
 
-def test_deterministic_fix_uses_cpctelera_u8_for_high_macro():
+def test_deterministic_fix_casts_a_high_macro_with_a_type_that_needs_no_header():
+    """This used to demand `u8`, and demanding it was the bug.
+
+    A Studio program includes `platform.h`, `game_config.h` and `sprites.h`;
+    `u8` is CPCtelera's typedef and `uint8_t` is <stdint.h>'s, and a program
+    that includes neither gets a cast naming a type that does not exist. That
+    is not a milder warning than the one being silenced -- it is a syntax
+    error, and it killed a whole writing attempt:
+
+        src/main.c:326: syntax error: token -> '128' ; column 50
+
+    `unsigned char` is a keyword. The rewrite happens to a file this code did
+    not write and cannot see the includes of, so the only safe type is one
+    that needs none. See `tests/test_source_fixes_toolchain.py`, which builds
+    such a program for real rather than reading the string back.
+    """
     fixed, _ = apply_deterministic_cpc_fixes("#define SCREEN_H 200\n")
-    assert "#define SCREEN_H ((u8)200)" in fixed
-    assert "uint8_t" not in fixed
+
+    assert "#define SCREEN_H ((unsigned char)200)" in fixed
+
+
+def test_a_declaration_keeps_the_type_the_program_itself_wrote():
+    """The macro path invents a type; this one does not, so `u8` here is in
+    scope by construction -- the program declared the variable with it."""
+    fixed, _ = apply_deterministic_cpc_fixes("#include <cpctelera.h>\nu8 x = 200;\n")
+
+    assert "u8 x = (u8)200;" in fixed
 
 
 def test_deterministic_fix_removes_warning_357_const_sprite_casts():

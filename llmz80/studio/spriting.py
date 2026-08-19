@@ -13,20 +13,133 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from typing import Iterator
 
 from PIL import Image
 
-from .models import AssetSpec
+from .models import AssetSpec, TargetPlatform, VideoMode
 
 #: Every sprite is one 16x16 block, two character cells square. Fixing the size
 #: keeps the blitter branchless and the budget arithmetic honest; a design that
 #: needs something else needs a second sprite kind, not a variable-size one.
 SPRITE_SIZE = 16
 
+#: Terrain artwork is one character cell square, and that is the whole
+#: difference between it and a sprite. A sprite is 16x16 and masked because an
+#: actor moves across a background it must leave intact; a tile *is* the
+#: background, it never moves, and it lands on exactly the cell whose character
+#: it replaces -- so 8x8, no mask, and one attribute for the one cell it fills.
+#: Fixed here for the same reason `SPRITE_SIZE` is: a variable-size tile would
+#: buy nothing and cost the blitter a multiply the CPC link cannot have (see
+#: sprite_header.py's --sdcccall note).
+TILE_SIZE = 8
+
 #: A pixel counts as drawn when it is this opaque. Generated art carries soft
 #: edges no matter how firmly the prompt forbids them, and a threshold is a
 #: decision made once here rather than differently in each caller.
 ALPHA_THRESHOLD = 128
+
+
+# ---------------------------------------------------------------------------
+# Sub-byte horizontal movement.
+#
+# A sprite moves down by one pixel for the price of a different address. It
+# cannot move *across* by one pixel that way: a byte of screen holds several
+# pixels, and a figure whose left edge falls inside a byte has its bits in
+# different positions entirely. What the era did, and what this does, is pack
+# the figure once per offset inside a byte and let the blitter pick the copy.
+#
+# The whole of the mechanism is `_shifted`, and the point of it is that there
+# is no bit rotation anywhere. Both packers below already walk the source
+# image pixel by pixel and put pixel `x` into byte `x // pixels_per_byte`; a
+# copy shifted by `k` is that same walk over a canvas one byte wider with the
+# figure pasted `k` pixels in. So the Spectrum's one-bit pixels, mode 0's
+# interleaved four-bit pens and mode 1's two-bit ones all come out of the code
+# that was already there, with only `pixels_per_byte` differing -- no carries
+# between bytes, no per-machine bit surgery, and nothing to get subtly wrong
+# on the target nobody tested.
+
+
+#: How many pixels each machine packs into one screen byte. The Spectrum's
+#: bitmap is one bit per pixel; the CPC spends four bits per pen in mode 0 and
+#: two in mode 1, so it fits fewer and shows more colours.
+_PIXELS_PER_BYTE: dict[tuple[TargetPlatform, VideoMode], int] = {
+    (TargetPlatform.SPECTRUM, VideoMode.SPECTRUM_BITMAP): 8,
+    (TargetPlatform.AMSTRAD_CPC, VideoMode.CPC_MODE_0): 2,
+    (TargetPlatform.AMSTRAD_CPC, VideoMode.CPC_MODE_1): 4,
+}
+
+
+def pixels_per_byte(platform: TargetPlatform, mode: VideoMode) -> int:
+    """How many pixels one screen byte holds on this target."""
+    try:
+        return _PIXELS_PER_BYTE[(platform, mode)]
+    except KeyError:
+        raise ValueError(
+            f"no pixel packing is known for {platform.value} in {mode.value}"
+        ) from None
+
+
+def shift_count(platform: TargetPlatform, mode: VideoMode) -> int:
+    """How many pre-shifted copies a sprite needs to move one pixel at a time.
+
+    One per pixel position inside a byte, so it *is* `pixels_per_byte` -- eight
+    on the Spectrum, four in CPC mode 1, two in mode 0. Given its own name
+    rather than left as the same call, because the two questions are asked by
+    different code for different reasons and a reader of the header writer
+    should not have to work out why a packing detail decides how many copies
+    exist. `test_preshifted_sprites` pins them equal.
+    """
+    return pixels_per_byte(platform, mode)
+
+
+def shifted_width_bytes(plain_width_bytes: int, shifts: int) -> int:
+    """How wide a shifted copy is, in bytes.
+
+    Exactly one byte wider than the unshifted sprite, on every target, and the
+    arithmetic is the same each time: pushing a 16-pixel figure up to
+    `pixels_per_byte - 1` pixels right needs at most `pixels_per_byte - 1`
+    extra columns, which is less than one whole byte. `shifts == 1` is the
+    unshifted case and stays exactly as wide as it was.
+    """
+    return plain_width_bytes if shifts <= 1 else plain_width_bytes + 1
+
+
+def _shifted(frame: "Image.Image", offset: int, width_pixels: int) -> "Image.Image":
+    """`frame` pasted `offset` pixels right on a transparent canvas.
+
+    Transparent padding is what makes this safe on both machines without
+    either packer knowing it happened: transparent means "keep the background"
+    in both mask conventions, so the columns the figure was pushed off leave
+    the screen alone rather than erasing it.
+    """
+    canvas = Image.new("RGBA", (width_pixels, SPRITE_SIZE), (0, 0, 0, 0))
+    canvas.paste(frame, (offset, 0))
+    return canvas
+
+
+def _shift_plan(
+    frames: list["Image.Image"], shifts: int, plain_width_bytes: int, ppb: int
+) -> Iterator["Image.Image"]:
+    """Every block to pack, in the order a frame's blocks must sit in memory.
+
+    Frame-major, shift-minor: a frame's `shifts` copies sit together, so
+    `sprite_frame_offset[sprite][frame]` goes on meaning the start of a frame
+    and the blitter adds `shift * SPRITE_SHIFT_STRIDE` to reach a copy. That
+    ordering is what keeps `bytes_per_frame` -- the only thing the header's
+    offset table is built from -- true without a second table.
+    """
+    if shifts < 1:
+        raise ValueError(f"a sprite needs at least one copy of itself; got shifts={shifts}")
+    if shifts > ppb:
+        raise ValueError(
+            f"a byte holds {ppb} pixels on this target, so there are only {ppb} "
+            f"positions a sprite can start at inside one; got shifts={shifts}"
+        )
+    width_pixels = shifted_width_bytes(plain_width_bytes, shifts) * ppb
+    for frame in frames:
+        for offset in range(shifts):
+            yield _shifted(frame, offset, width_pixels) if shifts > 1 else frame
 
 
 def is_blitter_sprite(asset: AssetSpec) -> bool:
@@ -48,7 +161,26 @@ def is_blitter_sprite(asset: AssetSpec) -> bool:
     An asset that fails this falls back to the older, size-agnostic
     `assets.c` conversion and gets no `SPRITE_<ID>` constant at all.
     """
-    return asset.kind == "sprite" and asset.frame_width == SPRITE_SIZE and asset.height == SPRITE_SIZE
+    return (
+        asset.kind == "sprite" and asset.frame_width == SPRITE_SIZE and asset.height == SPRITE_SIZE
+    )
+
+
+def is_tile_art(asset: AssetSpec) -> bool:
+    """Whether `asset` is a tile's artwork, as `pack_*_tile` accepts it.
+
+    The `is_blitter_sprite` rule, one kind over: `compiler.render_project`
+    packs an asset into `tiles.h` as a `TILE_<ID>` only when this is true, and
+    `acceptance.tile_art` advertises exactly that same set of constants to the
+    writer. Two answers to one question is a prompt that promises a constant
+    the header never defines.
+
+    `kind` is `tileset` rather than `sprite` because `AssetSpec.kind` already
+    had the word and terrain is what it meant. An 8x8 asset declared `sprite`
+    is not tile art: the design said what it was for.
+    """
+    return asset.kind == "tileset" and asset.frame_width == TILE_SIZE and asset.height == TILE_SIZE
+
 
 #: Ink and BRIGHT bits exactly as z88dk defines them in <arch/zx.h>, found on
 #: this machine at
@@ -149,8 +281,12 @@ def _dominant_opaque_rgb(frames: list[Image.Image]) -> tuple[int, int, int] | No
     counts: Counter[tuple[int, int, int]] = Counter()
     for frame in frames:
         pixels = frame.load()
-        for y in range(SPRITE_SIZE):
-            for x in range(SPRITE_SIZE):
+        # The frame's own size, not `SPRITE_SIZE`: `pack_spectrum_tile` asks
+        # this same question of an 8x8 tile, and a hard-coded 16 walked off the
+        # end of it.
+        width, height = frame.size
+        for y in range(height):
+            for x in range(width):
                 r, g, b, a = pixels[x, y]
                 if a >= ALPHA_THRESHOLD:
                     counts[(r, g, b)] += 1
@@ -206,6 +342,18 @@ class PackedSprite:
     #: palette), but still present so one `sprites.h` shape compiles against
     #: both platform libraries.
     attribute: int = 0
+    #: How many sub-byte horizontal positions this sprite is packed for. 1 is
+    #: an ordinary sprite, which can only be drawn at a byte boundary; more
+    #: means `shifts` copies of every frame sit in `data`, one per pixel
+    #: position inside a byte, and the blitter picks between them. See
+    #: `shift_count` for why the number is what it is on each target.
+    shifts: int = 1
+
+    @property
+    def bytes_per_block(self) -> int:
+        """One copy of one frame: what a blitter reads to draw once."""
+        stride = self.width_bytes * self.height
+        return stride if self.mask else stride * 2
 
     @property
     def bytes_per_frame(self) -> int:
@@ -224,9 +372,13 @@ class PackedSprite:
         This is what makes `len(data) == frames * bytes_per_frame` true for
         both packers -- the property answers "how far to the next frame",
         not just "how big is one row block".
+
+        With pre-shifted art a frame holds `shifts` copies of itself, so the
+        distance to the next frame is that many blocks. Saying it here rather
+        than at the header writer is what lets `sprite_frame_offset` stay
+        `frame * bytes_per_frame` and know nothing about shifting at all.
         """
-        stride = self.width_bytes * self.height
-        return stride if self.mask else stride * 2
+        return self.bytes_per_block * self.shifts
 
 
 def _nearest_pen(rgb: tuple[int, int, int], palette: list[tuple[int, int, int]]) -> int:
@@ -294,7 +446,7 @@ def _checked(frames: list[Image.Image]) -> list[Image.Image]:
     return [frame.convert("RGBA") for frame in frames]
 
 
-def pack_spectrum(frames: list[Image.Image]) -> PackedSprite:
+def pack_spectrum(frames: list[Image.Image], *, shifts: int = 1) -> PackedSprite:
     """Pack frames as one bit per pixel, two bytes to a row.
 
     The Spectrum affords one ink for all four character cells a sprite
@@ -302,15 +454,24 @@ def pack_spectrum(frames: list[Image.Image]) -> PackedSprite:
     16x16 sprite is one cell short of covering a 2x2 attribute block cleanly
     anyway. `_spectrum_attribute` picks that one ink from the frames' opaque
     pixels; see it and `_dominant_opaque_rgb` for how.
+
+    `shifts` is how many sub-byte horizontal positions to pack a copy for; see
+    `_shift_plan`. The default of 1 is the unshifted sprite this has always
+    produced, byte for byte.
+
+    The attribute is read off the frames the caller passed, never off the
+    shifted copies. Every copy adds transparent padding, and an ink averaged
+    over that padding would drift as the sprite shifts.
     """
     checked = _checked(frames)
     attribute = _spectrum_attribute(checked)
+    width_bytes = shifted_width_bytes(SPRITE_SIZE // 8, shifts)
     data = bytearray()
     mask = bytearray()
-    for frame in checked:
+    for frame in _shift_plan(checked, shifts, SPRITE_SIZE // 8, 8):
         pixels = frame.load()
         for y in range(SPRITE_SIZE):
-            for byte in range(2):
+            for byte in range(width_bytes):
                 bits = 0
                 holes = 0
                 for bit in range(8):
@@ -322,11 +483,23 @@ def pack_spectrum(frames: list[Image.Image]) -> PackedSprite:
                         holes |= 0x80 >> bit
                 data.append(bits)
                 mask.append(holes)
-    return PackedSprite(bytes(data), bytes(mask), 2, SPRITE_SIZE, len(frames), attribute=attribute)
+    return PackedSprite(
+        bytes(data),
+        bytes(mask),
+        width_bytes,
+        SPRITE_SIZE,
+        len(frames),
+        attribute=attribute,
+        shifts=shifts,
+    )
 
 
 def pack_cpc(
-    frames: list[Image.Image], *, mode: int, palette: list[tuple[int, int, int]]
+    frames: list[Image.Image],
+    *,
+    mode: int,
+    palette: list[tuple[int, int, int]],
+    shifts: int = 1,
 ) -> PackedSprite:
     """Pack frames for CPCtelera's `cpct_drawSpriteMasked`.
 
@@ -365,8 +538,9 @@ def pack_cpc(
     if mode not in (0, 1):
         raise ValueError(f"the CPC packer only supports modes 0 and 1; got mode {mode}")
 
-    pixels_per_byte = 2 if mode == 0 else 4
-    width_bytes = SPRITE_SIZE // pixels_per_byte
+    per_byte = 2 if mode == 0 else 4
+    plain_width_bytes = SPRITE_SIZE // per_byte
+    width_bytes = shifted_width_bytes(plain_width_bytes, shifts)
     bits_per_pen = 4 if mode == 0 else 2
     max_pens = 1 << bits_per_pen  # 16 in mode 0, 4 in mode 1: what fits in the pen's bit width
     if len(palette) > max_pens:
@@ -379,14 +553,14 @@ def pack_cpc(
     pack_byte = _pack_byte_m0 if mode == 0 else _pack_byte_m1
 
     data = bytearray()
-    for frame in _checked(frames):
+    for frame in _shift_plan(_checked(frames), shifts, plain_width_bytes, per_byte):
         pixels = frame.load()
         for y in range(SPRITE_SIZE):
             for byte in range(width_bytes):
                 colour_pens = []
                 mask_pens = []
-                for i in range(pixels_per_byte):
-                    x = byte * pixels_per_byte + i
+                for i in range(per_byte):
+                    x = byte * per_byte + i
                     r, g, b, a = pixels[x, y]
                     if a >= ALPHA_THRESHOLD:
                         colour_pens.append(_nearest_pen((r, g, b), palette))
@@ -404,4 +578,104 @@ def pack_cpc(
     # for an attribute byte to add. It still exists on this PackedSprite --
     # unused rather than absent -- so sprite_header.py can emit one
     # `sprite_attribute[]` array shape that compiles against either platform.
-    return PackedSprite(bytes(data), b"", width_bytes, SPRITE_SIZE, len(frames))
+    return PackedSprite(bytes(data), b"", width_bytes, SPRITE_SIZE, len(frames), shifts=shifts)
+
+
+@dataclass(frozen=True)
+class PackedTile:
+    """One tile's cell, ready to be written into a header.
+
+    Deliberately *not* a `PackedSprite` with `frames=1`. Three of that class's
+    five fields would be lies here -- `mask` is empty because terrain has no
+    background to keep rather than because the mask is interleaved, `frames`
+    is one because a tile has no animation rather than because this sheet
+    happens to hold a single pose, and `bytes_per_frame`'s "is `mask` empty?"
+    test for which packer produced it would read a CPC layout off a Spectrum
+    tile. A separate, smaller record says what a tile is instead of what a
+    sprite is not.
+    """
+
+    data: bytes
+    width_bytes: int
+    #: The Spectrum attribute byte for the one cell this tile fills; see
+    #: `_spectrum_attribute`, which sprites already use for the four cells
+    #: they cover. Ignored on the CPC, where the pen travels in the pixels.
+    attribute: int = 0
+    #: Kept for the same reason `PackedSprite` carries it: the header writer
+    #: emits the row count rather than assuming it, and one shape of
+    #: `tiles.c` compiles against both platform libraries.
+    height: int = TILE_SIZE
+    #: Always empty. Present so a reader of `tiles.c` beside `sprites.c` can
+    #: see that the absence of a mask here is a decision this packer made,
+    #: not a field somebody forgot to fill in.
+    mask: bytes = b""
+
+
+def _checked_tile(image: Image.Image) -> Image.Image:
+    if image.size != (TILE_SIZE, TILE_SIZE):
+        raise ValueError(f"a tile must be {TILE_SIZE}x{TILE_SIZE}; found {image.size}")
+    return image.convert("RGBA")
+
+
+def pack_spectrum_tile(image: Image.Image) -> PackedTile:
+    """Pack one 8x8 tile as one bit per pixel, one byte to a row.
+
+    This is the same bitmap layout the ROM font uses -- eight bytes, top row
+    first -- because it lands in the same place: the Spectrum's `plat_cell`
+    writes a ROM glyph into a cell's eight screen bytes, and `plat_tile`
+    writes these eight instead. A clear pixel packs as a zero bit and so shows
+    the paper; there is no mask, because a tile is the background rather than
+    something drawn over it.
+    """
+    checked = _checked_tile(image)
+    attribute = _spectrum_attribute([checked])
+    pixels = checked.load()
+    data = bytearray()
+    for y in range(TILE_SIZE):
+        bits = 0
+        for x in range(TILE_SIZE):
+            if pixels[x, y][3] >= ALPHA_THRESHOLD:
+                bits |= 0x80 >> x
+        data.append(bits)
+    return PackedTile(bytes(data), 1, attribute=attribute)
+
+
+def pack_cpc_tile(
+    image: Image.Image, *, mode: int, palette: list[tuple[int, int, int]]
+) -> PackedTile:
+    """Pack one 8x8 tile for CPCtelera's unmasked `cpct_drawSprite`.
+
+    The pixel encoding is `pack_cpc`'s exactly -- `_pack_byte_m0` and
+    `_pack_byte_m1`, the two CPCtelera macros quoted there -- and the one
+    difference is that nothing is interleaved: terrain is drawn with the
+    unmasked call, so `data` holds colour bytes only, and a clear pixel is
+    packed as pen 0 (the paper) rather than as a transparent pen. A tile
+    packed with a mask would have to be drawn with `cpct_drawSpriteMasked`,
+    which reads two bytes per byte drawn and exists to preserve a background
+    the terrain does not have.
+    """
+    if mode not in (0, 1):
+        raise ValueError(f"the CPC tile packer only supports modes 0 and 1; got mode {mode}")
+    pixels_per_byte = 2 if mode == 0 else 4
+    bits_per_pen = 4 if mode == 0 else 2
+    max_pens = 1 << bits_per_pen
+    if len(palette) > max_pens:
+        raise ValueError(
+            f"mode {mode} pens are {bits_per_pen} bits wide, so a palette can have at most "
+            f"{max_pens} entries; got {len(palette)}"
+        )
+    pack_byte = _pack_byte_m0 if mode == 0 else _pack_byte_m1
+    width_bytes = TILE_SIZE // pixels_per_byte
+
+    checked = _checked_tile(image)
+    pixels = checked.load()
+    data = bytearray()
+    for y in range(TILE_SIZE):
+        for byte in range(width_bytes):
+            pens = []
+            for i in range(pixels_per_byte):
+                x = byte * pixels_per_byte + i
+                r, g, b, a = pixels[x, y]
+                pens.append(_nearest_pen((r, g, b), palette) if a >= ALPHA_THRESHOLD else 0)
+            data.append(pack_byte(*pens))
+    return PackedTile(bytes(data), width_bytes)

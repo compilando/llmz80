@@ -1,873 +1,488 @@
-# LLMZ80 🎮
+# LLMZ80
 
-> Generador inteligente de código C para microordenadores clásicos Z80 usando IA, RAG y bucles de compilación
+Make a playable ZX Spectrum or Amstrad CPC game from one sentence, and prove it
+runs before calling it finished.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Anthropic](https://img.shields.io/badge/Anthropic-Claude%20Opus%205-D97757.svg)](https://www.anthropic.com/)
-[![Qdrant](https://img.shields.io/badge/Qdrant-Vector%20DB-DC244C.svg)](https://qdrant.tech/)
+You describe the game. Studio designs it, draws its art, writes the C, builds it
+with the machine's real toolchain, boots the result in an emulator, presses keys
+at it and reads the running program's memory to check it did what the design
+said it would. A game that compiles but does not behave is refused and rewritten.
 
-LLMZ80 es un generador inteligente de código C para microordenadores clásicos Z80 (ZX Spectrum y Amstrad CPC) que utiliza **Large Language Models** (LLMs), **embeddings**, **RAG** (Retrieval Augmented Generation), validación previa y corrección automática para generar código compilable desde descripciones en lenguaje natural.
+```bash
+llmz80 make "a miner crosses stone ledges, jumping between them, to reach the keys"
+```
 
-El nuevo **LLMZ80 Studio** añade un flujo guiado por TUI y orientado a proyectos:
-el diseño versionado `game.yml` es la fuente de verdad, mientras que el C se
-genera de forma determinista. Esto permite reabrir y modificar el juego sin
-volver a generar todo mediante un prompt.
+Out the other end: `output.tap` (or `output.dsk`), the sources it was built
+from, and the evidence for every claim made about it.
 
-## Estado del Proyecto
+---
 
-El flujo principal actual genera **C**:
+## Contents
 
-- ZX Spectrum mediante Z88DK.
-- Amstrad CPC mediante CPCtelera, SDCC y plantillas de proyecto.
-- Amstrad CPC usa por defecto un contrato `main.c` autocontenido: sin includes locales ni assets externos.
-- Sprites para Spectrum y modos gráficos de Amstrad CPC.
-- Aprendizaje local de compilaciones exitosas y errores recurrentes.
+- [What it does](#what-it-does)
+- [Requirements](#requirements)
+- [Install](#install)
+- [Configure](#configure)
+- [Use](#use)
+- [Evidence](#evidence)
+- [The two machines](#the-two-machines)
+- [Architecture](#architecture)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [Licence](#licence)
 
-El soporte para **ASM Z80 standalone** todavía no está implementado como flujo de primera clase. La configuración ya contempla ensambladores (`z80asm`) y el repositorio contiene ejemplos con ensamblador dentro de la colección CPCtelera, pero el generador principal, los prompts y la validación están orientados a C. Ver [Informe: Retro Vibe-Coding ASM Z80](docs/RETRO_VIBE_CODING_GAP_REPORT.md) para el análisis de gaps y el plan de mejora.
+---
 
-La revisión más reciente del flujo C, sus causas raíz y evidencia de compilación
-está en [Auditoría fundacional 2026-08-09](docs/FOUNDATIONAL_AUDIT_2026-08-09.md).
-El trabajo y la evidencia de mejora se registran en
-[Generation quality roadmap](docs/GENERATION_QUALITY_ROADMAP.md).
-La renovación del editor y sus criterios de aceptación se mantienen en
-[LLMZ80 Studio roadmap](docs/STUDIO_ROADMAP.md).
-Las interfaces para añadir plataformas, capacidades y exportadores se
-documentan en [Extending LLMZ80 Studio](docs/STUDIO_EXTENSIONS.md).
+## What it does
 
-## ✨ Características Principales
+`llmz80 make` runs six stages, in order, and stops at the first one that cannot
+honestly finish.
 
-- 🤖 **Generación de código con IA**: Usa Claude para crear código C orientado a Z80
-- 🔍 **RAG fiable**: catálogo local determinista de programas compilables, ampliable con Qdrant
-- 🧭 **Vocabulario declarado por el diseño**: `game.yml` no elige entre juegos
-  previstos, los describe. Los tiles llevan su carácter y sus rasgos, las
-  entidades el `kind` que el diseño acuña (`perseguidor`, `puerta`, `interruptor`),
-  las teclas los nombres que quiera (`jump`, `fire`, `pump`) y las pantallas se
-  conectan por `exits`; las mecánicas son prosa que leen el escritor y el
-  examinador. Studio comprueba que el diseño cabe en la máquina, no que se
-  parezca a un género
-- 📖 **Referencias reales**: cuando el brief nombra un juego de la época, Studio
-  lo busca en la web, archiva una ficha citada en `reference.yml` y la usa para
-  proponer un diseño y para decirle al escritor qué juego está haciendo; una
-  ficha sin fuentes se rechaza y un juego no identificado deja el diseño intacto
-- 🎯 **Compilación automática**: Compila y verifica el código generado automáticamente
-- 📊 **Contrato de build verificable**: Cada ejecución guarda `build_report.json`
-  con advertencias clasificadas, artefactos y tamaño del programa; una opción
-  ignorada o un artefacto vacío ya no cuentan como éxito
-- 🔧 **Corrección inteligente**: Si la compilación falla, el LLM sugiere correcciones
-- 🧪 **Validación previa**: Reglas locales detectan errores comunes antes de compilar
-- 🩹 **Reparaciones deterministas**: los fallos CPCtelera conocidos, incluido
-  SDCC warning 357 en sprites constantes, se corrigen antes de gastar un retry LLM
-- 🧱 **Contrato CPCtelera**: En Amstrad CPC se fuerza `main.c` autocontenido y APIs CPCtelera conocidas
-- 📦 **DSK con puerta de calidad**: `output.dsk` sólo se publica después de
-  superar advertencias, semántica y presupuestos; un build rechazado conserva
-  únicamente el artefacto candidato para diagnóstico
-- 📈 **Aprendizaje local**: Guarda ejemplos exitosos y errores recurrentes para mejorar iteraciones futuras
-- 🎨 **Generación de sprites**: Crea sprites desde descripciones o imágenes
-- 🕹️ **Sprites de Studio**: dibuja los sprites de un diseño al estilo del juego
-  investigado, los empaqueta para cada máquina objetivo y los blitea con
-  máscara; `llmz80 project sprites PATH` los genera y muestra una previsualización
-- 🎞️ **Sensación de juego leída en memoria**: el emulador comprueba que
-  `g_anim_frame` (cuando el programa lo declara) avanza al moverse y se detiene
-  en reposo. El resto del comportamiento se lee y se registra, pero no se
-  juzga: derivar la expectativa de las mecánicas del propio diseño es trabajo
-  del examinador de la fase 2, y hasta que exista la puerta se abstiene en vez
-  de adivinar
-- 📚 **Base de conocimiento**: Aprende de ejemplos de código existentes
-- 🚀 **Dos plataformas**: ZX Spectrum 48K y Amstrad CPC 464/6128
+| Stage | What happens |
+|---|---|
+| **reference** | Searches the web for the game the brief sounds like, and archives what it finds |
+| **drafting** | Writes the design: tiles, entities, mechanics, controls, palette, screens |
+| **design** | Adapts that design towards the researched game, as a diff you can refuse |
+| **sprites** | Draws each entity's 16×16 sheet and each tile's 8×8 block, in the target's real palette |
+| **program** | Writes the C, builds it, and rewrites it against the compiler and the gates until it passes or runs out of attempts |
+| **gates** | Boots the binary, presses each declared key, reads memory, and judges what it saw |
 
-## 📋 Tabla de Contenidos
+The design is a versioned document (`game.yml`) you can read and edit between
+any two stages. Nothing is hidden in a prompt.
 
-- [Requisitos Previos](#requisitos-previos)
-- [Instalación](#instalación)
-- [Configuración](#configuración)
-- [Uso](#uso)
-- [Ejemplos](#ejemplos)
-- [ASM Z80 y Retro Vibe-Coding](#asm-z80-y-retro-vibe-coding)
-- [Arquitectura](#arquitectura)
-- [Contribuir](#contribuir)
-- [Licencia](#licencia)
-- [Recursos](#recursos)
+**What is not generated:** the engine. There isn't one. Studio writes a small
+platform library (`plat_sprite`, `plat_tile`, `plat_text`, `plat_input`,
+`plat_wait_frame`, …) that is identical in shape on both machines, and the model
+writes the game against it in ordinary C. The program is the artifact of record.
 
+**How a game is judged.** Not by pixels. The design declares observables —
+`g_score`, `g_lives`, whatever counters its own rules need — the program defines
+them at file scope, the linker map says where they live, and the emulator reads
+those addresses after each scripted keypress. "The score rose when the player
+collected something" is then a measurement rather than an impression.
 
-## 🎯 Requisitos Previos
+---
 
-### Software Requerido
+## Requirements
 
-| Componente | Descripción | Instalación |
-|------------|-------------|-------------|
-| **Python 3.10+** | Lenguaje principal | [python.org](https://www.python.org/downloads/) |
-| **Docker** | Opcional, sólo para ampliar el RAG con Qdrant | [docker.com](https://www.docker.com/) |
-| **Git** | Control de versiones | `sudo pacman -S git` |
+| | |
+|---|---|
+| Python | 3.10 – 3.13 |
+| Anthropic API key | required — this is the only paid service used |
+| **ZX Spectrum** | [z88dk](https://z88dk.org/) (`zcc`) |
+| **Amstrad CPC** | [CPCtelera](https://github.com/lronaldo/cpctelera), set up with its own `setup.sh` |
+| Emulator | [ZEsarUX](https://github.com/chernandezba/zesarux) — drives the quality gates on **both** machines, because it is the one that speaks a protocol the harness can read memory through |
 
-### Herramientas de Desarrollo Z80
+Caprice32 and CPCEC work for playing a finished CPC game, but not for judging
+one.
 
-#### Para ZX Spectrum
+---
 
-| Herramienta | Descripción | Instalación |
-|-------------|-------------|-------------|
-| **Z88DK** | Kit de desarrollo para Z80 | `sudo pacman -S z88dk` |
-| **Fuse** | Emulador ZX Spectrum | `sudo pacman -S fuse` |
-
-Otros emuladores compatibles: ZEsarUX, ZXSpin
-
-#### Para Amstrad CPC
-
-| Herramienta | Descripción | Instalación |
-|-------------|-------------|-------------|
-| **SDCC** | Small Device C Compiler | `sudo pacman -S sdcc` |
-| **CPCtelera** | Framework de desarrollo CPC | Ver [instalación CPCtelera](#instalación-de-cpctelera) |
-| **Caprice32** | Emulador Amstrad CPC | `sudo pacman -S caprice32` |
-| **pasmo** | Ensamblador Z80 recomendado para futuros flujos ASM standalone | Opcional |
-
-Otros emuladores compatibles: RetroVirtualMachine, XRoar
-
-### API Keys Necesarias
-
-- **Anthropic API Key**: Para todo el flujo de Studio: diseño, sprites y programa (requerido)
-- **OpenAI API Key**: Sólo para el generador antiguo (`llm_z80.py`) (opcional)
-- **Gemini API Key**: Para el generador de sprites antiguo (opcional)
-- **Google Cloud**: Para Vertex AI (opcional)
-
-## 🚀 Instalación
-
-### 1. Clonar el Repositorio
+## Install
 
 ```bash
 git clone https://github.com/compilando/llmz80.git
 cd llmz80
+make setup          # creates .venv, installs, writes .env from the example
+make doctor         # checks Python, the key, both toolchains and the emulators
 ```
 
-### 2. Preparar el entorno Python
+`make doctor` is the one that tells you what is missing, including the CPCtelera
+trap below.
+
+### z88dk (ZX Spectrum)
 
 ```bash
-# Crea .venv e instala las dependencias sin modificar el Python del sistema
-make setup
-```
-
-No es necesario activar el entorno: los targets del Makefile utilizan
-`.venv/bin/python` directamente. El proyecto admite Python 3.10–3.13; si el
-`python3` del sistema es más nuevo, el Makefile busca automáticamente una
-versión compatible instalada.
-
-### 3. Instalar Herramientas de Desarrollo
-
-#### Instalación de Z88DK (ZX Spectrum)
-
-```bash
-# Arch Linux
-sudo pacman -S z88dk
-
-# Ubuntu/Debian
-sudo apt-get install z88dk
-
-# MacOS
+# Arch
+yay -S z88dk
+# Debian / Ubuntu
+sudo apt install z88dk
+# macOS
 brew install z88dk
-
-# Desde código fuente
-git clone https://github.com/z88dk/z88dk.git
-cd z88dk
-export BUILD_SDCC=1
-./build.sh
 ```
 
-#### Instalación de CPCtelera (Amstrad CPC)
+### CPCtelera (Amstrad CPC)
+
+CPCtelera does **not** build with your system SDCC. It bundles its own under
+`tools/sdcc-*/`, and `setup.sh` is what puts it there — a clone alone compiles
+nothing and fails with `sdcc: No such file or directory`.
 
 ```bash
-# Clonar el repositorio
 git clone https://github.com/lronaldo/cpctelera.git ~/cpctelera
-
-# Compilar e instalar
 cd ~/cpctelera
-./setup.sh
-
-# Configurar variables de entorno
-echo 'export CPCT_PATH=~/cpctelera' >> ~/.bashrc
-source ~/.bashrc
+./setup.sh                       # downloads and builds the toolchain; takes a while
+export CPCT_PATH=~/cpctelera/cpctelera
 ```
 
-### 5. Iniciar Qdrant (opcional)
-
-La generación funciona sin Qdrant: siempre usa el catálogo local de entrypoints compilables. Qdrant añade búsqueda vectorial y memoria semántica, pero no es una dependencia del flujo base.
-
-```bash
-# Con Docker (recomendado)
-docker run -p 6333:6333 -p 6334:6334 \
-  -v $(pwd)/local/qdrant_storage:/qdrant/storage \
-  qdrant/qdrant:v1.18.3
-
-# O instalar localmente
-# Ver: https://qdrant.tech/documentation/guides/installation/
-```
-
-## ⚙️ Configuración
-
-### 1. Variables de Entorno
-
-Copia el archivo de ejemplo y configura tus API keys:
-
-```bash
-cp .env.example .env
-nano .env  # o tu editor preferido
-```
-
-Contenido de `.env`:
-
-```bash
-# Requerido
-OPENAI_API_KEY=sk-proj-...
-
-# Opcional (para generación de sprites)
-GEMINI_API_KEY=...
-GOOGLE_CLOUD_PROJECT=...
-```
-
-### 2. Configuración Principal (config.yml)
-
-El archivo `config.yml` contiene la configuración del sistema:
-
-```yaml
-anthropic:
-  model: claude-opus-5       # El modelo con el que piensa Studio
-
-# Sin `temperature`: el modelo lo rechaza con un 400, no lo ignora.
-# Sin `reasoning_effort`: su sustituto (output_config.effort) ya viene en
-# el valor alto que Studio quiere, así que nombrarlo sería repetir el defecto.
-
-openai:
-  # Sólo lo lee el generador antiguo (llm_z80.py, llmz80/api/generator.py)
-  model: gpt-5
-  temperature: 0.3
-  max_tokens: 16384
-  reasoning_effort: medium
-
-examples:
-  max_examples: 8            # Programas completos en el prompt
-  truncate_size: 50000       # Tamaño máximo por ejemplo
-
-generation:
-  max_attempts: 4            # Build inicial + correcciones con diagnóstico real
-
-embeddings:
-  cache_dir: "local/embeddings"
-  max_chunk_size: 15000
-```
-
-### 3. Poblar Base de Datos Vectorial
-
-Inicializa Qdrant con los ejemplos de código:
-
-```bash
-# Para ZX Spectrum
-python llm_z80.py --platform spectrum --populate-db
-
-# Para Amstrad CPC
-python llm_z80.py --platform amstrad_cpc --populate-db
-```
-
-## 📖 Uso
-
-### Una sola orden: de la idea al juego
-
-```bash
-# Spectrum por defecto
-.venv/bin/llmz80 make "un minero cruza cornisas de piedra saltando entre ellas"
-
-# Amstrad CPC, en otro workspace
-.venv/bin/llmz80 make "cuatro fantasmas te persiguen por un laberinto" \
-    --cpc --workspace ~/juegos
-```
-
-`make` recorre el pipeline entero sin preguntar nada: crea el proyecto,
-investiga el juego real al que se parece, adapta el diseño a esa ficha, dibuja
-los sprites que falten, escribe el programa y lo repara contra el compilador, y
-por último compila y lo ejecuta en el emulador. La última línea que imprime es
-la ruta de la cinta o del disco.
-
-Gasta dinero de la API de Anthropic en cuatro etapas (`referencia`, `diseño`,
-`sprites`, `programa`) y lo dice al empezar; avisar no es preguntar. Si la
-investigación no identifica ningún juego real no es un fallo: se salta la
-adaptación y el diseño conserva su tipología. Si una etapa falla, la orden para
-ahí, dice en cuál y con qué error, y deja escrito cómo reintentar esa misma
-etapa sobre el proyecto que ya existe. Todo queda anotado, en pantalla y en
-`<proyecto>/studio.log`, mientras pasa.
-
-### Mirar la tirada mientras pasa
-
-```bash
-# En otra terminal, mientras `llmz80 make` trabaja
-make studio
-
-# Equivalente, eligiendo el directorio de proyectos (o un proyecto concreto)
-.venv/bin/llmz80 studio studio-projects
-```
-
-Esta pantalla no hace nada: mira. Enseña la identidad del proyecto, la tira de
-las seis etapas con su estado (`✓` hecha, `✗` fallida, `—` pendiente) leída de
-lo que el pipeline va dejando en disco, el diario según se escribe, y al final
-dónde quedó el juego o qué lo detuvo. Sigue el proyecto escrito más
-recientemente del workspace, así que basta abrirla antes y lanzar `llmz80 make`
-al lado; apuntada a un proyecto concreto, mira ése y ninguno más, que es como
-se revisa la tirada de ayer. Una sola tecla: `q` para salir.
-
-También existe un flujo reproducible para CI:
-
-```bash
-.venv/bin/llmz80 project validate studio-projects/my-game
-.venv/bin/llmz80 project generate studio-projects/my-game
-.venv/bin/llmz80 project build studio-projects/my-game
-.venv/bin/llmz80 project test studio-projects/my-game
-.venv/bin/llmz80 project release studio-projects/my-game
-```
-
-`release` no empaqueta lo que no se ha visto correr: además de exigir que todas
-las puertas pasen, exige que al menos una puerta de comportamiento haya
-observado el programa de verdad. Si todas se abstuvieron, el juego compila pero
-no se publica.
-
-La asistencia IA de Studio usa Responses API con salidas estructuradas para
-proponer cambios revisables sobre el diseño; nunca sustituye directamente el C
-ni relaja presupuestos o tests de aceptación.
-
-### Generación Básica de Código
-
-#### Modo Interactivo
-
-```bash
-# ZX Spectrum
-python llm_z80.py --platform spectrum
-
-# Amstrad CPC
-python llm_z80.py --platform amstrad_cpc
-```
-
-El programa te pedirá que ingreses tu prompt.
-
-#### Con Prompt Directo
-
-```bash
-python llm_z80.py --platform spectrum \
-  --prompt "Create a bouncing ball that changes color when it hits the border"
-
-python llm_z80.py --platform amstrad_cpc \
-  --prompt "Display a sprite of a spaceship that moves with keyboard arrows"
-```
-
-### Opciones Avanzadas
-
-```bash
-# Con nivel de log debug
-python llm_z80.py --platform spectrum --log-level DEBUG \
-  --prompt "Your prompt here"
-
-# Sin Qdrant/embeddings; conserva el catálogo local determinista
-python llm_z80.py --platform spectrum --no-embeddings \
-  --prompt "Your prompt here"
-
-# Limpiar caché de embeddings
-python llm_z80.py --platform spectrum --clear-cache
-
-# Reconstruir completamente los embeddings
-python llm_z80.py --platform spectrum --rebuild-embeddings
-```
-
-### Generación de Sprites
-
-```bash
-# ZX Spectrum (8 colores)
-./generate_sprite.sh spectrum "robot futurista" 16 16
-
-# Amstrad CPC Mode 0 (16 colores)
-./generate_sprite.sh amstrad_cpc_mode0 "dragon fire" 16 16
-
-# Amstrad CPC Mode 1 (4 colores)
-./generate_sprite.sh amstrad_cpc_mode1 "treasure chest" 16 16
-```
-
-### Compilar Ejemplos Existentes
-
-```bash
-# Listar ejemplos disponibles
-./build_spectrum.sh --list-examples
-./build_amstrad.sh --list-examples
-
-# Compilar y ejecutar un ejemplo
-./build_spectrum.sh --example=01_border
-./build_amstrad.sh --example=text_example
-
-# Compilar sin ejecutar el emulador
-./build_spectrum.sh --example=01_border --no-emulator
-
-# Especificar emulador diferente
-./build_spectrum.sh --example=01_border --emulator=zesarux
-```
-
-## 💡 Ejemplos
-
-### Ejemplo 1: Programa Simple para ZX Spectrum
-
-```bash
-python llm_z80.py --platform spectrum \
-  --prompt "Change the border color to red and print 'HELLO WORLD' in the center of the screen"
-```
-
-**Salida**: Archivo `.tap` en `local/YYYY-MM-DD_HHMMSS_change-the-border/`
-
-### Ejemplo 2: Juego para Amstrad CPC
-
-```bash
-python llm_z80.py --platform amstrad_cpc \
-  --prompt "Create a simple game where a player-controlled sprite can move left and right at the bottom of the screen, and random sprites fall from the top. If a falling sprite touches the player, show GAME OVER. Use Mode 1 graphics."
-```
-
-### Ejemplo 3: Gráficos Animados
-
-```bash
-python llm_z80.py --platform spectrum \
-  --prompt "Draw a sine wave animation that scrolls across the screen horizontally"
-```
-
-### Ejemplo 4: Control de Teclado
-
-```bash
-python llm_z80.py --platform amstrad_cpc \
-  --prompt "Create a program where pressing keys Q, A, O, P changes the border to different colors in Mode 0"
-```
-
-## ASM Z80 y Retro Vibe-Coding
-
-El artículo "Cómo crear con Vibe Coding código ASM para AMSTRAD CPC 6128" describe un flujo manual para generar ASM Z80, compilarlo con `pasmo`, empaquetarlo como BIN con cabecera AMSDOS en un DSK y probarlo en CPCBox o emuladores equivalentes. Ese flujo encaja con la dirección natural de LLMZ80, pero hoy el proyecto todavía no lo automatiza.
-
-Puntos importantes para contribuciones ASM:
-
-- Separar claramente `amstrad_cpc` en C/CPCtelera de un futuro perfil `amstrad_cpc_asm`.
-- Usar un prompt de sistema específico para ASM Z80 CPC6128 con `ORG &4000`, `LOAD`/`CALL &4000`, firmware CPC documentado y límites de VRAM.
-- Añadir validadores sintácticos y semánticos para instrucciones Z80 estándar, direcciones firmware, rangos de memoria y retorno seguro.
-- Automatizar `pasmo`, cabecera AMSDOS, creación de DSK y prueba en emulador.
-- Alimentar RAG con ejemplos ASM CPC reales y con fallos corregidos.
-
-El detalle completo está en [docs/RETRO_VIBE_CODING_GAP_REPORT.md](docs/RETRO_VIBE_CODING_GAP_REPORT.md).
-
-## 🏗️ Arquitectura
-
-### Estructura del Proyecto
-
-```
-llmz80/
-├── .cline/                  # Documentación para AI assistants
-├── llmz80/                  # Código principal del paquete
-│   ├── api/                 # API de generación
-│   │   └── generator.py     # LLMZ80Generator (clase principal)
-│   ├── core/                # Módulos core
-│   │   ├── example_catalog.py # RAG local centrado en programas compilables
-│   │   ├── embeddings.py    # Gestión de embeddings
-│   │   ├── cache_manager.py # Caché de embeddings
-│   │   └── examples_loader.py # Carga de ejemplos
-│   └── utils/               # Utilidades
-│       ├── config.py        # Configuración
-│       ├── logger.py        # Logging
-│       └── helpers.py       # Funciones auxiliares
-├── generators/              # Generadores de sprites
-│   ├── openai_generator.py  # DALL-E
-│   ├── gemini_generator.py  # Google Gemini
-│   └── vertexai_generator.py # Vertex AI
-├── examples/                # Ejemplos de código
-│   ├── spectrum/            # ZX Spectrum (Z88DK)
-│   ├── amstrad_cpc/         # Base Amstrad CPC (CPCtelera)
-│   └── amstrad_cpc_level2/  # Proyectos CPC medium/advanced también indexados
-├── resources/               # Recursos
-│   ├── platforms.yml        # Configuración de plataformas
-│   └── system_prompt_*.txt  # Prompts del sistema
-├── sprites/                 # Sprites generados
-├── templates/               # Plantillas de compilación
-├── build/                   # Archivos compilados (gitignored)
-├── local/                   # Datos locales (gitignored)
-├── config.yml               # Configuración principal
-├── llm_z80.py              # Script principal
-├── vector_db.py            # Integración Qdrant
-├── build_spectrum.sh        # Compilador ZX Spectrum
-└── build_amstrad.sh         # Compilador Amstrad CPC
-```
-
-### Flujo de Trabajo
-
-```
-1. Usuario ingresa prompt
-   ↓
-2. Se crea y valida un GenerationSpec con comportamiento y presupuestos
-   ↓
-3. Catálogo local selecciona evidencia por capacidades (Qdrant es opcional)
-   ↓
-4. Compone entrypoints completos, runtime y arquetipo sin truncar C
-   ↓
-5. El modelo genera main.c o un proyecto controlado
-   ↓
-6. Validación sintáctica, de APIs, semántica y memoria
-   ↓
-7. Compilación estricta (SDCC/ZCC) e informe de recursos
-   ↓
-8. Smoke test portable o headless y selección opcional de candidatos
-   ↓
-9. Sólo los resultados con evidencia de calidad entran al aprendizaje/RAG
-```
-
-### Tecnologías Utilizadas
-
-- **Claude Opus 5**: Diseño, sprites, generación y corrección de código
-- **fastembed (local)**: BAAI/bge-small-en-v1.5 para vectorización, sin llamada de red
-- **Qdrant**: Base de datos vectorial para RAG
-- **Z88DK**: Compilador C para ZX Spectrum
-- **SDCC + CPCtelera**: Compilador C para Amstrad CPC
-- **Python 3.10+**: Lenguaje principal
-- **Docker**: Contenedorización de Qdrant
-
-### Verificación del catálogo
-
-Antes de aceptar cambios en ejemplos o toolchains, compila exactamente todos los programas que el RAG puede recuperar:
-
-```bash
-make audit-examples
-```
-
-Las pruebas de integración también compilan contratos mínimos reales y se omiten automáticamente si una toolchain no está instalada.
-Un proyecto incompatible con la toolchain soportada puede incluir
-`.llmz80-rag-exclude` con el motivo; seguirá en la biblioteca, pero no podrá
-contaminar el contexto de generación hasta que vuelva a compilar.
-
-El gate determinista completo ejecuta las pruebas, compila los 53 entrypoints y
-genera el scorecard offline sin consumir API:
-
-```bash
-make install-dev
-make quality-gate
-```
-
-Para evaluar ejecuciones guardadas o lanzar de forma deliberada una muestra live:
-
-```bash
-make benchmark
-.venv/bin/python scripts/evaluate_generation.py --live --allow-api --limit 2 \
-  --output local/quality/live-sample
-```
-
-La ejecución live nunca se activa implícitamente ni reemplaza el baseline.
-
-## Uso
-
-### Calidad, candidatos y assets
-
-El modo normal conserva un único `main.c`. Para prompts complejos se pueden
-generar hasta tres candidatos; todos se compilan y validan, y se selecciona el
-mejor por evidencia, no por opinión del modelo:
-
-```bash
-make generate-spectrum PROMPT="Un juego de plataformas con marcador" \
-  GENERATOR_ARGS="--candidates 3"
-```
-
-El modo proyecto acepta imágenes, genera `src/assets.c`, `src/assets.h` y el
-runtime fijo, y convierte los píxeles al formato nativo de forma determinista:
-
-```bash
-make generate-cpc PROMPT="Mueve el héroe por la pantalla" \
-  GENERATOR_ARGS="--output-mode project --asset art/hero.png"
-```
-
-Cada directorio de salida incluye, según corresponda,
-`generation_spec.json`, `prompt_context.json`, `generation_metrics.json`,
-`semantic_report.json`, `build_report.json`, `emulator_report.json` y
-`candidate_selection.json`.
-
-La comprobación estática sólo valida la estructura de TAP/DSK y nunca cuenta
-como evidencia de ejecución. Para arrancar el programa, capturar framebuffers e
-inyectar un control real en ZEsarUX o Caprice32:
-
-```bash
-make smoke RUN_DIR=local/MI_EJECUCION SMOKE_ARGS=--full
-```
-
-El comando falla si el binario no llega a cargar, la pantalla útil queda vacía o,
-cuando el código declara controles/actualizaciones, no existe una transición
-observable. Las capturas y `emulator_report.json` se guardan dentro del
-directorio de la ejecución.
-
-También puede exigirse durante una generación. Los objetivos `make run-spectrum`
-y `make run-cpc` ya lo hacen automáticamente antes de abrir el emulador:
-
-```bash
-make generate-cpc PROMPT="Una pulga que salta" GENERATOR_ARGS="--runtime-check"
-```
-
-Tras superar esa comprobación, `make run-cpc` monta `output.dsk` en Caprice32 e
-inyecta `run"program.bin"` después del arranque del firmware; no es necesario
-escribir el comando manualmente en BASIC.
-
-### Compilación y Ejecución
-
-#### Amstrad CPC
-```bash
-# Listar ejemplos disponibles
-./build_amstrad.sh --list-examples
-
-# Compilar y ejecutar un ejemplo
-./build_amstrad.sh --example=text_example
-
-# Compilar sin ejecutar el emulador
-./build_amstrad.sh --example=text_example --no-emulator
-
-# Especificar un emulador diferente
-./build_amstrad.sh --example=text_example --emulator=cap32
-```
-
-#### ZX Spectrum
-```bash
-# Listar ejemplos disponibles
-./build_spectrum.sh --list-examples
-
-# Compilar y ejecutar un ejemplo
-./build_spectrum.sh --example=text_example
-
-# Compilar sin ejecutar el emulador
-./build_spectrum.sh --example=text_example --no-emulator
-
-# Especificar un emulador diferente
-./build_spectrum.sh --example=text_example --emulator=fuse
-```
-
-### Creación de Nuevos Ejemplos
-
-#### Amstrad CPC
-```bash
-# Crear estructura para un nuevo ejemplo
-./build_amstrad.sh --create-example=mi_ejemplo
-```
-
-#### ZX Spectrum
-```bash
-# Crear estructura para un nuevo ejemplo
-./build_spectrum.sh --create-example=mi_ejemplo
-```
-
-## 🔧 Solución de Problemas
-
-### Error: No se puede conectar a Qdrant
-
-No bloquea la generación. Usa `--no-embeddings` para trabajar únicamente con el catálogo local, o inicia Qdrant si quieres búsqueda vectorial:
-
-```bash
-# Verificar que Qdrant está corriendo
-docker ps | grep qdrant
-
-# Iniciar Qdrant si no está corriendo
-docker run -p 6333:6333 qdrant/qdrant
-
-# Repoblar la base de datos
-python llm_z80.py --platform spectrum --populate-db
-```
-
-### Error: API Key de Anthropic inválida
-
-```bash
-# Verificar que .env existe y tiene la clave correcta
-cat .env | grep ANTHROPIC_API_KEY
-
-# Obtener una clave en: https://console.anthropic.com/settings/keys
-```
-
-### Error de Compilación SDCC/Z88DK
-
-```bash
-# Verificar instalación
-which sdcc
-which zcc
-
-# Ver versión
-sdcc --version
-zcc --version
-
-# Para Amstrad: Verificar CPCT_PATH
-echo $CPCT_PATH
-
-# Debe apuntar a la instalación de CPCtelera
-```
-
-### Error: Cache de Embeddings Corrupto
-
-```bash
-# Reparar caché
-python llm_z80.py --platform spectrum --repair-cache
-
-# O limpiar y reconstruir completamente
-python llm_z80.py --platform spectrum --rebuild-embeddings
-```
-
-### Emulador no se Abre
-
-```bash
-# Verificar que el emulador está instalado
-which fuse  # Para Spectrum
-which cap32  # Para Amstrad
-
-# Compilar sin ejecutar emulador
-./build_spectrum.sh --example=01_border --no-emulator
-
-# El archivo .tap estará en el directorio build/
-```
-
-### Problemas con Sprites
-
-```bash
-# Verificar que tienes las API keys necesarias
-cat .env | grep GEMINI_API_KEY
-
-# Usar generador específico
-./generate_sprite.sh spectrum "robot" 16 16 openai
-```
-
-## 🤝 Contribuir
-
-¡Las contribuciones son bienvenidas! Por favor lee [CONTRIBUTING.md](CONTRIBUTING.md) para detalles sobre nuestro código de conducta y el proceso para enviar pull requests.
-
-### Áreas que Necesitan Ayuda
-
-- 🧪 Tests unitarios y de integración
-- 📚 Más ejemplos de código para ambas plataformas
-- 🧩 Flujo ASM Z80 standalone para Amstrad CPC
-- 🌐 Documentación en otros idiomas
-- 🎨 Mejoras en generación de sprites
-- ⚡ Optimizaciones de rendimiento
-- 🔧 Soporte para más modelos de LLM
-
-### Desarrollo Local
-
-```bash
-# Fork y clonar
-git clone https://github.com/TU_USUARIO/llmz80.git
-
-# Crear rama
-git checkout -b feature/nueva-funcionalidad
-
-# Hacer cambios y commit
-git commit -m "feat: añadir nueva funcionalidad"
-
-# Push y crear PR
-git push origin feature/nueva-funcionalidad
-```
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles.
-
-## 🙏 Agradecimientos
-
-- **Anthropic** por los modelos con los que Studio diseña, dibuja y escribe
-- **Qdrant** por la excelente base de datos vectorial
-- **Z88DK Team** por el kit de desarrollo Z80
-- **CPCtelera** ([@FranGallegoBR](https://github.com/lronaldo)) por el framework de Amstrad CPC
-- Comunidad retro de ZX Spectrum y Amstrad CPC
-
-## 📚 Recursos
-
-### Documentación del Proyecto
-- [Guía de Contribución](CONTRIBUTING.md)
-- [Documentación para AI Assistants](.cline/cline_docs.md)
-- [Reglas de Cursor](.cursorrules)
-
-### Z80 y Retro Computing
-- [Z88DK Documentation](https://github.com/z88dk/z88dk/wiki)
-- [CPCtelera API Reference](https://lronaldo.github.io/cpctelera/)
-- [World of Spectrum](https://worldofspectrum.org/)
-- [CPC Wiki](https://www.cpcwiki.eu/)
-
-### APIs y Herramientas
-- [OpenAI Platform](https://platform.openai.com/docs/)
-- [Qdrant Documentation](https://qdrant.tech/documentation/)
-- [SDCC Compiler](http://sdcc.sourceforge.net/)
-
-## 📞 Soporte
-
-- 🐛 [Reportar un Bug](https://github.com/compilando/llmz80/issues/new?labels=bug)
-- 💡 [Solicitar una Funcionalidad](https://github.com/compilando/llmz80/issues/new?labels=enhancement)
-- 💬 [Discusiones](https://github.com/compilando/llmz80/discussions)
-
-## 🌟 Star History
-
-Si este proyecto te resulta útil, ¡considera darle una estrella! ⭐
+`resolve_cpct_path` looks for a **set-up** CPCtelera in this order: `$CPCT_PATH`,
+`compiler.amstrad_cpc.cpct_path` in `config.yml`, this repository's vendored
+checkout under `vendor/`, then `~/cpctelera{,/cpctelera}` and `/opt/cpctelera`.
+One that has not been set up is refused here rather than at the link step.
 
 ---
 
-**Hecho con ❤️ para la comunidad retro**
+## Configure
 
-## Studio: design a game, have it written, prove it runs
+### `.env`
 
-Studio holds a design, scaffolds a buildable project around it, and judges the
-program that results. It does not write gameplay: the program lives in the
-project and is the artifact of record.
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+```
 
-Run everything through the project virtual environment, as the Makefile does.
+Get one at <https://console.anthropic.com/settings/keys>.
 
-### Watching a run
+### `config.yml`
 
-    make studio                     # or: make studio WORKSPACE=~/games
+Three sections, all of them read:
 
-`llmz80 make` is the whole pipeline and it runs in the terminal it was typed
-in. This is the other terminal: a screen that does no work, decides nothing,
-and writes nothing. It shows the project's identity, the six-step strip with
-each step's state (`✓` done, `✗` failed, `—` still to do), the diary as it is
-written, and the verdict -- what stopped the run, or where the game landed.
+```yaml
+anthropic:
+  model: claude-opus-5
 
-Six, not seven: `release` is not a step of the order. `llmz80 make` ends when
-the game exists, boots and passes its gates, and packaging a zip with its
-evidence stays the deliberate act it is (`llmz80 project release`). A strip
-carrying a stage the order never performs would read `Release —` for the whole
-life of every game ever made.
+compiler:
+  spectrum:
+    c_compiler: "zcc"
+    params: "+zx -vn -O3 -clib=sdcc_iy"
+  amstrad_cpc:
+    c_compiler: "sdcc"
+    params: "-mz80 --sdcccall 0 --no-std-crt0"   # CPCtelera needs the classic stack ABI
+
+emulator:                                        # what `llmz80 play` opens
+  spectrum:  {name: "zesarux", params: "--machine 48k"}
+  amstrad_cpc: {name: "cap32", params: "--machine 6128"}
+```
+
+There is deliberately no `temperature` and no `reasoning_effort`: this model
+family rejects the first with a 400, and the second's replacement already
+defaults to the setting Studio wants.
+
+---
+
+## Use
+
+### One command
+
+```bash
+llmz80 make "a miner crosses stone ledges to reach the keys"
+llmz80 make "four ghosts chase you around a maze" --cpc --workspace ~/games
+llmz80 make "single-player pong with a score" --play      # opens the emulator when it is done
+```
+
+Or through the Makefile:
+
+```bash
+make game BRIEF="a miner crosses stone ledges to reach the keys"
+make game BRIEF="four ghosts chase you around a maze" PLATFORM=amstrad_cpc
+```
+
+### Watching it work
+
+`llmz80 make` runs in the terminal you typed it in. In another one:
+
+```bash
+make studio                        # or: make studio WORKSPACE=~/games
+llmz80 studio ~/games/cave-runner  # or follow one project
+```
+
+A screen that does no work, decides nothing and writes nothing. It shows the
+project's identity, a six-step strip with each step's state (`✓` done, `✗`
+failed, `—` still to do), the diary as it is written, and the verdict.
+
+Six steps, not seven: `release` is a deliberate act, not part of the order, so
+the strip never carries a stage that will read `—` for the life of every game.
 
 Nothing tells it anything. The strip is read off the evidence each stage leaves
-on disk, the same evidence `screen.stage_line` reads, so it advances by itself;
-the diary is followed line by line out of `<project>/studio.log`, which
-`Journal` writes and hands back verbatim, so the file and the screen cannot
-tell different stories about the same event. That is also what lets the run
-survive the screen being closed, the screen survive the run crashing, and
-yesterday's run be looked at this morning with the same command.
+on disk and the diary is followed line by line out of `<project>/studio.log`, so
+the file and the screen cannot tell different stories, the run survives the
+screen closing, the screen survives the run crashing, and yesterday's run can be
+looked at this morning with the same command. Pointed at a workspace it follows
+whichever project was written to last, so you can open it before starting a run.
 
-Pointed at a workspace it follows whichever project was written to last, asked
-again on every tick, so opening the screen first and typing `llmz80 make` next
-door works without touching it. Pointed at a project directory it follows that
-one and no other.
+`q` quits.
 
-One key: `q` quits.
+### Stage by stage
 
-### Headless
+```bash
+llmz80 project types                              # kinds of game, for inspiration
+llmz80 project new ~/games "Cave Runner" spectrum \
+    "The miner crosses ledges to reach the keys. Falling off costs a life."
 
-    .venv/bin/llmz80 project types                    # kinds of game that exist, for inspiration
-    .venv/bin/llmz80 project new ~/games "Cave Runner" spectrum \
-        "The miner crosses ledges to reach the keys. Falling off costs a life."
-
-    P=~/games/cave-runner/game.yml
-    .venv/bin/llmz80 project validate $P              # the design, without building
-    .venv/bin/llmz80 project contract $P              # what a program must satisfy
-    .venv/bin/llmz80 project reference $P             # searches the web, archives the dossier
-    .venv/bin/llmz80 project adapt $P                 # proposes a design diff, asks to apply
-    .venv/bin/llmz80 project write $P                 # spends money: calls the API
-    .venv/bin/llmz80 project sprites $P               # draws and previews sprite art, in the researched game's style
-    .venv/bin/llmz80 project build $P
-    .venv/bin/llmz80 project test $P                  # emulator, reading memory
-    .venv/bin/llmz80 project release $P
+P=~/games/cave-runner
+llmz80 project validate $P     # the design, without building
+llmz80 project contract $P     # what a program must satisfy
+llmz80 project reference $P    # searches the web, archives the dossier   [API]
+llmz80 project draft $P        # writes the design the brief asks for     [API]
+llmz80 project adapt $P        # proposes a design diff, asks to apply    [API]
+llmz80 project sprites $P      # draws the art, previews it in the terminal [API]
+llmz80 project write $P        # writes and repairs the program           [API]
+llmz80 project scaffold $P     # lays out the buildable project
+llmz80 project build $P
+llmz80 project test $P         # emulator, reading memory
+llmz80 project release $P      # a zip, with its evidence
+```
 
 Each step runs what precedes it, so `test` builds and `release` refuses unless
-every gate passed *and* at least one behaviour gate actually watched the program
-run: a build whose gates all abstained is a candidate, not a release. Exit codes
-are 0 or 1, so they compose in CI.
+every gate passed **and** at least one behaviour gate actually watched the
+program run — a build whose gates all abstained is a candidate, not a release.
+Exit codes are 0 or 1, so they compose in CI.
 
-### Where the evidence lives
+### Playing one
 
-    build/studio_quality_report.json   design, build and runtime gates
-    build/emulator_report.json         what memory read after each scripted input
-    build/probes.json                  where that state sits in the binary
-    build/CONTRACT.md                  what the program was asked to satisfy
-    write_report.json                  each attempt, and what was fed back
+```bash
+llmz80 play ~/games/cave-runner
+llmz80 play game.tap
+make play TARGET=~/games/cave-runner
+```
+
+---
+
+## Evidence
+
+Everything a run claims, it leaves behind:
+
+```
+build/studio_quality_report.json   design, build and runtime gates
+build/emulator_report.json         what memory read after each scripted input
+build/probes.json                  where that state sits in the binary
+build/build_report.json            the compiler's own words, and the artifact
+build/CONTRACT.md                  what the program was asked to satisfy
+build/main.c, build/src/           the sources it was built from
+write_report.json                  each attempt, and what was fed back
+studio.log                         the diary
+```
 
 A design that builds and runs is still refused if a level is unsolvable, if the
 target cannot produce the audio it asks for, or if the screen never changes.
-On Amstrad CPC the runtime gate abstains rather than passing: Caprice32 exposes
-no way to read memory, so behaviour there is unobserved.
+
+---
+
+## The two machines
+
+They are not at parity, and it is worth knowing where.
+
+| | ZX Spectrum | Amstrad CPC |
+|---|---|---|
+| Toolchain | z88dk | CPCtelera |
+| Artifact | `.tap` | `.dsk` |
+| Screen | 32×24 cells | 20×25 (mode 0) or 40×25 (mode 1) |
+| Colour | one attribute per 8×8 cell | pens in the pixels — no clash |
+| Pens | 8 inks × 2 brightnesses | 16 (mode 0) or 4 (mode 1) |
+| Sound | beeper, five effects | **none implemented** (`plat_sound` is a no-op) |
+| Build gate | ✅ | ✅ |
+| Acceptance / animation / state probe | ✅ | ✅ (ZEsarUX reads its memory over ZRCP) |
+| Pacing gate | ✅ | ✅ (a 300 Hz interrupt handler counts the six ticks per frame) |
+| Attribute gate | ✅ | ⛔ abstains — a CPC screen has no attribute area; judging its colour wants a different gate |
+
+The one CPC gap left is sound: `plat_sound` is a no-op and the design gate
+refuses any CPC project that asks for audio. CPCtelera bundles Arkos Tracker,
+which is where the fix starts.
+
+### How much a frame holds
+
+Measured on both machines, from a loop that draws N sprites and waits:
+
+| | `plat_sprite` / `_py` | `plat_sprite_px` |
+|---|---|---|
+| ZX Spectrum | 12 | 8 |
+| Amstrad CPC | 32 | 24 |
+
+Those are ceilings for a loop that does nothing else; the writing prompt gives
+a design two thirds of them, leaving room for input, collisions and terrain.
+Two things worth knowing from it: `plat_sprite_py` costs the same as
+`plat_sprite`, so smooth vertical movement is free in practice, and the CPC
+draws about two and a half times as many, because its blitter is CPCtelera's
+hand-written assembly where the Spectrum's is C in this repository.
+
+### Drawing a moving sprite
+
+Two things the platform library gives a program, because getting them wrong is
+what makes a sprite flicker:
+
+**Draw straight after `plat_wait_frame`**, before input and before any game
+logic. The screen is read out while the loop runs, so an actor rubbed out at
+the top of the loop and redrawn at the bottom is missing from the picture for
+everything in between.
+
+**Erase by putting back what was there**, not by repainting the terrain:
+
+```c
+unsigned char under[SPRITE_UNDER_BYTES];   /* one per moving actor */
+
+plat_restore_under(old_px, old_py, under);   /* rub it out       */
+plat_save_under(px, py, under);              /* remember the new */
+plat_sprite_px(px, py, SPRITE_BALL, frame);  /* draw             */
+```
+
+About half the byte writes of repainting the tiles underneath, and it works
+over anything — text, another sprite, a scrolled backdrop — because the
+library reads it off the screen rather than reconstructing it from the design.
+Restore in the reverse of the order you drew when actors overlap.
+
+### Movement
+
+Sprites move by the pixel **vertically** on both machines:
+`plat_sprite_py(col, py, sprite, frame)` takes a scanline instead of a
+character row, so a jump or a fall is smooth. It costs one thing on the
+Spectrum — a sprite between cells covers three character rows rather than two,
+so six attribute cells take its colour rather than four — and nothing on the
+CPC, whose colour lives in the pixels.
+
+**Horizontally**, `plat_sprite_px(px, py, sprite, frame)` takes a pixel column
+too — but only if the design paid for it. A byte of screen holds several pixels
+(8 / 4 / 2 depending on machine and mode), so a figure whose left edge falls
+inside a byte has its bits in different places, and the only way to draw it is
+to have packed a copy for that position beforehand. Set:
+
+```yaml
+presentation:
+  smooth_horizontal: true
+```
+
+and every sprite is packed once per position inside a byte. It is not free: on
+the Spectrum that is eight copies each a byte wider, so twelve times the art.
+The build weighs the result against `budgets.static_data_bytes` and refuses the
+design with the number rather than overflowing. A design that did not ask still
+compiles against `plat_sprite_px`; it simply steps by a byte.
+
+**Scrolling** is not implemented on either, and the two machines are not in
+the same position.
+
+The Spectrum has no hardware scroll at all: moving the picture means moving
+6912 bytes, so a full-screen smooth scroll is not realistic from C.
+
+The CPC does, through the CRTC's display start address
+(`cpct_setVideoMemoryOffset`, which writes R13) — but coarser than it is
+usually described. One unit of that offset moves the start by **2 bytes**,
+measured on a real machine rather than taken from the documentation, because
+CPCtelera's own two examples disagree about it: `advanced/hwscroll`'s comment
+says four bytes and `advanced/tilemap_hwscroll` advances its software pointer
+by two for the same unit. The second is right. So the granularity is:
+
+| | one offset unit | one screen row |
+|---|---|---|
+| Mode 0 (2 px/byte) | 4 pixels across | 40 units |
+| Mode 1 (4 px/byte) | 8 pixels across | 40 units |
+
+Advancing by a whole row (40 units) scrolls vertically by one character row,
+i.e. 8 scanlines.
+
+That coarse scrolling is available:
+
+```yaml
+presentation:
+  scrolling: true        # Amstrad CPC only
+```
+
+and the program calls `plat_scroll_to(origin)`, where `origin` is a byte offset
+into video memory rounded down to the step. On the Spectrum the call is a
+no-op and a design that declares `scrolling` is refused at design time with the
+reason, rather than building into a game where it silently does nothing.
+
+Two things it does not do. It is not pixel-smooth — sub-unit horizontal needs
+the background redrawn shifted, sub-row vertical needs the CRTC's vertical
+adjust (R5, reachable through `cpct_setCRTCReg`), and neither is implemented.
+And it copies nothing, so the column or row scrolling into view shows whatever
+was already in that memory: drawing the incoming edge is the program's job.
+`origin` reaches 510 bytes, because the offset register holds eight bits; past
+that the video page has to change too.
+
+---
+
+## Architecture
+
+```
+llmz80/
+  cli.py              the commands
+  studio/             the pipeline: design, art, codegen, build, gates
+    models.py           the versioned design document (schema v4)
+    drafting.py         writes a design from a brief
+    reference.py        researches the game the brief sounds like
+    sprite_artist.py    draws sheets and tiles as palette grids
+    spriting.py         packs those into Spectrum and CPC sprite bytes
+    codegen.py          game_config.h, game_state.h, the platform library
+    compiler.py         lays out and builds the project
+    probes.py           finds engine state in the linker map
+    observation.py      the script the emulator drives
+    acceptance.py       what the readings had to show
+    feel.py             did it animate
+    pacing.py           did the loop fit in its frame
+    attributes.py       could a player see it
+    generator.py        write, judge, repair, repeat
+    make.py             the whole order, and the diary
+    tui.py, screen.py   the watching screen
+  core/
+    state_contract.py   the symbols every program exposes
+    toolchain.py        where the toolchains are, and whether they work
+    example_catalog.py  the local retrieval corpus
+  quality/
+    emulator_smoke.py   ZEsarUX over ZRCP, both machines
+  utils/
+
+resources/
+  studio_lib/         platform.h and one platform.c per machine
+  studio_reference/   a complete maze game per machine: proof the gates work
+examples/             compiling z88dk and CPCtelera programs, for retrieval
+templates/amstrad_cpc/  the CPCtelera project skeleton
+```
+
+### Development
+
+```bash
+make install-dev
+make test              # pytest
+make check             # tests + compile every retrievable example
+make format            # isort + black
+make quality-gate      # everything CI runs
+```
+
+CI runs flake8 (syntax errors fail), black, isort, mypy and bandit across
+`llmz80`, `tests` and `scripts`. None of them are advisory.
+
+---
+
+## Troubleshooting
+
+**`ANTHROPIC_API_KEY is required`** — put it in `.env` or the environment.
+
+**`CPCtelera was not found; configure CPCT_PATH`** — either it is not installed,
+or it is installed but never set up. `make doctor` distinguishes the two. A
+clone without `setup.sh` has no compiler inside it.
+
+**`sdcc: No such file or directory` from `make`** — the same thing, from an
+older checkout that predates the set-up check.
+
+**The Spectrum build fails on `zcc`** — check `zcc +zx --version`. The exact
+command Studio runs is in `build/build_report.json`.
+
+**The gates all abstain** — the emulator driving them is ZEsarUX and nothing
+else. `zesarux --version`. Without it the pipeline still builds a game; it just
+cannot say whether it works.
+
+**A CPC game passes with less evidence than a Spectrum one** — expected, see
+[The two machines](#the-two-machines).
+
+**The emulator opens nothing** — `llmz80 play` uses whatever `config.yml` names,
+which is not necessarily what the gates use. The artifact is in
+`<project>/build/` either way.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Areas that want help:
+
+- CPC audio, through CPCtelera's bundled Arkos Tracker
+- A colour gate for the CPC, since the Spectrum attribute gate has no meaning
+  there
+- Sub-cell movement and scrolling (see the table above)
+- More retrieval examples, for both machines
+
+---
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
+
+Built on [z88dk](https://z88dk.org/), [CPCtelera](https://github.com/lronaldo/cpctelera)
+and [ZEsarUX](https://github.com/chernandezba/zesarux), none of which are ours
+and all of which are why this works.

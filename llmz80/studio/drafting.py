@@ -67,7 +67,61 @@ one row, cell or spawn at a time:
   /entities/N/kind          what an actor already there is       -> {"text": ...}
   /entities/N/notes         what that actor does                 -> {"text": ...}
   /entities/N/count         how many of it there are             -> {"number": ...}
+  /entities/N/poses         the poses its artwork carries, named and in the
+                             order they cycle -- walk_a, walk_b, jump, die.
+                             Leave it alone for anything that does not
+                             animate: a ball, a bullet, a block, a paddle.
+                             Most things in most games do not. What you name
+                             here is drawn: two poses is two 16x16 frames of
+                             art, and the program is then required to cycle
+                             g_anim_frame through them while that actor moves
+                             -- so a pose you name and the game never shows is
+                             a gate failure, not a spare picture
+                                                                  -> {"rows": [...]}
   /tiles/-                  a whole new kind of terrain          -> {"id": ..., "char": ...}, add
+  /tiles/N/art_note         what that terrain looks like, so it is drawn as
+                             artwork instead of as its character  -> {"text": ...}
+  /presentation/palette     the colours this design names, so terrain and
+                             actors can wear one                  -> {"palette": [...]}
+  /target/video_mode        **Amstrad CPC only**, and the one part of /target
+                             a design does get to choose, because it is a trade
+                             and not a fact about the machine:
+                               cpc_mode_1 -- 40 columns, 4 colours (the default)
+                               cpc_mode_0 -- 20 columns, 16 colours, and pixels
+                                             twice as wide as they are tall
+                             Choose cpc_mode_0 when what the game is about is
+                             colour -- distinct enemies, coloured terrain, a
+                             character you must recognise at a glance -- and
+                             stay in cpc_mode_1 when it needs the width, since
+                             20 columns is half a screen of room and every
+                             screen in this design has to fit in it
+                                                                  -> {"text": "cpc_mode_0"}
+  /presentation/scrolling   true if the playfield slides as a whole rather
+                             than changing a screen at a time -- a horizontally
+                             scrolling arcade, a vertical shooter. **Amstrad
+                             CPC only**: the ZX Spectrum has no hardware scroll
+                             and a design that asks for one there is refused.
+                             Coarse: the picture moves 4 pixels at a time
+                             across in mode 0, 8 in mode 1, and one character
+                             row at a time down. Worth it for a game built
+                             around sliding; worse than nothing for one whose
+                             actors step from square to square
+                                                                  -> {"flag": true}
+  /presentation/smooth_horizontal
+                            true if something in this game must slide across
+                             the screen a pixel at a time rather than a
+                             character at a time -- a ball, a ship, a car.
+                             Costs memory: every sprite is packed once per
+                             pixel position inside a byte, which is 12x the
+                             art on the Spectrum and 2-4x on the CPC, and the
+                             build refuses the design if that no longer fits
+                             budgets.static_data_bytes. Leave it alone for a
+                             game whose actors step from square to square --
+                             a maze, a board, a platformer on a tile grid --
+                             where nothing would look smoother for it
+                                                                  -> {"flag": true}
+  /tiles/N/colour           which of those colours that terrain is -> {"text": ...}
+  /entities/N/colour        which of those colours that actor is  -> {"text": ...}
   /screens/N/tiles          the room, as rows of the design's own
                              tile characters                     -> {"rows": [...]}
   /screens/N/spawns         where each actor starts              -> {"spawns": [...]}
@@ -133,8 +187,8 @@ Out of bounds. Never propose a change to any of these:
   * /schema_version, /metadata/slug, /target/platform and /acceptance are
     protected and refused on apply; so is anything under /budgets, which the
     machine imposes and the design does not get to raise.
-  * /metadata/title, /metadata/brief and the rest of /target are not refused
-    for you, and are still not yours. A person wrote the title and the brief
+  * /metadata/title, /metadata/brief and the rest of /target (everything but
+    /target/video_mode above) are not refused for you, and are still not yours. A person wrote the title and the brief
     -- the brief is what this draft is measured against, so editing it would
     be marking your own exam -- and the video mode and frame rate were
     decided when the project was created.
@@ -152,9 +206,22 @@ Rules:
   * A screen's terrain rows must all match its declared width and height
     exactly, and use only tile characters the design declares under `/tiles`.
     Add the tile before you use its character.
-  * Leave `sprite`, `art` and `colour` unset on everything you add. They name
-    assets and palette entries this design does not declare yet, and naming
-    one that does not exist is refused outright. The artwork comes later.
+  * Leave `sprite` and `art` unset on everything you add. They name image
+    assets this design does not declare yet, and naming one that does not
+    exist is refused outright: the artwork itself is drawn after this stage.
+  * `art_note` is how you ask for that artwork. Write it for terrain somebody
+    should see -- a wall, a brick, a girder, water -- in a few words saying
+    what it looks like, and leave it blank for empty space: a tile with no
+    note stays the character it carries, which is exactly right for the air a
+    player walks through and wrong for everything else. Terrain you leave
+    silent about is terrain the finished game draws as a letter.
+  * `colour` may be set, and unlike `art` it names something you declare
+    yourself: put the colours in `/presentation/palette` first, in the same
+    proposal, then name one of their ids. Each entry is an id and the colour
+    in plain words -- "bright cyan", "amarillo brillante". The machine has
+    eight inks and two intensities of each; a colour it cannot show is
+    ignored rather than approximated, and a colour nobody names comes out of
+    whatever the artwork itself happened to use.
   * A spawn names an entity the design declares and sits inside the screen it
     is on; an entity's `count` is the most instances of it one screen may
     place.

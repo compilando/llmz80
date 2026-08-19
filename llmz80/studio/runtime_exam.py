@@ -359,9 +359,7 @@ def usable_assertions(
     # advice; this is the same rule the applier keeps rather than the prompt.
     from .models import HOLD_DIRECTIONS
 
-    moving = [
-        number for number, step in enumerate(steps) if step.get("hold") in HOLD_DIRECTIONS
-    ]
+    moving = [number for number, step in enumerate(steps) if step.get("hold") in HOLD_DIRECTIONS]
     first_direction = moving[0] if moving else len(steps)
     kept: list[RuntimeAssertion] = []
     discarded: list[str] = []

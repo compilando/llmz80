@@ -77,7 +77,7 @@ def pick_stage_detail(stages: Sequence[Stage | wizard.Step]) -> str:
     A failed stage explains what to fix, and the earliest failure in the
     pipeline is usually the one blocking everything after it, so the first
     failed stage with a detail wins. Absent any failure, the first *done*
-    stage's detail is shown instead -- typically `referencia`'s, naming the
+    stage's detail is shown instead -- typically `reference`'s, naming the
     game that was found -- so a healthy project is not left silent. Neither
     exists (a brand new, unresearched, still-being-drawn project) and the
     line is simply empty.

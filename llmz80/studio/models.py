@@ -261,6 +261,44 @@ class PaletteEntry(StrictModel):
 class PresentationSpec(StrictModel):
     style: Prose = Field(default="classic arcade", min_length=1, max_length=80)
     palette: list[PaletteEntry] = Field(default_factory=list, max_length=16)
+    #: Whether this design wants its sprites to move across by single pixels
+    #: rather than by whole bytes.
+    #:
+    #: One flag for the whole design rather than one per entity, because the
+    #: header can hold one `SPRITE_SHIFTS` and one `SPRITE_BYTES_WIDE`: a
+    #: project draws at pixel positions or it does not. Per-entity would mean
+    #: a width table the blitter reads on every call, on the hottest path
+    #: there is, to save memory on sprites a design chose to have.
+    #:
+    #: Off by default, and the default is the honest one. Saying yes packs
+    #: every frame once per pixel position inside a byte -- eight copies on the
+    #: Spectrum, four in CPC mode 1, two in mode 0 -- each a byte wider than
+    #: the original, so a Spectrum sheet costs twelve times what it did. That
+    #: is affordable for a design with two or three sprites and not for one
+    #: with a dozen, which is why nothing here guesses: `validate_sprite_budget`
+    #: weighs the result against `budgets.static_data_bytes` and refuses with
+    #: the number, the same way it weighs everything else.
+    #:
+    #: Vertical movement is unaffected either way. `plat_sprite_py` takes a
+    #: scanline whatever this says, because moving down needs a different
+    #: address rather than differently packed pixels.
+    smooth_horizontal: bool = False
+    #: Whether this design's picture moves as a whole -- a scrolling playfield
+    #: rather than a screen that changes all at once.
+    #:
+    #: Only the Amstrad CPC can do this cheaply, through the CRTC register that
+    #: says where the display starts reading; the Spectrum has no equivalent and
+    #: would have to move 6912 bytes. So `structure._fit_errors` refuses a
+    #: Spectrum design that sets this, the same way a design is refused for
+    #: asking a machine for colours or a screen size it does not have -- at
+    #: design time, with the reason, rather than in a game where the call
+    #: silently does nothing.
+    #:
+    #: Coarse, and the design should be worth it at that granularity: the step
+    #: is two bytes, which is four pixels across in mode 0 and eight in mode 1,
+    #: and vertically one character row. Measured rather than assumed; see
+    #: `codegen.SCROLL_STEP_BYTES`.
+    scrolling: bool = False
     show_score: bool = True
     show_lives: bool = True
     #: Character rows reserved at the top for a HUD. Two is what a score and
@@ -307,13 +345,38 @@ class TileSpec(StrictModel):
     #: reaches both a C char literal in the written program and the design
     #: prompt, where it is shown as '{char}'.
     char: str = Field(min_length=1, max_length=1, pattern=r"^[\x21-\x26\x28-\x5b\x5d-\x7e]$")
-    #: Asset id of this tile's artwork. Unused until the graphics phase.
+    #: Asset id of this tile's artwork, filled in by the graphics stage
+    #: (`services.draw_tiles`) rather than by a designer. It cannot be written
+    #: by hand ahead of the art: `structure.py` refuses a document whose
+    #: `tile.art` names an asset that does not exist, exactly as it refuses
+    #: `entity.sprite` doing the same, so the id and the asset have to be
+    #: registered in the same breath. What a designer writes instead is
+    #: `art_note` below.
     art: str | None = Field(default=None, pattern=ID_PATTERN)
+    #: What this terrain should look like, in the design's own words --
+    #: "brickwork, mortar lines between courses". Two things at once, and
+    #: deliberately: it is the brief the tile artist draws from, and it is how
+    #: a design asks for artwork at all (see `wants_art`). Terrain that is
+    #: empty space leaves this blank and stays the character it carries, which
+    #: is why this is not a bool: a stage that drew every declared tile would
+    #: spend a model call drawing nothing.
+    art_note: Prose = Field(default="", max_length=160)
     #: Palette entry id this tile is drawn in.
     colour: str | None = Field(default=None, pattern=ID_PATTERN)
     traits: list[Annotated[str, StringConstraints(pattern=ID_PATTERN)]] = Field(
         default_factory=list, max_length=8
     )
+
+    @property
+    def wants_art(self) -> bool:
+        """Whether this terrain asked to be drawn rather than written.
+
+        One reading of `art_note`, in one place, so the drawing stage, the
+        prompt and any gate all agree on which tiles are scenery -- and so
+        "the design asked for art" never becomes "somebody's guess about
+        which traits mean solid".
+        """
+        return bool(self.art_note.strip())
 
 
 class EntitySpec(StrictModel):
@@ -346,6 +409,13 @@ class ObservableSpec(StrictModel):
     symbol: str = Field(pattern=SYMBOL_PATTERN)
     width: Literal[1, 2] = 1
     meaning: Prose = Field(min_length=1, max_length=160)
+
+
+#: What an asset is for. Named rather than written inline on `AssetSpec`
+#: so `services.add_asset`, which passes one through, can be checked
+#: against the same four words instead of accepting any string and
+#: leaving pydantic to refuse it one call later.
+AssetKind = Literal["sprite", "tileset", "font", "screen"]
 
 
 class SpawnSpec(StrictModel):
@@ -430,7 +500,7 @@ class AudioSpec(StrictModel):
 
 class AssetSpec(StrictModel):
     id: str = Field(pattern=ID_PATTERN)
-    kind: Literal["sprite", "tileset", "font", "screen"] = "sprite"
+    kind: AssetKind = "sprite"
     source: str = Field(pattern=PATH_PATTERN)
     width: int = Field(ge=1, le=640)
     height: int = Field(ge=1, le=400)

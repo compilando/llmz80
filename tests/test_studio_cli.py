@@ -2,6 +2,7 @@ from pathlib import Path
 
 from llmz80.cli import main
 from llmz80.studio.store import ProjectStore
+from tests.conftest import FakeMessageStream
 
 
 def test_new_creates_a_valid_project_with_defaults(tmp_path: Path, capsys):
@@ -86,9 +87,10 @@ def _stub_reference_dependencies(monkeypatch, researcher):
     they come from (rather than names already bound in `llmz80.cli`) is what
     actually takes effect.
     """
+    import anthropic
+
     import llmz80.studio.reference as reference_module
     import llmz80.utils.config as config_module
-    import anthropic
 
     monkeypatch.setattr(anthropic, "Anthropic", lambda **_: object())
     monkeypatch.setattr(config_module, "load_anthropic_api_key", lambda: "test-key")
@@ -197,9 +199,10 @@ def _stub_adapt_dependencies(monkeypatch, designer):
     imports inside the branch, so the modules they come from are patched
     rather than any name already bound in `llmz80.cli`.
     """
+    import anthropic
+
     import llmz80.studio.reference_design as reference_design_module
     import llmz80.utils.config as config_module
-    import anthropic
 
     monkeypatch.setattr(anthropic, "Anthropic", lambda **_: object())
     monkeypatch.setattr(config_module, "load_anthropic_api_key", lambda: "test-key")
@@ -218,7 +221,7 @@ class _FakeDesigner:
 
 
 def _style_proposal():
-    from llmz80.studio.planner import ProjectChange, ProjectProposal, RowsValue, TextValue
+    from llmz80.studio.planner import ProjectChange, ProjectProposal, TextValue
 
     return ProjectProposal(
         summary="tune the palette",
@@ -313,7 +316,7 @@ def test_adapt_repairs_a_refused_proposal_and_tells_the_user_it_retried(
     mechanically fixable error must not be thrown away whole. This proves the
     repair actually reaches `project adapt` end to end, and that a user
     watching the command sees why it took more than one model call."""
-    from llmz80.studio.planner import ProjectChange, ProjectProposal, RowsValue, TextValue
+    from llmz80.studio.planner import ProjectChange, ProjectProposal, TextValue
     from llmz80.studio.reference import save_reference
 
     main(["project", "new", str(tmp_path), "Adapt Repair"])
@@ -378,21 +381,29 @@ def test_reference_reports_rather_than_crashes_on_a_malformed_model_response(
     game_path = tmp_path / "malformed-response" / "game.yml"
 
     class _RaisingMessages:
-        def parse(self, **_kwargs):
+        def stream(self, **_kwargs):
             # Satisfies GameReference's JSON schema field-by-field but fails
             # its cross-field model_validator -- a shape a real model
             # response could take, and exactly what the SDK's own post-parse
             # step would raise on.
-            return GameReference.model_validate(
-                {"identified": True, "confidence": "high", "title": "Not Really", "sources": []}
+            return FakeMessageStream(
+                GameReference.model_validate(
+                    {
+                        "identified": True,
+                        "confidence": "high",
+                        "title": "Not Really",
+                        "sources": [],
+                    }
+                )
             )
 
     class _RaisingClient:
         def __init__(self, **_kwargs):
             self.messages = _RaisingMessages()
 
-    import llmz80.utils.config as config_module
     import anthropic
+
+    import llmz80.utils.config as config_module
 
     monkeypatch.setattr(anthropic, "Anthropic", _RaisingClient)
     monkeypatch.setattr(config_module, "load_anthropic_api_key", lambda: "test-key")
@@ -422,10 +433,11 @@ def _stub_draft_dependencies(monkeypatch, drafter):
     examiner would reach for `.messages` on the fake client and fail there,
     which is not what these tests are about.
     """
+    import anthropic
+
     import llmz80.studio.design_exam as design_exam_module
     import llmz80.studio.drafting as drafting_module
     import llmz80.utils.config as config_module
-    import anthropic
 
     monkeypatch.setattr(anthropic, "Anthropic", lambda **_: object())
     monkeypatch.setattr(config_module, "load_anthropic_api_key", lambda: "test-key")
@@ -455,7 +467,7 @@ class _FakeDrafter:
 
 
 def _mechanics_proposal():
-    from llmz80.studio.planner import ProjectChange, ProjectProposal, RowsValue, TextValue
+    from llmz80.studio.planner import ProjectChange, ProjectProposal, RowsValue
 
     return ProjectProposal(
         summary="state what this game does",
@@ -515,7 +527,7 @@ def test_draft_declined_leaves_game_yml_byte_for_byte_unchanged(
 def test_draft_says_so_and_spends_nothing_on_a_design_that_is_already_somebodys(
     tmp_path: Path, capsys, monkeypatch
 ):
-    """The command a person reaches for after `programa` refused. Run against
+    """The command a person reaches for after `program` refused. Run against
     a design that already states its rules it must cost nothing and say why --
     proved by making the OpenAI client itself an error."""
     import anthropic
@@ -595,6 +607,19 @@ def _sprite_sheet_image():
     return sheet
 
 
+def _declare_a_cycle(workspace: Path, game_path: Path) -> None:
+    """Give the project's entity the four poses `_FakeImageGenerator` draws.
+
+    `blank_project` names none, and an entity naming none is now drawn as a
+    single still frame -- right for a ball, wrong for a fixture whose fake
+    model always answers with a four-frame sheet.
+    """
+    store = ProjectStore(workspace)
+    project = store.load(game_path)
+    project.entities[0].poses = ["run_a", "run_b", "run_c", "run_d"]
+    store.save(project, game_path.parent)
+
+
 class _FakeImageGenerator:
     """Stands in for the client `ClaudeGridSheetSource` draws through:
     returns a fixed, valid grid, makes no network call, and remembers how
@@ -609,12 +634,8 @@ class _FakeImageGenerator:
         self.calls = 0
         self.messages = self
 
-    def parse(self, **_kwargs):
-        from llmz80.studio.sprite_grid import (
-            TRANSPARENT,
-            SpriteFrameGrid,
-            SpriteSheetGrid,
-        )
+    def stream(self, **_kwargs):
+        from llmz80.studio.sprite_grid import TRANSPARENT, SpriteFrameGrid, SpriteSheetGrid
         from llmz80.studio.spriting import SPRITE_SIZE
 
         self.calls += 1
@@ -622,7 +643,7 @@ class _FakeImageGenerator:
         grid = SpriteSheetGrid(
             frames=[SpriteFrameGrid(rows=[half] * SPRITE_SIZE) for _ in range(4)]
         )
-        return type("Response", (), {"parsed_output": grid})()
+        return FakeMessageStream(type("Response", (), {"parsed_output": grid})())
 
 
 def _stub_sprites_dependencies(monkeypatch, generator):
@@ -634,6 +655,7 @@ def _stub_sprites_dependencies(monkeypatch, generator):
     bound in `llmz80.cli`.
     """
     import anthropic
+
     import llmz80.utils.config as config_module
 
     monkeypatch.setattr(anthropic, "Anthropic", lambda **_: generator)
@@ -648,6 +670,7 @@ def test_sprites_draws_and_registers_missing_art(tmp_path: Path, capsys, monkeyp
 
     generator = _FakeImageGenerator()
     _stub_sprites_dependencies(monkeypatch, generator)
+    _declare_a_cycle(tmp_path, game_path)
 
     code = main(["project", "sprites", str(game_path)])
 
@@ -673,6 +696,7 @@ def test_sprites_declining_an_overwrite_leaves_existing_art_untouched(
     game_path = directory / "game.yml"
 
     _stub_sprites_dependencies(monkeypatch, _FakeImageGenerator())
+    _declare_a_cycle(tmp_path, game_path)
     assert main(["project", "sprites", str(game_path)]) == 0
     capsys.readouterr()
     before_game = game_path.read_text()
@@ -707,6 +731,7 @@ def test_sprites_accepting_an_overwrite_redraws_the_existing_art(
     game_path = directory / "game.yml"
 
     _stub_sprites_dependencies(monkeypatch, _FakeImageGenerator())
+    _declare_a_cycle(tmp_path, game_path)
     assert main(["project", "sprites", str(game_path)]) == 0
     capsys.readouterr()
     before_project = ProjectStore(tmp_path).load(game_path)
@@ -744,6 +769,7 @@ def test_sprites_prints_the_money_warning_before_constructing_a_generator(
             raise _StoppedBeforeSpending()
 
     import anthropic
+
     import llmz80.utils.config as config_module
 
     monkeypatch.setattr(anthropic, "Anthropic", _RefusingClient)

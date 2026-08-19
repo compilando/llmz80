@@ -14,8 +14,14 @@ LIB = Path(__file__).resolve().parents[1] / "resources" / "studio_lib"
 
 def test_the_header_no_longer_fixes_five_inputs_and_five_cell_kinds():
     header = (LIB / "common" / "platform.h").read_text(encoding="utf-8")
-    for gone in ("IN_LEFT", "IN_ACTION", "CELL_PLAYER", "CELL_WALL",
-                 "SOUND_START", "SOUND_COLLECT"):
+    for gone in (
+        "IN_LEFT",
+        "IN_ACTION",
+        "CELL_PLAYER",
+        "CELL_WALL",
+        "SOUND_START",
+        "SOUND_COLLECT",
+    ):
         assert gone not in header, f"{gone} survives in platform.h"
 
 

@@ -1,28 +1,6 @@
 """Tests for utility helper functions."""
 
-import pytest
-from llmz80.utils.helpers import clean_api_response, slugify
-
-
-class TestCleanApiResponse:
-    """Tests for clean_api_response function."""
-
-    def test_remove_markdown_fences(self):
-        """Test removal of markdown code fences."""
-        input_text = "```c\n#include <stdio.h>\nvoid main() {}\n```"
-        expected = "#include <stdio.h>\nvoid main() {}"
-        assert clean_api_response(input_text).strip() == expected
-
-    def test_remove_explanatory_text(self):
-        """Test removal of explanatory text before code."""
-        input_text = "Here's the code:\n\n#include <stdio.h>\nvoid main() {}"
-        result = clean_api_response(input_text)
-        assert "#include <stdio.h>" in result
-
-    def test_preserve_code_only(self):
-        """Test that only code is preserved."""
-        input_text = "#include <stdio.h>\nvoid main() {}"
-        assert clean_api_response(input_text).strip() == input_text
+from llmz80.utils.helpers import slugify
 
 
 class TestSlugify:
@@ -47,5 +25,11 @@ class TestSlugify:
         assert len(slug) <= 40
 
     def test_spanish_characters(self):
-        """Test handling of Spanish characters."""
+        """A design's title is Spanish by default, so this is the common case.
+
+        `Metadata.language` defaults to "es" and `studio/samples.py` slugs the
+        title straight into a directory name, so accents and enyes have to
+        transliterate rather than be dropped -- "ni-o-espa-ol" is what an
+        ascii-only filter produced before this.
+        """
         assert slugify("Niño español") == "nino-espanol"

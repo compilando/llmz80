@@ -354,9 +354,15 @@ def sprites(
         # for the moment in between.
         project = project.model_copy(update={"assets": remaining})
         service.save_project(project, directory)
+    tile_artist: Any = artist
     if artist is None:
         from ..cli import _llm_client_and_model
-        from .sprite_artist import ClaudeGridSheetSource, SpriteArtist
+        from .sprite_artist import (
+            ClaudeGridSheetSource,
+            ClaudeGridTileSource,
+            SpriteArtist,
+            TileArtist,
+        )
 
         # Drawn by the same model that thinks about everything else, because
         # a 16x16 sprite for these machines is not a picture -- it is 256
@@ -365,7 +371,17 @@ def sprites(
         # possible once it does.
         client, model = _llm_client_and_model()
         artist = SpriteArtist(source=ClaudeGridSheetSource(client, model))
-    return service.draw_sprites(project, directory, artist, dossier, on_progress=say)
+        tile_artist = TileArtist(source=ClaudeGridTileSource(client, model))
+    drawn = service.draw_sprites(project, directory, artist, dossier, on_progress=say)
+    # Terrain is art too, and this stage is "the art this project is missing":
+    # a design whose tiles asked to be drawn and whose stage only drew actors
+    # is how a finished, gate-passing game came out looking like a page of
+    # letters. An injected artist that cannot draw terrain (every test fake
+    # that predates it) skips this rather than failing on it -- what it can
+    # draw, it still draws.
+    if tile_artist is not None and hasattr(tile_artist, "draw_tile"):
+        drawn += service.draw_tiles(project, directory, tile_artist, dossier, on_progress=say)
+    return drawn
 
 
 def write(

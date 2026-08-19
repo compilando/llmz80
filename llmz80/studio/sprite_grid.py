@@ -53,19 +53,54 @@ SPECTRUM_INK = (0, 0, 0)
 class GridPalette:
     """The pens a target really has, and the characters that name them.
 
-    "Really" is doing work here. The CPC in mode 0 can address sixteen pens,
-    but `compiler.py` packs every CPC sprite with `CPC_DEFAULT_PALETTE`,
-    which holds four -- so a sheet using pen 9 would name a colour nothing
-    downstream can resolve. This carries the palette that is actually
-    packed with, not the one the hardware could be set up for.
+    "Really" is doing work here: this carries the palette the art is actually
+    packed against, not the one the hardware could be set up for. The two used
+    to differ -- the CPC in mode 0 can address sixteen pens and `compiler.py`
+    packed every CPC sprite with four whatever the mode, so a sheet naming pen
+    9 named a colour nothing downstream could resolve. They agree now, and
+    `palette.cpc_palette` is the one place that decides.
     """
 
     pens: tuple[tuple[int, int, int], ...]
 
+    #: Pen characters past 9, so mode 0's sixteen pens each get one. Hex
+    #: digits rather than letters chosen freely: a reader already reads "a" as
+    #: ten after "9", and a grid is easier to check by eye when every pen is
+    #: one column wide -- which is also what `grid_errors` measures a row
+    #: against. Upper case is deliberately not accepted; one spelling per pen
+    #: keeps a model from mixing them inside a frame.
+    EXTRA_PENS = "abcdef"
+
+    def index_of(self, character: str) -> int:
+        """Which pen `character` names.
+
+        The one place a pen character is turned back into an index. It used to
+        be `int(character)` in two places, which was right while the alphabet
+        was "0" or "0123" and wrong the moment mode 0's sixteen pens made it
+        run to "f": `frames_from_grid` raised `invalid literal for int() with
+        base 10: 'f'` in the middle of a real run, and `render_grid`, guarded
+        by `isdigit()`, would have quietly drawn every pen past 9 as
+        transparent -- the worse of the two, because it produces art instead of
+        an error.
+
+        Raises for a character this palette does not have, rather than
+        answering some other pen: `grid_errors` has already refused a sheet
+        that uses one, so reaching here with a stranger means the two
+        disagree, and that is worth hearing about.
+        """
+        index = self.alphabet.find(character)
+        if index < 0:
+            raise ValueError(
+                f"{character!r} is not a pen this palette has; it offers "
+                f"{self.alphabet!r} and {TRANSPARENT!r}"
+            )
+        return index
+
     @property
     def alphabet(self) -> str:
-        """The legal pen characters, in index order: "0" or "0123"."""
-        return "".join(str(index) for index in range(len(self.pens)))
+        """The legal pen characters, in index order: "0", "0123", "0123456789abcdef"."""
+        digits = "0123456789" + self.EXTRA_PENS
+        return digits[: len(self.pens)]
 
 
 def palette_for(project: GameProject) -> GridPalette:
@@ -73,9 +108,9 @@ def palette_for(project: GameProject) -> GridPalette:
     if project.target.platform is TargetPlatform.SPECTRUM:
         return GridPalette(pens=(SPECTRUM_INK,))
 
-    from .compiler import CPC_DEFAULT_PALETTE
+    from .palette import cpc_mode, cpc_rgb
 
-    return GridPalette(pens=tuple(CPC_DEFAULT_PALETTE))
+    return GridPalette(pens=tuple(cpc_rgb(cpc_mode(project))))
 
 
 class SpriteFrameGrid(BaseModel):
@@ -95,7 +130,12 @@ class SpriteSheetGrid(BaseModel):
 
 
 def grid_errors(
-    sheet: SpriteSheetGrid, palette: GridPalette, *, frames_expected: int
+    sheet: SpriteSheetGrid,
+    palette: GridPalette,
+    *,
+    frames_expected: int,
+    size: int = SPRITE_SIZE,
+    solid_allowed: bool = False,
 ) -> str | None:
     """What is wrong with `sheet`, in words the next attempt can act on.
 
@@ -108,25 +148,32 @@ def grid_errors(
     The checks are ordered cheapest and most structural first, and only the
     first failure is reported -- a sheet with the wrong number of frames has
     nothing useful to say about row lengths inside them.
+
+    `size` is the square each frame must be, defaulting to a sprite's 16.
+    Terrain artwork asks for 8 (`spriting.TILE_SIZE`): a tile fills one
+    character cell, and the same grid vocabulary describes it.
+
+    `solid_allowed` lifts the no-solid-frames rule, and only terrain lifts it.
+    A solid *sprite* is a 16x16 brick where a figure should be, which is why
+    that rule exists; a solid *tile* is what a wall looks like. Blank is
+    refused either way -- artwork that draws nothing is not artwork.
     """
     if len(sheet.frames) != frames_expected:
         return (
-            f"the sheet must hold exactly {frames_expected} frames, "
+            f"the sheet must hold exactly {frames_expected} "
+            f"frame{'s' if frames_expected != 1 else ''}, "
             f"and this one holds {len(sheet.frames)}"
         )
 
     allowed = set(palette.alphabet) | {TRANSPARENT}
     for number, frame in enumerate(sheet.frames, start=1):
-        if len(frame.rows) != SPRITE_SIZE:
-            return (
-                f"frame {number} must have exactly {SPRITE_SIZE} rows, "
-                f"and it has {len(frame.rows)}"
-            )
+        if len(frame.rows) != size:
+            return f"frame {number} must have exactly {size} rows, " f"and it has {len(frame.rows)}"
         for row_number, row in enumerate(frame.rows, start=1):
-            if len(row) != SPRITE_SIZE:
+            if len(row) != size:
                 return (
                     f"frame {number}, row {row_number} must be exactly "
-                    f"{SPRITE_SIZE} characters long, and it is {len(row)}"
+                    f"{size} characters long, and it is {len(row)}"
                 )
             for character in row:
                 if character not in allowed:
@@ -145,10 +192,10 @@ def grid_errors(
         drawn = sum(character != TRANSPARENT for row in frame.rows for character in row)
         if drawn == 0:
             return f"frame {number} is entirely transparent, so it draws nothing"
-        if drawn == SPRITE_SIZE * SPRITE_SIZE:
+        if drawn == size * size and not solid_allowed:
             return (
                 f"frame {number} has no transparent pixel at all, so it is a solid "
-                f"{SPRITE_SIZE}x{SPRITE_SIZE} block rather than a shape"
+                f"{size}x{size} block rather than a shape"
             )
     return None
 
@@ -161,7 +208,11 @@ PREVIEW_SCALE = 8
 
 
 def render_grid(
-    sheet: SpriteSheetGrid, palette: GridPalette, *, scale: int = PREVIEW_SCALE
+    sheet: SpriteSheetGrid,
+    palette: GridPalette,
+    *,
+    scale: int = PREVIEW_SCALE,
+    size: int = SPRITE_SIZE,
 ) -> Image.Image:
     """The sheet as one magnified picture, for somebody to look at.
 
@@ -176,18 +227,21 @@ def render_grid(
     grid and not a smoothed version of it.
     """
     frames = max(len(sheet.frames), 1)
-    image = Image.new(
-        "RGBA", (frames * SPRITE_SIZE * scale, SPRITE_SIZE * scale), (0, 0, 0, 0)
-    )
+    image = Image.new("RGBA", (frames * size * scale, size * scale), (0, 0, 0, 0))
     pixels = image.load()
     for index, frame in enumerate(sheet.frames):
-        origin = index * SPRITE_SIZE
-        for y, row in enumerate(frame.rows[:SPRITE_SIZE]):
-            for x, character in enumerate(row[:SPRITE_SIZE]):
-                if character == TRANSPARENT or not character.isdigit():
+        origin = index * size
+        for y, row in enumerate(frame.rows[:size]):
+            for x, character in enumerate(row[:size]):
+                if character == TRANSPARENT:
                     continue
-                pen = int(character)
-                if pen >= len(palette.pens):
+                try:
+                    pen = palette.index_of(character)
+                except ValueError:
+                    # A preview is drawn of rejected sheets too (see the
+                    # caller), so a character the palette does not have is
+                    # skipped rather than raised on -- this function's whole
+                    # job is to survive input `frames_from_grid` refuses.
                     continue
                 red, green, blue = palette.pens[pen]
                 for dy in range(scale):
@@ -201,7 +255,9 @@ def render_grid(
     return image
 
 
-def frames_from_grid(sheet: SpriteSheetGrid, palette: GridPalette) -> list[Image.Image]:
+def frames_from_grid(
+    sheet: SpriteSheetGrid, palette: GridPalette, *, size: int = SPRITE_SIZE
+) -> list[Image.Image]:
     """`sheet` as the RGBA frames `spriting.py`'s packers take.
 
     Every pixel comes out fully opaque or fully transparent. That is not a
@@ -213,13 +269,13 @@ def frames_from_grid(sheet: SpriteSheetGrid, palette: GridPalette) -> list[Image
     """
     frames: list[Image.Image] = []
     for frame in sheet.frames:
-        image = Image.new("RGBA", (SPRITE_SIZE, SPRITE_SIZE), (0, 0, 0, 0))
+        image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         pixels = image.load()
         for y, row in enumerate(frame.rows):
             for x, character in enumerate(row):
                 if character == TRANSPARENT:
                     continue
-                red, green, blue = palette.pens[int(character)]
+                red, green, blue = palette.pens[palette.index_of(character)]
                 pixels[x, y] = (red, green, blue, 255)
         frames.append(image)
     return frames

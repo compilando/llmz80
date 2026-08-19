@@ -1,10 +1,15 @@
-"""CLI dispatcher preserving the original generator and adding Studio commands."""
+"""Command dispatcher for Studio.
+
+The legacy single-file generator this used to fall through to is gone
+(`llm_z80.py`, removed along with its RAG stack), so an unrecognised
+command is now an error with the help text rather than a silent handover
+to a second, differently-behaved pipeline.
+"""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 
 def _print_help() -> None:
@@ -30,8 +35,7 @@ def _print_help() -> None:
         "  llmz80 project scaffold PATH\n"
         "  llmz80 project build PATH\n"
         "  llmz80 project test PATH\n"
-        "  llmz80 project release PATH\n"
-        "  llmz80 [legacy generator options]"
+        "  llmz80 project release PATH"
     )
 
 
@@ -50,42 +54,6 @@ def _llm_client_and_model() -> tuple[object, str]:
 
     model = load_config("config.yml").get("anthropic", {}).get("model", "claude-opus-5")
     return Anthropic(api_key=load_anthropic_api_key()), model
-
-
-def _sprite_preview_array(sheet, args: SimpleNamespace):
-    """A palette-index grid `image_utils.display_sprite` can render.
-
-    `display_sprite` looks its colours up itself, via
-    `config.get_palette_for_platform(args.platform, args.mode)` -- it has no
-    way to be told to use a different table -- so the index chosen for each
-    pixel here is the nearest match in that *same* table, not
-    `llmz80.studio.compiler.CPC_DEFAULT_PALETTE`, the one actually used to
-    pack the sprite for the CPC (and which that module's own docstring says
-    has real gaps). The two tables are close but not identical, so this is a
-    preview to judge the art by -- shape and roughly-right colour -- not a
-    byte-for-byte look at what gets packed.
-    """
-    import numpy as np
-    from config import get_palette_for_platform
-
-    from llmz80.studio.spriting import ALPHA_THRESHOLD
-
-    palette = get_palette_for_platform(args.platform, args.mode)
-    width, height = sheet.size
-    pixels = sheet.load()
-    array = np.zeros((height, width), dtype=int)
-    for y in range(height):
-        for x in range(width):
-            r, g, b, a = pixels[x, y]
-            if a < ALPHA_THRESHOLD:
-                continue
-            best_index, best_distance = 0, None
-            for index, colour in enumerate(palette):
-                distance = (r - colour[0]) ** 2 + (g - colour[1]) ** 2 + (b - colour[2]) ** 2
-                if best_distance is None or distance < best_distance:
-                    best_index, best_distance = index, distance
-            array[y, x] = best_index
-    return array
 
 
 def _new_command(arguments: list[str]) -> int:
@@ -358,15 +326,15 @@ def _project_command(arguments: list[str]) -> int:
         from llmz80.studio import pipeline
         from llmz80.studio.reference import load_reference
 
-        dossier = load_reference(directory)
-        if dossier is not None and dossier.identified:
+        researched = load_reference(directory)
+        if researched is not None and researched.identified:
             # The publisher is not guaranteed -- magazine type-ins and
             # self-published titles legitimately have none -- so a blank
             # parenthetical is dropped rather than printed as "()".
-            on_publisher = f" ({dossier.publisher})" if dossier.publisher else ""
-            print(f"Writing as {dossier.title}{on_publisher}.")
+            on_publisher = f" ({researched.publisher})" if researched.publisher else ""
+            print(f"Writing as {researched.title}{on_publisher}.")
         try:
-            report = pipeline.write(service, project, directory, dossier=dossier, say=print)
+            report = pipeline.write(service, project, directory, dossier=researched, say=print)
         except ValueError as exc:
             # The design gate refusing to have this written is a verdict about
             # the design, not a crash, and reaches here before a penny is spent
@@ -412,30 +380,26 @@ def _project_command(arguments: list[str]) -> int:
         if not drawn:
             print("Every entity already has sprite art.")
             return 0
-        from image_utils import display_sprite
         from PIL import Image
 
-        mode = None
-        if project.target.platform.value == "amstrad_cpc":
-            mode = "mode0" if project.target.video_mode.value == "cpc_mode_0" else "mode1"
-        preview_args = SimpleNamespace(platform=project.target.platform.value, mode=mode)
+        from llmz80.studio.preview import print_sprite
+
         for asset in drawn:
-            sheet = Image.open(directory / asset.source).convert("RGBA")
-            display_sprite(_sprite_preview_array(sheet, preview_args), preview_args)
+            print_sprite(Image.open(directory / asset.source))
             print(f"  {asset.id}: {directory / asset.source}")
         return 0
     if arguments[0] in {"scaffold", "generate"}:
-        result = service.generate_sources(project, directory)
-        print(result.output_dir)
+        sources = service.generate_sources(project, directory)
+        print(sources.output_dir)
         return 0
     if arguments[0] == "build":
         try:
-            result = service.build(project, directory)
+            build = service.build(project, directory)
         except FileNotFoundError as exc:
             print(f"ERROR: {exc}")
             return 2
-        print(result.artifact or result.output_dir / "build_report.json")
-        return 0 if result.success else 1
+        print(build.artifact or build.output_dir / "build_report.json")
+        return 0 if build.success else 1
     if arguments[0] == "test":
         from llmz80.studio import pipeline
 
@@ -473,14 +437,10 @@ def main(argv: list[str] | None = None) -> int | None:
         _print_help()
         return 0
 
-    from llm_z80 import main as legacy_main
-
-    old = sys.argv
-    try:
-        sys.argv = [old[0], *arguments]
-        return legacy_main()
-    finally:
-        sys.argv = old
+    if arguments:
+        print(f"ERROR: {arguments[0]!r} is not a command.\n")
+    _print_help()
+    return 2
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from llmz80.core.state_contract import STATE_CONTRACT
 
-from .models import GameProject, TargetPlatform, VideoMode
+from .models import GameProject, PaletteEntry, TargetPlatform, VideoMode
 from .structure import playfield
 
 LIBRARY_ROOT = Path(__file__).resolve().parents[2] / "resources" / "studio_lib"
@@ -46,13 +46,271 @@ KEY_CODES: dict[TargetPlatform, dict[str, str]] = {
 }
 
 
+#: Scanlines each machine's display has. Not a design choice and not
+#: configurable: 192 on a Spectrum, 200 on a CPC.
+SCREEN_LINES: dict[TargetPlatform, int] = {
+    TargetPlatform.SPECTRUM: 192,
+    TargetPlatform.AMSTRAD_CPC: 200,
+}
+
+
+def max_sprite_py(platform: TargetPlatform) -> int:
+    """The last pixel row a 16-line sprite can start on and still fit.
+
+    Derived rather than written down twice, because it is written down in
+    three places that must agree: the guard in each `plat_sprite_py`, the
+    `MAX_SPRITE_PY` macro a program reads, and the sentence the writing prompt
+    puts in front of the model. A prompt naming 176 on a machine whose guard
+    says 184 costs the CPC eight rows of screen and says nothing about it; the
+    reverse silently draws nothing and looks like a broken blitter.
+    """
+    from .spriting import SPRITE_SIZE
+
+    return SCREEN_LINES[platform] - SPRITE_SIZE
+
+
+#: Pixels each machine's display is across. Not a design choice: a Spectrum is
+#: 256, a CPC row is 80 bytes and therefore 160 pixels in mode 0 and 320 in
+#: mode 1. Mode 1's 320 is why `plat_sprite_px` takes an int -- a pixel column
+#: there does not fit in the `unsigned char` every other coordinate uses.
+SCREEN_PIXELS: dict[VideoMode, int] = {
+    VideoMode.SPECTRUM_BITMAP: 256,
+    VideoMode.CPC_MODE_0: 160,
+    VideoMode.CPC_MODE_1: 320,
+}
+
+
+def pixels_per_byte_log(platform: TargetPlatform, mode: VideoMode) -> int:
+    """The shift that divides a pixel column by `pixels_per_byte`.
+
+    Emitted as `PIXELS_PER_BYTE_LOG` so the blitter can shift rather than
+    divide: SDCC satisfies `/ 8` from its own routine, and the CPC link
+    refuses a routine built for the other `--sdcccall` ABI (see
+    `sprite_header.py`). Every value here is a power of two, so the shift is
+    exact rather than an approximation somebody has to remember to check --
+    and `test_preshifted_sprites` asserts `1 << log == pixels_per_byte` on
+    every target rather than trusting this table twice.
+    """
+    from .spriting import pixels_per_byte
+
+    return pixels_per_byte(platform, mode).bit_length() - 1
+
+
+#: Character rows a 16-pixel-tall sprite can cover. Three, not two: a sprite
+#: at a `py` that is not a multiple of eight straddles one more row than a
+#: cell-aligned one, and `plat_sprite_px` colours every row it covers. A
+#: backing store sized for two would restore two and leave the third wearing
+#: the sprite's ink for the rest of the game.
+_ROWS_A_SPRITE_COVERS = 3
+
+
+def sprite_under_bytes(project: GameProject) -> int:
+    """How much of the screen one sprite hides, in bytes.
+
+    The size of the backing store a program declares to save what is behind a
+    sprite before drawing it -- `plat_save_under` fills it and
+    `plat_restore_under` puts it back. Published as `SPRITE_UNDER_BYTES` so a
+    program can write `unsigned char under[SPRITE_UNDER_BYTES]` rather than
+    work the arithmetic out from the video mode.
+
+    Two machines, two answers, and the difference is where colour lives. The
+    CPC keeps it in the pixel bytes, so the pixels are the whole story. The
+    Spectrum keeps it in a separate attribute per cell, and `plat_sprite_px`
+    writes one for every cell it covers -- so a restore that put back only the
+    bitmap would leave a rectangle of the sprite's ink trailing the actor.
+    """
+    from .spriting import SPRITE_SIZE, shift_count
+
+    mode = project.target.video_mode
+    per_byte = _pixels_per_byte(project.target.platform, mode)
+    shifts = (
+        shift_count(project.target.platform, mode) if project.presentation.smooth_horizontal else 1
+    )
+    width = SPRITE_SIZE // per_byte + (1 if shifts > 1 else 0)
+    pixels = width * SPRITE_SIZE
+    if project.target.platform is TargetPlatform.SPECTRUM:
+        return pixels + width * _ROWS_A_SPRITE_COVERS
+    return pixels
+
+
+def max_sprite_px(project: GameProject) -> int:
+    """The last pixel column a sprite can start at and still fit on screen.
+
+    Two corrections to the obvious "screen width less sixteen", both of which
+    only matter once a design asks for pre-shifted art, and both of which are
+    invisible until something at the right edge writes past the display file.
+
+    A shifted copy is one byte wider than the sprite, so the last legal *byte*
+    column moves one to the left. And every sub-byte position inside that byte
+    is reachable, so the last legal *pixel* column moves `shifts - 1` back to
+    the right. On the Spectrum that is 240 unshifted and 239 shifted; the two
+    corrections nearly cancel, which is exactly why writing either one alone
+    would look right.
+
+    Derived here rather than in the C for the same reason `max_sprite_py` is:
+    the number is stated in three places that must agree -- the guard, the
+    macro, and the sentence the writing prompt puts in front of the model --
+    and it differs per target *and* per design.
+    """
+    from .spriting import SPRITE_SIZE, shift_count
+
+    mode = project.target.video_mode
+    per_byte = _pixels_per_byte(project.target.platform, mode)
+    row_bytes = SCREEN_PIXELS[mode] // per_byte
+    shifts = (
+        shift_count(project.target.platform, mode) if project.presentation.smooth_horizontal else 1
+    )
+    sprite_bytes = SPRITE_SIZE // per_byte + (1 if shifts > 1 else 0)
+    return (row_bytes - sprite_bytes) * per_byte + shifts - 1
+
+
+def _pixels_per_byte(platform: TargetPlatform, mode: VideoMode) -> int:
+    from .spriting import pixels_per_byte
+
+    return pixels_per_byte(platform, mode)
+
+
+#: How many 16x16 sprites a loop can draw and still keep pace, measured.
+#:
+#: The gap this closes: the pixel blitters are slower than the cell one, the
+#: pacing gate allows one missed frame, and nothing could tell the writer where
+#: the line was because nobody had measured it. A model told smooth movement is
+#: available and not told what it costs writes a loop that moves twelve things
+#: and fails the gate with a number it cannot act on.
+#:
+#: Read out of `g_worst_frame_cost` on both real machines, from a loop that
+#: draws N sprites and waits and does nothing else:
+#:
+#:     Spectrum  plat_sprite     n=8  cost 0   n=12 cost 1   n=16 cost 2
+#:     Spectrum  plat_sprite_py  n=8  cost 0   n=12 cost 1   n=16 cost 2
+#:     Spectrum  plat_sprite_px  n=4  cost 0   n=8  cost 1   n=12 cost 3
+#:     CPC       plat_sprite     n=16 cost 0   n=24 cost 1   n=48 cost 3
+#:     CPC       plat_sprite_px  n=16 cost 0   n=24 cost 1   n=32 cost 2
+#:
+#: Two things fell out of it. `plat_sprite_py` costs the same as `plat_sprite`
+#: on the Spectrum, so smooth *vertical* movement is free in practice and not
+#: only in theory -- `zx_saddrpdown` per line is no dearer than converting an
+#: address twice. And the CPC draws roughly two and a half times as many, which
+#: is `cpct_drawSpriteMasked` being hand-written assembly against a blitter
+#: written here in C.
+#:
+#: What is published below is *not* those ceilings. A real game also reads the
+#: keyboard, moves what it drew, tests collisions and repaints terrain, and a
+#: budget set at the ceiling of an empty loop would fail every one of them. Two
+#: thirds, rounded down, is what these are.
+#: A later measurement, and the one that mattered most. Every figure above is
+#: from a loop that *draws* sprites, and a game that moves one must also put
+#: back what it covered -- so the real unit is restore, save, draw. That pair
+#: had never been measured beside the blitter, and on the CPC it dwarfed it:
+#:
+#:     CPC, n=16   draw 1   restore 3   save 4   all three 9
+#:
+#: A prompt saying "about 16 with plat_sprite_px" was therefore telling a game
+#: it could move sixteen sprites when it could move three, and a basketball
+#: design that moved exactly three was refused for overrunning its frame on
+#: three attempts running, each cutting drawing that was never the cost.
+#:
+#: The pair is assembly now (see the CPC and Spectrum platform.c), and these
+#: are the ceilings after that:
+#:
+#:     Spectrum  n=2 cost 0   n=3 cost 1   n=4 cost 1   n=5 cost 2   n=8 cost 3
+#:     CPC       n=3 cost 0   n=4 cost 0   n=5 cost 1   n=7 cost 1   n=8 cost 2
+#:
+#: Ceilings of 4 and 7 at the one missed frame the gate allows, published at
+#: two thirds like the rest.
+SPRITES_PER_FRAME: dict[TargetPlatform | str | None, dict[str, int]] = {
+    TargetPlatform.SPECTRUM: {"cell": 8, "pixel": 5, "moving": 2},
+    TargetPlatform.AMSTRAD_CPC: {"cell": 20, "pixel": 16, "moving": 4},
+}
+
+
+def sprites_per_frame(
+    platform: TargetPlatform | str | None, *, pixel_column: bool, moving: bool = False
+) -> int:
+    """How many sprites a game on this target should move in one frame.
+
+    `pixel_column` asks about `plat_sprite_px`, the dearer of the blitters --
+    `plat_sprite` and `plat_sprite_py` measured the same, so they share a
+    figure. A target nobody has measured answers with the smaller of the two
+    machines' numbers rather than with a guess of its own.
+    """
+    # `moving` outranks `pixel_column`: a sprite that is saved and restored
+    # under costs what it costs whichever blitter puts it back, and the pair
+    # is the larger half of the bill either way.
+    key = "moving" if moving else ("pixel" if pixel_column else "cell")
+    known = SPRITES_PER_FRAME.get(platform)
+    if known is None:
+        return min(row[key] for row in SPRITES_PER_FRAME.values())
+    return known[key]
+
+
+#: Bytes the picture moves for one step of a target's hardware scroll, and 0
+#: for a target that has none.
+#:
+#: Two on the Amstrad CPC, and measured rather than quoted: CPCtelera's own
+#: examples disagree, `advanced/hwscroll` saying four bytes in a comment while
+#: `advanced/tilemap_hwscroll` advances its software pointer by two for the
+#: same unit. A probe drawing a bar exactly one byte wide -- so the bar's width
+#: in captured pixels is the unit being measured, whatever scale the emulator
+#: captured at -- read 2.00 bytes at offset 1 and 4.00 at offset 2 on a real
+#: machine. The tilemap example is right, which is what one would expect of the
+#: one whose arithmetic has to stay in step with the hardware to work at all.
+#:
+#: Zero for the Spectrum, which has no register for this at all. Zero rather
+#: than absent so a program can write `#if SCROLL_STEP_BYTES` and compile one
+#: source for both machines.
+SCROLL_STEP_BYTES: dict[TargetPlatform | str | None, int] = {
+    TargetPlatform.SPECTRUM: 0,
+    TargetPlatform.AMSTRAD_CPC: 2,
+}
+
+#: Bytes in one screen row, which is the vertical step: advancing the display
+#: start by a whole row moves the picture up by one character row. Measured on
+#: the same machine -- 40 steps of 2 bytes moved a full-width bar up by exactly
+#: one character row, and 80 steps by two.
+SCROLL_ROW_BYTES: dict[TargetPlatform | str | None, int] = {
+    TargetPlatform.SPECTRUM: 32,
+    TargetPlatform.AMSTRAD_CPC: 80,
+}
+
+#: Steps the CPC's offset register can hold. R13 is eight bits, so 255 -- and
+#: past that the *page* has to change, which is a second register
+#: (`cpct_setVideoMemoryPage`) and a wrap the game has to plan for. The bound
+#: is published rather than left to be discovered, because a scroller that ran
+#: off the end would not fail, it would jump.
+SCROLL_MAX_STEPS = 255
+
+
+def scrolls_in_hardware(platform: TargetPlatform | str | None) -> bool:
+    """Whether this target can move its picture without moving its pixels.
+
+    A `str` is accepted beside the enum for the same reason `has_frame_clock`
+    accepts one, and an unknown target answers no: a machine this project has
+    never heard of has not shown it can do this either.
+    """
+    return bool(SCROLL_STEP_BYTES.get(platform, 0))
+
+
+def max_scroll_origin(platform: TargetPlatform | str | None) -> int:
+    """The furthest byte `plat_scroll_to` can start the display at."""
+    return SCROLL_STEP_BYTES.get(platform, 0) * SCROLL_MAX_STEPS
+
+
 #: Targets whose `plat_wait_frame` actually counts the frames the previous
 #: iteration cost. `resources/studio_lib/spectrum/platform.c` reads the ROM
-#: frame counter at 23672 and returns the elapsed count less the one frame the
-#: wait itself is worth; `resources/studio_lib/cpc/platform.c` calls
-#: `cpct_waitVSYNC()` and returns a literal zero, because with the firmware
-#: disabled the CPC has no free-running counter to subtract.
-_FRAME_CLOCK_PLATFORMS = frozenset({TargetPlatform.SPECTRUM.value})
+#: frame counter at 23672; `resources/studio_lib/cpc/platform.c` builds the
+#: equivalent out of `cpct_setInterruptHandler`, counting the six interrupts
+#: the CPC raises per display frame. Both then return the elapsed count less
+#: the one frame the wait itself is worth.
+#:
+#: The CPC was not on this list until the counter existed, and that was the
+#: honest state rather than an oversight: with the firmware disabled it had no
+#: free-running counter, `plat_wait_frame` returned a literal zero, and reading
+#: that zero as a game keeping perfect time would have cleared the whole
+#: platform on the strength of a number nobody computed.
+_FRAME_CLOCK_PLATFORMS = frozenset(
+    {TargetPlatform.SPECTRUM.value, TargetPlatform.AMSTRAD_CPC.value}
+)
 
 
 def has_frame_clock(platform: TargetPlatform | str | None) -> bool:
@@ -106,9 +364,85 @@ def _binding_lines(project: GameProject) -> tuple[list[str], list[str]]:
     return bits, entries
 
 
+def declared_colours(project: GameProject) -> list[tuple["PaletteEntry", int]]:
+    """The palette entries this target can really show, and what they resolve to.
+
+    One list, and both readers of it read this. They used to decide separately:
+    `_colour_lines` skipped an entry whose prose resolved to nothing, and the
+    writing prompt listed the palette unfiltered -- so a basketball design that
+    named "naranja claro de parquet" was told `COLOUR_PISTA` existed, used it,
+    and failed to build with `error 20: Undefined identifier 'COLOUR_PISTA'`.
+    Twice, in two of the five attempts it was given.
+
+    A contract that offers a name the header does not define is worse than one
+    that offers less: the model cannot see game_config.h while it writes, so it
+    has nothing to check the promise against.
+    """
+    from .palette import declared_attribute
+
+    resolved = []
+    for entry in project.presentation.palette:
+        value = declared_attribute(project, entry.id)
+        if value is not None:
+            resolved.append((entry, value))
+    return resolved
+
+
+def unresolved_colours(project: GameProject) -> list["PaletteEntry"]:
+    """Palette entries this target cannot show, so the writer can be told.
+
+    Silence would leave a colour missing from a list nobody saw complete. The
+    design named it and the machine cannot show it; saying which is cheaper
+    than letting it be inferred from an absence.
+    """
+    shown = {entry.id for entry, _ in declared_colours(project)}
+    return [entry for entry in project.presentation.palette if entry.id not in shown]
+
+
+def _colour_lines(project: GameProject) -> list[str]:
+    """`#define COLOUR_<ID>` for every palette entry this target can show."""
+    return [
+        f"#define COLOUR_{entry.id.upper()} {value}  /* {entry.colour} */"
+        for entry, value in declared_colours(project)
+    ]
+
+
+def _cpc_palette_lines(project: GameProject) -> list[str]:
+    """The hardware pens `cpc/platform.c` programs, or nothing on the Spectrum.
+
+    Written here rather than hard-coded in the C for the reason the two used
+    to get wrong: the packers quantise a drawn pixel against an RGB table in
+    Python, and `apply_palette` sets pens in C, and when those were written
+    down separately they drifted -- HW_BLUE recorded as (0, 0, 255), which is
+    HW_BRIGHT_BLUE, and HW_WHITE as (255, 255, 255), which is HW_BRIGHT_WHITE.
+    Half the palette quantised sprites against colours the machine was never
+    asked to show, and nothing could notice, because neither half knew the
+    other existed. Now one table (`palette.HARDWARE_COLOURS`) produces both.
+
+    It is also what makes mode 0's sixteen pens reachable at all: the C used
+    to program four whatever the mode.
+    """
+    if project.target.platform is not TargetPlatform.AMSTRAD_CPC:
+        return []
+    from .palette import cpc_mode, cpc_palette
+
+    pens = cpc_palette(cpc_mode(project))
+    values = ", ".join(f"0x{colour.hardware:02X}" for colour in pens)
+    names = ", ".join(colour.name for colour in pens)
+    return [
+        "/* The pens this design's video mode programs, from",
+        " * llmz80.studio.palette.HARDWARE_COLOURS -- the same table the sprite",
+        " * and tile packers quantise against, so what is drawn is what shows.",
+        f" * In order: {names}. */",
+        f"#define CPC_PEN_COUNT {len(pens)}",
+        f"#define CPC_PALETTE_PENS {values}",
+    ]
+
+
 def render_config_header(project: GameProject) -> str:
     """Target and design constants the platform library and a program can use."""
     cpc_mode = 0 if project.target.video_mode is VideoMode.CPC_MODE_0 else 1
+    mode = project.target.video_mode
     columns, rows = playfield(project)
     bits, entries = _binding_lines(project)
     # The last X-macro line must not carry a trailing backslash.
@@ -132,6 +466,38 @@ def render_config_header(project: GameProject) -> str:
             ],
             "/* Only targets with a free-running frame clock report overruns. */",
             f"#define HAS_FRAME_CLOCK {1 if has_frame_clock(project.target.platform) else 0}",
+            "/* The last pixel row plat_sprite_py can start a sprite on. */",
+            f"#define MAX_SPRITE_PY {max_sprite_py(project.target.platform)}",
+            "/* How a pixel column becomes a byte column, and the rightmost one a",
+            " * sprite can start at. MAX_SPRITE_PX already allows for the extra byte",
+            " * a pre-shifted copy occupies, so it moves when smooth_horizontal does. */",
+            f"#define PIXELS_PER_BYTE {_pixels_per_byte(project.target.platform, mode)}",
+            f"#define PIXELS_PER_BYTE_LOG " f"{pixels_per_byte_log(project.target.platform, mode)}",
+            f"#define MAX_SPRITE_PX {max_sprite_px(project)}",
+            "/* Bytes of screen one sprite hides. A program saves what is behind",
+            " * it with plat_save_under before drawing and puts it back with",
+            " * plat_restore_under, which is cheaper than repainting the terrain",
+            " * and works over anything -- tiles, text, another sprite. */",
+            f"#define SPRITE_UNDER_BYTES {sprite_under_bytes(project)}",
+            "/* Hardware scrolling. SCROLL_STEP_BYTES is 0 on a machine that has",
+            " * none, so `#if SCROLL_STEP_BYTES` compiles one source for both.",
+            " * The step is coarse: 2 bytes is 4 pixels across in CPC mode 0 and 8",
+            " * in mode 1, and SCROLL_ROW_BYTES of it moves the picture up by one",
+            " * character row. */",
+            f"#define SCROLL_STEP_BYTES {SCROLL_STEP_BYTES.get(project.target.platform, 0)}",
+            f"#define SCROLL_ROW_BYTES {SCROLL_ROW_BYTES.get(project.target.platform, 0)}",
+            f"#define MAX_SCROLL_ORIGIN {max_scroll_origin(project.target.platform)}",
+            *_cpc_palette_lines(project),
+            # One per colour the design's palette named and this machine can
+            # show. Resolved here rather than written into a prompt because the
+            # value is target-specific -- a Spectrum attribute byte, a CPC pen
+            # -- while the name a program says is the design's own either way
+            # (see palette.declared_attribute). An entry whose prose names no
+            # colour is left out rather than defaulted: defining it as white
+            # would put a colour nobody chose behind the design's word for it,
+            # and a program that used the name would then fail to compile,
+            # which is the loud version of that mistake.
+            *_colour_lines(project),
             "",
             "/* One bit per binding the design declared, in its own order. */",
             *bits,

@@ -23,10 +23,10 @@ from PIL import Image
 from llmz80.studio.models import TargetPlatform
 from llmz80.studio.samples import blank_project
 from llmz80.studio.services import StudioService
-from llmz80.studio.sprite_artist import FRAMES_PER_SHEET, MAX_DRAW_ATTEMPTS, SpriteArtist
+from llmz80.studio.sprite_artist import MAX_DRAW_ATTEMPTS, SpriteArtist, poses_wanted
 from llmz80.studio.sprite_sheet import split_frames
 from llmz80.studio.spriting import SPRITE_SIZE, pack_spectrum
-
+from tests.conftest import FakeMessageStream
 
 
 def _create_sprited_project(service: StudioService, title: str, platform=TargetPlatform.SPECTRUM):
@@ -39,7 +39,18 @@ def _create_sprited_project(service: StudioService, title: str, platform=TargetP
     """
     project, directory = service.create_project(title, platform)
     project = project.model_copy(
-        update={"entities": [project.entities[0].model_copy(update={"sprite": "hero"})]}
+        update={
+            "entities": [
+                project.entities[0].model_copy(
+                    # And four poses, because these fixtures draw a four-frame
+                    # cycle. `blank_project` names none, and an entity that
+                    # names none now gets a single still frame -- which is the
+                    # right default for a ball or a block and the wrong one for
+                    # a fixture built around a running figure.
+                    update={"sprite": "hero", "poses": ["run_a", "run_b", "run_c", "run_d"]}
+                )
+            ]
+        }
     )
     service.save_project(project, directory)
     return project, directory
@@ -53,15 +64,15 @@ class _GridClient:
         self.grid = grid
         self.messages = self
 
-    def parse(self, **_kwargs):
-        return type("Response", (), {"parsed_output": self.grid})()
+    def stream(self, **_kwargs):
+        return FakeMessageStream(type("Response", (), {"parsed_output": self.grid})())
 
 
 def _figure_grid():
     """A silhouette worth losing: an outlined body with real transparent
     space inside its own bounding box, so a round trip through disk that
     damaged it would show."""
-    from llmz80.studio.sprite_grid import TRANSPARENT, SpriteFrameGrid, SpriteSheetGrid
+    from llmz80.studio.sprite_grid import SpriteFrameGrid, SpriteSheetGrid
 
     body = [
         "......0000......",
@@ -100,6 +111,10 @@ class _FixtureArtist:
 
         project = blank_project("Fixture", TargetPlatform.SPECTRUM)
         entity = project.entities[0]
+        # `_figure_grid()` below holds four poses, so the entity drawing it has
+        # to name four: how many frames a sheet may hold is the design's answer
+        # now, not a constant, and an entity naming none is drawn once.
+        entity.poses = ["run_a", "run_b", "run_c", "run_d"]
         real_artist = SpriteArtist(source=ClaudeGridSheetSource(_GridClient(_figure_grid())))
         self.frames = real_artist.draw_frames(project, entity)
         self.calls: list[str] = []
@@ -140,7 +155,7 @@ def test_draw_sprites_round_trip_through_disk_keeps_a_recognisable_silhouette(tm
     assert len(drawn) >= 1
     assert artist.calls
     asset = drawn[0]
-    assert asset.frames == FRAMES_PER_SHEET
+    assert asset.frames == poses_wanted(project.entities[0])
     sheet_path = directory / asset.source
     assert sheet_path.is_file()
 
@@ -159,7 +174,7 @@ def test_draw_sprites_round_trip_through_disk_keeps_a_recognisable_silhouette(tm
         for index in range(packed.frames)
     ]
 
-    assert len(set_bits_per_frame) == FRAMES_PER_SHEET
+    assert len(set_bits_per_frame) == poses_wanted(project.entities[0])
     for index, count in enumerate(set_bits_per_frame):
         assert count not in (
             0,
@@ -223,9 +238,7 @@ def test_draw_sprites_saves_every_attempts_raw_sheet_after_a_failure(tmp_path: P
     from llmz80.studio.sprite_artist import ClaudeGridSheetSource
     from llmz80.studio.sprite_grid import SpriteFrameGrid, SpriteSheetGrid
 
-    solid = SpriteSheetGrid(
-        frames=[SpriteFrameGrid(rows=["0" * 16] * 16) for _ in range(4)]
-    )
+    solid = SpriteSheetGrid(frames=[SpriteFrameGrid(rows=["0" * 16] * 16) for _ in range(4)])
     artist = SpriteArtist(source=ClaudeGridSheetSource(_GridClient(solid)))
 
     with pytest.raises(ValueError):
@@ -346,11 +359,11 @@ def test_write_program_lets_runtime_test_narrate_from_inside_the_repair_loop(tmp
     service.write_program(project, directory, _Writer(), attempts=1, on_progress=messages.append)
 
     assert messages == [
-        "intento 1: escribiendo...",
+        "attempt 1: writing...",
         "compilando el programa",
         "arrancando el emulador",
-        "intento 1: build compiló, aceptación aprobada, animación aprobada, "
-        "ritmo sin observar, atributos sin observar, estado sin observar",
+        "attempt 1: build compiled, acceptance passed, animation passed, "
+        "pacing not observed, attributes not observed, state not observed",
     ], messages
 
 

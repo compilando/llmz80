@@ -4,7 +4,6 @@ import subprocess
 from PIL import Image
 
 from llmz80.quality import emulator_smoke
-
 from llmz80.quality.emulator_smoke import (
     _cpc_input,
     _image_observation,
@@ -21,7 +20,7 @@ def _tap_block(payload: bytes) -> bytes:
 def test_spectrum_portable_smoke_is_explicitly_not_runtime_verified(tmp_path):
     (tmp_path / "output.tap").write_bytes(_tap_block(b"header"))
     (tmp_path / "main.c").write_text(
-        "void main(void){int x=0;while(1){printf(\"X\");x++;}}", encoding="utf-8"
+        'void main(void){int x=0;while(1){printf("X");x++;}}', encoding="utf-8"
     )
     report = smoke_test(tmp_path, "spectrum")
     assert report["static_pass"] is True
@@ -109,16 +108,18 @@ def test_static_portable_report_records_that_transition_is_not_required(tmp_path
 
 
 def test_runtime_rejection_diagnostics_are_actionable():
-    diagnostics = runtime_rejection_diagnostics({
-        "runtime_verified": True,
-        "boot": True,
-        "program_loaded": True,
-        "non_blank_output": True,
-        "visual_change": False,
-        "scripted_input_sent": True,
-        "input_transition": False,
-        "scripted_input": "space",
-    })
+    diagnostics = runtime_rejection_diagnostics(
+        {
+            "runtime_verified": True,
+            "boot": True,
+            "program_loaded": True,
+            "non_blank_output": True,
+            "visual_change": False,
+            "scripted_input_sent": True,
+            "input_transition": False,
+            "scripted_input": "space",
+        }
+    )
     assert any("visually static" in line for line in diagnostics)
     assert any("visual_change: False" in line for line in diagnostics)
 
@@ -142,7 +143,10 @@ def test_caprice32_delays_post_input_screenshot(monkeypatch, tmp_path):
     command = captured["command"]
     input_index = command.index(" ", command.index('run"program.bin"') + 1)
     assert command[input_index + 1 : input_index + 5] == [
-        "-a", "CAP32_DELAY", "-a", "CAP32_SCRNSHOT"
+        "-a",
+        "CAP32_DELAY",
+        "-a",
+        "CAP32_SCRNSHOT",
     ]
     assert report["boot"] is False
 
@@ -192,9 +196,7 @@ def test_zesarux_step_reading_carries_the_step_hold(monkeypatch, tmp_path):
         script=[{"id": "rest", "hold": "none", "frames": 50}],
     )
 
-    assert report["step_readings"] == [
-        {"id": "rest", "hold": "none", "read": {"g_anim_frame": 7}}
-    ]
+    assert report["step_readings"] == [{"id": "rest", "hold": "none", "read": {"g_anim_frame": 7}}]
 
 
 def _observation_shaped_script() -> list[dict]:
