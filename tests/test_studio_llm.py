@@ -83,9 +83,7 @@ def test_max_tokens_is_always_sent():
     """The API rejects a request without it, so no caller may forget it."""
     client = _FakeClient(_Verdict(ok=True))
 
-    structured(
-        client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m"
-    )
+    structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
 
     assert client.messages.calls[0]["max_tokens"] > 0
 
@@ -99,9 +97,7 @@ def test_no_sampling_parameters_are_sent():
     """
     client = _FakeClient(_Verdict(ok=True))
 
-    structured(
-        client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m"
-    )
+    structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
 
     call = client.messages.calls[0]
     assert "temperature" not in call
@@ -113,9 +109,7 @@ def test_tools_are_sent_only_when_a_caller_asks_for_them():
     """Only `reference.py` searches the web; the other seven must not carry
     a `tools` key at all rather than an empty list."""
     without = _FakeClient(_Verdict(ok=True))
-    structured(
-        without, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m"
-    )
+    structured(without, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
     assert "tools" not in without.messages.calls[0]
 
     search = [{"type": "web_search_20260209", "name": "web_search"}]
@@ -211,9 +205,7 @@ def test_a_model_that_keeps_breaking_the_schema_gives_up_with_the_last_error():
     client = _ScriptedClient(_too_long())
 
     with pytest.raises(ValueError, match="at most 5 characters"):
-        structured(
-            client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m"
-        )
+        structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
 
     assert len(client.messages.calls) == 2
 
@@ -334,3 +326,111 @@ def test_effort_survives_a_retry():
     )
 
     assert client.messages.calls[1]["output_config"] == {"effort": "medium"}
+
+
+def test_a_cached_prefix_becomes_a_second_system_block_with_cache_control():
+    """Caching is an exact prefix match over `tools` then `system` then
+    `messages`, so the stable half has to sit in `system` -- ahead of anything
+    that changes -- with the breakpoint on it."""
+    client = _FakeClient(_Verdict(ok=True))
+
+    structured(
+        client,
+        "claude-opus-5",
+        system="you write programs",
+        cached_prefix="the whole contract and the design",
+        user="repair this",
+        schema=_Verdict,
+        missing="m",
+    )
+
+    call = client.messages.calls[0]
+    assert call["system"] == [
+        {"type": "text", "text": "you write programs"},
+        {
+            "type": "text",
+            "text": "the whole contract and the design",
+            "cache_control": {"type": "ephemeral", "ttl": "1h"},
+        },
+    ]
+    assert call["messages"] == [{"role": "user", "content": "repair this"}]
+
+
+def test_the_prefix_defaults_to_the_one_hour_ttl_and_the_caller_may_override():
+    """One writing attempt takes 4-6 minutes, so the 5-minute default expires
+    between attempts and every attempt pays a 1.25x write for nothing -- worse
+    than not caching. See the plan's TTL arithmetic."""
+    client = _FakeClient(_Verdict(ok=True))
+
+    structured(
+        client,
+        "claude-opus-5",
+        system="s",
+        cached_prefix="p",
+        user="u",
+        schema=_Verdict,
+        missing="m",
+        cache_ttl="5m",
+    )
+
+    assert client.messages.calls[0]["system"][1]["cache_control"] == {
+        "type": "ephemeral",
+        "ttl": "5m",
+    }
+
+
+def test_without_a_prefix_the_system_prompt_stays_a_plain_string():
+    """Nine of the ten call sites pass no prefix, and their request must be
+    byte-identical to what it is today -- a request that changed shape would
+    invalidate any cache they do have and change what the model is sent."""
+    client = _FakeClient(_Verdict(ok=True))
+
+    structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
+
+    assert client.messages.calls[0]["system"] == "s"
+
+
+def test_schema_repair_feedback_lands_after_the_cached_prefix():
+    """The retry appends pydantic's complaint to the volatile half. If it were
+    appended to the prefix, the second attempt would miss the cache the first
+    one just wrote -- which is the entire point of splitting them."""
+    client = _ScriptedClient(_too_long(), _Verdict(ok=True))
+
+    structured(
+        client,
+        "claude-opus-5",
+        system="s",
+        cached_prefix="stable",
+        user="volatile",
+        schema=_Verdict,
+        missing="m",
+    )
+
+    first, second = client.messages.calls
+    assert first["system"][1]["text"] == "stable"
+    assert second["system"][1]["text"] == "stable"
+    assert "String should have at most 5 characters" in second["messages"][0]["content"]
+    assert second["messages"][0]["content"].startswith("volatile")
+
+
+def test_a_cached_prefix_and_an_effort_level_both_reach_the_request():
+    """They are built in the same function, and the writer -- the one caller
+    that wants a cached prefix -- is also the one that names an effort level.
+    A refactor that dropped either would leave the other's test green.
+    """
+    client = _FakeClient(_Verdict(ok=True))
+
+    structured(
+        client,
+        "claude-opus-5",
+        system="s",
+        cached_prefix="p",
+        user="u",
+        schema=_Verdict,
+        missing="m",
+        effort="medium",
+    )
+
+    call = client.messages.calls[0]
+    assert call["output_config"] == {"effort": "medium"}
+    assert call["system"][1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}

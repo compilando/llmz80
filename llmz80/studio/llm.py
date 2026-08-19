@@ -50,11 +50,34 @@ into `{**output_config, "format": <schema>}` (anthropic 0.122.0,
 the one in `parse`, which this module cannot use at all: see the comment on
 the call itself), spreading the caller's dict first -- so `output_format` and
 `effort` compose rather than compete.
+
+**`cached_prefix` is the stable half of a prompt, and it has to travel in
+`system`.** The prompt cache is an *exact prefix match* over the rendered
+request in the order `tools` -> `system` -> `messages`: the first differing
+byte invalidates everything after it. A caller's stable text appended beside
+its volatile text in the user turn would therefore be a different prefix on
+every call and cache nothing at all -- the breakpoint has to sit ahead of
+whatever changes, which means `system` and not `messages`. So a caller that
+passes one gets two system blocks, the caller's own prompt and then the
+prefix carrying the `cache_control`, and the retry loop below rewrites only
+`messages` -- a repair attempt reads the cache the first attempt wrote.
+
+**The TTL defaults to an hour, not to the API's five minutes**, and that is
+not a preference. One program-writing attempt in this project takes four to
+six minutes (measured: 195 s, 240 s, 282 s, 326 s across
+`studio-projects/*/studio.log`), so under the 5-minute default the entry has
+expired by the time the next attempt asks for it: every attempt pays the
+1.25x cache *write* and reads nothing back, which is more expensive than not
+caching. For the writer's 19 000-token prefix over the five attempts of a
+repair loop: no caching bills 95k input tokens, a 5-minute TTL expiring each
+time bills 119k, and the 1-hour TTL -- one 2x write, then four reads at 0.1x
+-- bills 46k. "Simplifying" this back to the API default would make the
+pipeline half again as expensive as having no cache.
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal, Sequence, TypeVar
+from typing import Any, Literal, Sequence, TypeVar, cast
 
 from pydantic import BaseModel, ValidationError
 
@@ -69,6 +92,17 @@ Schema = TypeVar("Schema", bound=BaseModel)
 #: catch (it catches `ValidationError` only), after a paid round trip and, for
 #: a per-tile call, minutes into a pipeline run. mypy refuses it for free.
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
+
+#: The only two lifetimes a `cache_control` breakpoint accepts. A `Literal`
+#: for the same reason `Effort` is one: `CacheControlEphemeralParam` is a
+#: TypedDict (anthropic 0.122.0,
+#: `types/cache_control_ephemeral_param.py` -- its own `ttl` is
+#: `Literal["5m", "1h"]`), so nothing checks the string at runtime and a
+#: plausible-looking `"1hr"` or `"60m"` would travel to the API and come back
+#: a 400 `BadRequestError` -- which the retry loop below does not catch, and
+#: which arrives only after the prefix it was meant to cache has been paid
+#: for. mypy refuses it before the call is made.
+CacheTTL = Literal["5m", "1h"]
 
 #: Enough room for the largest structured answer Studio asks for -- a whole
 #: C program from `generator.ProgramSources` -- rather than a value tuned to
@@ -105,6 +139,8 @@ def structured(
     tools: Sequence[dict[str, Any]] | None = None,
     attempts: int = DEFAULT_ATTEMPTS,
     effort: Effort | None = None,
+    cached_prefix: str | None = None,
+    cache_ttl: CacheTTL = "1h",
 ) -> Schema:
     """One question, one schema-satisfying answer.
 
@@ -125,6 +161,23 @@ def structured(
     once, before the retry loop, which touches only `messages` -- so a repair
     attempt asks at the level the caller chose and not at the default it was
     trying to avoid.
+
+    `cached_prefix` is the part of this question that will be identical the
+    next time it is asked -- a contract, a design, a set of examples -- split
+    out so the cache can be charged for it once instead of on every attempt.
+    It becomes a second `system` block carrying the `cache_control`
+    breakpoint, because caching matches a prefix in the order `tools` ->
+    `system` -> `messages` and a breakpoint has to sit ahead of anything
+    volatile (see the module docstring). A caller that passes nothing sends
+    `system` as the plain string it has always been: nine of the ten call
+    sites do, and their request is unchanged byte for byte.
+
+    `cache_ttl` is how long that entry should outlive the call, and it
+    defaults to `1h` rather than the API's `5m` because an attempt here takes
+    longer than five minutes -- so the default would expire between attempts
+    and charge a write per attempt for a cache nothing ever reads. The
+    arithmetic is in the module docstring; the short version is that the
+    5-minute default is more expensive than no cache at all.
 
     **An answer the schema refuses is asked for again, with the reason.**
     This is not belt-and-braces; it is required by how the SDK sends a
@@ -152,7 +205,18 @@ def structured(
     request: dict[str, Any] = {
         "model": model,
         "max_tokens": max_tokens,
-        "system": system,
+        "system": (
+            system
+            if cached_prefix is None
+            else [
+                {"type": "text", "text": system},
+                {
+                    "type": "text",
+                    "text": cached_prefix,
+                    "cache_control": {"type": "ephemeral", "ttl": cache_ttl},
+                },
+            ]
+        ),
         "messages": [{"role": "user", "content": user}],
         "output_format": schema,
     }
@@ -209,7 +273,9 @@ def structured(
                     "before it was finished"
                 )
             raise ValueError(missing)
-        return parsed
+        # The SDK types `parsed_output` as Any; it is the `schema` this
+        # function was given, which is what the signature promises.
+        return cast(Schema, parsed)
     raise AssertionError("unreachable")  # pragma: no cover
 
 
