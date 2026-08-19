@@ -26,7 +26,9 @@ def test_spectrum_fix_casts_high_byte_constants_for_sdcc():
 static uint8_t ball_y = 160;
 """
     fixed, fixes = apply_deterministic_spectrum_fixes(code)
-    assert "#define PADDLE_Y ((uint8_t)176)" in fixed
+    # `unsigned char`, not `uint8_t`: this file's own <stdint.h> is no promise
+    # about the program being rewritten, which includes only Studio's headers.
+    assert "#define PADDLE_Y ((unsigned char)176)" in fixed
     assert "#define SCREEN_W 256" in fixed
     assert "static uint8_t ball_y = (uint8_t)160;" in fixed
     assert any("high byte constants" in fix for fix in fixes)

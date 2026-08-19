@@ -107,7 +107,7 @@ def apply_deterministic_cpc_fixes(code: str) -> tuple[str, list[str]]:
             f"Eliminados {fixed_sprite_casts} casts void* de sprites const (SDCC warning 357)"
         )
 
-    fixed, cast_count = _cast_high_byte_constants(fixed, macro_type="u8")
+    fixed, cast_count = _cast_high_byte_constants(fixed)
     if cast_count:
         fixes.append(f"added explicit casts to {cast_count} high byte constants")
 
@@ -129,14 +129,25 @@ def apply_deterministic_spectrum_fixes(code: str) -> tuple[str, list[str]]:
         if fixed != before:
             fixes.append(f"lower-cased IN_KEY_SCANCODE_{upper} to IN_KEY_SCANCODE_{lower}")
 
-    fixed, cast_count = _cast_high_byte_constants(fixed, macro_type="uint8_t")
+    fixed, cast_count = _cast_high_byte_constants(fixed)
     if cast_count:
         fixes.append(f"Added explicit casts to {cast_count} high byte constants")
 
     return fixed, fixes
 
 
-def _cast_high_byte_constants(code: str, macro_type: str) -> tuple[str, int]:
+#: The type the macro cast names. `unsigned char` and not `u8` or `uint8_t`,
+#: because this rewrite happens to somebody else's file: a Studio program
+#: includes `platform.h`, `game_config.h` and `sprites.h` and nothing of the
+#: toolchain's own, so neither typedef need be in scope. Naming one that is not
+#: turns a warning into a syntax error -- `#define PXMAX 128` became
+#: `#define PXMAX ((u8)128)` and the basketball run died on
+#: `src/main.c:326: syntax error: token -> '128'`. `unsigned char` is a keyword
+#: and cannot be out of scope in any C file at all.
+MACRO_CAST_TYPE = "unsigned char"
+
+
+def _cast_high_byte_constants(code: str) -> tuple[str, int]:
     """Silence SDCC warning 158 for checked 128..255 byte constants."""
     count = 0
 
@@ -147,7 +158,8 @@ def _cast_high_byte_constants(code: str, macro_type: str) -> tuple[str, int]:
             return match.group(0)
         count += 1
         return (
-            f"{match.group('prefix')}(({macro_type}){match.group('value')}){match.group('suffix')}"
+            f"{match.group('prefix')}(({MACRO_CAST_TYPE})"
+            f"{match.group('value')}){match.group('suffix')}"
         )
 
     fixed = re.sub(

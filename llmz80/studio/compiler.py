@@ -502,6 +502,12 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
         "written_headers": ["game_config.h", "game_state.h"],
         "program": sorted(path.name for path in owned),
         "program_present": main_c is not None,
+        # What the copy loop above changed on its way past. Recorded here
+        # because rendering and building are two calls and `build_project`
+        # may not have run the loop itself, and recorded at all because a
+        # build that silently edits the program it was handed is one whose
+        # diagnostics cite line numbers the writer never wrote.
+        "source_fixes": fixes,
         "playfield_cells": list(playfield(project)),
     }
     (output_dir / "studio_manifest.json").write_text(
@@ -532,6 +538,24 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
     return SourceResult(output_dir=output_dir, main_c=output_dir / "main.c", files=files)
 
 
+def _recorded_source_fixes(output_dir: Path) -> list[str]:
+    """What `render_project` rewrote in the program before compiling it.
+
+    Read back from the manifest rather than passed along, because rendering and
+    building are separate calls: `build_project` renders only when there is no
+    main.c yet, so on every other path the loop that applied the fixes ran in
+    some earlier call whose return value is long gone.
+    """
+    manifest = output_dir / "studio_manifest.json"
+    if not manifest.exists():
+        return []
+    try:
+        recorded = json.loads(manifest.read_text(encoding="utf-8")).get("source_fixes")
+    except json.JSONDecodeError:
+        return []
+    return [str(note) for note in recorded] if isinstance(recorded, list) else []
+
+
 def build_project(
     project: GameProject, output_dir: Path, config_path: Path = Path("config.yml")
 ) -> BuildResult:
@@ -549,6 +573,7 @@ def build_project(
             f"written. The contract they must satisfy is in build/CONTRACT.md"
         )
     platform = project.target.platform.value
+    source_fixes = _recorded_source_fixes(output_dir)
     program_text = {path.name: path.read_text(encoding="utf-8") for path in owned}
     # Both artwork gates, reported together: a program that drew neither its
     # actors nor its terrain has two things to fix, and telling it about one at
@@ -576,6 +601,7 @@ def build_project(
         report["stdout"] = ""
         report["stderr"] = "\n".join(sprite_errors)
         report["sprite_usage_errors"] = sprite_errors
+        report["source_fixes"] = source_fixes
         write_build_report(report, output_dir / "build_report.json")
         return BuildResult(output_dir=output_dir, success=False, artifact=None, report=report)
     config = load_config(str(config_path))
@@ -633,6 +659,7 @@ def build_project(
         )
     report["stdout"] = process.stdout[-12000:]
     report["stderr"] = process.stderr[-12000:]
+    report["source_fixes"] = source_fixes
     if report["quality_pass"]:
         # The design's own observables travel with the contract's symbols, as
         # a mapping rather than as the project: see `probes._wanted` for why
