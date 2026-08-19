@@ -108,6 +108,54 @@ def test_the_rewrite_is_recorded_in_the_build_report(tmp_path: Path):
     assert any("main.c" in note for note in recorded), recorded
 
 
+#: The other way a cast can break a file that compiled. `#if` is arithmetic on
+#: integer constants, and a cast in one is an error rather than a no-op.
+CONDITIONAL_PROGRAM = f"""#include "platform.h"
+
+#define SPEED 200
+#if SPEED > 128
+#define STEP 2
+#else
+#define STEP 1
+#endif
+
+{CONTRACT_STATE}
+void main(void) {{
+    unsigned char rx = 64;
+    plat_init();
+{CONTRACT_INIT}
+    while (1) {{
+        rx += STEP;
+        plat_wait_frame();
+    }}
+}}
+"""
+
+
+@make_missing
+@cpctelera_missing
+def test_a_macro_the_preprocessor_evaluates_is_left_alone(tmp_path: Path):
+    """Found while fixing the cast above, by asking what else a rewrite can
+    break. `#define SPEED ((unsigned char)200)` used in `#if SPEED > 128` is
+
+        error: missing binary operator before token 'char'
+
+    -- the same shape as the `u8` failure: a warning the rewrite was meant to
+    silence traded for an error it caused. Such a macro keeps its warning.
+    """
+    service = StudioService.at(tmp_path / "conditional")
+    project, directory = service.create_project("Conditional", TargetPlatform.AMSTRAD_CPC)
+    program_dir = directory / project.program_dir
+    program_dir.mkdir(parents=True, exist_ok=True)
+    (program_dir / "main.c").write_text(CONDITIONAL_PROGRAM, encoding="utf-8")
+
+    build = service.build(project, directory)
+
+    assert build.success, build.report.get("stderr") or build.report.get("stdout")
+    compiled = (directory / "build" / "src" / "main.c").read_text(encoding="utf-8")
+    assert "#define SPEED 200" in compiled
+
+
 @make_missing
 @cpctelera_missing
 def test_a_program_needing_nothing_records_nothing(tmp_path: Path):

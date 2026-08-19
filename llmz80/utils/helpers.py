@@ -147,14 +147,35 @@ def apply_deterministic_spectrum_fixes(code: str) -> tuple[str, list[str]]:
 MACRO_CAST_TYPE = "unsigned char"
 
 
+def _names_used_in_preprocessor_arithmetic(code: str) -> set[str]:
+    """Macros the preprocessor evaluates, which therefore must not be cast.
+
+    `#if` and `#elif` are arithmetic on integer constants and nothing else: a
+    cast in one is not merely ignored, it is an error --
+
+        error: missing binary operator before token 'char'
+
+    -- so casting `#define SPEED 200` would break a program that compiled,
+    which is the whole failure this rewrite has already caused once in another
+    shape. `#ifdef` and `defined(X)` only ask whether a name exists and are
+    left out; a name used both ways keeps its warning rather than its build.
+    """
+    used: set[str] = set()
+    for line in re.findall(r"^\s*#\s*(?:el)?if\s+(.*)$", code, flags=re.MULTILINE):
+        expression = re.sub(r"\bdefined\s*(\(\s*\w+\s*\)|\w+)", " ", line)
+        used.update(re.findall(r"[A-Za-z_]\w*", expression))
+    return used
+
+
 def _cast_high_byte_constants(code: str) -> tuple[str, int]:
     """Silence SDCC warning 158 for checked 128..255 byte constants."""
     count = 0
+    evaluated = _names_used_in_preprocessor_arithmetic(code)
 
     def cast_macro(match: re.Match[str]) -> str:
         nonlocal count
         value = int(match.group("value"), 0)
-        if not 128 <= value <= 255:
+        if not 128 <= value <= 255 or match.group("name") in evaluated:
             return match.group(0)
         count += 1
         return (
@@ -163,7 +184,7 @@ def _cast_high_byte_constants(code: str) -> tuple[str, int]:
         )
 
     fixed = re.sub(
-        r"^(?P<prefix>\s*#define\s+[A-Za-z_]\w*\s+)"
+        r"^(?P<prefix>\s*#define\s+(?P<name>[A-Za-z_]\w*)\s+)"
         r"(?P<value>0[xX][0-9A-Fa-f]+|\d+)"
         r"(?P<suffix>\s*(?://[^\n]*|/\*[^\n]*\*/)?$)",
         cast_macro,
