@@ -448,25 +448,47 @@ void plat_scroll_to(unsigned int origin) {
  * bytes, so the pixels are the whole story -- there is no attribute area to
  * remember alongside them.
  *
- * Each line is addressed afresh with `cpct_getScreenPtr`. The CPC lays its
- * screen out in eight interleaved 8-line blocks (screen_start + 80*(y/8) +
- * 2048*(y%8) + x, cpct_getScreenPtr.asm), so a naive `+= 80` per line walks
- * into the wrong block at every eighth. `plat_sprite_py` gets that stepping
- * for free because cpct_drawSpriteMasked does it internally; there is no
- * CPCtelera routine that copies *out* of the screen, so this does it in C. */
+ * Both used to walk the sixteen lines calling `cpct_getScreenPtr` for each and
+ * copying the bytes in C, and both were measured doing it:
+ *
+ *     n=16, g_worst_frame_cost   draw 1   restore 3   save 4   all three 9
+ *
+ * Seven frames of the nine went on remembering and putting back, against one
+ * for the blit itself. A budget published from the blitter alone therefore
+ * told a game it could move sixteen sprites when it could move three, and a
+ * basketball program that moved exactly three overran its frame by four on
+ * three attempts running, each one cutting something different and none of
+ * them near. This is that cost, not the writer's arithmetic.
+ *
+ * The screen is screen_start + 80*(y/8) + 2048*(y%8) + x (cpct_getScreenPtr.asm),
+ * so the address of the next scanline follows from the address of this one:
+ * add 2048 inside an 8-line block, and at the block's end subtract the seven
+ * additions and add the 80 of one character row. That is the whole reason
+ * `cpct_getScreenPtr` was being called sixteen times -- it multiplies, and the
+ * answer was already in hand. */
+#if SPRITE_COUNT
+/* The next scanline down, given this one's address and the line it is at. */
+static u8 *next_scanline(u8 *at, unsigned char y) {
+    if ((unsigned char)((y + 1) & 7)) return at + 2048;
+    return at - (7 * 2048) + 80;
+}
+#endif
+
 void plat_save_under(unsigned int px, unsigned char py, unsigned char *under) {
 #if SPRITE_COUNT
     u8 *at;
     unsigned char line;
-    unsigned char byte;
     unsigned char col;
     if (px > MAX_SPRITE_PX || py > MAX_SPRITE_PY) return;
     col = (unsigned char)(px >> PIXELS_PER_BYTE_LOG);
+    at = cpct_getScreenPtr(CPCT_VMEM_START, col, py);
     for (line = 0; line < 16; ++line) {
-        at = cpct_getScreenPtr(CPCT_VMEM_START, col, (u8)(py + line));
-        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
-            *under++ = at[byte];
-        }
+        /* cpct_memcpy is assembly; the byte loop this replaces was not, and
+         * there is still no CPCtelera routine that copies *out* of the screen
+         * a rectangle at a time. */
+        cpct_memcpy(under, at, SPRITE_BYTES_WIDE);
+        under += SPRITE_BYTES_WIDE;
+        at = next_scanline(at, (unsigned char)(py + line));
     }
 #else
     (void)px; (void)py; (void)under;
@@ -476,17 +498,14 @@ void plat_save_under(unsigned int px, unsigned char py, unsigned char *under) {
 void plat_restore_under(unsigned int px, unsigned char py, const unsigned char *under) {
 #if SPRITE_COUNT
     u8 *at;
-    unsigned char line;
-    unsigned char byte;
     unsigned char col;
     if (px > MAX_SPRITE_PX || py > MAX_SPRITE_PY) return;
     col = (unsigned char)(px >> PIXELS_PER_BYTE_LOG);
-    for (line = 0; line < 16; ++line) {
-        at = cpct_getScreenPtr(CPCT_VMEM_START, col, (u8)(py + line));
-        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
-            at[byte] = *under++;
-        }
-    }
+    at = cpct_getScreenPtr(CPCT_VMEM_START, col, py);
+    /* Putting a rectangle back *is* drawing a sprite, so this is the same
+     * hand-written blitter `plat_tile` uses, in one call: it walks the
+     * interleave itself and copies with unrolled LDIs. */
+    cpct_drawSprite((void *)under, at, SPRITE_BYTES_WIDE, 16);
 #else
     (void)px; (void)py; (void)under;
 #endif
