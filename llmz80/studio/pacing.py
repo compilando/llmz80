@@ -75,12 +75,7 @@ def pacing_report(runtime: dict[str, Any]) -> dict[str, Any]:
     worst_id, worst = max(readings, key=lambda item: item[1])
     failures: list[str] = []
     if worst > MAX_MISSED_FRAMES:
-        failures.append(
-            f"{_SYMBOL} reached {worst} at step {worst_id}: one iteration of the "
-            f"game loop overran its display frame by {worst} frames, and at most "
-            f"{MAX_MISSED_FRAMES} is accepted. Redraw only what changed, and move "
-            "work that does not need to happen every frame out of the loop."
-        )
+        failures.append(_diagnosis(readings, worst_id, worst))
     return {
         "schema_version": 1,
         "observed": True,
@@ -89,3 +84,53 @@ def pacing_report(runtime: dict[str, Any]) -> dict[str, Any]:
         "failures": failures,
         "quality_pass": not failures,
     }
+
+
+def _diagnosis(readings: list[tuple[Any, int]], worst_id: Any, worst: int) -> str:
+    """Why the frame was missed, told apart by when it started being missed.
+
+    `g_worst_frame_cost` is a worst-ever, so a loop that never fitted and one
+    frame that painted a screen both keep failing every step after the first
+    one to go wrong. They want opposite fixes and this gate used to give one
+    message for both -- "redraw only what changed" -- which is advice about the
+    loop.
+
+    A basketball program was refused three times with it. Its readings were
+    1, 1, 2, 2, 2, 7, 7, 7, 7, 7, 7, and the 7 arrived at the step where
+    `g_state` went from playing to game over: a screen painted once, charged to
+    whoever called `plat_wait_frame` next. Its loop cost 1 at the outset and it
+    spent three attempts cutting drawing that was already cheap.
+
+    The first reading is what the loop cost before the run had been anywhere,
+    and the readings only ever rise, so the two causes separate cleanly: a
+    first reading already over budget is a loop that never fitted, and a worst
+    above the first reading is frames later in the run that cost more than the
+    loop does. Both can be true, and then both are said.
+    """
+    opening = readings[0][1]
+    said = [
+        f"{_SYMBOL} reached {worst} at step {worst_id}: one iteration of the "
+        f"game loop overran its display frame by {worst} frames, and at most "
+        f"{MAX_MISSED_FRAMES} is accepted."
+    ]
+    if opening > MAX_MISSED_FRAMES:
+        said.append(
+            f"The loop was already {opening} over at the first reading, before "
+            "the run had been anywhere, so this is what it costs every frame: "
+            "redraw only what changed, and move work that does not need to "
+            "happen every frame out of the loop."
+        )
+    if worst > opening:
+        # "also" only when the loop was blamed first, so the sentence does not
+        # follow on from nothing.
+        rose = "It also rose" if len(said) > 1 else "It rose"
+        said.append(
+            f"{rose} from {opening} to {worst} during the run, so at "
+            "least one frame cost far more than the loop does. That is the "
+            "shape of a screen painted in the middle of a run -- a new level, "
+            "a game-over panel, a pause message, a screen cleared and lettered "
+            "-- charged to whoever calls plat_wait_frame next. Call "
+            "plat_frame_baseline() after painting it and before the loop that "
+            "follows, including a loop that only waits."
+        )
+    return " ".join(said)
