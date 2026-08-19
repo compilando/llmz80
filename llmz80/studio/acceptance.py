@@ -552,6 +552,7 @@ def design_prompt(project: GameProject) -> str:
         # `codegen.SPRITES_PER_FRAME` for the readings these come from.
         cell_budget = sprites_per_frame(project.target.platform, pixel_column=False)
         pixel_budget = sprites_per_frame(project.target.platform, pixel_column=True)
+        moving_budget = sprites_per_frame(project.target.platform, pixel_column=True, moving=True)
         # Where the flicker came from, said before the budget: a real generated
         # game put its erase at the top of the loop and its draw at the bottom,
         # so the actor was missing from the picture for the whole of the
@@ -581,13 +582,22 @@ def design_prompt(project: GameProject) -> str:
             "underneath."
         )
         lines.append(
-            f"  How many you can move: about {cell_budget} sprites per frame with "
+            f"  How many you can draw: about {cell_budget} sprites per frame with "
             f"plat_sprite or plat_sprite_py on this machine, and about {pixel_budget} "
             "with plat_sprite_px, which is dearer. Measured on the real hardware, with "
             "room left for your own logic. Past that the loop stops fitting in its "
             "frame and the pacing gate refuses the program -- so if a design needs "
             "more things on screen than that, move the few that a player watches and "
             "draw the rest as terrain with plat_tile."
+        )
+        lines.append(
+            f"  How many you can move: about {moving_budget}. A sprite that moves "
+            "costs far more than one that is drawn, because it must also put back "
+            "what it covered -- plat_save_under before it is drawn and "
+            "plat_restore_under before it moves away -- and that pair is the larger "
+            "half of the bill. The figure above is for drawing alone: use this one "
+            "for anything that changes position, and that one only for what stays "
+            "put. Both measured on the real hardware."
         )
         lines.append(
             "  plat_sprite_px(px, py, sprite, frame) takes a pixel column too. "

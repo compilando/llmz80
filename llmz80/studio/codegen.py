@@ -198,13 +198,35 @@ def _pixels_per_byte(platform: TargetPlatform, mode: VideoMode) -> int:
 #: keyboard, moves what it drew, tests collisions and repaints terrain, and a
 #: budget set at the ceiling of an empty loop would fail every one of them. Two
 #: thirds, rounded down, is what these are.
+#: A later measurement, and the one that mattered most. Every figure above is
+#: from a loop that *draws* sprites, and a game that moves one must also put
+#: back what it covered -- so the real unit is restore, save, draw. That pair
+#: had never been measured beside the blitter, and on the CPC it dwarfed it:
+#:
+#:     CPC, n=16   draw 1   restore 3   save 4   all three 9
+#:
+#: A prompt saying "about 16 with plat_sprite_px" was therefore telling a game
+#: it could move sixteen sprites when it could move three, and a basketball
+#: design that moved exactly three was refused for overrunning its frame on
+#: three attempts running, each cutting drawing that was never the cost.
+#:
+#: The pair is assembly now (see the CPC and Spectrum platform.c), and these
+#: are the ceilings after that:
+#:
+#:     Spectrum  n=2 cost 0   n=3 cost 1   n=4 cost 1   n=5 cost 2   n=8 cost 3
+#:     CPC       n=3 cost 0   n=4 cost 0   n=5 cost 1   n=7 cost 1   n=8 cost 2
+#:
+#: Ceilings of 4 and 7 at the one missed frame the gate allows, published at
+#: two thirds like the rest.
 SPRITES_PER_FRAME: dict[TargetPlatform | str | None, dict[str, int]] = {
-    TargetPlatform.SPECTRUM: {"cell": 8, "pixel": 5},
-    TargetPlatform.AMSTRAD_CPC: {"cell": 20, "pixel": 16},
+    TargetPlatform.SPECTRUM: {"cell": 8, "pixel": 5, "moving": 2},
+    TargetPlatform.AMSTRAD_CPC: {"cell": 20, "pixel": 16, "moving": 4},
 }
 
 
-def sprites_per_frame(platform: TargetPlatform | str | None, *, pixel_column: bool) -> int:
+def sprites_per_frame(
+    platform: TargetPlatform | str | None, *, pixel_column: bool, moving: bool = False
+) -> int:
     """How many sprites a game on this target should move in one frame.
 
     `pixel_column` asks about `plat_sprite_px`, the dearer of the blitters --
@@ -212,7 +234,10 @@ def sprites_per_frame(platform: TargetPlatform | str | None, *, pixel_column: bo
     figure. A target nobody has measured answers with the smaller of the two
     machines' numbers rather than with a guess of its own.
     """
-    key = "pixel" if pixel_column else "cell"
+    # `moving` outranks `pixel_column`: a sprite that is saved and restored
+    # under costs what it costs whichever blitter puts it back, and the pair
+    # is the larger half of the bill either way.
+    key = "moving" if moving else ("pixel" if pixel_column else "cell")
     known = SPRITES_PER_FRAME.get(platform)
     if known is None:
         return min(row[key] for row in SPRITES_PER_FRAME.values())
