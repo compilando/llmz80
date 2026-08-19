@@ -11,7 +11,7 @@ from pathlib import Path
 
 from llmz80.core.state_contract import STATE_CONTRACT
 
-from .models import GameProject, TargetPlatform, VideoMode
+from .models import GameProject, PaletteEntry, TargetPlatform, VideoMode
 from .structure import playfield
 
 LIBRARY_ROOT = Path(__file__).resolve().parents[2] / "resources" / "studio_lib"
@@ -339,17 +339,47 @@ def _binding_lines(project: GameProject) -> tuple[list[str], list[str]]:
     return bits, entries
 
 
-def _colour_lines(project: GameProject) -> list[str]:
-    """`#define COLOUR_<ID>` for every palette entry this target can show."""
+def declared_colours(project: GameProject) -> list[tuple["PaletteEntry", int]]:
+    """The palette entries this target can really show, and what they resolve to.
+
+    One list, and both readers of it read this. They used to decide separately:
+    `_colour_lines` skipped an entry whose prose resolved to nothing, and the
+    writing prompt listed the palette unfiltered -- so a basketball design that
+    named "naranja claro de parquet" was told `COLOUR_PISTA` existed, used it,
+    and failed to build with `error 20: Undefined identifier 'COLOUR_PISTA'`.
+    Twice, in two of the five attempts it was given.
+
+    A contract that offers a name the header does not define is worse than one
+    that offers less: the model cannot see game_config.h while it writes, so it
+    has nothing to check the promise against.
+    """
     from .palette import declared_attribute
 
-    lines = []
+    resolved = []
     for entry in project.presentation.palette:
         value = declared_attribute(project, entry.id)
-        if value is None:
-            continue
-        lines.append(f"#define COLOUR_{entry.id.upper()} {value}  /* {entry.colour} */")
-    return lines
+        if value is not None:
+            resolved.append((entry, value))
+    return resolved
+
+
+def unresolved_colours(project: GameProject) -> list["PaletteEntry"]:
+    """Palette entries this target cannot show, so the writer can be told.
+
+    Silence would leave a colour missing from a list nobody saw complete. The
+    design named it and the machine cannot show it; saying which is cheaper
+    than letting it be inferred from an absence.
+    """
+    shown = {entry.id for entry, _ in declared_colours(project)}
+    return [entry for entry in project.presentation.palette if entry.id not in shown]
+
+
+def _colour_lines(project: GameProject) -> list[str]:
+    """`#define COLOUR_<ID>` for every palette entry this target can show."""
+    return [
+        f"#define COLOUR_{entry.id.upper()} {value}  /* {entry.colour} */"
+        for entry, value in declared_colours(project)
+    ]
 
 
 def _cpc_palette_lines(project: GameProject) -> list[str]:

@@ -163,7 +163,12 @@ def structured(
 
     refusal: ValidationError | None = None
     for attempt in range(1, max(1, attempts) + 1):
-        content = user if refusal is None else f"{user}\n\n{_schema_feedback(refusal)}"
+        if refusal is None:
+            content = user
+        elif _was_cut_off(refusal):
+            content = f"{user}\n\n{_truncation_feedback()}"
+        else:
+            content = f"{user}\n\n{_schema_feedback(refusal)}"
         request["messages"] = [{"role": "user", "content": content}]
         try:
             # Streamed, not awaited whole. The SDK refuses outright to make a
@@ -180,6 +185,13 @@ def structured(
         except ValidationError as exc:
             refusal = exc
             if attempt == max(1, attempts):
+                if _was_cut_off(exc):
+                    raise ValueError(
+                        "the answer was cut off before it finished: the JSON stops "
+                        "mid-value, so this is not a schema mismatch. Either it hit "
+                        f"the {max_tokens} token ceiling or the stream dropped. "
+                        f"{exc}"
+                    ) from exc
                 raise ValueError(
                     f"the model's answer did not fit {schema.__name__}: {exc}"
                 ) from exc
@@ -199,6 +211,43 @@ def structured(
             raise ValueError(missing)
         return parsed
     raise AssertionError("unreachable")  # pragma: no cover
+
+
+def _was_cut_off(refusal: ValidationError) -> bool:
+    """Whether this refusal is a half-arrived answer rather than a wrong one.
+
+    Pydantic reports a truncated payload as `json_invalid`, and the message it
+    carries is the parser's: "EOF while parsing" a string, an object or an
+    array. That is the whole test -- a complete answer that happens not to fit
+    the schema raises `missing`, `string_type` and their siblings, never
+    `json_invalid`, so the two never collide.
+
+    Worth telling apart because they need opposite responses. A wrong answer
+    should be shown its complaint; a cut-off one never reached the end of what
+    it was writing, and the only thing it can act on is the length.
+    """
+    return any(
+        error.get("type") == "json_invalid" and "EOF while parsing" in str(error.get("msg", ""))
+        for error in refusal.errors()
+    )
+
+
+def _truncation_feedback() -> str:
+    """What to tell a model whose answer stopped halfway.
+
+    Not the parser's complaint. "Invalid JSON: EOF while parsing a string at
+    line 1 column 27294" describes punctuation the model never got to write,
+    and pointing at it sends the next attempt looking for a syntax error in
+    something that was, as far as it knew, still being typed.
+    """
+    return (
+        "YOUR PREVIOUS ANSWER WAS CUT OFF\n\n"
+        "It stopped part-way through and never arrived complete, so nothing was "
+        "wrong with what you had written -- there was simply too much of it. "
+        "Write the same program shorter: fewer helper functions, fewer comments, "
+        "shorter names, and no code for anything the design did not ask for. "
+        "Everything the contract requires still has to be there."
+    )
 
 
 def _schema_feedback(refusal: ValidationError) -> str:

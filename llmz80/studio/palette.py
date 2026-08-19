@@ -245,6 +245,73 @@ def spectrum_attribute(prose: str) -> int | None:
     return _PAPER_BLACK | ink | bright
 
 
+#: The CPC's own colour vocabulary: a word a design might write, and the
+#: hardware colour it names at each of the machine's two intensities.
+#:
+#: Its own, and not the Spectrum's, because that is what the defect was.
+#: `cpc_pen` used to route every CPC colour through `spectrum_attribute`, which
+#: knows eight inks -- so half of mode 0's sixteen pens could not be named by a
+#: design at all. A basketball game asked for "naranja claro de parquet", the
+#: machine has HW_ORANGE, and the parser had never heard the word: no macro was
+#: defined, the prompt offered one anyway, and two of five writing attempts
+#: died on `Undefined identifier 'COLOUR_PISTA'`.
+#:
+#: Each entry is (plain, bright). A machine with only one intensity of a colour
+#: names it twice rather than pretending to a second: mode 0 carries no dim
+#: magenta, orange or pink.
+#:
+#: The synonyms are the words a design really writes, in both languages Studio
+#: drafts in. `turquesa` is here because the Spectrum table had it and a design
+#: that used it must not start resolving to nothing on the other machine.
+CPC_COLOUR_WORDS: dict[str, tuple[str, str]] = {
+    "black": ("HW_BLACK", "HW_BLACK"),
+    "negro": ("HW_BLACK", "HW_BLACK"),
+    "blue": ("HW_BLUE", "HW_BRIGHT_BLUE"),
+    "azul": ("HW_BLUE", "HW_BRIGHT_BLUE"),
+    "red": ("HW_RED", "HW_BRIGHT_RED"),
+    "rojo": ("HW_RED", "HW_BRIGHT_RED"),
+    "green": ("HW_GREEN", "HW_BRIGHT_GREEN"),
+    "verde": ("HW_GREEN", "HW_BRIGHT_GREEN"),
+    "cyan": ("HW_CYAN", "HW_BRIGHT_CYAN"),
+    "cian": ("HW_CYAN", "HW_BRIGHT_CYAN"),
+    "turquesa": ("HW_CYAN", "HW_BRIGHT_CYAN"),
+    "yellow": ("HW_YELLOW", "HW_BRIGHT_YELLOW"),
+    "amarillo": ("HW_YELLOW", "HW_BRIGHT_YELLOW"),
+    # White, and not the colour this machine calls white. HW_WHITE is
+    # (128, 128, 128) -- grey -- and HW_BRIGHT_WHITE is the white a design
+    # means when it writes one. Sending "blanco" to the grey left mode 1, whose
+    # four pens hold bright white and no grey at all, quantising it to blue.
+    "white": ("HW_BRIGHT_WHITE", "HW_BRIGHT_WHITE"),
+    "blanco": ("HW_BRIGHT_WHITE", "HW_BRIGHT_WHITE"),
+    "grey": ("HW_WHITE", "HW_WHITE"),
+    "gray": ("HW_WHITE", "HW_WHITE"),
+    "gris": ("HW_WHITE", "HW_WHITE"),
+    "magenta": ("HW_BRIGHT_MAGENTA", "HW_BRIGHT_MAGENTA"),
+    "purple": ("HW_BRIGHT_MAGENTA", "HW_BRIGHT_MAGENTA"),
+    "morado": ("HW_BRIGHT_MAGENTA", "HW_BRIGHT_MAGENTA"),
+    "orange": ("HW_ORANGE", "HW_ORANGE"),
+    "naranja": ("HW_ORANGE", "HW_ORANGE"),
+    "pink": ("HW_PINK", "HW_PINK"),
+    "rosa": ("HW_PINK", "HW_PINK"),
+}
+
+
+def cpc_prose_rgb(prose: str) -> tuple[int, int, int] | None:
+    """What `prose` looks like on a CPC, or `None` if it names no colour.
+
+    The first colour word wins, for the reason `spectrum_attribute` gives: prose
+    mentioning two ("red bricks on a blue wall") is describing a scene, and
+    refusing would fail an over-descriptive palette entry to catch a rare one.
+    """
+    words = _words(prose)
+    named = next((word for word in words if word in CPC_COLOUR_WORDS), None)
+    if named is None:
+        return None
+    plain, bright = CPC_COLOUR_WORDS[named]
+    wanted = bright if any(word in _BRIGHT_WORDS for word in words) else plain
+    return _BY_NAME[wanted].rgb
+
+
 def cpc_pen(prose: str, *, mode: int) -> int | None:
     """`prose` as an index into the palette this video mode really shows.
 
@@ -254,21 +321,16 @@ def cpc_pen(prose: str, *, mode: int) -> int | None:
     what made mode 0's sixteen unreachable from a design's own vocabulary.
     A default here would have let that come back silently.
     """
-    attribute = spectrum_attribute(prose)
-    if attribute is None:
+    wanted = cpc_prose_rgb(prose)
+    if wanted is None:
         return None
     palette = cpc_rgb(mode)
-    # The named colour as RGB, at whichever of the machine's two intensities
-    # the prose asked for, and then the nearest pen actually packed. Going
-    # through RGB rather than matching pen names means a palette that changes
-    # its four colours keeps resolving names correctly with no table to edit.
-    level = 0xFF if attribute & _BRIGHT_BIT else 0xCD
-    ink = attribute & 0x07
-    wanted = (
-        level if ink & 0x02 else 0,
-        level if ink & 0x04 else 0,
-        level if ink & 0x01 else 0,
-    )
+    # `wanted` is already one of the machine's own 27 colours, so the nearest
+    # pen is a real quantisation and not a translation from another machine's
+    # palette. That mattered: routed through the Spectrum's 0xCD intensity, a
+    # plain "azul marino oscuro" came out at 205 and landed nearer HW_BRIGHT_BLUE
+    # (255) than HW_BLUE (128), so a design's navy and its bright blue shared one
+    # pen. Mode 1 still quantises, because four pens cannot show sixteen colours.
     # Pen 0 is the paper (every mode's palette starts at HW_BLACK), so it is
     # only a candidate for a colour that actually asked to be black. Without
     # this, a design's "bright red" -- a colour those four pens cannot show at
@@ -276,7 +338,7 @@ def cpc_pen(prose: str, *, mode: int) -> int | None:
     # back the background: brickwork painted in the colour of the void behind
     # it. The same reasoning `spriting._MONOCHROME_FALLBACK_INK` records for
     # the Spectrum, one machine over.
-    candidates = range(len(palette)) if ink == 0 else range(1, len(palette))
+    candidates = range(len(palette)) if wanted == (0, 0, 0) else range(1, len(palette))
     return min(
         candidates,
         key=lambda index: sum((a - b) ** 2 for a, b in zip(wanted, palette[index])),

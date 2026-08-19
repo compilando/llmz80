@@ -86,9 +86,9 @@ def test_the_writing_prompt_carries_contract_design_and_hazards(project):
 
 
 def test_platform_notes_differ_per_machine():
-    assert "sdcccall(1)" in platform_notes("amstrad_cpc")
-    assert "sdcccall(1)" not in platform_notes("spectrum")
-    assert "bit_beep" in platform_notes("spectrum")
+    assert "sdcccall(1)" in platform_notes(blank_project("N", TargetPlatform.AMSTRAD_CPC))
+    assert "sdcccall(1)" not in platform_notes(blank_project("N", TargetPlatform.SPECTRUM))
+    assert "bit_beep" in platform_notes(blank_project("N", TargetPlatform.SPECTRUM))
 
 
 def test_repair_prompt_prefers_the_most_specific_evidence():

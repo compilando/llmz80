@@ -108,7 +108,7 @@ def writing_prompt(
     parts = [
         reference_prompt(reference),
         generation_prompt(project),
-        platform_notes(project.target.platform.value),
+        platform_notes(project),
         library_interface(),
     ]
     if with_examples:

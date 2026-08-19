@@ -30,11 +30,13 @@ from llmz80.core.state_contract import contract_prompt
 from .codegen import (
     SCROLL_ROW_BYTES,
     SCROLL_STEP_BYTES,
+    declared_colours,
     max_scroll_origin,
     max_sprite_px,
     max_sprite_py,
     scrolls_in_hardware,
     sprites_per_frame,
+    unresolved_colours,
 )
 from .models import AssetSpec, GameProject, TileSpec, VideoMode
 from .observation import observation_script
@@ -648,9 +650,22 @@ def design_prompt(project: GameProject) -> str:
             "can put it back. Artwork already carries its own colour; this is for the "
             "text and the cells you draw yourself:"
         )
-        for entry in project.presentation.palette:
+        for entry, _ in declared_colours(project):
             lines.append(f"  COLOUR_{entry.id.upper()}  {entry.colour}")
         lines.append("")
+        # Named, and not offered. The design asked for a colour this machine
+        # cannot show, so no macro exists -- and the writer is told which
+        # rather than left to notice one missing from a list it never saw whole.
+        missing = unresolved_colours(project)
+        if missing:
+            lines.append(
+                "This design also named "
+                + ", ".join(f"{entry.id} ({entry.colour})" for entry in missing)
+                + ", which this machine cannot show: there is no macro for them and "
+                "nothing to pass plat_ink. Draw those things in one of the colours "
+                "above."
+            )
+            lines.append("")
 
     if project.audio.effects:
         lines.append(
@@ -695,12 +710,34 @@ def design_prompt(project: GameProject) -> str:
     # `generator.writing_prompt` appends this design prompt first and
     # `library_interface()` -- the actual header text -- later in the same
     # message. It orients the writer to what is coming, it does not repeat it.
+    # Listed, not alluded to. This block used to say "Studio writes
+    # game_config.h with these constants" and name none of them, so a Breakout
+    # attempt redefined FIELD_TOP -- which the header already defines -- and
+    # the redefinition warning failed the build. A macro the writer is not
+    # shown is a macro it will invent.
+    #
+    # Read back out of the rendered header rather than rebuilt from the fields
+    # it came from, so the two cannot list different things: this *is* the
+    # header, with the `#define` stripped.
+    from .codegen import render_config_header
+
+    drawn = bool(blitter_sprites(project))
+    lines.extend(["", "game_config.h defines these, and you must not redefine any of them:"])
+    for line in render_config_header(project).splitlines():
+        parts = line.split(maxsplit=2)
+        if len(parts) != 3 or parts[0] != "#define" or parts[1].startswith("LLMZ80_"):
+            continue
+        # A design with no artwork has no use for the sprite macros, and a
+        # writer shown SPRITE_UNDER_BYTES for a game with no sprites has been
+        # told about something it does not have.
+        if not drawn and "SPRITE" in parts[1]:
+            continue
+        lines.append(f"  {parts[1]} {parts[2]}")
     lines.extend(
         [
             "",
-            "Studio writes game_config.h with these constants, and game_state.h",
-            "declaring the contract and this design's observables, into the same",
-            "directory as your sources. A platform library is there too:",
+            "game_state.h declares the contract and this design's observables, in the",
+            "same directory as your sources. A platform library is there too:",
             "platform.h documents what it offers.",
         ]
     )

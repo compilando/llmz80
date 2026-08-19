@@ -8,6 +8,11 @@ which is why they live in the prompt rather than only in a roadmap.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - import cost, not behaviour
+    from llmz80.studio.models import GameProject
+
 COMMON_NOTES = """
 Both machines, learned from real failures:
 
@@ -26,6 +31,13 @@ Both machines, learned from real failures:
     on the menu is charged to the first iteration of the gameplay loop.
   * Keep the work inside one 50 Hz frame. Redrawing the whole playfield every
     frame will not fit; redraw only the cells that changed.
+  * Byte constants from 128 to 255 need an explicit cast, or SDCC raises
+    warning 158 and the build refuses the program. Write (u8)0xFF, not 0xFF.
+    The build applies this cast itself if you forget, but a program it has to
+    rewrite is one whose line numbers no longer match what you sent.
+  * Do not redefine anything the generated headers already define. They are
+    listed in the design above with their values; a second #define of one of
+    them is a warning, and the build refuses unexpected warnings.
 """
 
 SPECTRUM_NOTES = """
@@ -63,13 +75,35 @@ Amstrad CPC, with CPCtelera and SDCC:
     was in memory. Assign such values at run time or make the table const.
   * cpct_setPalette takes a mutable pointer. Casting a const array to it raises
     SDCC warning 357, and the build policy rejects unexpected warnings.
-  * Mode 1 has four pens in total. Distinguish more than four kinds of thing by
-    shape or size, not by colour alone.
-  * With the firmware disabled there is no free-running frame counter.
 """
 
+#: What is true in one video mode and false in the other. Mode 1's advice --
+#: tell things apart by shape, since four pens cannot do it -- is right there
+#: and wrong by twelve pens in mode 0, and a basketball design running in mode
+#: 0 was given it.
+CPC_MODE_NOTES = {
+    0: """  * Mode 0 has sixteen pens and 20 columns. Colour is what this mode is for:
+    tell things apart with it. The trade is width -- half the columns mode 1
+    has -- so a screen here is 20 cells across and no wider.
+""",
+    1: """  * Mode 1 has four pens in total and 40 columns. Distinguish more than four
+    kinds of thing by shape or size, not by colour alone.
+""",
+}
 
-def platform_notes(platform: str) -> str:
-    """Hazard notes for one target, ready to paste into a prompt."""
-    specific = SPECTRUM_NOTES if platform == "spectrum" else CPC_NOTES
-    return "PLATFORM NOTES\n" + COMMON_NOTES.rstrip() + "\n" + specific.rstrip() + "\n"
+
+def platform_notes(project: "GameProject") -> str:
+    """Hazard notes for the machine *and the mode* this design runs in.
+
+    Takes the project rather than a platform string, which it did until a
+    basketball game running in mode 0 was told "Mode 1 has four pens in total.
+    Distinguish more than four kinds of thing by shape or size" -- advice for
+    the other mode, wrong by twelve pens about the one it was in. A note that
+    depends on the video mode cannot be chosen from the platform alone.
+    """
+    if project.target.platform.value == "spectrum":
+        specific = SPECTRUM_NOTES.rstrip()
+    else:
+        mode = 0 if project.target.video_mode.value == "cpc_mode_0" else 1
+        specific = CPC_NOTES.rstrip() + "\n" + CPC_MODE_NOTES[mode].rstrip()
+    return "PLATFORM NOTES\n" + COMMON_NOTES.rstrip() + "\n" + specific + "\n"

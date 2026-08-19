@@ -39,6 +39,40 @@ from .structure import playfield
 from .tile_header import render_tile_header, render_tile_source
 
 
+def prepare_program_source(source: str, platform: TargetPlatform) -> tuple[str, list[str]]:
+    """The program's own C, with the fixes this toolchain always needs applied.
+
+    Small, local, deterministic rewrites that no design decision depends on: a
+    byte constant between 128 and 255 given the cast SDCC wants, a CPCtelera
+    call spelled the way the installed CPCtelera spells it. `utils/helpers.py`
+    has held them since before Studio existed, `tests/test_runtime_contracts.py`
+    proves them against the real toolchain, and until now nothing called them.
+
+    That gap cost a run. A basketball game's fourth attempt compiled, produced
+    a DSK, and was refused for `warning 158: overflow in implicit constant
+    conversion` -- which is exactly what `_cast_high_byte_constants` exists to
+    silence. The writer then spent its last attempt on a warning the build
+    could have fixed itself.
+
+    Applied to the program's own sources only, never to the platform library:
+    the library is ours and already correct, and rewriting it would make a
+    diagnostic point at a line nobody wrote.
+
+    What changed is returned rather than done in silence. A build that quietly
+    rewrites the program it was handed is one whose line numbers no longer
+    match what the model sent, and `build_report` carries the list so a reader
+    can tell a fix from a coincidence.
+    """
+    from llmz80.utils.helpers import (
+        apply_deterministic_cpc_fixes,
+        apply_deterministic_spectrum_fixes,
+    )
+
+    if platform is TargetPlatform.SPECTRUM:
+        return apply_deterministic_spectrum_fixes(source)
+    return apply_deterministic_cpc_fixes(source)
+
+
 @dataclass(frozen=True)
 class SourceResult:
     output_dir: Path
@@ -431,11 +465,19 @@ def render_project(project: GameProject, output_dir: Path) -> SourceResult:
             "the program may not define these files -- Studio generates them: "
             + ", ".join(shadowing)
         )
+    fixes: list[str] = []
     for path in owned:
-        shutil.copy2(path, source_dir / path.name)
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if path.suffix == ".c":
+            text, applied = prepare_program_source(text, project.target.platform)
+            fixes += [f"{path.name}: {note}" for note in applied]
+        (source_dir / path.name).write_text(text, encoding="utf-8")
     main_c = next((path for path in owned if path.name == "main.c"), None)
     if main_c is not None:
-        shutil.copy2(main_c, output_dir / "main.c")
+        # The fixed copy, not the original: `build_quality` reads this file and
+        # a diagnostic that pointed at a line the compiler never saw would send
+        # the writer looking for something that is not there.
+        shutil.copy2(source_dir / "main.c", output_dir / "main.c")
 
     create_project_layout(
         output_dir,
