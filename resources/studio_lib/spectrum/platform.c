@@ -4,6 +4,7 @@
  * stays small and drawing is fully deterministic under the emulator harness.
  */
 #include <arch/zx.h>
+#include <string.h>
 #include <input.h>
 #include <intrinsic.h>
 #include <sound.h>
@@ -447,23 +448,28 @@ void plat_save_under(unsigned int px, unsigned char py, unsigned char *under) {
 #if SPRITE_COUNT
     unsigned char *at;
     unsigned char line;
-    unsigned char byte;
     unsigned char row;
     unsigned char col;
     if (px > MAX_SPRITE_PX || py > MAX_SPRITE_PY) return;
     col = (unsigned char)(px >> PIXELS_PER_BYTE_LOG);
     at = under_row(col, py);
     for (line = 0; line < 16; ++line) {
-        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
-            *under++ = at[byte];
-        }
+        memcpy(under, at, SPRITE_BYTES_WIDE);
+        under += SPRITE_BYTES_WIDE;
         at = (unsigned char *)zx_saddrpdown(at);
     }
     for (row = 0; row < 3; ++row) {
         unsigned char cell_row = (unsigned char)((py >> 3) + row);
-        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
-            *under++ = cell_row < 24 ? *(unsigned char *)zx_cxy2aaddr(col + byte, cell_row) : 0;
+        if (cell_row < 24) {
+            /* One address for the row, not one per byte: a row of attributes
+             * is 32 contiguous bytes, so the cells this sprite covers are
+             * side by side and zx_cxy2aaddr had nothing to work out after the
+             * first. */
+            memcpy(under, (unsigned char *)zx_cxy2aaddr(col, cell_row), SPRITE_BYTES_WIDE);
+        } else {
+            memset(under, 0, SPRITE_BYTES_WIDE);
         }
+        under += SPRITE_BYTES_WIDE;
     }
 #else
     (void)px; (void)py; (void)under;
@@ -474,26 +480,22 @@ void plat_restore_under(unsigned int px, unsigned char py, const unsigned char *
 #if SPRITE_COUNT
     unsigned char *at;
     unsigned char line;
-    unsigned char byte;
     unsigned char row;
     unsigned char col;
     if (px > MAX_SPRITE_PX || py > MAX_SPRITE_PY) return;
     col = (unsigned char)(px >> PIXELS_PER_BYTE_LOG);
     at = under_row(col, py);
     for (line = 0; line < 16; ++line) {
-        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
-            at[byte] = *under++;
-        }
+        memcpy(at, under, SPRITE_BYTES_WIDE);
+        under += SPRITE_BYTES_WIDE;
         at = (unsigned char *)zx_saddrpdown(at);
     }
     for (row = 0; row < 3; ++row) {
         unsigned char cell_row = (unsigned char)((py >> 3) + row);
-        for (byte = 0; byte < SPRITE_BYTES_WIDE; ++byte) {
-            if (cell_row < 24) {
-                *(unsigned char *)zx_cxy2aaddr(col + byte, cell_row) = *under;
-            }
-            ++under;
+        if (cell_row < 24) {
+            memcpy((unsigned char *)zx_cxy2aaddr(col, cell_row), under, SPRITE_BYTES_WIDE);
         }
+        under += SPRITE_BYTES_WIDE;
     }
 #else
     (void)px; (void)py; (void)under;
