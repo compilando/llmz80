@@ -5,6 +5,62 @@ Every notable change to this project is recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
 this project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] - 2026-08-20
+
+### Added
+
+- **What a run costs, counted while it costs it** (`llmz80/studio/spend.py`).
+  Nothing read `usage` off a response before this: `llmz80/quality/benchmark.py`
+  reserved the four keys and left them `None`, so the only way to learn what a
+  game had cost was to read wall-clock times out of `studio.log` and guess at a
+  throughput. Every call is now priced by model and attributed to the stage that
+  made it, and `llmz80 make` writes the per-stage total into `studio.log` and
+  onto the screen. Refused answers are counted too — two of the five stages of
+  `studio-projects/cesar-mondongo-basket` were nothing but those.
+- **A ceiling a run cannot go through**, in dollars and in calls, from a new
+  `budget:` section of `config.yml` (defaults: $12 and 60 calls). That run
+  ended after 3.5 hours on `Your credit balance is too low to access the
+  Anthropic API` rather than on any decision, because nothing in the pipeline
+  knew what it had spent or had the authority to stop. The call ceiling is the
+  one that catches a runaway early: the retries here multiply rather than add,
+  and the theoretical worst case is about 100 calls, each individually
+  reasonable.
+- **The schema's own limits, stated to the model** (`llmz80/studio/schema_limits.py`).
+  The SDK strips every keyword structured outputs does not support — `maxLength`
+  above all — and re-emits it inside the field description as `{maxLength: 240}`,
+  which is a dump rather than an instruction. The drafting *and* the design
+  stages of that run each produced a whole design and each had it refused for
+  `entities.*.notes` at 240 characters: 550 s and 409 s of reasoning, billed and
+  discarded, over a rule nobody had told the model. The limits are derived from
+  the schema, so they cannot drift from it.
+- **A model per kind of question** (`anthropic.models` in `config.yml`,
+  `utils.config.model_for`). `design` and `program` stay on Opus; `art` and
+  `exam` move to Sonnet. An 8x8 tile of eight pen characters and a
+  `coherent: true` were being charged at the same rate as writing a C program.
+
+### Changed
+
+- **Every call site now says what its answer is worth.** `effort` and
+  `max_tokens` were left at their defaults everywhere, which meant `high` and
+  64000 tokens for a boolean verdict — `llm.py`'s own docstring had named this
+  exact case as the one `effort` exists for, and no caller had ever passed one.
+  Art draws at `low`, verdicts and examinations at `medium`, the writer keeps
+  both defaults. Ceilings bound thinking too, so they bound the bill.
+- **The writer's standing context is cached** (`generator.standing_context`).
+  About 15 300 of its 15 500 prompt tokens — the design, the platform library,
+  the retrieved examples — are identical on all five attempts and were re-billed
+  in full each time. They now travel in a `system` block behind a one-hour cache
+  breakpoint, leaving about 255 volatile tokens per attempt.
+- **The writer is told how much the whole job is worth** (`task_budget`), so it
+  paces itself to an ending instead of being cut off at `max_tokens`. Attempt 3
+  of that run reasoned for 25 minutes and stopped at `EOF while parsing a string
+  at line 1 column 21706` — a full deliberation billed for an answer nothing
+  could read. Dropped automatically on models that do not accept the parameter.
+- `EXAMINATION_PASSES` 4 → 3. Not a saving on its own: what paid for keeping the
+  coverage was making each pass cheaper. Of the 84 three-subsets of the nine
+  recorded sittings, one checks nothing on `minero-observable`; of the 36
+  two-subsets, three do — so two passes was refused.
+
 ## [Unreleased] - 2026-08-18
 
 ### Removed

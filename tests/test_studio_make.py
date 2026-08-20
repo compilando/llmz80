@@ -637,3 +637,82 @@ def test_the_help_names_the_order_that_plays_a_game(capsys):
     printed = capsys.readouterr().out
     assert "llmz80 play" in printed
     assert "--play" in printed
+
+
+def test_every_stage_is_billed_under_its_own_name(tmp_path: Path):
+    """The report is only worth printing if the calls are attributed.
+
+    The survey that produced `spend.py` had to attribute cost to stages by
+    reading wall-clock times out of `studio.log`, because nothing recorded
+    which stage a call belonged to. `_Diary.stage` already brackets every
+    stage; this is that bracket doing a second job.
+    """
+    from llmz80.studio import spend
+
+    seen: list[str] = []
+
+    class _Nosy(_FakeStages):
+        def sprites(self, project, directory, dossier, say):
+            seen.append(spend.current_stage())
+            return super().sprites(project, directory, dossier, say)
+
+        def write(self, project, directory, dossier, say):
+            seen.append(spend.current_stage())
+            return super().write(project, directory, dossier, say)
+
+    make_game(
+        "un minero cruza cornisas",
+        workspace=tmp_path,
+        stages=_Nosy(tmp_path),
+        out=lambda _: None,
+    )
+
+    assert seen == ["sprites", "program"]
+
+
+def test_a_run_opens_a_ledger_and_reports_what_it_cost(tmp_path: Path):
+    printed: list[str] = []
+
+    _run(tmp_path, printed)
+
+    assert any("what this run cost" in line for line in printed)
+
+
+def test_a_run_that_ends_outside_its_budget_says_so_rather_than_dying_of_it(
+    tmp_path: Path,
+):
+    """`studio-projects/cesar-mondongo-basket` ended on `Your credit balance
+    is too low to access the Anthropic API`, 3.5 hours in. A ceiling turns
+    that into a stage that stopped, with everything before it on disk."""
+    from llmz80.studio.spend import BudgetExhausted
+
+    class _Broke(_FakeStages):
+        def sprites(self, project, directory, dossier, say):
+            raise BudgetExhausted("this run has spent $12.00 of its $12.00 ceiling")
+
+    result = make_game(
+        "un minero cruza cornisas",
+        workspace=tmp_path,
+        stages=_Broke(tmp_path),
+        out=lambda _: None,
+    )
+
+    assert result.failed == "sprites"
+    assert "ceiling" in result.error
+
+
+def test_the_ceiling_comes_from_the_configuration(tmp_path: Path):
+    from llmz80.studio.make import run_ceilings
+
+    dollars, calls = run_ceilings({"budget": {"dollars": 3.5, "calls": 12}})
+
+    assert (dollars, calls) == (3.5, 12)
+
+
+def test_a_configuration_with_no_budget_still_has_one(tmp_path: Path):
+    """An unbounded run is the state this whole exercise came out of."""
+    from llmz80.studio.make import run_ceilings
+
+    dollars, calls = run_ceilings({})
+
+    assert dollars is not None and calls is not None

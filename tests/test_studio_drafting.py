@@ -264,7 +264,13 @@ def test_the_request_carries_the_brief_the_design_and_what_kinds_of_game_exist(b
     ResponsesDesignDrafter(client).draft(blank)
 
     call = client.messages.calls[0]
-    assert call["system"] == DRAFT_SYSTEM_PROMPT
+    # `structured` appends the schema's own length limits (see
+    # `schema_limits.py`), so the prompt is a superset of this one rather than
+    # equal to it: both drafting refusals in
+    # `studio-projects/cesar-mondongo-basket` were `notes` running past 240
+    # characters, a rule the API strips out of the schema before it travels.
+    assert call["system"].startswith(DRAFT_SYSTEM_PROMPT)
+    assert "at most 240 characters" in call["system"]
     user = call["messages"][0]["content"]
     assert "avión de combate" in user
     assert "Mechanics: none stated" in user

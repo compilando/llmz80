@@ -20,7 +20,7 @@ from typing import Any, Literal, Protocol
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from .llm import structured
+from .llm import Effort, structured
 
 
 class ReferenceSource(BaseModel):
@@ -176,6 +176,14 @@ class ReferenceResearcher(Protocol):
 #: nothing in the training data can be cited.
 WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search"}
 
+#: What identifying a game is worth. The search does the finding; the model's
+#: own job is to read what came back and fill in a dossier, which is why this
+#: is not the level a design is written at. The ceiling is generous by the
+#: standards of the other cheap calls because the input is not: a web search
+#: returns pages, and the dossier summarising them carries eleven fields.
+RESEARCH_EFFORT: Effort = "medium"
+RESEARCH_MAX_TOKENS = 16000
+
 
 class ResponsesReferenceResearcher:
     """Researches a real game through the model, with web search enabled."""
@@ -193,4 +201,6 @@ class ResponsesReferenceResearcher:
             schema=GameReference,
             missing="the model did not return a structured game reference",
             tools=[WEB_SEARCH_TOOL],
+            effort=RESEARCH_EFFORT,
+            max_tokens=RESEARCH_MAX_TOKENS,
         )

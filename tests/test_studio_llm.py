@@ -12,10 +12,11 @@ message, the way the real stream manager does.
 """
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from llmz80.studio.llm import DEFAULT_MAX_TOKENS, structured
-from tests.conftest import FakeMessageStream
+from llmz80.studio.spend import BudgetExhausted, run_budget, stage
+from tests.conftest import FakeMessageStream, fake_message
 
 
 class _Verdict(BaseModel):
@@ -434,3 +435,274 @@ def test_a_cached_prefix_and_an_effort_level_both_reach_the_request():
     call = client.messages.calls[0]
     assert call["output_config"] == {"effort": "medium"}
     assert call["system"][1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+
+
+class _Bounded(BaseModel):
+    """A schema whose limit the API strips before the model ever sees it."""
+
+    notes: str = Field(default="", max_length=240)
+
+
+class _UsageMessages:
+    """A `client.messages` that answers with usage, the way the real one does."""
+
+    def __init__(self, parsed, usage):
+        self.parsed = parsed
+        self.usage = usage
+        self.calls = []
+
+    def stream(self, **kwargs):
+        self.calls.append(kwargs)
+        return FakeMessageStream(
+            fake_message(self.parsed, usage=self.usage, stop_reason="end_turn")
+        )
+
+
+class _UsageClient:
+    def __init__(self, parsed, usage):
+        self.messages = _UsageMessages(parsed, usage)
+
+
+class _Usage:
+    def __init__(self, input_tokens=0, output_tokens=0, cache_read=0, cache_write=0):
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+        self.cache_read_input_tokens = cache_read
+        self.cache_creation_input_tokens = cache_write
+
+
+def test_the_schemas_own_limits_are_spelled_out_in_the_system_prompt():
+    """The API strips `maxLength` and re-emits it as `{maxLength: 240}`.
+
+    `studio-projects/cesar-mondongo-basket/studio.log` shows what that costs:
+    the drafting stage and the design stage each produced a whole design and
+    each had it refused for `entities.*.notes` at 240 characters -- 550 s and
+    409 s of reasoning, billed and discarded, over a rule the model was never
+    in a position to know.
+    """
+    client = _FakeClient(_Bounded(notes="short"))
+
+    structured(client, "claude-opus-5", system="s", user="u", schema=_Bounded, missing="m")
+
+    assert "240 characters" in client.messages.calls[0]["system"]
+
+
+def test_a_schema_with_no_limits_leaves_the_system_prompt_exactly_as_it_was():
+    """Nine call sites must keep the request they have, byte for byte."""
+    client = _FakeClient(_Verdict(ok=True))
+
+    structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
+
+    assert client.messages.calls[0]["system"] == "s"
+
+
+def test_the_limits_ride_inside_the_cached_prefix_not_after_it():
+    """They are derived from the schema, so they are the same bytes every
+    call -- which makes them cacheable, and makes putting them after the
+    breakpoint a per-call charge for nothing."""
+    client = _FakeClient(_Bounded(notes="x"))
+
+    structured(
+        client,
+        "claude-opus-5",
+        system="you draft designs",
+        cached_prefix="the whole brief",
+        user="draft",
+        schema=_Bounded,
+        missing="m",
+    )
+
+    blocks = client.messages.calls[0]["system"]
+    assert "240 characters" in blocks[0]["text"]
+    assert blocks[1] == {
+        "type": "text",
+        "text": "the whole brief",
+        "cache_control": {"type": "ephemeral", "ttl": "1h"},
+    }
+
+
+def test_a_call_is_billed_to_the_open_run():
+    client = _UsageClient(_Verdict(ok=True), _Usage(input_tokens=1000, output_tokens=2000))
+
+    with run_budget() as ledger:
+        with stage("program"):
+            structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
+
+    assert len(ledger.calls) == 1
+    assert ledger.calls[0].input_tokens == 1000
+    assert ledger.calls[0].output_tokens == 2000
+    assert ledger.calls[0].stage == "program"
+
+
+def test_cache_reads_and_writes_are_billed_at_their_own_rates():
+    client = _UsageClient(_Verdict(ok=True), _Usage(cache_read=5000, cache_write=1000))
+
+    with run_budget() as ledger:
+        structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
+
+    assert ledger.calls[0].cache_read_tokens == 5000
+    assert ledger.calls[0].cache_write_tokens == 1000
+
+
+def test_a_refused_answer_is_billed_too():
+    """A retry is not free, and the survey that produced this module could not
+    see them at all: two of the five stages of the cesar run spent an entire
+    deliberation on an answer pydantic then threw away."""
+    client = _ScriptedClient(_too_long(), _Verdict(ok=True))
+
+    with run_budget() as ledger:
+        structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
+
+    assert len(ledger.calls) == 2
+
+
+def test_a_call_whose_usage_never_arrived_is_billed_at_its_ceiling():
+    """`get_final_message` raises from inside pydantic and the usage on the
+    message it was parsing is not always recoverable. Charging that zero would
+    let an unbounded number of them slip under a dollar ceiling."""
+    client = _ScriptedClient(_too_long(), _Verdict(ok=True))
+
+    with run_budget() as ledger:
+        structured(
+            client,
+            "claude-opus-5",
+            system="s",
+            user="u",
+            schema=_Verdict,
+            missing="m",
+            max_tokens=8000,
+        )
+
+    assert ledger.calls[0].estimated is True
+    assert ledger.calls[0].output_tokens == 8000
+
+
+def test_a_run_over_its_ceiling_makes_no_further_call_at_all():
+    """The refusal has to arrive before the request, or it costs what it was
+    trying to save."""
+    client = _UsageClient(_Verdict(ok=True), _Usage(output_tokens=1_000_000))
+
+    with run_budget(ceiling_dollars=1.0):
+        structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
+        with pytest.raises(BudgetExhausted):
+            structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
+
+    assert len(client.messages.calls) == 1
+
+
+def test_with_no_run_open_nothing_is_billed_and_nothing_refuses():
+    """Every offline caller -- every test, every injected fake -- goes on
+    working without knowing this module counts anything."""
+    client = _FakeClient(_Verdict(ok=True))
+
+    structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
+
+    assert len(client.messages.calls) == 1
+
+
+class _BetaMessages:
+    def __init__(self, parsed):
+        self.parsed = parsed
+        self.calls = []
+
+    def stream(self, **kwargs):
+        self.calls.append(kwargs)
+        return FakeMessageStream(fake_message(self.parsed))
+
+
+class _BetaClient:
+    """A client whose beta endpoint is the only one that answers."""
+
+    def __init__(self, parsed):
+        self.messages = _FakeMessages(parsed)
+        self.beta = type("Beta", (), {"messages": _BetaMessages(parsed)})()
+
+
+def test_a_task_budget_goes_to_the_beta_endpoint_with_its_beta_named():
+    """`task_budget` exists in `BetaOutputConfigParam` and nowhere else."""
+    client = _BetaClient(_Verdict(ok=True))
+
+    structured(
+        client,
+        "claude-opus-5",
+        system="s",
+        user="u",
+        schema=_Verdict,
+        missing="m",
+        task_budget=48000,
+    )
+
+    assert client.messages.calls == []
+    call = client.beta.messages.calls[0]
+    assert call["betas"] == ["task-budgets-2026-03-13"]
+    assert call["output_config"]["task_budget"] == {"type": "tokens", "total": 48000}
+
+
+def test_a_task_budget_below_the_api_minimum_is_raised_to_it():
+    """`total` under 20000 is a 400, and a 400 here arrives minutes into a run."""
+    client = _BetaClient(_Verdict(ok=True))
+
+    structured(
+        client,
+        "claude-opus-5",
+        system="s",
+        user="u",
+        schema=_Verdict,
+        missing="m",
+        task_budget=1000,
+    )
+
+    assert client.beta.messages.calls[0]["output_config"]["task_budget"]["total"] == 20000
+
+
+def test_without_a_task_budget_the_plain_endpoint_is_used():
+    """Nine call sites must not be moved behind a beta flag to serve one."""
+    client = _BetaClient(_Verdict(ok=True))
+
+    structured(client, "claude-opus-5", system="s", user="u", schema=_Verdict, missing="m")
+
+    assert len(client.messages.calls) == 1
+    assert client.beta.messages.calls == []
+
+
+def test_a_task_budget_and_an_effort_level_share_one_output_config():
+    client = _BetaClient(_Verdict(ok=True))
+
+    structured(
+        client,
+        "claude-opus-5",
+        system="s",
+        user="u",
+        schema=_Verdict,
+        missing="m",
+        effort="high",
+        task_budget=32000,
+    )
+
+    config = client.beta.messages.calls[0]["output_config"]
+    assert config["effort"] == "high"
+    assert config["task_budget"]["total"] == 32000
+
+
+def test_a_task_budget_is_dropped_on_a_model_that_does_not_take_one():
+    """A 400 here does not arrive politely: it arrives minutes into a paid run.
+
+    Task budgets are an Opus 5 / Fable 5 / Sonnet 5 / Opus 4.8 / 4.7 feature.
+    `config.yml` lets a role be pointed at any model, so the writer can be put
+    on one that would reject the parameter -- and the parameter is an
+    optimisation, not a requirement, so the request is worth more than it is.
+    """
+    client = _BetaClient(_Verdict(ok=True))
+
+    structured(
+        client,
+        "claude-haiku-4-5",
+        system="s",
+        user="u",
+        schema=_Verdict,
+        missing="m",
+        task_budget=48000,
+    )
+
+    assert client.beta.messages.calls == []
+    assert "output_config" not in client.messages.calls[0]

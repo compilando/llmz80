@@ -98,13 +98,25 @@ class ProgramWriter(Protocol):
     def write(self, project: GameProject, feedback: str | None = None) -> ProgramSources: ...
 
 
-def writing_prompt(
+def standing_context(
     project: GameProject,
     *,
     with_examples: bool = True,
     reference: GameReference | None = None,
 ) -> str:
-    """Everything the writer is told before its first attempt."""
+    """Everything the writer is told that is the same on every attempt.
+
+    Split out from `writing_prompt` to be cached. Measured on
+    `studio-projects/cesar-mondongo-basket`, this is about 15 300 of the
+    writer's 15 500 prompt tokens -- the retrieved examples alone are 6 900,
+    the platform library 3 100 -- and `write_program` asks for up to five
+    attempts, each of which used to pay for all of it again at full rate.
+
+    What is deliberately *not* here is `_instructions`, which is the task
+    itself, and the feedback from whatever the compiler or the gates refused.
+    Those are the only two things that differ between attempt one and attempt
+    five, so they are the only two that belong after the cache breakpoint.
+    """
     parts = [
         reference_prompt(reference),
         generation_prompt(project),
@@ -115,8 +127,22 @@ def writing_prompt(
         examples = examples_prompt(project)
         if examples:
             parts.append(examples)
-    parts.append(_instructions(project))
     return "\n\n".join(part for part in parts if part)
+
+
+def writing_prompt(
+    project: GameProject,
+    *,
+    with_examples: bool = True,
+    reference: GameReference | None = None,
+) -> str:
+    """Everything the writer is told before its first attempt.
+
+    Assembled from `standing_context` rather than beside it, so the cached
+    half and the whole prompt cannot drift into saying different things.
+    """
+    context = standing_context(project, with_examples=with_examples, reference=reference)
+    return "\n\n".join(part for part in (context, _instructions(project)) if part)
 
 
 def _instructions(project: GameProject) -> str:
@@ -243,6 +269,22 @@ def repair_prompt(
     return "\n\n".join(sections)
 
 
+#: How much of the 64000-token ceiling the whole job is worth, told to the
+#: model so it paces itself towards an ending instead of being cut off at one.
+#:
+#: `max_tokens` is not that: the model cannot see it, so hitting it produces a
+#: program that stops mid-identifier. `studio-projects/cesar-mondongo-basket`
+#: attempt 3 is what that looks like from the outside -- 25 minutes of work,
+#: then `Invalid JSON: EOF while parsing a string at line 1 column 21706`, a
+#: full deliberation billed for an answer nothing could read. The whole
+#: repair loop then ended there, because `structured` had spent its attempts.
+#:
+#: Set below the ceiling on purpose. The budget is what the model aims at and
+#: `max_tokens` is the wall behind it; leaving room between the two is what
+#: turns a truncation into a shorter program.
+PROGRAM_TASK_BUDGET = 48000
+
+
 class ResponsesProgramWriter:
     """Writes the program with the model."""
 
@@ -257,7 +299,7 @@ class ResponsesProgramWriter:
         self.reference = reference
 
     def write(self, project: GameProject, feedback: str | None = None) -> ProgramSources:
-        content = writing_prompt(project, reference=self.reference)
+        content = _instructions(project)
         if feedback:
             content += "\n\nYOUR PREVIOUS ATTEMPT WAS REJECTED\n\n" + feedback
         return structured(
@@ -267,9 +309,18 @@ class ResponsesProgramWriter:
                 "You write complete, small C programs for 8-bit Z80 home computers. "
                 "You honour the stated contract exactly and you never invent build files."
             ),
+            # The design, the library, the platform notes and the retrieved
+            # examples, which are identical on all five attempts: about 15 300
+            # tokens re-billed in full every time until they moved in here.
+            # The hour-long TTL is not a preference either -- one attempt in
+            # this project takes four to six minutes, so the API's five-minute
+            # default expires between attempts and charges a write per attempt
+            # for a cache nothing ever reads. See `llm.py`'s arithmetic.
+            cached_prefix=standing_context(project, reference=self.reference),
             user=content,
             schema=ProgramSources,
             missing="the model did not return program sources",
+            task_budget=PROGRAM_TASK_BUDGET,
         )
 
 

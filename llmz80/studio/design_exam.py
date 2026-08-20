@@ -35,8 +35,20 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-from .llm import structured
+from .llm import Effort, structured
 from .models import GameProject
+
+#: What a verdict is worth. Both examiners here read a design that is already
+#: written and answer a comparison: does this mention what the brief asked
+#: for, does every noun in a mechanic have an entity or a tile behind it. The
+#: work is reading, not deliberating, and the answer is a handful of ids.
+#:
+#: They used to be asked at the model's `high` default with room for 64000
+#: tokens each -- and they are asked *inside* repair loops, once per attempt,
+#: so `propose_apply_repair(attempts=3)` pays for three of them per stage and
+#: two stages run one.
+VERDICT_EFFORT: Effort = "medium"
+VERDICT_MAX_TOKENS = 8000
 
 
 class BriefCoverage(BaseModel):
@@ -230,6 +242,8 @@ class ResponsesDesignExaminer:
             ),
             user=examination_prompt(project),
             schema=BriefCoverage,
+            effort=VERDICT_EFFORT,
+            max_tokens=VERDICT_MAX_TOKENS,
             missing="the model did not return a coverage verdict",
         )
 
@@ -377,5 +391,7 @@ class ResponsesCoherenceExaminer:
             ),
             user=coherence_prompt(project),
             schema=DesignCoherence,
+            effort=VERDICT_EFFORT,
+            max_tokens=VERDICT_MAX_TOKENS,
             missing="the model did not return a coherence verdict",
         )

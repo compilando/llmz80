@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from . import pipeline, wizard
+from . import pipeline, spend, wizard
 from .journal import FILENAME as JOURNAL_FILENAME
 from .journal import Journal
 from .models import AssetSpec, GameProject, TargetPlatform
@@ -60,6 +60,42 @@ MAX_SAME_TITLE = 99
 #: researched game) even though `wizard` marks it free -- there the stage is a
 #: person editing a map by hand.
 PAID_STAGES = ("reference", "drafting", "design", "sprites", "program")
+
+#: What one `llmz80 make` may spend before it stops itself, when `config.yml`
+#: says nothing. There is a number here rather than `None` because unbounded
+#: is the state this whole thing came out of:
+#: `studio-projects/cesar-mondongo-basket` ran 3.5 hours over 19 calls and
+#: ended on `Your credit balance is too low to access the Anthropic API`, not
+#: on any decision. A default that has to be opted into is a default nobody
+#: has when it matters.
+#:
+#: Twelve dollars is roughly four times what a run of that shape now costs and
+#: well under the hundred a fully retried one theoretically could. Sixty calls
+#: is the same bet made in the unit that catches a runaway earlier, because
+#: the retries here multiply rather than add.
+DEFAULT_CEILING_DOLLARS = 12.0
+DEFAULT_CEILING_CALLS = 60
+
+
+def run_ceilings(config: dict[str, Any] | None = None) -> tuple[float | None, int | None]:
+    """What this run may spend, from `config.yml` or from the defaults.
+
+    Read through one function rather than at the call site so a test can ask
+    the same question `make_game` asks without going near a real config file,
+    and so `budget:` has one place that knows what its keys are called.
+    """
+    if config is None:
+        from ..utils.config import load_config
+
+        config = load_config("config.yml")
+    budget = config.get("budget") or {}
+    dollars = budget.get("dollars", DEFAULT_CEILING_DOLLARS)
+    calls = budget.get("calls", DEFAULT_CEILING_CALLS)
+    return (
+        None if dollars is None else float(dollars),
+        None if calls is None else int(calls),
+    )
+
 
 #: The `llmz80 project` subcommand that redoes each stage, for the one line a
 #: stopped run owes the person reading it: everything before the failure is on
@@ -177,17 +213,43 @@ class _Diary:
         its id, never its label, so a diary can be searched a year later and
         `4 programa` goes on meaning the same thing whatever the interface
         watching it happens to call that stage.
+
+        The same bracket names the stage to `spend.py`, so every model call
+        made inside it is attributed without any stage having to know it is
+        being counted -- and its cost joins the END line, next to its
+        duration. Those two numbers side by side are what the survey behind
+        `spend.py` had to reconstruct by guessing a throughput, because the
+        diary recorded one of them and nothing recorded the other.
         """
         token = self.journal.start(f"{step.number} {step.name} — {label}")
         self.out(token.line)
+        ledger = spend.current_ledger()
+        before = ledger.dollars if ledger is not None else 0.0
         try:
-            value, summary = work()
+            with spend.stage(step.name):
+                value, summary = work()
         except Exception as exc:
             self.out(self.journal.finish(token, ok=False))
             self.out(self.journal.write("ERROR", f"{step.name}: {exc}"))
             raise _Stopped(step.name, str(exc), exc) from exc
+        if ledger is not None:
+            spent = ledger.dollars - before
+            if spent:
+                summary = f"{summary}. ${spent:.2f}" if summary else f"${spent:.2f}"
         self.out(self.journal.finish(token, ok=True, text=summary))
         return value
+
+    def spend_report(self, ledger: spend.Ledger) -> None:
+        """What the whole run cost, per stage and in total.
+
+        One journal entry per line rather than one entry carrying newlines:
+        the diary and the screen are meant to be readable against each other
+        line for line, and an entry that is one string on screen and three
+        lines in the file breaks exactly that.
+        """
+        self.say("what this run cost")
+        for line in ledger.report().splitlines():
+            self.say(line)
 
     def skip(self, step: wizard.Step, why: str) -> None:
         self.out(self.journal.write("SKIP", f"{step.number} {step.name} — {why}"))
@@ -342,6 +404,39 @@ def make_game(
         )
     )
 
+    # Opened around every stage and not around the paid ones only: the
+    # accounting is the interesting half even where the ceiling never bites,
+    # and a stage that turns out to call a model after all is then already
+    # counted rather than silently free.
+    dollars, calls = run_ceilings()
+    with spend.run_budget(ceiling_dollars=dollars, ceiling_calls=calls) as ledger:
+        return _run_stages(stages, steps, project, directory, diary, out, ledger)
+
+
+def _record_spend(diary: _Diary, ledger: spend.Ledger) -> None:
+    """Write the bill, once, on whichever way out the run took."""
+    diary.spend_report(ledger)
+
+
+def _run_stages(
+    stages: Stages,
+    steps: dict[str, wizard.Step],
+    project: GameProject,
+    directory: Path,
+    diary: _Diary,
+    out: Callable[[str], None],
+    ledger: spend.Ledger,
+) -> MakeResult:
+    """The order itself, with the budget already open around it.
+
+    Split out of `make_game` so the `with` above has one body rather than
+    forty lines of stages inside it.
+
+    The cost is written on both ways out and on neither of them last: the
+    final line of a run is advice -- the command that plays the game, or the
+    stage to retry -- and a person who has just watched a stage fail should
+    not have to scroll past an accounting table to find it.
+    """
     try:
         dossier = diary.stage(
             steps["reference"],
@@ -380,6 +475,7 @@ def make_game(
             lambda: _test(stages, project, directory, diary),
         )
     except _Stopped as stop:
+        _record_spend(diary, ledger)
         # Which stage, and what it said. The diary is named because it is the
         # only place the rest of the story is: this stage's own commentary,
         # and how far the ones before it got.
@@ -395,6 +491,7 @@ def make_game(
         out(_retry_hint(stop, directory))
         return MakeResult(project_dir=directory, failed=stop.step, error=stop.reason)
 
+    _record_spend(diary, ledger)
     artifact = artifact_path(project, directory)
     if not artifact.is_file():
         # The gates did not refuse, so the game ran -- but nothing published
