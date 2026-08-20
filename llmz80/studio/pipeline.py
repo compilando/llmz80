@@ -153,7 +153,7 @@ def research(
         from ..cli import _llm_client_and_model
         from .reference import ResponsesReferenceResearcher
 
-        client, model = _llm_client_and_model()
+        client, model = _llm_client_and_model("research")
         say(f"searching the web with {model}; this calls the Anthropic API")
         researcher = ResponsesReferenceResearcher(client, model=model)
     return service.research_reference(project, directory, researcher)
@@ -224,17 +224,20 @@ def draft(
             raise Unreadable(str(exc)) from exc
     if drafter is None:
         from ..cli import _llm_client_and_model
+        from ..utils.config import model_for
         from .design_exam import ResponsesCoherenceExaminer
         from .drafting import ResponsesDesignDrafter
 
-        client, model = _llm_client_and_model()
+        client, model = _llm_client_and_model("design")
         say(f"drafting the design with {model}; this calls the Anthropic API")
         drafter = ResponsesDesignDrafter(client, model=model)
         # Built inside the `if`, exactly as `adapt` builds its examiner: a
         # caller that injected its own drafter -- every test, every offline
         # run -- gets no examiner either and makes no call it did not ask for.
         if examiner is None:
-            examiner = ResponsesCoherenceExaminer(client, model=model)
+            # Its own role: reading a design somebody else wrote and naming
+            # the nouns nothing backs is a comparison, not a design decision.
+            examiner = ResponsesCoherenceExaminer(client, model=model_for("exam"))
     drafted = draft_and_apply(project, drafter, dossier, examiner=examiner)
     for number, reason in enumerate(drafted.refusals, start=1):
         say(f"Attempt {number} was refused, repairing: {reason}")
@@ -283,10 +286,11 @@ def adapt(
     dossier = service.identified_reference(directory, dossier)
     if designer is None:
         from ..cli import _llm_client_and_model
+        from ..utils.config import model_for
         from .design_exam import ResponsesDesignExaminer
         from .reference_design import ResponsesReferenceDesigner
 
-        client, model = _llm_client_and_model()
+        client, model = _llm_client_and_model("design")
         say(f"adapting the design with {model}; this calls the Anthropic API")
         designer = ResponsesReferenceDesigner(client, model=model)
         # Built here and not above the `if`, so a caller that injected its own
@@ -294,7 +298,7 @@ def adapt(
         # and makes no API call it did not ask for. A caller that wants one
         # without the other passes it.
         if examiner is None:
-            examiner = ResponsesDesignExaminer(client, model=model)
+            examiner = ResponsesDesignExaminer(client, model=model_for("exam"))
     _proposal, diff, updated, refusals = service.propose_from_reference(
         project, directory, designer, dossier, examiner=examiner
     )
@@ -369,7 +373,7 @@ def sprites(
         # pens out of a palette of at most four, which is something a model
         # can simply write. See `sprite_grid.py` for what stops being
         # possible once it does.
-        client, model = _llm_client_and_model()
+        client, model = _llm_client_and_model("art")
         artist = SpriteArtist(source=ClaudeGridSheetSource(client, model))
         tile_artist = TileArtist(source=ClaudeGridTileSource(client, model))
     drawn = service.draw_sprites(project, directory, artist, dossier, on_progress=say)
@@ -418,10 +422,11 @@ def write(
         )
     if writer is None:
         from ..cli import _llm_client_and_model
+        from ..utils.config import model_for
         from .generator import ResponsesProgramWriter
         from .runtime_exam import RepeatedExaminer, ResponsesRuntimeExaminer
 
-        client, model = _llm_client_and_model()
+        client, model = _llm_client_and_model("program")
         say(f"writing the program with {model}; this calls the Anthropic API")
         writer = ResponsesProgramWriter(client, model=model, reference=dossier)
         # Built inside the `if`, exactly as `adapt` and `draft` build theirs: a
@@ -438,7 +443,7 @@ def write(
             # so what this costs the write is one examination's wait and four
             # examinations' tokens, next to nothing beside the five
             # program-writing attempts it guards.
-            examiner = RepeatedExaminer(ResponsesRuntimeExaminer(client, model=model))
+            examiner = RepeatedExaminer(ResponsesRuntimeExaminer(client, model=model_for("exam")))
     return service.write_program(project, directory, writer, on_progress=say, examiner=examiner)
 
 

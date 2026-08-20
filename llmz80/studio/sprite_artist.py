@@ -59,7 +59,7 @@ from typing import Callable, Iterable, Protocol, Sequence
 import numpy as np
 from PIL import Image
 
-from llmz80.studio.llm import structured
+from llmz80.studio.llm import Effort, structured
 from llmz80.studio.models import EntitySpec, GameProject, TargetPlatform, TileSpec, VideoMode
 from llmz80.studio.reference import GameReference
 from llmz80.studio.sprite_grid import (
@@ -140,6 +140,28 @@ def animates(entities: "Iterable[EntitySpec]") -> bool:
 #: recover from a one-off bad draw, plus one more in case the first repair
 #: overcorrects.
 MAX_DRAW_ATTEMPTS = 3
+
+#: What drawing costs, and it is the cheapest thing Studio asks for.
+#:
+#: A sheet is a grid of pen characters -- at most eight 16x16 frames, so 2048
+#: characters and change -- chosen from an alphabet the prompt hands over. It
+#: is a transcription task, not a reasoning one, and it used to be asked for
+#: at the model's `high` default with room for 64000 tokens, because no caller
+#: in this project had ever passed either parameter. `llm.py`'s own docstring
+#: had named this exact case as the one `effort` exists for.
+#:
+#: The ceiling matters more than it looks. Seven assets is an ordinary run
+#: (`studio-projects/cesar-mondongo-basket` drew seven), each of them worth up
+#: to `MAX_DRAW_ATTEMPTS` draws and each draw worth two schema attempts -- so
+#: the worst case for art alone is 42 calls, and what bounds it is what each
+#: one is allowed to spend.
+SHEET_EFFORT: Effort = "low"
+SHEET_MAX_TOKENS = 12000
+
+#: A tile is one 8x8 cell: sixty-four characters. Cheaper again, and there are
+#: usually more of them than there are sprites.
+TILE_EFFORT: Effort = "low"
+TILE_MAX_TOKENS = 6000
 
 #: Prompt templates, one per target/mode, live beside the other Studio
 #: resources (`resources/genres.yml`, `resources/studio_lib`, ...). Each
@@ -362,6 +384,8 @@ class ClaudeGridSheetSource:
             user=request,
             schema=SpriteSheetGrid,
             missing="the model did not return a sprite sheet",
+            effort=SHEET_EFFORT,
+            max_tokens=SHEET_MAX_TOKENS,
         )
         reason = grid_errors(grid, palette, frames_expected=frames)
         # Rendered whichever way the judgement went: a rejected sheet is
@@ -812,6 +836,8 @@ class ClaudeGridTileSource:
             user=request,
             schema=SpriteSheetGrid,
             missing="the model did not return a tile",
+            effort=TILE_EFFORT,
+            max_tokens=TILE_MAX_TOKENS,
         )
         reason = grid_errors(grid, palette, frames_expected=1, size=TILE_SIZE, solid_allowed=True)
         sheet = render_grid(grid, palette, size=TILE_SIZE)

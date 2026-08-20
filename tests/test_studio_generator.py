@@ -563,8 +563,17 @@ class _FakeMessages:
 
 
 class _FakeClient:
+    """Answers on both endpoints.
+
+    The writer is the one call site that passes a `task_budget`, and that
+    parameter exists only in `BetaOutputConfigParam` -- so its request goes
+    through `client.beta.messages`. Both are wired to the same recorder so a
+    test can read whichever it expects.
+    """
+
     def __init__(self, parsed):
         self.messages = _FakeMessages(parsed)
+        self.beta = type("Beta", (), {"messages": self.messages})()
 
 
 def test_the_writer_actually_sends_the_dossier_to_the_model():
@@ -591,9 +600,14 @@ def test_the_writer_actually_sends_the_dossier_to_the_model():
 
     ResponsesProgramWriter(client, reference=dossier).write(project)
 
-    content = client.messages.calls[0]["messages"][0]["content"]
-    assert "REFERENCE GAME" in content
-    assert "Zampa Bolas" in content
+    # The dossier is part of the standing context now, which travels in the
+    # cached system block rather than in the user turn: it is identical on all
+    # five attempts of `write_program`, and re-sending it each time was about
+    # 15 300 tokens billed at full rate per attempt.
+    call = client.beta.messages.calls[0]
+    context = call["system"][1]["text"]
+    assert "REFERENCE GAME" in context
+    assert "Zampa Bolas" in context
 
 
 def test_a_missing_platform_header_is_not_silently_survivable():

@@ -81,6 +81,9 @@ from typing import Any, Literal, Sequence, TypeVar, cast
 
 from pydantic import BaseModel, ValidationError
 
+from .schema_limits import constraint_notes
+from .spend import current_ledger
+
 Schema = TypeVar("Schema", bound=BaseModel)
 
 #: The effort levels the API accepts, spelled out rather than imported from
@@ -119,6 +122,35 @@ CacheTTL = Literal["5m", "1h"]
 #: full deliberation *and* the answer after it.
 DEFAULT_MAX_TOKENS = 64000
 
+#: The beta this project needs from the beta endpoint, and the only reason it
+#: ever goes there: a task budget is the one way to tell a model how much room
+#: the whole job has, so it wraps up rather than being cut off mid-sentence at
+#: `max_tokens`. `studio-projects/cesar-mondongo-basket` is why that matters --
+#: its third program attempt reasoned for 25 minutes and stopped at
+#: `EOF while parsing a string at line 1 column 21706`, a whole 64000-token
+#: deliberation billed for an answer nobody could read.
+TASK_BUDGET_BETA = "task-budgets-2026-03-13"
+
+#: What the API refuses a task budget below. Not a preference: `total` under
+#: this is a 400.
+MIN_TASK_BUDGET = 20000
+
+#: The models that accept one at all. `config.yml` lets any role be pointed at
+#: any model, so the writer can be moved onto one that would reject the
+#: parameter -- and rejecting it means a 400 arriving minutes into a paid run,
+#: after every stage before it has been paid for. A task budget is an
+#: optimisation and the request is worth more than it is, so an unsupported
+#: model simply does not get one.
+TASK_BUDGET_MODELS = frozenset(
+    {
+        "claude-opus-5",
+        "claude-opus-4-8",
+        "claude-opus-4-7",
+        "claude-sonnet-5",
+        "claude-fable-5",
+    }
+)
+
 #: How many times an answer the schema refuses is asked for again. Two, not
 #: more: the first attempt is the model guessing at a rule it was never shown
 #: (see `structured`), and the second is it being told the rule outright. A
@@ -141,6 +173,7 @@ def structured(
     effort: Effort | None = None,
     cached_prefix: str | None = None,
     cache_ttl: CacheTTL = "1h",
+    task_budget: int | None = None,
 ) -> Schema:
     """One question, one schema-satisfying answer.
 
@@ -201,15 +234,34 @@ def structured(
     rejected: fifteen fields across ten call sites, each free to drift from
     the schema it is supposed to describe, to avoid a retry that costs one
     call only when something already went wrong.
+
+    **The limits themselves are now stated up front, and the retry is the
+    fallback rather than the plan.** `schema_limits.constraint_notes` derives
+    them from `schema` and they are appended to `system`, so the model is told
+    the rule before it writes rather than after. That is not a replacement for
+    the retry -- a model can still break a rule it was shown -- but it turns
+    the common case from two full generations into one. Derived and not
+    written by hand, so it is not the drifting alternative rejected above; see
+    that module for what a stale copy of a limit costs.
+
+    `task_budget` is how many tokens the whole job is worth, told to the model
+    so it paces itself. Distinct from `max_tokens`, which the model cannot see
+    and which cuts it off wherever it happens to be. Only the writer passes
+    one, and passing it is the one thing that sends this request to the beta
+    endpoint.
     """
+    if task_budget is not None and model not in TASK_BUDGET_MODELS:
+        task_budget = None
+    limits = constraint_notes(schema)
+    instructed = f"{system}\n\n{limits}" if limits else system
     request: dict[str, Any] = {
         "model": model,
         "max_tokens": max_tokens,
         "system": (
-            system
+            instructed
             if cached_prefix is None
             else [
-                {"type": "text", "text": system},
+                {"type": "text", "text": instructed},
                 {
                     "type": "text",
                     "text": cached_prefix,
@@ -222,8 +274,16 @@ def structured(
     }
     if tools is not None:
         request["tools"] = tools
+    output_config: dict[str, Any] = {}
     if effort is not None:
-        request["output_config"] = {"effort": effort}
+        output_config["effort"] = effort
+    if task_budget is not None:
+        output_config["task_budget"] = {
+            "type": "tokens",
+            "total": max(MIN_TASK_BUDGET, task_budget),
+        }
+    if output_config:
+        request["output_config"] = output_config
 
     refusal: ValidationError | None = None
     for attempt in range(1, max(1, attempts) + 1):
@@ -234,6 +294,16 @@ def structured(
         else:
             content = f"{user}\n\n{_schema_feedback(refusal)}"
         request["messages"] = [{"role": "user", "content": content}]
+        # Asked before the request rather than after it, so a run that has
+        # spent its allowance stops without paying for the call that would
+        # have told it so. Raises `BudgetExhausted`, which is a RuntimeError
+        # and so travels straight out past the `except ValueError` every stage
+        # wraps its own refusals in: a run that ran out of money is not a
+        # design that could not be written, and "try the stage again" is the
+        # wrong advice for it.
+        ledger = current_ledger()
+        if ledger is not None:
+            ledger.check()
         try:
             # Streamed, not awaited whole. The SDK refuses outright to make a
             # non-streaming request whose `max_tokens` could keep the socket
@@ -244,8 +314,18 @@ def structured(
             # `messages.stream` accepts the same `output_format` and its final
             # message carries the same `parsed_output`, so only the call
             # changes: nothing downstream knows the difference.
-            with client.messages.stream(**request) as stream:
-                response = stream.get_final_message()
+            with _stream(client, request, task_budget) as stream:
+                try:
+                    response = stream.get_final_message()
+                except BaseException:
+                    # Billed on the way out, not skipped. Pydantic raises from
+                    # *inside* this call, and an attempt whose answer was
+                    # refused cost exactly as much to produce as one that was
+                    # kept -- two of the five stages of the cesar run were
+                    # nothing but that, and neither showed up anywhere.
+                    _bill(_snapshot(stream), model, max_tokens)
+                    raise
+                _bill(response, model, max_tokens)
         except ValidationError as exc:
             refusal = exc
             if attempt == max(1, attempts):
@@ -277,6 +357,64 @@ def structured(
         # function was given, which is what the signature promises.
         return cast(Schema, parsed)
     raise AssertionError("unreachable")  # pragma: no cover
+
+
+def _stream(client: Any, request: dict[str, Any], task_budget: int | None) -> Any:
+    """The stream this request travels on, beta only when it has to be.
+
+    `task_budget` lives in `BetaOutputConfigParam` and nowhere else (anthropic
+    0.122.0, `types/beta/beta_output_config_param.py`), so a request carrying
+    one has to go through `client.beta.messages` with the beta named. Every
+    other request keeps the plain endpoint it has always used -- moving all
+    ten call sites onto the beta path to serve the one that needs it would put
+    every stage of the pipeline behind a flag that can be withdrawn.
+    """
+    if task_budget is None:
+        return client.messages.stream(**request)
+    return client.beta.messages.stream(**request, betas=[TASK_BUDGET_BETA])
+
+
+def _snapshot(stream: Any) -> Any:
+    """Whatever of the answer had arrived when it went wrong, or `None`.
+
+    `MessageStream.current_message_snapshot` raises when nothing has been
+    accumulated yet, and a fake client in a test has no such attribute at all.
+    Both are the same answer here: no usage to read, so the call is billed at
+    its ceiling instead.
+    """
+    try:
+        return stream.current_message_snapshot
+    except Exception:  # noqa: BLE001 -- see docstring: any failure means no usage
+        return None
+
+
+def _bill(response: Any, model: str, max_tokens: int) -> None:
+    """Charge one call to the open run, if a run is open.
+
+    Nothing here is conditional on the caller: `structured` is the only place
+    a request is made, so it is the only place that can count them, and a
+    caller that opted into an accounting API it could forget to call would be
+    a caller that forgets. With no run open -- every test, every offline
+    caller -- this does nothing at all.
+
+    A response with no readable `usage` is billed at `max_tokens`. See
+    `spend.Ledger.record` for why the over-estimate is the safe direction.
+    """
+    ledger = current_ledger()
+    if ledger is None:
+        return
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        ledger.record(model=model, output_tokens=None, max_tokens=max_tokens)
+        return
+    ledger.record(
+        model=model,
+        input_tokens=getattr(usage, "input_tokens", 0),
+        output_tokens=getattr(usage, "output_tokens", 0),
+        cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0),
+        cache_write_tokens=getattr(usage, "cache_creation_input_tokens", 0),
+        max_tokens=max_tokens,
+    )
 
 
 def _was_cut_off(refusal: ValidationError) -> bool:

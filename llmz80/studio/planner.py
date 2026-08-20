@@ -334,6 +334,24 @@ class ProjectProposal(BaseModel):
     observability: str = Field(default="", max_length=600)
 
 
+#: What a design is allowed to cost, everywhere one is proposed -- here, in
+#: `drafting.py` and in `reference_design.py`.
+#:
+#: Kept at the model's default `high` effort, unlike the verdicts and the art:
+#: this is the stage that decides what the game *is*, and every later stage
+#: reads what it wrote. It is not where to save money.
+#:
+#: The ceiling is a different question from the effort, though, and 64000 was
+#: never right for it. A whole `GameProject` serialises to about 2 500 tokens,
+#: and the proposals here are JSON-pointer edits to one. Measured on the two
+#: stages of `studio-projects/cesar-mondongo-basket`, which took 550 s and
+#: 409 s across two attempts each, this leaves better than twice the room
+#: either of them used -- while bounding the case where a model spends the
+#: whole ceiling deliberating and returns nothing, which is what
+#: `llm.py:DEFAULT_MAX_TOKENS` records happening to the writer.
+PROPOSAL_MAX_TOKENS = 32000
+
+
 class ResponsesProjectPlanner:
     def __init__(self, client: Any, model: str = "claude-opus-5") -> None:
         self.client = client
@@ -359,6 +377,7 @@ class ResponsesProjectPlanner:
             user=f"REQUEST:\n{request}\n\nPROJECT:\n{project.model_dump_json(indent=2)}",
             schema=ProjectProposal,
             missing="the model did not return a structured project proposal",
+            max_tokens=PROPOSAL_MAX_TOKENS,
         )
 
 

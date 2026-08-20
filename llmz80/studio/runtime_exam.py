@@ -56,7 +56,7 @@ from pydantic import BaseModel, ConfigDict
 
 from llmz80.core.state_contract import STATE_TITLE, SYMBOLS_BY_NAME
 
-from .llm import structured
+from .llm import Effort, structured
 from .models import HOLD_ACTION, GameProject
 
 
@@ -632,7 +632,30 @@ def merge_exams(exams: list[RuntimeExam]) -> RuntimeExam:
 #: designs that declare no observables of their own from 44% to 55% of runs
 #: finding their one thin `g_state` attribution, which is a checkbox better
 #: won by declaring an observable than by paying for another opinion.
-EXAMINATION_PASSES = 4
+#:
+#: **Three, not four, and the fourth was given up for a reason and not to
+#: save a call.** This sits inside `write_program`'s attempt loop, and until
+#: `EXAMINATION_EFFORT` existed each pass was a full-effort reasoning call
+#: with 64000 tokens of room: four of the most expensive requests in the
+#: pipeline, per set of symbols, to derive an expectation. Lowering what a
+#: pass costs is what paid for keeping the coverage, and it pays for more of
+#: it than dropping to two would have -- three passes at `medium` cost less
+#: than one at `high`, where two would have cost the 1-in-12 of the
+#: three-subsets above turning into the 1-in-12 of the two-subsets, which is
+#: a gate that abstains on a design it should have checked.
+#:
+#: The scoring above is what makes the difference sayable: of the 84
+#: three-subsets of those nine sittings, one checks nothing on
+#: `minero-observable`; of the 36 two-subsets, three do. This buys back the
+#: money without buying it out of the one design that was already marginal.
+EXAMINATION_PASSES = 3
+
+#: What deriving an expectation is worth, and the reason it can be lowered at
+#: all: the exam reads a design that is already written and a list of symbols
+#: the program already exposes, and says what memory must show. It is not open
+#: work -- the answer is bounded by the mechanics the design declares.
+EXAMINATION_EFFORT: Effort = "medium"
+EXAMINATION_MAX_TOKENS = 16000
 
 
 class RepeatedExaminer:
@@ -697,5 +720,7 @@ class ResponsesRuntimeExaminer:
             ),
             user=examination_prompt(project, steps, symbols),
             schema=RuntimeExam,
+            effort=EXAMINATION_EFFORT,
+            max_tokens=EXAMINATION_MAX_TOKENS,
             missing="the model did not return a runtime examination",
         )

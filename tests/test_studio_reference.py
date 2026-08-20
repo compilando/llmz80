@@ -182,7 +182,9 @@ def test_research_asks_for_web_search_and_returns_the_dossier():
     call = client.messages.calls[0]
     assert WEB_SEARCH_TOOL in call["tools"]
     assert call["output_format"] is GameReference
-    assert call["system"] == RESEARCH_SYSTEM_PROMPT
+    # A superset: `structured` appends the schema's own limits. See
+    # `schema_limits.py` for why the model is not otherwise shown them.
+    assert call["system"].startswith(RESEARCH_SYSTEM_PROMPT)
     assert "spectrum" in call["messages"][0]["content"]
     assert brief in call["messages"][0]["content"]
 

@@ -62,6 +62,43 @@ def load_config(config_path: str) -> Dict[str, Any]:
     return config_data if config_data else {}
 
 
+#: The kinds of question Studio asks, each of which may be worth a different
+#: model. A *kind*, not a call site: `exam` covers the brief examiner, the
+#: coherence examiner and the runtime examiner, so a fourth one added later
+#: joins a role instead of adding a key nobody sets.
+#:
+#: They exist because one model for everything is one decision for two very
+#: different jobs. Deciding what a game is and writing its C is worth the best
+#: model there is. Transcribing an 8x8 tile into eight rows of pen characters
+#: and answering `coherent: true` was being charged at the same rate, which is
+#: what a survey of `studio-projects/*/studio.log` was looking for.
+ROLES = ("research", "design", "art", "exam", "program")
+
+#: What a role falls back to when neither `anthropic.models.<role>` nor
+#: `anthropic.model` is set. The best model, deliberately: an unconfigured
+#: checkout should produce the best game it can, and the cheaper choices are
+#: something somebody opts into with the bill in front of them.
+DEFAULT_MODEL = "claude-opus-5"
+
+
+def model_for(role: str, config: Dict[str, Any] | None = None) -> str:
+    """The model to ask `role`'s questions of.
+
+    `anthropic.models.<role>` when it is set, `anthropic.model` when it is
+    not. Both, rather than only the specific one, so a checkout that names a
+    single model in the way this project always has goes on working unchanged.
+
+    An unknown role raises rather than falling back. A fallback would answer a
+    typo with the most expensive model in the table and never mention it,
+    which is precisely the failure mode this function was added to close.
+    """
+    if role not in ROLES:
+        raise ValueError(f"unknown model role {role!r}: expected one of {', '.join(ROLES)}")
+    section = (config or load_config("config.yml")).get("anthropic") or {}
+    by_role = section.get("models") or {}
+    return str(by_role.get(role) or section.get("model") or DEFAULT_MODEL)
+
+
 def load_anthropic_api_key() -> str:
     """The Anthropic key, from the environment or a .env beside the checkout.
 

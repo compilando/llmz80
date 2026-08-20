@@ -13,7 +13,7 @@ from typing import Any, Protocol
 from .design_exam import DesignExaminer, coverage_errors
 from .llm import structured
 from .models import GameProject
-from .planner import AppliedProposal, ProjectProposal, propose_apply_repair
+from .planner import PROPOSAL_MAX_TOKENS, AppliedProposal, ProjectProposal, propose_apply_repair
 from .reference import GameReference
 from .typologies import typology_hints
 
@@ -126,6 +126,7 @@ class ResponsesReferenceDesigner:
             system=DESIGN_SYSTEM_PROMPT,
             user=content,
             schema=ProjectProposal,
+            max_tokens=PROPOSAL_MAX_TOKENS,
             missing="the model did not return a structured project proposal",
         )
 

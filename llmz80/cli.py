@@ -39,21 +39,26 @@ def _print_help() -> None:
     )
 
 
-def _llm_client_and_model() -> tuple[object, str]:
-    """Resolve the configured model client and model name once.
+def _llm_client_and_model(role: str = "design") -> tuple[object, str]:
+    """Resolve the configured model client and the model `role` is asked of.
 
     Three subcommands each read config.yml and construct a client; keeping the
-    "claude-opus-5" default and the config lookup in one place means changing
-    either is a single edit instead of three synchronised ones. The imports
-    stay local to this function, not hoisted to module level, so subcommands
-    that never call a model still cost nothing to import.
+    default and the config lookup in one place means changing either is a
+    single edit instead of three synchronised ones. The imports stay local to
+    this function, not hoisted to module level, so subcommands that never call
+    a model still cost nothing to import.
+
+    `role` is a *kind* of question -- see `utils.config.ROLES` -- and not a
+    call site, so the two stages worth the best model can keep it while
+    drawing a tile and answering a verdict need not. It defaults to `design`
+    rather than to a bare model name so a caller that does not care still gets
+    a real role and not a fourth place the default lives.
     """
     from anthropic import Anthropic
 
-    from llmz80.utils.config import load_anthropic_api_key, load_config
+    from llmz80.utils.config import load_anthropic_api_key, model_for
 
-    model = load_config("config.yml").get("anthropic", {}).get("model", "claude-opus-5")
-    return Anthropic(api_key=load_anthropic_api_key()), model
+    return Anthropic(api_key=load_anthropic_api_key()), model_for(role)
 
 
 def _new_command(arguments: list[str]) -> int:
